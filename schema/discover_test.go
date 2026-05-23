@@ -92,6 +92,62 @@ type configWithUnion struct {
 	Items []unionItem `yaml:"items"`
 }
 
+// minimalConfig has only yaml tags — no validate, no jsonschema_description.
+// Discover should still produce usable FieldDefs with zero-valued optional fields.
+type minimalConfig struct {
+	Name    string         `yaml:"name"`
+	Port    int            `yaml:"port"`
+	Nested  *minimalNested `yaml:"nested"`
+	Skipped string         // no yaml tag — must be omitted
+}
+
+type minimalNested struct {
+	Host string `yaml:"host"`
+	Tls  bool   `yaml:"tls"`
+}
+
+func TestDiscover_yamlTagOnly(t *testing.T) {
+	fields := schema.Discover(&minimalConfig{})
+
+	got := schema.TopLevelOrder(fields)
+	want := []string{"name", "port", "nested"}
+	if len(got) != len(want) {
+		t.Fatalf("TopLevelOrder = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("TopLevelOrder[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+
+	// Every optional attribute must be zero-valued when its tag is absent.
+	for _, f := range fields {
+		if f.Required {
+			t.Errorf("%s.Required = true; expected false without validate tag", f.YAMLName)
+		}
+		if f.Description != "" {
+			t.Errorf("%s.Description = %q; expected empty without jsonschema_description", f.YAMLName, f.Description)
+		}
+		if f.Default != "" {
+			t.Errorf("%s.Default = %q; expected empty without jsonschema default", f.YAMLName, f.Default)
+		}
+		if len(f.OneOf) != 0 {
+			t.Errorf("%s.OneOf = %v; expected empty without validate oneof", f.YAMLName, f.OneOf)
+		}
+	}
+
+	// Nested struct still descends.
+	var nested schema.FieldDef
+	for _, f := range fields {
+		if f.YAMLName == "nested" {
+			nested = f
+		}
+	}
+	if len(nested.Children) != 2 || nested.Children[0].YAMLName != "host" || nested.Children[1].YAMLName != "tls" {
+		t.Errorf("nested children = %+v, want [host tls]", nested.Children)
+	}
+}
+
 func TestDiscover_providerOverridesReflection(t *testing.T) {
 	fields := schema.Discover(&configWithUnion{})
 	if len(fields) != 1 || fields[0].YAMLName != "items" {

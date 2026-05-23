@@ -2,15 +2,38 @@
 
 A reusable TUI library for editing structured YAML files in Go.
 
-`yedit` turns any annotated Go struct into a two-panel bubbletea editor:
-the left panel lists the top-level keys discovered from the struct's
-`yaml`/`validate`/`jsonschema_description` tags; the right panel shows a
-live YAML preview. Pressing `Space` on a key opens a sub-field overlay
-where the user toggles children on/off, picks from optional presets, and
-edits the YAML snippet directly.
+`yedit` turns any Go struct annotated with `yaml` tags into a two-panel
+bubbletea editor: the left panel lists the top-level keys discovered from
+the struct; the right panel shows a live YAML preview. Pressing `Space`
+on a key opens a sub-field overlay where the user toggles children on/off,
+picks from optional presets, and edits the YAML snippet directly.
 
 The library is headless of any specific schema — clients supply the
 struct, optional presets, and any cross-field validation rules.
+
+## Tags
+
+Only the `yaml` tag is **required**. Everything else is optional and
+enriches the editor when present:
+
+| Tag                              | Effect                                            |
+| -------------------------------- | ------------------------------------------------- |
+| `yaml:"name"`                    | Required. The key as it appears in the YAML file. |
+| `yaml:"-"`                       | Field is hidden from the editor.                  |
+| `validate:"required"`            | Marks the field as required (renders a `*`).      |
+| `validate:"oneof=a b c"`         | Restricts accepted values (available in `FieldDef.OneOf`). |
+| `jsonschema:"required"`          | Alternative way to mark required.                 |
+| `jsonschema:"default=X"`         | Default value (available in `FieldDef.Default`).  |
+| `jsonschema_description:"..."`   | Description (available in `FieldDef.Description`). |
+
+A struct with only `yaml` tags is enough to get a working editor:
+
+```go
+type Minimal struct {
+    Name string `yaml:"name"`
+    Port int    `yaml:"port"`
+}
+```
 
 ## Install
 
@@ -19,6 +42,8 @@ go get github.com/lucasassuncao/yedit
 ```
 
 ## Usage
+
+Minimal — only `yaml` tags:
 
 ```go
 package main
@@ -30,11 +55,11 @@ import (
 )
 
 type MyConfig struct {
-    Name  string `yaml:"name"  validate:"required" jsonschema_description:"Project name."`
-    Image string `yaml:"image"                       jsonschema_description:"Container image."`
+    Name  string `yaml:"name"`
+    Image string `yaml:"image"`
     Build *struct {
-        Dockerfile string `yaml:"dockerfile" validate:"required" jsonschema:"default=Dockerfile"`
-        Context    string `yaml:"context"    validate:"required" jsonschema:"default=."`
+        Dockerfile string `yaml:"dockerfile"`
+        Context    string `yaml:"context"`
     } `yaml:"build"`
 }
 
@@ -43,14 +68,33 @@ func main() {
         Path:   "config.yaml",
         Schema: &MyConfig{},
         Title:  "my editor",
-        Validators: []editor.Validator{
-            editor.MutuallyExclusive("image", "build"),
-        },
     })
     if err != nil {
         log.Fatal(err)
     }
 }
+```
+
+Richer — add optional tags and validators to improve UX:
+
+```go
+type MyConfig struct {
+    Name  string `yaml:"name"  validate:"required"             jsonschema_description:"Project name."`
+    Image string `yaml:"image"                                 jsonschema_description:"Container image."`
+    Build *struct {
+        Dockerfile string `yaml:"dockerfile" validate:"required" jsonschema:"default=Dockerfile"`
+        Context    string `yaml:"context"    validate:"required" jsonschema:"default=."`
+    } `yaml:"build"`
+}
+
+editor.Run(editor.Config{
+    Path:   "config.yaml",
+    Schema: &MyConfig{},
+    Title:  "my editor",
+    Validators: []editor.Validator{
+        editor.MutuallyExclusive("image", "build"),
+    },
+})
 ```
 
 `editor.Run` blocks until the user quits. A non-existent `Path` is not

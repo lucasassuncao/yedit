@@ -16,6 +16,18 @@ var defaultSkip = map[string]bool{
 // name in defaultSkip are omitted. Nested struct fields recurse one level
 // deeper.
 //
+// Only the yaml tag is required. validate and jsonschema_description are
+// optional and merely enrich the FieldDef when present:
+//
+//   - validate:"required"          → FieldDef.Required = true (renders a "*")
+//   - validate:"oneof=a b c"       → FieldDef.OneOf populated
+//   - jsonschema:"default=X"       → FieldDef.Default populated
+//   - jsonschema:"required"        → FieldDef.Required = true (alternative)
+//   - jsonschema_description:"..." → FieldDef.Description populated
+//
+// A struct annotated only with yaml tags discovers cleanly; fields just have
+// zero-valued Required/Default/Description/OneOf.
+//
 // To customise discovery for union types (a value that can be a scalar OR a
 // struct OR a map), make the wrapper type implement Provider — its
 // YeditSchema() return value is used in place of reflective traversal.
