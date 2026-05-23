@@ -1,0 +1,351 @@
+package editor
+
+import (
+	"sort"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/lucasassuncao/yedit/document"
+)
+
+// listItem represents one row in the left panel of the root editor view.
+type listItem struct {
+	Key       string
+	Existing  bool
+	Separator bool // visual divider row, not selectable
+}
+
+// spaceOnItemMsg is sent when the user presses Space on a list item.
+type spaceOnItemMsg struct{ Item listItem }
+
+// deleteItemMsg is sent when the user presses d on an existing item.
+type deleteItemMsg struct{ Key string }
+
+// listModel is the scrollable left-panel list of known + existing top-level keys.
+type listModel struct {
+	knownKeys []string // canonical order from the schema
+	items     []listItem
+	cursor    int
+	height    int
+	offset    int
+
+	filter    string
+	filtering bool
+	fCursor   int
+	fOffset   int
+}
+
+func (lm listModel) IsFiltering() bool { return lm.filtering }
+
+// buildListItems merges the canonical key order with the blocks present in the
+// current document, keeping existing keys (in file order) above available keys
+// (alphabetised). Hidden keys are stripped beforehand by the caller.
+func buildListItems(knownKeys []string, existing []document.Block) []listItem {
+	knownSet := make(map[string]bool, len(knownKeys))
+	for _, k := range knownKeys {
+		knownSet[k] = true
+	}
+
+	existingSet := make(map[string]bool, len(existing))
+	for _, b := range existing {
+		if knownSet[b.Key] {
+			existingSet[b.Key] = true
+		}
+	}
+
+	items := make([]listItem, 0, len(knownKeys)+4)
+
+	existingItems := make([]listItem, 0)
+	for _, b := range existing {
+		if knownSet[b.Key] {
+			existingItems = append(existingItems, listItem{Key: b.Key, Existing: true})
+		}
+	}
+	if len(existingItems) > 0 {
+		items = append(items, listItem{Separator: true, Key: "ADDED"})
+		items = append(items, existingItems...)
+	}
+
+	available := make([]string, 0)
+	for _, k := range knownKeys {
+		if !existingSet[k] {
+			available = append(available, k)
+		}
+	}
+	sort.Strings(available)
+
+	if len(available) > 0 {
+		items = append(items, listItem{Separator: true, Key: ""})
+		items = append(items, listItem{Separator: true, Key: "AVAILABLE"})
+		for _, k := range available {
+			items = append(items, listItem{Key: k, Existing: false})
+		}
+	}
+
+	return items
+}
+
+func (lm *listModel) SetHeight(h int) {
+	lm.height = h
+	lm.clampScroll()
+}
+
+func newListModel(knownKeys []string, existing []document.Block, height int) listModel {
+	items := buildListItems(knownKeys, existing)
+	cursor := 0
+	for i, it := range items {
+		if !it.Separator {
+			cursor = i
+			break
+		}
+	}
+	return listModel{knownKeys: knownKeys, items: items, cursor: cursor, height: height}
+}
+
+// Rebuild refreshes the list after blocks change without losing cursor position.
+func (lm *listModel) Rebuild(existing []document.Block) {
+	prevKey := ""
+	if lm.cursor < len(lm.items) && !lm.items[lm.cursor].Separator {
+		prevKey = lm.items[lm.cursor].Key
+	}
+	lm.items = buildListItems(lm.knownKeys, existing)
+	if prevKey != "" {
+		for i, it := range lm.items {
+			if it.Key == prevKey {
+				lm.cursor = i
+				lm.clampScroll()
+				return
+			}
+		}
+	}
+	lm.cursor = 0
+	for i, it := range lm.items {
+		if !it.Separator {
+			lm.cursor = i
+			break
+		}
+	}
+	lm.clampScroll()
+}
+
+// AddedCount returns how many recognised top-level keys are present in the doc.
+func (lm listModel) AddedCount() int {
+	n := 0
+	for _, it := range lm.items {
+		if it.Existing {
+			n++
+		}
+	}
+	return n
+}
+
+func (lm listModel) filteredItems() []listItem {
+	f := strings.ToLower(lm.filter)
+	var out []listItem
+	for _, it := range lm.items {
+		if it.Separator {
+			continue
+		}
+		if f == "" || strings.Contains(strings.ToLower(it.Key), f) {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func (lm listModel) SelectedItem() *listItem {
+	if lm.filtering {
+		items := lm.filteredItems()
+		if lm.fCursor >= len(items) {
+			return nil
+		}
+		it := items[lm.fCursor]
+		return &it
+	}
+	if lm.cursor >= len(lm.items) {
+		return nil
+	}
+	it := lm.items[lm.cursor]
+	if it.Separator {
+		return nil
+	}
+	return &it
+}
+
+func (lm listModel) Update(msg tea.Msg) (listModel, tea.Cmd) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return lm, nil
+	}
+	if lm.filtering {
+		return lm.updateFilter(key)
+	}
+	switch key.String() {
+	case "/":
+		lm.filtering = true
+		lm.filter = ""
+		lm.fCursor = 0
+		lm.fOffset = 0
+	case "up", "k":
+		lm.moveCursor(-1)
+	case "down", "j":
+		lm.moveCursor(1)
+	case " ":
+		if it := lm.SelectedItem(); it != nil {
+			item := *it
+			return lm, func() tea.Msg { return spaceOnItemMsg{Item: item} }
+		}
+	case "d":
+		if it := lm.SelectedItem(); it != nil && it.Existing {
+			k := it.Key
+			return lm, func() tea.Msg { return deleteItemMsg{Key: k} }
+		}
+	}
+	return lm, nil
+}
+
+func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
+	switch key.String() {
+	case "esc":
+		lm.filtering = false
+		lm.filter = ""
+		lm.fCursor = 0
+		lm.fOffset = 0
+	case "enter":
+		items := lm.filteredItems()
+		if lm.fCursor < len(items) {
+			sel := items[lm.fCursor].Key
+			for i, it := range lm.items {
+				if it.Key == sel {
+					lm.cursor = i
+					lm.clampScroll()
+					break
+				}
+			}
+		}
+		lm.filtering = false
+	case "backspace", "ctrl+h":
+		if len(lm.filter) > 0 {
+			lm.filter = lm.filter[:len(lm.filter)-1]
+			lm.fCursor = 0
+			lm.fOffset = 0
+		}
+	case "up", "k":
+		lm.moveFCursor(-1)
+	case "down", "j":
+		lm.moveFCursor(1)
+	default:
+		if r := key.Runes; len(r) == 1 && r[0] >= 32 {
+			lm.filter += string(r)
+			lm.fCursor = 0
+			lm.fOffset = 0
+		}
+	}
+	return lm, nil
+}
+
+func (lm *listModel) moveFCursor(delta int) {
+	items := lm.filteredItems()
+	n := len(items)
+	if n == 0 {
+		return
+	}
+	lm.fCursor = (lm.fCursor + delta + n) % n
+	lm.clampFScroll()
+}
+
+func (lm *listModel) clampFScroll() {
+	visH := lm.height - 1
+	if visH <= 0 {
+		return
+	}
+	if lm.fCursor < lm.fOffset {
+		lm.fOffset = lm.fCursor
+	}
+	if lm.fCursor >= lm.fOffset+visH {
+		lm.fOffset = lm.fCursor - visH + 1
+	}
+}
+
+func (lm *listModel) moveCursor(delta int) {
+	n := len(lm.items)
+	if n == 0 {
+		return
+	}
+	for i := 0; i < n; i++ {
+		lm.cursor = (lm.cursor + delta + n) % n
+		if !lm.items[lm.cursor].Separator {
+			break
+		}
+	}
+	lm.clampScroll()
+}
+
+func (lm *listModel) clampScroll() {
+	if lm.height <= 0 {
+		return
+	}
+	if lm.cursor < lm.offset {
+		lm.offset = lm.cursor
+	}
+	if lm.cursor >= lm.offset+lm.height {
+		lm.offset = lm.cursor - lm.height + 1
+	}
+}
+
+func renderListItem(it listItem, selected bool) string {
+	if selected {
+		mark := "+"
+		if it.Existing {
+			mark = "●"
+		}
+		return selectedItemStyle.Render("▶ " + mark + "  " + it.Key)
+	}
+	if it.Existing {
+		return existingItemStyle.Render("  ●  " + it.Key)
+	}
+	return availableItemStyle.Render("  +  " + it.Key)
+}
+
+func (lm listModel) View() string {
+	if lm.filtering {
+		return lm.viewFilter()
+	}
+	var sb strings.Builder
+	end := lm.offset + lm.height
+	if end > len(lm.items) {
+		end = len(lm.items)
+	}
+	for i := lm.offset; i < end; i++ {
+		if i > lm.offset {
+			sb.WriteByte('\n')
+		}
+		it := lm.items[i]
+		if it.Separator {
+			sb.WriteString(sectionLabelStyle.Render(it.Key))
+		} else {
+			sb.WriteString(renderListItem(it, i == lm.cursor))
+		}
+	}
+	return sb.String()
+}
+
+func (lm listModel) viewFilter() string {
+	items := lm.filteredItems()
+	visH := lm.height - 1
+	end := lm.fOffset + visH
+	if end > len(items) {
+		end = len(items)
+	}
+
+	lines := make([]string, 0, lm.height)
+	for i := lm.fOffset; i < end; i++ {
+		lines = append(lines, renderListItem(items[i], i == lm.fCursor))
+	}
+	for len(lines) < visH {
+		lines = append(lines, "")
+	}
+	lines = append(lines, filterPromptStyle.Render("/"+lm.filter+"▋"))
+	return strings.Join(lines, "\n")
+}
