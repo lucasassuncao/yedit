@@ -50,19 +50,6 @@ type Config struct {
 	Hidden           []string // additional top-level keys to omit from the UI
 }
 
-// preCheckedSet returns the pre-checked field names for the given parent key
-// as a lookup map.
-func (c Config) preCheckedSet(parent string) map[string]bool {
-	if c.PreCheckedFields == nil {
-		return nil
-	}
-	out := make(map[string]bool, len(c.PreCheckedFields[parent]))
-	for _, name := range c.PreCheckedFields[parent] {
-		out[name] = true
-	}
-	return out
-}
-
 // fieldSnippetsFor returns the snippet map for parent (may be nil).
 func (c Config) fieldSnippetsFor(parent string) map[string]string {
 	if c.FieldSnippets == nil {

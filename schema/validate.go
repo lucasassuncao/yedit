@@ -49,12 +49,21 @@ func UnknownKeys(raw []byte, known map[string]map[string]bool) []string {
 	return unknown
 }
 
+// reservedTopLevelKeys are ignored during validation regardless of schema.
+// "import" is a common YAML convention for file includes/merges.
+var reservedTopLevelKeys = map[string]bool{
+	"import": true,
+}
+
 func walkKnown(obj map[string]any, prefix string, known map[string]map[string]bool, unknown *[]string) {
 	allowed, validated := known[prefix]
 	if !validated {
 		return
 	}
 	for key, val := range obj {
+		if prefix == "" && reservedTopLevelKeys[key] {
+			continue
+		}
 		path := key
 		if prefix != "" {
 			path = prefix + "." + key
@@ -63,8 +72,15 @@ func walkKnown(obj map[string]any, prefix string, known map[string]map[string]bo
 			*unknown = append(*unknown, path)
 			continue
 		}
-		if nested, ok := val.(map[string]any); ok {
-			walkKnown(nested, path, known, unknown)
+		switch v := val.(type) {
+		case map[string]any:
+			walkKnown(v, path, known, unknown)
+		case []any:
+			for _, item := range v {
+				if nested, ok := item.(map[string]any); ok {
+					walkKnown(nested, path, known, unknown)
+				}
+			}
 		}
 	}
 }

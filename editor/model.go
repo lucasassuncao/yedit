@@ -19,7 +19,7 @@ type pane int
 const (
 	paneList pane = iota
 	panePreview
-	paneOverlay
+	paneBlockEdit
 	paneAlert
 )
 
@@ -27,7 +27,7 @@ const (
 //
 // The active pane is derived from state, not tracked explicitly:
 //   - alert != nil       → paneAlert
-//   - overlay != nil     → paneOverlay
+//   - blockEdit != nil   → paneBlockEdit
 //   - previewFocused     → panePreview
 //   - otherwise          → paneList
 type model struct {
@@ -37,10 +37,10 @@ type model struct {
 	knownByPath map[string]map[string]bool
 	childrenOf  map[string][]schema.FieldDef
 
-	list    listModel
-	preview textarea.Model
-	overlay *overlayModel
-	alert   *alert.Model
+	list      listModel
+	preview   textarea.Model
+	blockEdit *blockEditState
+	alert     *alert.Model
 
 	previewFocused bool
 	statusMsg      string
@@ -111,12 +111,22 @@ func buildChildrenMap(fields []schema.FieldDef) map[string][]schema.FieldDef {
 	return m
 }
 
+// fieldKind returns the Kind of the named top-level field, or KindScalar if not found.
+func fieldKind(fields []schema.FieldDef, name string) schema.Kind {
+	for _, f := range fields {
+		if f.YAMLName == name {
+			return f.Kind
+		}
+	}
+	return schema.KindScalar
+}
+
 func (m model) activePane() pane {
 	switch {
 	case m.alert != nil:
 		return paneAlert
-	case m.overlay != nil:
-		return paneOverlay
+	case m.blockEdit != nil:
+		return paneBlockEdit
 	case m.previewFocused:
 		return panePreview
 	default:
@@ -137,6 +147,12 @@ func (m *model) scrollPreviewToKey(key string) {
 	}
 }
 
+// overlayConfirmedMsg is sent when the user commits a block edit (Ctrl+S).
+type overlayConfirmedMsg struct{ Snippet string }
+
+// overlayCancelledMsg is sent when the user cancels a block edit (Esc).
+type overlayCancelledMsg struct{}
+
 func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -151,12 +167,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case overlayConfirmedMsg:
 		return m.handleOverlayConfirmed(msg.Snippet)
 	case overlayCancelledMsg:
-		m.overlay = nil
+		m.blockEdit = nil
 		m.statusMsg = "Cancelled."
 		return m, nil
 	case deleteItemMsg:
 		return m.handleDelete(msg.Key)
 	case alert.DismissedMsg:
+		// Forward to blockEdit first so its confirmAlert is cleared.
+		if m.blockEdit != nil {
+			be, cmd := m.blockEdit.Update(msg)
+			m.blockEdit = &be
+			return m, cmd
+		}
 		m.alert = nil
 		return m, nil
 	case doSaveMsg:
@@ -170,9 +192,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.alert = &al
 			return m, cmd
 		}
-	case paneOverlay:
-		ov, cmd := m.overlay.Update(msg)
-		m.overlay = &ov
+	case paneBlockEdit:
+		be, cmd := m.blockEdit.Update(msg)
+		m.blockEdit = &be
 		return m, cmd
 	case panePreview:
 		if key, ok := msg.(tea.KeyMsg); ok {
@@ -212,7 +234,7 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "tab":
 			return m.togglePreviewPane()
-		case "q", "ctrl+c":
+		case "esc", "ctrl+c":
 			if m.doc.Dirty() {
 				return m.showConfirmAlert("Quit without saving?",
 					"Unsaved changes will be lost.", tea.Quit)
@@ -284,15 +306,15 @@ func (m model) handleSpace(it listItem) (tea.Model, tea.Cmd) {
 	}
 
 	children := m.childrenOf[it.Key]
-	ov := newOverlay(m.cfg, it.Key, children, initial, m.width, m.height)
+	kind := fieldKind(m.schemaTree, it.Key)
+	be := newBlockEdit(m.cfg, blockSpec{key: it.Key, defs: children, kind: kind, content: initial, knownByPath: m.knownByPath}, m.width, m.height)
+	be.isEdit = it.Existing
+	m.blockEdit = &be
 	action := "Add"
 	if it.Existing {
-		ov.isEdit = true
-		ov.editKey = it.Key
 		action = "Edit"
 	}
-	m.overlay = &ov
-	m.statusMsg = fmt.Sprintf("%s block %q — Tab panel, Ctrl+S confirm, Esc cancel.", action, it.Key)
+	m.statusMsg = fmt.Sprintf("%s block %q — Tab panel, Ctrl+S commit, Esc back.", action, it.Key)
 	return m, nil
 }
 
@@ -307,29 +329,28 @@ func (m model) handleDelete(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleOverlayConfirmed(snippet string) (tea.Model, tea.Cmd) {
-	isEdit := m.overlay != nil && m.overlay.isEdit
-	editKey := ""
-	if isEdit {
-		editKey = m.overlay.editKey
-	}
+	isEdit := m.blockEdit != nil && m.blockEdit.isEdit
 
 	var err error
 	if isEdit {
-		err = m.doc.Replace(editKey, snippet)
+		err = m.doc.Replace(m.blockEdit.key, snippet)
 	} else {
 		err = m.doc.Insert(snippet)
 	}
 	if err != nil {
 		m.statusMsg = fmt.Sprintf("Apply error: %v", err)
-		m.overlay = nil
 		return m, nil
 	}
 	m.syncView()
-	m.overlay = nil
+	// Keep blockEdit open — user stays in editing mode after commit.
 	if isEdit {
-		m.statusMsg = "Block updated (not saved yet)."
+		m.statusMsg = "Block updated (not saved yet) — Esc to return."
 	} else {
-		m.statusMsg = "Block added (not saved yet)."
+		// First commit transitions the block edit to edit mode.
+		if m.blockEdit != nil {
+			m.blockEdit.isEdit = true
+		}
+		m.statusMsg = "Block added (not saved yet) — Esc to return."
 	}
 	return m, nil
 }
@@ -392,13 +413,13 @@ func (m model) validateKeys() (tea.Model, tea.Cmd) {
 }
 
 func (m model) showAlert(title, message string, kind alert.Kind) (tea.Model, tea.Cmd) {
-	al := alert.New(title, message, kind, m.width, m.height)
+	al := alert.New(title, message, kind, theme.Size{W: m.width, H: m.height})
 	m.alert = &al
 	return m, nil
 }
 
 func (m model) showConfirmAlert(title, message string, confirmCmd tea.Cmd) (tea.Model, tea.Cmd) {
-	al := alert.NewConfirm(title, message, confirmCmd, m.width, m.height)
+	al := alert.NewConfirm(title, message, confirmCmd, theme.Size{W: m.width, H: m.height})
 	m.alert = &al
 	return m, nil
 }
@@ -428,17 +449,17 @@ func (m model) View() string {
 	switch m.activePane() {
 	case paneAlert:
 		return m.alert.View()
-	case paneOverlay:
-		return m.overlay.View()
+	case paneBlockEdit:
+		return m.blockEdit.View()
 	}
 
 	header := renderHeader(m.cfg.Title, m.doc.Path(), m.doc.Dirty(), m.width)
 
 	leftTitle := fmt.Sprintf("Blocks (%d/%d)", m.list.AddedCount(), len(m.list.knownKeys))
-	leftPanel := theme.RenderTitledPanel(leftTitle, m.listW, m.innerH+2, !m.previewFocused, m.list.View())
+	leftPanel := theme.RenderTitledPanel(leftTitle, theme.Size{W: m.listW, H: m.innerH + 2}, !m.previewFocused, m.list.View())
 
-	_, previewW := theme.TwoColumnWidths(m.width)
-	rightPanel := theme.RenderTitledPanel("Preview", previewW, m.innerH+2, m.previewFocused, m.preview.View())
+	_, rightW := theme.TwoColumnWidths(m.width)
+	rightPanel := theme.RenderTitledPanel("Preview", theme.Size{W: rightW, H: m.innerH + 2}, m.previewFocused, m.preview.View())
 
 	var hintText string
 	if m.previewFocused {
@@ -446,13 +467,13 @@ func (m model) View() string {
 	} else if m.list.IsFiltering() {
 		hintText = "[type] filter • [↑/↓] navigate • [Enter] select • [Esc] clear filter"
 	} else if it := m.list.SelectedItem(); it != nil && it.Existing {
-		hintText = "[↑/↓] navigate • [Space] edit block • [d] delete • [/] filter • [Tab] edit YAML • [ctrl+z] undo • [ctrl+s] save • [q] quit"
+		hintText = "[↑/↓] navigate • [Space] edit block • [d] delete • [/] filter • [Tab] edit YAML • [ctrl+z] undo • [ctrl+s] save • [Esc] quit"
 	} else {
-		hintText = "[↑/↓] navigate • [Space] add block • [/] filter • [Tab] edit YAML • [ctrl+z] undo • [ctrl+s] save • [q] quit"
+		hintText = "[↑/↓] navigate • [Space] add block • [/] filter • [Tab] edit YAML • [ctrl+z] undo • [ctrl+s] save • [Esc] quit"
 	}
 
 	feedback := lipgloss.NewStyle().Width(m.width).Render(statusStyle.Render(m.statusMsg))
 	hint := lipgloss.NewStyle().Width(m.width).Render(statusStyle.Render(hintText))
 
-	return theme.RenderTwoColumnView(header, leftPanel, rightPanel, feedback, hint)
+	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Hint: hint})
 }

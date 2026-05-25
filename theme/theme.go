@@ -79,18 +79,31 @@ func TwoColumnWidths(totalWidth int) (listW, rightW int) {
 	return
 }
 
+// Size holds a width/height pair. Used wherever a terminal or panel dimension
+// is passed as a unit (alert, picker, RenderTitledPanel, CenterBox).
+type Size struct{ W, H int }
+
+// TwoColumnLayout carries the five sections of the standard two-panel screen.
+type TwoColumnLayout struct {
+	Header   string
+	Left     string
+	Right    string
+	Feedback string // pass "" when there is nothing to report
+	Hint     string
+}
+
 // RenderTwoColumnView assembles the standard two-panel screen: header, panels
-// side by side, a feedback line, and a hint line. Pass "" for feedback when
-// there is nothing to report.
-func RenderTwoColumnView(header, leftPanel, rightPanel, feedback, hint string) string {
-	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
-	return strings.Join([]string{header, body, feedback, hint}, "\n")
+// side by side, a feedback line, and a hint line.
+func RenderTwoColumnView(layout TwoColumnLayout) string {
+	body := lipgloss.JoinHorizontal(lipgloss.Top, layout.Left, layout.Right)
+	return strings.Join([]string{layout.Header, body, layout.Feedback, layout.Hint}, "\n")
 }
 
 // RenderTitledPanel renders a rounded-border panel with the title embedded in
-// the top edge: ╭─ Title ──────╮. width and height are OUTER dimensions
-// (including the border rows/cols).
-func RenderTitledPanel(title string, width, height int, active bool, content string) string {
+// the top edge: ╭─ Title ──────╮. size holds the OUTER dimensions (including
+// the border rows/cols).
+func RenderTitledPanel(title string, size Size, active bool, content string) string {
+	width, height := size.W, size.H
 	if width < 4 {
 		width = 4
 	}
@@ -126,13 +139,13 @@ func RenderTitledPanel(title string, width, height int, active bool, content str
 	return lipgloss.JoinVertical(lipgloss.Left, top, body)
 }
 
-// CenterBox positions box at the centre of a totalW×totalH terminal region
-// by adding padding. Used by floating overlay/alert/picker views.
-func CenterBox(box string, totalW, totalH int) string {
+// CenterBox positions box at the centre of the given terminal Size by adding
+// padding. Used by floating overlay/alert/picker views.
+func CenterBox(box string, term Size) string {
 	bw := lipgloss.Width(box)
 	bh := lipgloss.Height(box)
-	lp := (totalW - bw) / 2
-	tp := (totalH - bh) / 2
+	lp := (term.W - bw) / 2
+	tp := (term.H - bh) / 2
 	if lp < 0 {
 		lp = 0
 	}

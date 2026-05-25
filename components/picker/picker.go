@@ -23,14 +23,13 @@ type Model struct {
 	title  string
 	names  []string
 	cursor int
-	totalW int
-	totalH int
+	term   theme.Size
 }
 
 // New creates a picker preselecting current if present in names; otherwise the
 // first item is selected. Pass an empty title to render the picker without a
 // title bar.
-func New(title string, names []string, current string, totalW, totalH int) Model {
+func New(title string, names []string, current string, term theme.Size) Model {
 	cursor := 0
 	for i, n := range names {
 		if n == current {
@@ -42,15 +41,13 @@ func New(title string, names []string, current string, totalW, totalH int) Model
 		title:  title,
 		names:  names,
 		cursor: cursor,
-		totalW: totalW,
-		totalH: totalH,
+		term:   term,
 	}
 }
 
 // Resize updates the centre region against which the picker is drawn.
-func (p *Model) Resize(totalW, totalH int) {
-	p.totalW = totalW
-	p.totalH = totalH
+func (p *Model) Resize(term theme.Size) {
+	p.term = term
 }
 
 // SelectedName returns the name of the currently-highlighted item, or "" if
@@ -113,5 +110,5 @@ func (p Model) View() string {
 		Padding(0, 1).
 		Render(strings.Join(lines, "\n"))
 
-	return theme.CenterBox(box, p.totalW, p.totalH)
+	return theme.CenterBox(box, p.term)
 }

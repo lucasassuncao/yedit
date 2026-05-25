@@ -15,15 +15,6 @@ var (
 
 	statusStyle       = theme.StatusBar
 	filterPromptStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.AccentBright)
-
-	overlayBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.DoubleBorder()).
-				BorderForeground(theme.Accent).
-				Padding(0, 1)
-	overlayTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.AccentBright)
-
-	panelStyle       = theme.PanelBorder(false)
-	activePanelStyle = theme.PanelBorder(true)
 )
 
 func renderHeader(title, file string, dirty bool, width int) string {

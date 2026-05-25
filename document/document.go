@@ -136,14 +136,14 @@ func (d *Document) Replace(key, snippet string) error {
 
 // ReplaceRaw replaces the document content with raw, normalising CRLF.
 // If raw fails to parse, the document is left untouched and the error is returned.
-// On success, snapshots history and sets dirty=true.
+// Does NOT snapshot — direct YAML editing is not tracked in the undo history;
+// only committed block operations (Insert, Replace, Remove) are undoable.
 func (d *Document) ReplaceRaw(raw []byte) error {
 	raw = []byte(strings.ReplaceAll(string(raw), "\r\n", "\n"))
 	blocks, err := ParseBlocks(raw)
 	if err != nil {
 		return err
 	}
-	d.snapshot()
 	d.raw = raw
 	d.blocks = blocks
 	d.dirty = true
