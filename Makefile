@@ -1,13 +1,15 @@
-.PHONY: help fmt lint test test-watch test-coverage security deps tag all clean
+.PHONY: help fmt lint test test-watch test-coverage security deps docs tag all clean
 
 # Tool versions
 GOLANGCI_LINT_VERSION := v2.5.0
+GOMARKDOC_VERSION     := v1.1.0
 GOTESTSUM_VERSION     := v1.13.0
 GOSEC_VERSION         := v2.25.0
 GOCOBERTURA_VERSION   := latest
 
 # Tools invoked via go run -- no global install required
 GOLANGCI    := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+GOMARKDOC   := go run github.com/princjef/gomarkdoc/cmd/gomarkdoc@$(GOMARKDOC_VERSION)
 GOTESTSUM   := go run gotest.tools/gotestsum@$(GOTESTSUM_VERSION)
 GOSEC       := go run github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
 GOCOBERTURA := go run github.com/t-yuki/gocover-cobertura@$(GOCOBERTURA_VERSION)
@@ -46,6 +48,13 @@ deps: ## Download and tidy dependencies
 	@go mod download
 	@go mod tidy
 
+docs: ## Generate documentation with gomarkdoc
+	@$(GOMARKDOC) -e \
+		--repository.url https://github.com/lucasassuncao/yedit \
+		--repository.default-branch main \
+		--repository.path / \
+		-o '{{.Dir}}/README.md' ./...
+
 tag: ## Create and push an annotated git tag (usage: make tag VERSION=v1.2.3)
 ifndef VERSION
 	$(error Usage: make tag VERSION=v1.2.3)
@@ -54,7 +63,7 @@ endif
 	git tag -a $(VERSION) -m "Release $(VERSION)"
 	git push origin $(VERSION)
 
-all: fmt lint security test-coverage ## Run all checks (fmt + lint + security + coverage)
+all: fmt docs lint security test-coverage ## Run all checks (fmt + docs + lint + security + coverage)
 
 clean: ## Remove coverage artifacts and cache
 	@rm -rf $(COVERAGE_OUT) $(COVERAGE_HTML) $(COVERAGE_XML)

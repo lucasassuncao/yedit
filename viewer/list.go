@@ -8,6 +8,12 @@ import (
 	"github.com/lucasassuncao/yedit/theme"
 )
 
+var (
+	styleListActive = lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
+	styleListDim    = lipgloss.NewStyle().Foreground(theme.Dim)
+	styleListHeader = lipgloss.NewStyle().Bold(true).Foreground(theme.AccentBright)
+)
+
 type listMode int
 
 const (
@@ -122,21 +128,37 @@ func (l *listModel) Back() {
 	}
 }
 
-// JumpFieldForward / JumpFieldBackward move the field cursor (modeFields only).
+// JumpFieldForward / JumpFieldBackward move the field cursor by one page (modeFields only).
 func (l *listModel) JumpFieldForward() {
-	if l.mode == modeFields && l.fieldCursor < len(l.fields)-1 {
-		l.fieldCursor++
-		l.activeField = l.fields[l.fieldCursor]
-		l.ensureCursorVisible()
+	if l.mode != modeFields {
+		return
 	}
+	step := l.height
+	if step < 1 {
+		step = 1
+	}
+	l.fieldCursor += step
+	if l.fieldCursor >= len(l.fields) {
+		l.fieldCursor = len(l.fields) - 1
+	}
+	l.activeField = l.fields[l.fieldCursor]
+	l.ensureCursorVisible()
 }
 
 func (l *listModel) JumpFieldBackward() {
-	if l.mode == modeFields && l.fieldCursor > 0 {
-		l.fieldCursor--
-		l.activeField = l.fields[l.fieldCursor]
-		l.ensureCursorVisible()
+	if l.mode != modeFields {
+		return
 	}
+	step := l.height
+	if step < 1 {
+		step = 1
+	}
+	l.fieldCursor -= step
+	if l.fieldCursor < 0 {
+		l.fieldCursor = 0
+	}
+	l.activeField = l.fields[l.fieldCursor]
+	l.ensureCursorVisible()
 }
 
 func (l *listModel) SetSize(w, h int) {
@@ -186,16 +208,16 @@ func (l *listModel) viewFields() []string {
 	for i := l.scroll; i < end; i++ {
 		f := l.fields[i]
 		if i == l.fieldCursor {
-			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Accent).Bold(true).Render("▸ "+f))
+			lines = append(lines, styleListActive.Render("▸ "+f))
 		} else {
-			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Dim).Render("  "+f))
+			lines = append(lines, styleListDim.Render("  "+f))
 		}
 	}
 	return lines
 }
 
 func (l *listModel) viewPresets() []string {
-	header := lipgloss.NewStyle().Bold(true).Foreground(theme.AccentBright).Render("← " + l.activeField)
+	header := styleListHeader.Render("← " + l.activeField)
 	lines := []string{header, strings.Repeat("─", l.width)}
 
 	presets := l.presetsByField[l.activeField]
@@ -207,9 +229,9 @@ func (l *listModel) viewPresets() []string {
 	for i := start; i < end; i++ {
 		p := presets[i]
 		if i == l.presetCursor {
-			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Accent).Bold(true).Render("  ▸ "+p))
+			lines = append(lines, styleListActive.Render("  ▸ "+p))
 		} else {
-			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Dim).Render("    "+p))
+			lines = append(lines, styleListDim.Render("    "+p))
 		}
 	}
 	return lines

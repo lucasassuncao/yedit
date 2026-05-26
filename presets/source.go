@@ -9,6 +9,7 @@ package presets
 import (
 	"fmt"
 	"io/fs"
+	"path"
 	"sort"
 	"strings"
 )
@@ -65,7 +66,7 @@ func (s *fsSource) ListFields() []string {
 }
 
 func (s *fsSource) ListPresets(field string) []string {
-	dir := s.root + "/" + field
+	dir := path.Join(s.root, field)
 	entries, err := fs.ReadDir(s.fsys, dir)
 	if err != nil {
 		return nil
@@ -78,6 +79,8 @@ func (s *fsSource) ListPresets(field string) []string {
 		name := e.Name()
 		if strings.HasSuffix(name, ".yaml") {
 			presets = append(presets, strings.TrimSuffix(name, ".yaml"))
+		} else if strings.HasSuffix(name, ".yml") {
+			presets = append(presets, strings.TrimSuffix(name, ".yml"))
 		}
 	}
 	sort.Strings(presets)
@@ -85,10 +88,12 @@ func (s *fsSource) ListPresets(field string) []string {
 }
 
 func (s *fsSource) PresetYAML(field, name string) (string, error) {
-	path := s.root + "/" + field + "/" + name + ".yaml"
-	data, err := fs.ReadFile(s.fsys, path)
-	if err != nil {
-		return "", fmt.Errorf("preset %q for field %q: %w", name, field, err)
+	for _, ext := range []string{".yaml", ".yml"} {
+		p := path.Join(s.root, field, name+ext)
+		data, err := fs.ReadFile(s.fsys, p)
+		if err == nil {
+			return string(data), nil
+		}
 	}
-	return string(data), nil
+	return "", fmt.Errorf("preset %q for field %q: file not found", name, field)
 }

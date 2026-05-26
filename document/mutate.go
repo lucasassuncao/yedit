@@ -8,9 +8,13 @@ import (
 
 // BlockContent returns the raw lines for a given block key.
 func BlockContent(raw []byte, blocks []Block, key string) (string, error) {
+	lines := strings.Split(string(raw), "\n")
+	return blockContentFromLines(lines, blocks, key)
+}
+
+func blockContentFromLines(lines []string, blocks []Block, key string) (string, error) {
 	for _, b := range blocks {
 		if b.Key == key {
-			lines := strings.Split(string(raw), "\n")
 			start := b.Line - 1
 			end := b.EndLine
 			if end > len(lines) {
@@ -47,12 +51,11 @@ func RemoveBlock(raw []byte, blocks []Block, key string) ([]byte, error) {
 // whose key follows the new key in knownOrder. If the new key is unknown to
 // knownOrder, or no later block exists, the snippet is appended at the end.
 func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error) {
-	if err := ValidateSnippet(snippet); err != nil {
+	snippetBlocks, err := ParseBlocks([]byte(snippet))
+	if err != nil {
 		return nil, err
 	}
-
-	snippetBlocks, err := ParseBlocks([]byte(snippet))
-	if err != nil || len(snippetBlocks) == 0 {
+	if len(snippetBlocks) == 0 {
 		return appendBlock(raw, snippet), nil
 	}
 	newKey := snippetBlocks[0].Key

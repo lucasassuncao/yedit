@@ -370,9 +370,7 @@ func (m model) collectErrors() []string {
 	if u := schema.UnknownKeys(m.doc.Raw(), m.knownByPath); len(u) > 0 {
 		errs = append(errs, "Unknown key(s): "+strings.Join(u, ", "))
 	}
-	for _, v := range m.cfg.Validators {
-		errs = append(errs, v.Validate(m.doc.Raw(), m.doc.Blocks())...)
-	}
+	errs = append(errs, RunAll(m.cfg.Validators, m.doc.Raw(), m.doc.Blocks())...)
 	return errs
 }
 

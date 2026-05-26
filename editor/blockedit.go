@@ -152,6 +152,10 @@ func (be blockEditState) Init() tea.Cmd { return textarea.Blink }
 func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	// Handle confirm-alert (Discard changes?) first.
 	if be.confirmAlert != nil {
+		if _, ok := msg.(alert.DismissedMsg); ok {
+			be.confirmAlert = nil
+			return be, nil
+		}
 		if key, ok := msg.(tea.KeyMsg); ok {
 			al, cmd := be.confirmAlert.Update(key)
 			be.confirmAlert = &al
