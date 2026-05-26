@@ -53,7 +53,14 @@ docs: ## Generate documentation with gomarkdoc
 		--repository.url https://github.com/lucasassuncao/yedit \
 		--repository.default-branch main \
 		--repository.path / \
-		-o '{{.Dir}}/README.md' ./...
+		-o '{{.Dir}}/README.md' \
+		./document/... \
+		./editor/... \
+		./schema/... \
+		./presets/... \
+		./viewer/... \
+		./theme/... \
+		./components/...
 
 tag: ## Create and push an annotated git tag (usage: make tag VERSION=v1.2.3)
 ifndef VERSION

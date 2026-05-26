@@ -53,6 +53,16 @@ jobs:
             coverage.html
             coverage.xml
 
+      - name: Check docs
+        run: |
+          make docs
+          if ! git diff --exit-code; then
+            echo ""
+            echo "❌ Documentation is out of date. Run 'make docs' locally and commit the result."
+            exit 1
+          fi
+          echo "✅ Documentation is up to date."
+
       - name: Lint
         run: make lint
 
