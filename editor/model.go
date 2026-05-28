@@ -140,6 +140,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.relayout()
+		// relayout only sizes the root list/preview; forward the resize to the
+		// active sub-model so its own panels resize too.
+		if m.blockEdit != nil {
+			be, cmd := m.blockEdit.Update(msg)
+			m.blockEdit = &be
+			return m, cmd
+		}
+		if m.alert != nil {
+			m.alert.Resize(theme.Size{W: m.width, H: m.height})
+		}
 		return m, nil
 	case openItemMsg:
 		return m.handleOpenItem(msg.Item)
