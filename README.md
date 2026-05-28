@@ -85,25 +85,21 @@ or adds a new one. `Ctrl+D` deletes the selected item.
 | `Ctrl+D` | Delete block (with confirmation) |
 | `Ctrl+U` | Undo last change |
 | `Tab` | Switch to YAML editor |
-| `Ctrl+S` | Save file |
+| `Ctrl+S` | Save changes |
 | `Ctrl+L` | Validate document |
-| `?` | Help overlay |
 | `Esc` / `q` | Quit (prompts if unsaved) |
 
 ### Block-edit tree
 
 | Key | Action |
 |-----|--------|
-| `↑` / `k`, `↓` / `j` | Navigate |
-| `g` / `G` | Jump to top / bottom |
-| `→` / `l`, `←` / `h` | Expand / collapse node |
-| `Space` | Toggle field on/off |
-| `Enter` | Expand/collapse node · add sequence item |
-| `Ctrl+D` | Delete sequence item (with confirmation) |
+| `↑`, `↓` | Navigate |
+| `→`, `←` | Expand / collapse node |
+| `Enter` | Add field / sequence item |
+| `Ctrl+D` | Remove field / sequence item |
 | `p` | Open preset picker |
 | `Tab` | Switch to YAML editor |
 | `Ctrl+S` | Commit changes |
-| `?` | Help overlay |
 | `Esc` | Back (prompts if uncommitted) |
 
 ### YAML editor (right panel)
@@ -228,7 +224,7 @@ Minimum terminal size: **80 × 20**. Below that the editor shows a resize prompt
 | `presets` | `Source` interface + `FromFS` for per-field YAML snippets |
 | `viewer` | Read-only preset browser TUI |
 | `theme` | Shared palette and layout primitives |
-| `components` | Reusable bubbletea widgets (`alert`, `picker`) |
+| `components` | Reusable bubbletea widgets (`alert`) |
 
 ## Examples
 

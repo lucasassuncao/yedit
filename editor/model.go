@@ -25,11 +25,9 @@ const (
 
 // model is the root bubbletea model.
 //
-// The active pane is derived from state, not tracked explicitly:
-//   - alert != nil       → paneAlert
-//   - blockEdit != nil   → paneBlockEdit
-//   - previewFocused     → panePreview
-//   - otherwise          → paneList
+// The active pane is explicit via the mode field. The alert/blockEdit pointers
+// hold per-mode data: alert is non-nil iff mode == paneAlert, blockEdit is
+// non-nil iff mode == paneBlockEdit.
 type model struct {
 	cfg         Config
 	doc         *document.Document
@@ -42,10 +40,8 @@ type model struct {
 	blockEdit *blockEditState
 	alert     *alert.Model
 
-	previewFocused bool
-	statusMsg      string
-	helpVisible    bool
-
+	mode                         pane
+	statusMsg                    string
 	width, height, listW, innerH int
 }
 
@@ -122,37 +118,11 @@ func fieldKind(fields []schema.FieldDef, name string) schema.Kind {
 	return schema.KindScalar
 }
 
-func (m model) activePane() pane {
-	switch {
-	case m.alert != nil:
-		return paneAlert
-	case m.blockEdit != nil:
-		return paneBlockEdit
-	case m.previewFocused:
-		return panePreview
-	default:
-		return paneList
-	}
-}
+// blockEditCommittedMsg is sent when the user commits a block edit (Ctrl+S).
+type blockEditCommittedMsg struct{ Snippet string }
 
-func (m *model) scrollPreviewToKey(key string) {
-	if key == "" {
-		return
-	}
-	target := key + ":"
-	for i, l := range strings.Split(string(m.doc.Raw()), "\n") {
-		if strings.HasPrefix(l, target) {
-			m.preview.SetCursor(i)
-			return
-		}
-	}
-}
-
-// overlayConfirmedMsg is sent when the user commits a block edit (Ctrl+S).
-type overlayConfirmedMsg struct{ Snippet string }
-
-// overlayCancelledMsg is sent when the user cancels a block edit (Esc).
-type overlayCancelledMsg struct{}
+// blockEditDiscardedMsg is sent when the user cancels a block edit (Esc).
+type blockEditDiscardedMsg struct{}
 
 // pendingRemoveMsg is dispatched by the "Remove field?" confirm alert when the
 // user chooses Yes. nodeIdx is the index into blockEditState.tree.nodes.
@@ -171,12 +141,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.relayout()
 		return m, nil
-	case spaceOnItemMsg:
-		return m.handleSpace(msg.Item)
-	case overlayConfirmedMsg:
+	case openItemMsg:
+		return m.handleOpenItem(msg.Item)
+	case blockEditCommittedMsg:
 		return m.handleOverlayConfirmed(msg.Snippet)
-	case overlayCancelledMsg:
+	case blockEditDiscardedMsg:
 		m.blockEdit = nil
+		m.mode = paneList
 		m.statusMsg = "Cancelled."
 		return m, nil
 	case deleteItemMsg:
@@ -187,6 +158,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 	case confirmedDeleteMsg:
 		m.alert = nil
+		m.mode = paneList
 		return m.handleDelete(msg.Key)
 	case alert.DismissedMsg:
 		// Forward to blockEdit first so its confirmAlert is cleared.
@@ -196,12 +168,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		m.alert = nil
+		m.mode = paneList
 		return m, nil
 	case doSaveMsg:
 		return m.execSave()
 	}
 
-	switch m.activePane() {
+	switch m.mode {
 	case paneAlert:
 		if key, ok := msg.(tea.KeyMsg); ok {
 			al, cmd := m.alert.Update(key)
@@ -248,9 +221,6 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "tab":
 			return m.togglePreviewPane()
-		case "?":
-			m.helpVisible = !m.helpVisible
-			return m, nil
 		case "ctrl+u":
 			return m.undo(), nil
 		case "esc", "ctrl+c":
@@ -264,9 +234,6 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
-	if it := m.list.SelectedItem(); it != nil {
-		m.scrollPreviewToKey(it.Key)
-	}
 	return m, cmd
 }
 
@@ -279,13 +246,13 @@ func (m model) handlePreviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) togglePreviewPane() (tea.Model, tea.Cmd) {
-	if m.previewFocused {
-		m.previewFocused = false
+	if m.mode == panePreview {
+		m.mode = paneList
 		m.preview.Blur()
 		m.statusMsg = ""
 		return m, nil
 	}
-	m.previewFocused = true
+	m.mode = panePreview
 	cmd := m.preview.Focus()
 	m.statusMsg = "Editing YAML directly — Tab/Esc back to list."
 	return m, cmd
@@ -303,12 +270,9 @@ func (m model) updatePreviewEditor(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *model) syncView() {
 	m.preview.SetValue(string(m.doc.Raw()))
 	m.list.Rebuild(m.doc.Blocks())
-	if it := m.list.SelectedItem(); it != nil {
-		m.scrollPreviewToKey(it.Key)
-	}
 }
 
-func (m model) handleSpace(it listItem) (tea.Model, tea.Cmd) {
+func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 	var initial string
 	if it.Existing {
 		current, err := m.doc.BlockContent(it.Key)
@@ -326,12 +290,8 @@ func (m model) handleSpace(it listItem) (tea.Model, tea.Cmd) {
 	be := newBlockEdit(m.cfg, blockSpec{key: it.Key, defs: children, kind: kind, content: initial, knownByPath: m.knownByPath}, m.width, m.height)
 	be.isEdit = it.Existing
 	m.blockEdit = &be
-	action := "Add"
-	if it.Existing {
-		action = "Edit"
-	}
-	m.statusMsg = fmt.Sprintf("%s block %q — Tab panel, Ctrl+S commit, Esc back.", action, it.Key)
-	return m, nil
+	m.mode = paneBlockEdit
+	return m, be.Init()
 }
 
 func (m model) handleDelete(key string) (tea.Model, tea.Cmd) {
@@ -429,12 +389,14 @@ func (m model) validateKeys() (tea.Model, tea.Cmd) {
 func (m model) showAlert(title, message string, kind alert.Kind) (tea.Model, tea.Cmd) {
 	al := alert.New(title, message, kind, theme.Size{W: m.width, H: m.height})
 	m.alert = &al
+	m.mode = paneAlert
 	return m, nil
 }
 
 func (m model) showConfirmAlert(title, message string, confirmCmd tea.Cmd) (tea.Model, tea.Cmd) {
 	al := alert.NewConfirm(title, message, confirmCmd, theme.Size{W: m.width, H: m.height})
 	m.alert = &al
+	m.mode = paneAlert
 	return m, nil
 }
 
@@ -463,38 +425,36 @@ func (m model) View() string {
 		return "Terminal too small — resize to at least 80×20."
 	}
 
-	switch m.activePane() {
+	switch m.mode {
 	case paneAlert:
 		return m.alert.View()
 	case paneBlockEdit:
 		return m.blockEdit.View()
 	}
 
-	if m.helpVisible {
-		return renderHelpOverlay(listHelpSections, theme.Size{W: m.width, H: m.height})
-	}
+	previewFocused := m.mode == panePreview
 
 	header := renderHeader(m.cfg.Title, m.doc.Path(), m.doc.Dirty(), m.width)
 
 	leftTitle := fmt.Sprintf("Blocks (%d/%d)", m.list.AddedCount(), len(m.list.knownKeys))
-	leftPanel := theme.RenderTitledPanel(leftTitle, theme.Size{W: m.listW, H: m.innerH + 2}, !m.previewFocused, m.list.View())
+	leftPanel := theme.RenderTitledPanel(leftTitle, theme.Size{W: m.listW, H: m.innerH + 2}, !previewFocused, m.list.View())
 
 	_, rightW := theme.TwoColumnWidths(m.width)
 	previewTitle := "Preview"
-	if m.previewFocused {
+	if previewFocused {
 		previewTitle = "Editing YAML"
 	}
-	rightPanel := theme.RenderTitledPanel(previewTitle, theme.Size{W: rightW, H: m.innerH + 2}, m.previewFocused, m.preview.View())
+	rightPanel := theme.RenderTitledPanel(previewTitle, theme.Size{W: rightW, H: m.innerH + 2}, previewFocused, m.preview.View())
 
 	var hintText string
-	if m.previewFocused {
+	if previewFocused {
 		hintText = "[Tab] / [Esc] back to list"
 	} else if m.list.IsFiltering() {
 		hintText = "[type] filter • [↑/↓] navigate • [Enter] select • [Esc] clear"
 	} else if it := m.list.SelectedItem(); it != nil && it.Existing {
-		hintText = "[↑/↓] nav • [Enter] open • [ctrl+d] delete • [ctrl+u] undo • [ctrl+s] save • [ctrl+l] validate • [?] help"
+		hintText = "[↑/↓] nav • [Enter] open • [ctrl+d] delete • [ctrl+u] undo • [ctrl+s] save changes • [ctrl+l] validate"
 	} else {
-		hintText = "[↑/↓] nav • [Enter] add • [ctrl+u] undo • [ctrl+s] save • [ctrl+l] validate • [?] help"
+		hintText = "[↑/↓] nav • [Enter] add • [ctrl+u] undo • [ctrl+s] save changes • [ctrl+l] validate"
 	}
 
 	feedback := lipgloss.NewStyle().Width(m.width).Render(statusStyle.Render(m.statusMsg))

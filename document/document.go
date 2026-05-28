@@ -1,6 +1,7 @@
 package document
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -17,6 +18,7 @@ const HistoryLimit = 50
 type Document struct {
 	path       string
 	raw        []byte
+	loaded     []byte // raw at last load/save, used to clear dirty on Undo-to-original
 	blocks     []Block
 	history    [][]byte
 	dirty      bool
@@ -41,7 +43,7 @@ func Load(path string, knownOrder []string) (*Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
-	return &Document{path: path, raw: raw, blocks: blocks, knownOrder: knownOrder}, nil
+	return &Document{path: path, raw: raw, loaded: copyBytes(raw), blocks: blocks, knownOrder: knownOrder}, nil
 }
 
 // New builds a Document from raw bytes. Intended for tests and in-memory use;
@@ -52,7 +54,13 @@ func New(raw []byte, knownOrder []string) (*Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing raw: %w", err)
 	}
-	return &Document{raw: raw, blocks: blocks, knownOrder: knownOrder}, nil
+	return &Document{raw: raw, loaded: copyBytes(raw), blocks: blocks, knownOrder: knownOrder}, nil
+}
+
+func copyBytes(b []byte) []byte {
+	out := make([]byte, len(b))
+	copy(out, b)
+	return out
 }
 
 func (d *Document) Raw() []byte     { return d.raw }
@@ -151,7 +159,8 @@ func (d *Document) ReplaceRaw(raw []byte) error {
 }
 
 // Undo restores the previous raw from history. Returns false if history is empty.
-// Does not push a new snapshot; keeps dirty=true.
+// Does not push a new snapshot; dirty is set based on whether the restored raw
+// matches the last-loaded/saved content.
 func (d *Document) Undo() bool {
 	if len(d.history) == 0 {
 		return false
@@ -162,7 +171,7 @@ func (d *Document) Undo() bool {
 	if blocks, err := ParseBlocks(prev); err == nil {
 		d.blocks = blocks
 	}
-	d.dirty = true
+	d.dirty = !bytes.Equal(d.raw, d.loaded)
 	return true
 }
 
@@ -175,6 +184,7 @@ func (d *Document) Save() error {
 	if err := os.WriteFile(d.path, d.raw, 0o600); err != nil {
 		return err
 	}
+	d.loaded = copyBytes(d.raw)
 	d.dirty = false
 	return nil
 }

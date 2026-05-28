@@ -7,28 +7,14 @@ import (
 	"github.com/lucasassuncao/yedit/document"
 )
 
-// presenceValidator is an unexported extension of Validator that receives a
-// pre-computed keysPresent map so RunAll can share it across all validators.
-type presenceValidator interface {
-	Validator
-	validateWithPresent(raw []byte, blocks []document.Block, present map[string]bool) []string
-}
-
 // RunAll executes all validators against raw/blocks and collects violations.
-// keysPresent is computed once and shared with validators that implement
-// presenceValidator, avoiding redundant allocations per call.
 func RunAll(validators []Validator, raw []byte, blocks []document.Block) []string {
 	if len(validators) == 0 {
 		return nil
 	}
-	present := keysPresent(blocks)
 	var errs []string
 	for _, v := range validators {
-		if pv, ok := v.(presenceValidator); ok {
-			errs = append(errs, pv.validateWithPresent(raw, blocks, present)...)
-		} else {
-			errs = append(errs, v.Validate(raw, blocks)...)
-		}
+		errs = append(errs, v.Validate(raw, blocks)...)
 	}
 	return errs
 }
@@ -41,11 +27,8 @@ func MutuallyExclusive(keys ...string) Validator {
 
 type mutuallyExclusiveValidator struct{ keys []string }
 
-func (v *mutuallyExclusiveValidator) Validate(raw []byte, blocks []document.Block) []string {
-	return v.validateWithPresent(raw, blocks, keysPresent(blocks))
-}
-
-func (v *mutuallyExclusiveValidator) validateWithPresent(_ []byte, _ []document.Block, present map[string]bool) []string {
+func (v *mutuallyExclusiveValidator) Validate(_ []byte, blocks []document.Block) []string {
+	present := keysPresent(blocks)
 	var found []string
 	for _, k := range v.keys {
 		if present[k] {
@@ -68,11 +51,8 @@ func RequiredWith(key, parent string) Validator {
 
 type requiredWithValidator struct{ key, parent string }
 
-func (v *requiredWithValidator) Validate(raw []byte, blocks []document.Block) []string {
-	return v.validateWithPresent(raw, blocks, keysPresent(blocks))
-}
-
-func (v *requiredWithValidator) validateWithPresent(_ []byte, _ []document.Block, present map[string]bool) []string {
+func (v *requiredWithValidator) Validate(_ []byte, blocks []document.Block) []string {
+	present := keysPresent(blocks)
 	if present[v.key] && !present[v.parent] {
 		return []string{fmt.Sprintf(
 			"%q requires %q to be set", v.key, v.parent,

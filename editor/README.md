@@ -34,13 +34,13 @@ Run starts the editor TUI and blocks until the user quits. The Config must have 
 Returns nil on a clean quit, or the underlying tea.Program error.
 
 <a name="RunAll"></a>
-## func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L20>)
+## func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L11>)
 
 ```go
 func RunAll(validators []Validator, raw []byte, blocks []document.Block) []string
 ```
 
-RunAll executes all validators against raw/blocks and collects violations. keysPresent is computed once and shared with validators that implement presenceValidator, avoiding redundant allocations per call.
+RunAll executes all validators against raw/blocks and collects violations.
 
 <a name="Config"></a>
 ## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L52-L61>)
@@ -82,7 +82,7 @@ type Validator interface {
 ```
 
 <a name="MutuallyExclusive"></a>
-### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L38>)
+### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L24>)
 
 ```go
 func MutuallyExclusive(keys ...string) Validator
@@ -91,7 +91,7 @@ func MutuallyExclusive(keys ...string) Validator
 MutuallyExclusive reports a violation when more than one of the listed keys is present in the document.
 
 <a name="RequiredWith"></a>
-### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L65>)
+### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L48>)
 
 ```go
 func RequiredWith(key, parent string) Validator

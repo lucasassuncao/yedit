@@ -9,7 +9,7 @@
 //   - presets:    Source interface + fs.FS-backed implementation for per-field YAML snippets
 //   - viewer:     read-only TUI to browse a preset Source
 //   - theme:      palette and layout primitives (header, panels, two-column layout)
-//   - components: bubbletea widgets (alert, picker) that depend only on theme
+//   - components: bubbletea widgets (alert) that depend only on theme
 //
 // yedit is intentionally headless of any specific YAML schema. Clients pass
 // a pointer to their own annotated struct and (optionally) a preset Source;

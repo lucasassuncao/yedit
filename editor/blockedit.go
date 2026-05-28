@@ -7,9 +7,9 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/components/alert"
-	"github.com/lucasassuncao/yedit/components/picker"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
 )
@@ -23,12 +23,23 @@ type blockSpec struct {
 	knownByPath map[string]map[string]bool // for schema validation at commit
 }
 
-// blockEditPanel identifies which panel has focus in block-edit mode.
+// blockEditPanel identifies which panel has focus during modeEditing.
 type blockEditPanel int
 
 const (
 	blockEditPanelTree blockEditPanel = iota
 	blockEditPanelYAML
+)
+
+// blockEditMode is the top-level state of the block-edit screen. Exactly one
+// mode is active at a time; helper data fields (confirmAlert, presetNames…)
+// are only meaningful in their corresponding mode.
+type blockEditMode int
+
+const (
+	modeEditing       blockEditMode = iota // editing tree/yaml panels
+	modePresetBrowser                      // preset picker overlay
+	modeConfirming                         // confirm alert overlay
 )
 
 // blockEditState is the full-screen block editing mode that replaces the old
@@ -53,11 +64,12 @@ type blockEditState struct {
 	listW, rightW int
 
 	errMsg        string
-	presetPicker  *picker.Model
 	currentPreset string
 
-	confirmAlert *alert.Model // non-nil when showing "Discard changes?" prompt
-	helpVisible  bool
+	mode         blockEditMode
+	presetCursor int
+	presetNames  []string
+	confirmAlert *alert.Model // alert data when mode == modeConfirming
 }
 
 // newBlockEdit creates the full-screen block editing state.
@@ -157,65 +169,77 @@ func (be blockEditState) innerH() int {
 func (be blockEditState) Init() tea.Cmd { return textarea.Blink }
 
 func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
-	// pendingRemoveMsg fires from the "Remove field?" confirm alert before the
-	// alert is cleared, so it must be handled before the confirmAlert guard.
+	// pendingRemoveMsg fires from the "Remove field?" confirm alert as it
+	// dismisses, so it crosses the mode boundary and is handled up front.
 	if m, ok := msg.(pendingRemoveMsg); ok {
+		be.mode = modeEditing
 		be.confirmAlert = nil
 		return be.applyPendingRemove(m.nodeIdx), nil
 	}
 
-	// Handle confirm-alert (Discard changes?) first.
-	if be.confirmAlert != nil {
-		if _, ok := msg.(alert.DismissedMsg); ok {
-			be.confirmAlert = nil
-			return be, nil
-		}
-		if key, ok := msg.(tea.KeyMsg); ok {
-			al, cmd := be.confirmAlert.Update(key)
-			be.confirmAlert = &al
-			return be, cmd
-		}
-		return be, nil
-	}
-
-	// Preset picker.
-	if be.presetPicker != nil {
-		switch m := msg.(type) {
-		case picker.SelectedMsg:
-			return be.applyPreset(m.Name), nil
-		case picker.CancelledMsg:
-			be.presetPicker = nil
-			return be, nil
-		}
-		if key, ok := msg.(tea.KeyMsg); ok {
-			updated, cmd := be.presetPicker.Update(key)
-			be.presetPicker = &updated
-			return be, cmd
-		}
-		return be, nil
-	}
-
-	switch m := msg.(type) {
-	case alert.DismissedMsg:
-		be.confirmAlert = nil
-		return be, nil
-	case tea.WindowSizeMsg:
+	if m, ok := msg.(tea.WindowSizeMsg); ok {
 		be.width = m.Width
 		be.height = m.Height
 		be.relayout()
 		be.yamlEditor.SetWidth(be.rightW - 2)
 		be.yamlEditor.SetHeight(be.innerH() - 1)
 		be.tree.height = be.innerH()
-		sz := theme.Size{W: m.Width, H: m.Height}
 		if be.confirmAlert != nil {
-			be.confirmAlert.Resize(sz)
-		}
-		if be.presetPicker != nil {
-			be.presetPicker.Resize(sz)
+			be.confirmAlert.Resize(theme.Size{W: m.Width, H: m.Height})
 		}
 		return be, nil
 	}
 
+	switch be.mode {
+	case modeConfirming:
+		return be.updateConfirming(msg)
+	case modePresetBrowser:
+		return be.updatePresetBrowser(msg)
+	default:
+		return be.updateEditing(msg)
+	}
+}
+
+func (be blockEditState) updateConfirming(msg tea.Msg) (blockEditState, tea.Cmd) {
+	if _, ok := msg.(alert.DismissedMsg); ok {
+		be.mode = modeEditing
+		be.confirmAlert = nil
+		return be, nil
+	}
+	if key, ok := msg.(tea.KeyMsg); ok {
+		al, cmd := be.confirmAlert.Update(key)
+		be.confirmAlert = &al
+		return be, cmd
+	}
+	return be, nil
+}
+
+func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.Cmd) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return be, nil
+	}
+	switch key.String() {
+	case "esc":
+		be.mode = modeEditing
+	case "enter":
+		if be.presetCursor >= 0 && be.presetCursor < len(be.presetNames) {
+			be = be.applyPreset(be.presetNames[be.presetCursor])
+		}
+		be.mode = modeEditing
+	case "up", "k":
+		if be.presetCursor > 0 {
+			be.presetCursor--
+		}
+	case "down", "j":
+		if be.presetCursor < len(be.presetNames)-1 {
+			be.presetCursor++
+		}
+	}
+	return be, nil
+}
+
+func (be blockEditState) updateEditing(msg tea.Msg) (blockEditState, tea.Cmd) {
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
 		if be.active == blockEditPanelYAML {
@@ -235,13 +259,14 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 			al := alert.NewConfirm(
 				"Discard changes?",
 				"Uncommitted changes will be lost.",
-				func() tea.Msg { return overlayCancelledMsg{} },
+				func() tea.Msg { return blockEditDiscardedMsg{} },
 				theme.Size{W: be.width, H: be.height},
 			)
 			be.confirmAlert = &al
+			be.mode = modeConfirming
 			return be, nil
 		}
-		return be, func() tea.Msg { return overlayCancelledMsg{} }
+		return be, func() tea.Msg { return blockEditDiscardedMsg{} }
 
 	case tea.KeyCtrlS:
 		return be.commit()
@@ -250,19 +275,9 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 		return be.switchPanel(), nil
 	}
 
-	if msg.String() == "?" {
-		be.helpVisible = !be.helpVisible
-		return be, nil
-	}
-
 	if be.active == blockEditPanelTree {
-		if msg.String() == "p" && be.cfg.Presets != nil {
-			names := be.cfg.Presets.ListPresets(be.key)
-			if len(names) > 0 {
-				p := picker.New("Preset", names, be.currentPreset, theme.Size{W: be.width, H: be.height})
-				be.presetPicker = &p
-			}
-			return be, nil
+		if msg.String() == "p" {
+			return be.openPresetPicker(), nil
 		}
 		return be.updateTreePanel(msg)
 	}
@@ -271,15 +286,23 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	var cmd tea.Cmd
 	be.yamlEditor, cmd = be.yamlEditor.Update(msg)
 	be.dirty = true
-	// Sync tree checked states from YAML.
 	if be.kind == schema.KindSlice && len(be.childDefs) > 0 {
 		// Structured sequence: update seqBase with the edited item content.
 		be.seqBase = be.rebuildSeqBase()
-		be.tree = syncTreeCheckedFromYAML(be.tree, "", "x:\n"+be.currentItemContent())
-	} else {
-		be.tree = syncTreeCheckedFromYAML(be.tree, be.key, be.yamlEditor.Value())
 	}
+	be.tree = be.resyncTreeFromYAML()
 	return be, cmd
+}
+
+// resyncTreeFromYAML re-derives the tree's checked states (and re-applies the
+// ADDED/AVAILABLE sectioning for struct blocks) from the current yamlEditor.
+// For structured sequences the editor shows a single item, so the lookup uses
+// the synthetic "x:\n<item>" form expected by syncTreeCheckedStates.
+func (be blockEditState) resyncTreeFromYAML() treeModel {
+	if be.kind == schema.KindSlice && len(be.childDefs) > 0 {
+		return syncTreeCheckedFromYAML(be.tree, "", "x:\n"+be.currentItemContent())
+	}
+	return syncTreeCheckedFromYAML(be.tree, be.key, be.yamlEditor.Value())
 }
 
 // withPreCheckedFields toggles ON the fields listed in cfg.PreCheckedFields for
@@ -315,26 +338,38 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 }
 
 // fieldHasContent reports whether the field at node.yamlPath has a non-empty
-// value in the current YAML editor content.
+// value in the current YAML editor content. For structured sequences the
+// editor shows a single item under the block key, so doc[key] is a []any with
+// one element and node.yamlPath[0] is the seq-item label (skipped).
 func (be blockEditState) fieldHasContent(node treeNode) bool {
 	var doc map[string]any
-	if err := yamlUnmarshal([]byte(be.yamlEditor.Value()), &doc); err != nil {
+	if err := yaml.Unmarshal([]byte(be.yamlEditor.Value()), &doc); err != nil {
 		return false
 	}
-	sub, _ := doc[be.key].(map[string]any)
-	if sub == nil {
+	path := node.yamlPath
+	if len(path) == 0 {
+		return false
+	}
+	var sub map[string]any
+	startIdx := 0
+	if items, ok := doc[be.key].([]any); ok {
+		if len(items) == 0 {
+			return false
+		}
+		sub, _ = items[0].(map[string]any)
+		startIdx = 1 // skip seq item label
+	} else {
+		sub, _ = doc[be.key].(map[string]any)
+	}
+	if sub == nil || len(path) <= startIdx {
 		return false
 	}
 	cur := sub
-	path := node.yamlPath
-	for i := 0; i < len(path)-1; i++ {
+	for i := startIdx; i < len(path)-1; i++ {
 		cur, _ = cur[path[i]].(map[string]any)
 		if cur == nil {
 			return false
 		}
-	}
-	if len(path) == 0 {
-		return false
 	}
 	val, exists := cur[path[len(path)-1]]
 	if !exists || val == nil {
@@ -376,6 +411,7 @@ func (be blockEditState) applyPendingRemove(nodeIdx int) blockEditState {
 	if be.kind == schema.KindSlice {
 		be.seqBase = be.rebuildSeqBase()
 	}
+	be.tree = be.resyncTreeFromYAML()
 	return be
 }
 
@@ -405,6 +441,7 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 					theme.Size{W: be.width, H: be.height},
 				)
 				be.confirmAlert = &al
+				be.mode = modeConfirming
 				return be, nil
 			}
 			be.dirty = true
@@ -419,6 +456,7 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 			if be.kind == schema.KindSlice {
 				be.seqBase = be.rebuildSeqBase()
 			}
+			be.tree = be.resyncTreeFromYAML()
 		}
 
 	case treeAddNew:
@@ -528,6 +566,28 @@ func (be blockEditState) switchPanel() blockEditState {
 	return be
 }
 
+// openPresetPicker enters preset-browser mode if there are any presets for
+// this block. It's a no-op when Presets is nil or the field has none.
+func (be blockEditState) openPresetPicker() blockEditState {
+	if be.cfg.Presets == nil {
+		return be
+	}
+	names := be.cfg.Presets.ListPresets(be.key)
+	if len(names) == 0 {
+		return be
+	}
+	be.mode = modePresetBrowser
+	be.presetNames = names
+	be.presetCursor = 0
+	for i, n := range names {
+		if n == be.currentPreset {
+			be.presetCursor = i
+			break
+		}
+	}
+	return be
+}
+
 func (be blockEditState) applyPreset(name string) blockEditState {
 	if be.cfg.Presets == nil {
 		return be
@@ -535,15 +595,30 @@ func (be blockEditState) applyPreset(name string) blockEditState {
 	y, err := be.cfg.Presets.PresetYAML(be.key, name)
 	if err != nil {
 		be.errMsg = fmt.Sprintf("preset error: %v", err)
-		be.presetPicker = nil
 		return be
 	}
-	be.yamlEditor.SetValue(y)
 	be.currentPreset = name
 	be.errMsg = ""
-	be.tree = syncTreeCheckedFromYAML(be.tree, be.key, y)
-	be.presetPicker = nil
 	be.dirty = true
+
+	if be.kind == schema.KindSlice && len(be.childDefs) > 0 {
+		// Structured sequence: rebuild seqBase and tree from the preset, then
+		// show the first item in the YAML editor.
+		be.seqBase = y
+		entries := parseSeqEntries(be.key, y)
+		be.tree.nodes = buildSeqNodes(be.childDefs, entries)
+		be.tree.cursor = 0
+		be.tree.offset = 0
+		if len(entries) > 0 {
+			be.yamlEditor.SetValue(yamlForSeqItem(be.key, y, 0))
+		} else {
+			be.yamlEditor.SetValue(be.key + ":\n")
+		}
+		return be
+	}
+
+	be.yamlEditor.SetValue(y)
+	be.tree = syncTreeCheckedFromYAML(be.tree, be.key, y)
 	return be
 }
 
@@ -574,18 +649,15 @@ func (be blockEditState) commit() (blockEditState, tea.Cmd) {
 	}
 	be.dirty = false
 
-	return be, func() tea.Msg { return overlayConfirmedMsg{Snippet: snippet} }
+	return be, func() tea.Msg { return blockEditCommittedMsg{Snippet: snippet} }
 }
 
 func (be blockEditState) View() string {
-	if be.confirmAlert != nil {
+	switch be.mode {
+	case modeConfirming:
 		return be.confirmAlert.View()
-	}
-	if be.presetPicker != nil {
-		return be.presetPicker.View()
-	}
-	if be.helpVisible {
-		return renderHelpOverlay(blockHelpSections, theme.Size{W: be.width, H: be.height})
+	case modePresetBrowser:
+		return be.presetView()
 	}
 
 	// Build breadcrumb.
@@ -624,22 +696,67 @@ func (be blockEditState) View() string {
 // currentHint returns the hint bar text for the current panel and cursor state.
 func (be blockEditState) currentHint() string {
 	if be.active != blockEditPanelTree {
-		return "[Tab] tree • [ctrl+s] commit • [Esc] back • [?] help"
+		return "[Tab] change pane • [ctrl+s] save changes • [Esc] back"
 	}
 	const nav = "[↑/↓] nav • [→/←] expand"
-	const tail = "[Tab] YAML • [ctrl+s] commit • [Esc] back • [?] help"
+	const tail = "[Tab] change pane • [ctrl+s] save changes • [Esc] back"
 	if be.kind == schema.KindSlice && len(be.childDefs) > 0 {
-		return nav + " • [Enter] expand/add • [ctrl+d] delete • " + tail
+		return nav + " • [Enter] add • [ctrl+d] delete • " + tail
 	}
 	presetHint := ""
 	if be.cfg.Presets != nil {
 		presetHint = " • [p] preset"
 	}
-	return nav + presetHint + " • [Space] toggle • [Enter] expand • " + tail
+	return nav + presetHint + " • [Enter] add • [ctrl+d] remove • " + tail
+}
+
+func (be blockEditState) presetView() string {
+	segs := be.tree.BreadcrumbSegments()
+	breadcrumb := be.key
+	if len(segs) > 0 {
+		breadcrumb = be.key + " › " + strings.Join(segs, " › ")
+	}
+	header := theme.RenderHeader(be.cfg.Title, breadcrumb, "", be.width)
+
+	leftPanel := theme.RenderTitledPanel("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, true, be.renderPresetList())
+	rightPanel := theme.RenderTitledPanel("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, false, be.presetPreviewYAML())
+
+	hint := lipgloss.NewStyle().Width(be.width).Render(statusStyle.Render("[↑/↓] navigate • [Enter] apply • [Esc] cancel"))
+
+	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Hint: hint})
+}
+
+func (be blockEditState) renderPresetList() string {
+	var sb strings.Builder
+	for i, name := range be.presetNames {
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
+		if i == be.presetCursor {
+			sb.WriteString(selectedItemStyle.Render("▶  " + name))
+		} else {
+			sb.WriteString(availableItemStyle.Render("   " + name))
+		}
+	}
+	return sb.String()
+}
+
+func (be blockEditState) presetPreviewYAML() string {
+	if be.cfg.Presets == nil || len(be.presetNames) == 0 {
+		return ""
+	}
+	if be.presetCursor < 0 || be.presetCursor >= len(be.presetNames) {
+		return ""
+	}
+	y, err := be.cfg.Presets.PresetYAML(be.key, be.presetNames[be.presetCursor])
+	if err != nil {
+		return fmt.Sprintf("# error: %v", err)
+	}
+	return y
 }
 
 // validateSnippetText checks that text is valid YAML.
 func validateSnippetText(text string) error {
 	var check any
-	return yamlUnmarshal([]byte(text), &check)
+	return yaml.Unmarshal([]byte(text), &check)
 }

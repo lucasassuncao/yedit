@@ -1,11 +1,6 @@
 package schema
 
-import (
-	"reflect"
-	"strings"
-
-	"gopkg.in/yaml.v3"
-)
+import "gopkg.in/yaml.v3"
 
 // KnownChildren collapses a FieldDef tree into a map of dotted paths to the
 // set of allowed direct children. Used by UnknownKeys to detect typos.
@@ -83,18 +78,4 @@ func walkKnown(obj map[string]any, prefix string, known map[string]map[string]bo
 			}
 		}
 	}
-}
-
-// FieldNames returns the yaml tag name of every exported field of t whose
-// yaml tag is non-empty and not "-". Useful when a Provider implementation
-// wants to defer to reflection for a single struct.
-func FieldNames(t reflect.Type) map[string]bool {
-	out := make(map[string]bool, t.NumField())
-	for i := 0; i < t.NumField(); i++ {
-		tag, _, _ := strings.Cut(t.Field(i).Tag.Get("yaml"), ",")
-		if tag != "" && tag != "-" {
-			out[tag] = true
-		}
-	}
-	return out
 }

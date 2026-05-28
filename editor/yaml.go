@@ -137,55 +137,30 @@ func itemContentFrom(key, value string) string {
 //
 // node.yamlPath[0] is the seq item label; the actual field path starts at [1].
 func applyToggleToSeqItem(ctx toggleCtx, node treeNode, checked bool, yamlContent string) string {
-	var root yaml.Node
-	if err := yaml.Unmarshal([]byte(yamlContent), &root); err != nil || root.Kind == 0 || len(root.Content) == 0 {
-		return yamlContent
-	}
-	mapping := root.Content[0]
-	if mapping.Kind != yaml.MappingNode || len(mapping.Content) < 2 {
-		return yamlContent
-	}
-	seqNode := mapping.Content[1]
-	if seqNode.Kind != yaml.SequenceNode || len(seqNode.Content) == 0 {
-		return yamlContent
-	}
-	itemNode := seqNode.Content[0]
-	if itemNode.Kind != yaml.MappingNode {
-		return yamlContent
-	}
-
-	// Strip the seq item label from the path; the rest is the field path.
 	if len(node.yamlPath) < 2 {
 		return yamlContent
 	}
-	fieldPath := node.yamlPath[1:] // e.g. ["enabled"] or ["source", "path"]
-
-	// Navigate to the parent mapping of the leaf.
-	cur := itemNode
-	for i := 0; i < len(fieldPath)-1 && cur != nil; i++ {
-		cur = findOrCreateMappingChild(cur, fieldPath[i])
-	}
-	if cur == nil {
-		return yamlContent
-	}
-
-	leafName := fieldPath[len(fieldPath)-1]
-	if !checked {
-		removeMappingKey(cur, leafName)
-	} else if !hasMappingKey(cur, leafName) {
-		appendLeafToMapping(cur, leafName, ctx.snippets[leafName])
-	}
-
-	pruneEmptyMappings(itemNode)
-	reorderNestedMappingKeys(itemNode, ctx.childDefs)
-
-	var buf strings.Builder
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	if err := enc.Encode(&root); err != nil {
-		return yamlContent
-	}
-	return strings.TrimRight(buf.String(), "\n") + "\n"
+	return withYAMLRoot(yamlContent, func(root *yaml.Node) bool {
+		mapping := root.Content[0]
+		if mapping.Kind != yaml.MappingNode || len(mapping.Content) < 2 {
+			return false
+		}
+		seqNode := mapping.Content[1]
+		if seqNode.Kind != yaml.SequenceNode || len(seqNode.Content) == 0 {
+			return false
+		}
+		itemNode := seqNode.Content[0]
+		if itemNode.Kind != yaml.MappingNode {
+			return false
+		}
+		fieldPath := node.yamlPath[1:]
+		if !applyToggleAt(itemNode, fieldPath[:len(fieldPath)-1], fieldPath[len(fieldPath)-1], checked, ctx, false) {
+			return false
+		}
+		pruneEmptyMappings(itemNode)
+		reorderNestedMappingKeys(itemNode, ctx.childDefs)
+		return true
+	})
 }
 
 // yamlForSeqItem returns the YAML editor value for a specific sequence item
@@ -217,77 +192,66 @@ func syncTreeCheckedFromYAML(tm treeModel, key, yamlContent string) treeModel {
 	return tm
 }
 
-// applyDepth0Toggle adds or removes a depth-0 field from a struct block's value mapping.
-func applyDepth0Toggle(ctx toggleCtx, fieldName string, checked bool, valueNode *yaml.Node) {
-	snippet := ctx.snippets[fieldName]
-	idx := -1
-	for i := 0; i < len(valueNode.Content)-1; i += 2 {
-		if valueNode.Content[i].Value == fieldName {
-			idx = i
-			break
+// applyTreeToggle surgically adds or removes a single leaf field from the
+// current YAML of a struct block. Falls back to a simple rebuild on any error.
+func applyTreeToggle(ctx toggleCtx, node treeNode, checked bool, current string) string {
+	return withYAMLRoot(current, func(root *yaml.Node) bool {
+		mapping := root.Content[0]
+		if mapping.Kind != yaml.MappingNode || len(mapping.Content) < 2 {
+			return false
 		}
-	}
-	switch {
-	case !checked:
-		if idx >= 0 {
-			valueNode.Content = append(valueNode.Content[:idx], valueNode.Content[idx+2:]...)
+		valueNode := mapping.Content[1]
+		if valueNode.Kind != yaml.MappingNode {
+			return false
 		}
-	case idx >= 0:
-		// already present — keep as is
-	case snippet != "":
-		if !appendFieldFromSnippet(valueNode, ctx.key, snippet) {
-			appendLeafToMapping(valueNode, fieldName, "")
+		path := node.yamlPath
+		if !applyToggleAt(valueNode, path[:len(path)-1], path[len(path)-1], checked, ctx, node.depth == 0) {
+			return false
 		}
-	default:
-		appendLeafToMapping(valueNode, fieldName, "")
-	}
+		pruneEmptyMappings(valueNode)
+		reorderNestedMappingKeys(valueNode, ctx.childDefs)
+		return true
+	})
 }
 
-// applyNestedToggle adds or removes a deeply-nested leaf field. Returns false
-// if a required parent mapping cannot be found.
-func applyNestedToggle(ctx toggleCtx, node treeNode, checked bool, valueNode *yaml.Node) bool {
-	fieldPath := node.yamlPath
-	cur := valueNode
-	for i := 0; i < len(fieldPath)-1; i++ {
-		cur = findOrCreateMappingChild(cur, fieldPath[i])
+// applyToggleAt navigates start through navPath (creating mappings as needed),
+// then adds or removes leafName at that location. asStruct=true uses the
+// snippet as a full subtree (for depth-0 struct fields); asStruct=false treats
+// the snippet as a scalar value.
+func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked bool, ctx toggleCtx, asStruct bool) bool {
+	cur := start
+	for _, k := range navPath {
+		cur = findOrCreateMappingChild(cur, k)
 		if cur == nil {
 			return false
 		}
 	}
-	leafName := fieldPath[len(fieldPath)-1]
-	if !checked {
+	snippet := ctx.snippets[leafName]
+	switch {
+	case !checked:
 		removeMappingKey(cur, leafName)
-	} else if !hasMappingKey(cur, leafName) {
-		appendLeafToMapping(cur, leafName, ctx.snippets[leafName])
+	case hasMappingKey(cur, leafName):
+		// already present — keep as is
+	case asStruct:
+		if snippet == "" || !appendFieldFromSnippet(cur, ctx.key, snippet) {
+			appendLeafToMapping(cur, leafName, "")
+		}
+	default:
+		appendLeafToMapping(cur, leafName, snippet)
 	}
 	return true
 }
 
-// applyTreeToggle surgically adds or removes a single leaf field from the
-// current YAML of a struct block. Falls back to a simple rebuild on any error.
-func applyTreeToggle(ctx toggleCtx, node treeNode, checked bool, current string) string {
+// withYAMLRoot parses current as a YAML node, calls fn on it, and re-encodes.
+// Returns current unchanged on any parse/encode error or when fn returns false.
+func withYAMLRoot(current string, fn func(root *yaml.Node) bool) string {
 	var root yaml.Node
 	if err := yaml.Unmarshal([]byte(current), &root); err != nil || root.Kind == 0 || len(root.Content) == 0 {
 		return current
 	}
-	mapping := root.Content[0]
-	if mapping.Kind != yaml.MappingNode || len(mapping.Content) < 2 {
+	if !fn(&root) {
 		return current
 	}
-	valueNode := mapping.Content[1]
-	if valueNode.Kind != yaml.MappingNode {
-		return current
-	}
-
-	if node.depth == 0 {
-		applyDepth0Toggle(ctx, node.label, checked, valueNode)
-	} else if !applyNestedToggle(ctx, node, checked, valueNode) {
-		return current
-	}
-
-	pruneEmptyMappings(valueNode)
-	reorderNestedMappingKeys(valueNode, ctx.childDefs)
-
 	var buf strings.Builder
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)

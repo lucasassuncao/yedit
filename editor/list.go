@@ -17,8 +17,8 @@ type listItem struct {
 	Separator bool // visual divider row, not selectable
 }
 
-// spaceOnItemMsg is sent when the user presses Space on a list item.
-type spaceOnItemMsg struct{ Item listItem }
+// openItemMsg is sent when the user presses Enter on a list item.
+type openItemMsg struct{ Item listItem }
 
 // deleteItemMsg is sent when the user presses d on an existing item.
 type deleteItemMsg struct{ Key string }
@@ -199,7 +199,7 @@ func (lm listModel) Update(msg tea.Msg) (listModel, tea.Cmd) {
 	case "enter":
 		if it := lm.SelectedItem(); it != nil {
 			item := *it
-			return lm, func() tea.Msg { return spaceOnItemMsg{Item: item} }
+			return lm, func() tea.Msg { return openItemMsg{Item: item} }
 		}
 	case "ctrl+d":
 		if it := lm.SelectedItem(); it != nil && it.Existing {

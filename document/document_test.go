@@ -142,6 +142,22 @@ func TestDocument_UndoRestores(t *testing.T) {
 	if string(doc.Raw()) != "name: mydev\n" {
 		t.Errorf("after two undos, Raw = %q, want %q", doc.Raw(), "name: mydev\n")
 	}
+	if doc.Dirty() {
+		t.Error("dirty should be false when Undo restores the loaded raw")
+	}
+}
+
+func TestDocument_UndoStaysDirtyMidStack(t *testing.T) {
+	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
+	_ = doc.Insert("image: ubuntu:22.04\n")
+	_ = doc.Insert("remoteUser: vscode\n")
+	// One undo back: still differs from loaded → dirty stays true.
+	if !doc.Undo() {
+		t.Fatal("undo failed")
+	}
+	if !doc.Dirty() {
+		t.Error("dirty should be true after one undo (raw still differs from loaded)")
+	}
 }
 
 func TestDocument_HistoryCapsAt50(t *testing.T) {

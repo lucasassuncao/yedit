@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/schema"
 )
@@ -147,7 +148,7 @@ func syncTreeCheckedStates(nodes []treeNode, key, yamlContent string) []treeNode
 		return nodes
 	}
 	var doc map[string]any
-	if err := yamlUnmarshal([]byte(yamlContent), &doc); err != nil {
+	if err := yaml.Unmarshal([]byte(yamlContent), &doc); err != nil {
 		return nodes
 	}
 
@@ -194,27 +195,20 @@ func syncTreeCheckedStates(nodes []treeNode, key, yamlContent string) []treeNode
 // respecting each node's collapsed/expanded state.
 func (tm treeModel) visibleNodes() []int {
 	var vis []int
-	// collapsedAt tracks when we are inside a collapsed subtree.
-	// We use depth to detect exit from the collapsed region.
-	type collapseFrame struct {
-		depth int
-		kind  treeNodeKind
-	}
-	var stack []collapseFrame
+	// Stack holds the depths of collapsed ancestors; while non-empty we are
+	// inside a collapsed subtree and skip nodes.
+	var stack []int
 
 	for i, n := range tm.nodes {
-		// Pop stack entries whose depth is >= current node's depth.
-		for len(stack) > 0 && n.depth <= stack[len(stack)-1].depth {
+		for len(stack) > 0 && n.depth <= stack[len(stack)-1] {
 			stack = stack[:len(stack)-1]
 		}
-		// If we are inside a collapsed node, skip.
 		if len(stack) > 0 {
 			continue
 		}
 		vis = append(vis, i)
-		// If this node is collapsible and not expanded, push to stack.
 		if !n.isLeaf && !n.expanded && n.kind != treeNodeAddNew {
-			stack = append(stack, collapseFrame{depth: n.depth, kind: n.kind})
+			stack = append(stack, n.depth)
 		}
 	}
 	return vis
@@ -366,42 +360,18 @@ func (tm treeModel) Update(msg tea.KeyMsg) (treeModel, treeAction) {
 	}
 
 	switch msg.String() {
-	case "up", "k":
+	case "up":
 		return tm.moveUp(), treeNoAction
-	case "down", "j":
+	case "down":
 		return tm.moveDown(n), treeNoAction
-	case "right", "l":
+	case "right":
 		return tm.handleRight()
-	case "left", "h":
+	case "left":
 		return tm.handleLeft(vis)
-	case " ":
-		return tm.handleSpace()
 	case "enter":
 		return tm.handleEnter()
 	case "ctrl+d":
-		idx := tm.currentNodeIdx()
-		if idx >= 0 && tm.nodes[idx].kind == treeNodeSeqItem {
-			tm = tm.WithDeletedSeqItem(tm.nodes[idx].seqIdx)
-			return tm, treeDeleted
-		}
-	case "g":
-		tm.cursor = 0
-		tm.offset = 0
-		for tm.cursor < n-1 && tm.nodes[vis[tm.cursor]].kind == treeNodeSeparator {
-			tm.cursor++
-		}
-		return tm, treeNoAction
-	case "G":
-		if n > 0 {
-			tm.cursor = n - 1
-			for tm.cursor > 0 && tm.nodes[vis[tm.cursor]].kind == treeNodeSeparator {
-				tm.cursor--
-			}
-			if tm.cursor >= tm.offset+tm.height {
-				tm.offset = tm.cursor - tm.height + 1
-			}
-		}
-		return tm, treeNoAction
+		return tm.handleRemove()
 	}
 
 	return tm, treeNoAction
@@ -409,11 +379,16 @@ func (tm treeModel) Update(msg tea.KeyMsg) (treeModel, treeAction) {
 
 func (tm treeModel) moveUp() treeModel {
 	vis := tm.visibleNodes()
+	start := tm.cursor
 	for tm.cursor > 0 {
 		tm.cursor--
 		if tm.nodes[vis[tm.cursor]].kind != treeNodeSeparator {
 			break
 		}
+	}
+	// If no non-separator was found above, stay put.
+	if tm.nodes[vis[tm.cursor]].kind == treeNodeSeparator {
+		tm.cursor = start
 	}
 	if tm.cursor < tm.offset {
 		tm.offset = tm.cursor
@@ -423,11 +398,16 @@ func (tm treeModel) moveUp() treeModel {
 
 func (tm treeModel) moveDown(n int) treeModel {
 	vis := tm.visibleNodes()
+	start := tm.cursor
 	for tm.cursor < n-1 {
 		tm.cursor++
 		if tm.nodes[vis[tm.cursor]].kind != treeNodeSeparator {
 			break
 		}
+	}
+	// If no non-separator was found below, stay put.
+	if tm.nodes[vis[tm.cursor]].kind == treeNodeSeparator {
+		tm.cursor = start
 	}
 	if tm.cursor >= tm.offset+tm.height {
 		tm.offset = tm.cursor - tm.height + 1
@@ -475,23 +455,9 @@ func (tm treeModel) handleLeft(vis []int) (treeModel, treeAction) {
 	return tm, treeNoAction
 }
 
-func (tm treeModel) handleSpace() (treeModel, treeAction) {
-	idx := tm.currentNodeIdx()
-	if idx < 0 {
-		return tm, treeNoAction
-	}
-	nd := tm.nodes[idx]
-	// Space = toggle only. [+ add new] and navigation are Enter's job.
-	if nd.kind == treeNodeField && nd.isLeaf {
-		nodes := make([]treeNode, len(tm.nodes))
-		copy(nodes, tm.nodes)
-		nodes[idx].checked = !nodes[idx].checked
-		tm.nodes = nodes
-		return tm, treeToggled
-	}
-	return tm, treeNoAction
-}
-
+// handleEnter adds the field under the cursor (Enter = universal add).
+// For treeNodeAddNew it fires treeAddNew; for unchecked leaf fields it checks
+// them; for everything else it does nothing (expand/collapse is arrows-only).
 func (tm treeModel) handleEnter() (treeModel, treeAction) {
 	idx := tm.currentNodeIdx()
 	if idx < 0 {
@@ -501,29 +467,38 @@ func (tm treeModel) handleEnter() (treeModel, treeAction) {
 	switch nd.kind {
 	case treeNodeAddNew:
 		return tm, treeAddNew
-
-	case treeNodeSeqItem:
-		nodes := make([]treeNode, len(tm.nodes))
-		copy(nodes, tm.nodes)
-		nodes[idx].expanded = !nodes[idx].expanded
-		tm.nodes = nodes
-		if nodes[idx].expanded {
-			return tm, treeExpanded
-		}
-		return tm, treeCollapsed
-
 	case treeNodeField:
-		if nd.isLeaf {
-			return tm.handleSpace() // leaf: Enter = toggle (same as Space)
+		if nd.isLeaf && !nd.checked {
+			nodes := make([]treeNode, len(tm.nodes))
+			copy(nodes, tm.nodes)
+			nodes[idx].checked = true
+			tm.nodes = nodes
+			return tm, treeToggled
 		}
-		nodes := make([]treeNode, len(tm.nodes))
-		copy(nodes, tm.nodes)
-		nodes[idx].expanded = !nodes[idx].expanded
-		tm.nodes = nodes
-		if nodes[idx].expanded {
-			return tm, treeExpanded
+	}
+	return tm, treeNoAction
+}
+
+// handleRemove removes the item under the cursor (ctrl+d = universal remove).
+// For seq items it fires treeDeleted; for checked leaf fields it unchecks them.
+func (tm treeModel) handleRemove() (treeModel, treeAction) {
+	idx := tm.currentNodeIdx()
+	if idx < 0 {
+		return tm, treeNoAction
+	}
+	nd := tm.nodes[idx]
+	switch nd.kind {
+	case treeNodeSeqItem:
+		tm = tm.WithDeletedSeqItem(nd.seqIdx)
+		return tm, treeDeleted
+	case treeNodeField:
+		if nd.isLeaf && nd.checked {
+			nodes := make([]treeNode, len(tm.nodes))
+			copy(nodes, tm.nodes)
+			nodes[idx].checked = false
+			tm.nodes = nodes
+			return tm, treeToggled
 		}
-		return tm, treeCollapsed
 	}
 	return tm, treeNoAction
 }
@@ -539,96 +514,6 @@ func pathEqual(a, b []string) bool {
 		}
 	}
 	return true
-}
-
-// applySections splits depth-0 field chunks into an ADDED group (has content)
-// and an AVAILABLE group (all unchecked), injecting treeNodeSeparator headers.
-// It is idempotent: existing separators are stripped before re-applying.
-// Only used for KindStruct trees (not KindSlice).
-func applySections(nodes []treeNode) []treeNode {
-	// Strip existing separators.
-	clean := make([]treeNode, 0, len(nodes))
-	for _, n := range nodes {
-		if n.kind != treeNodeSeparator {
-			clean = append(clean, n)
-		}
-	}
-
-	// Extract depth-0 chunks: each chunk is [depth-0 node + its depth>0 children].
-	type chunk struct {
-		nodes      []treeNode
-		hasContent bool
-	}
-	var chunks []chunk
-	var cur *chunk
-	for _, n := range clean {
-		if n.depth == 0 {
-			if cur != nil {
-				chunks = append(chunks, *cur)
-			}
-			cur = &chunk{nodes: []treeNode{n}}
-		} else if cur != nil {
-			cur.nodes = append(cur.nodes, n)
-		}
-	}
-	if cur != nil {
-		chunks = append(chunks, *cur)
-	}
-
-	// Classify each chunk.
-	for i, c := range chunks {
-		root := c.nodes[0]
-		if root.kind == treeNodeAddNew {
-			continue
-		}
-		if root.isLeaf {
-			chunks[i].hasContent = root.checked
-		} else {
-			for _, n := range c.nodes[1:] {
-				if n.isLeaf && n.checked {
-					chunks[i].hasContent = true
-					break
-				}
-			}
-		}
-	}
-
-	// Partition into existing / available / addNew.
-	var existing, available, addNew []chunk
-	for _, c := range chunks {
-		switch {
-		case c.nodes[0].kind == treeNodeAddNew:
-			addNew = append(addNew, c)
-		case c.hasContent:
-			existing = append(existing, c)
-		default:
-			available = append(available, c)
-		}
-	}
-
-	sep := func(label string) treeNode {
-		return treeNode{kind: treeNodeSeparator, label: label, depth: 0, isLeaf: true}
-	}
-	var result []treeNode
-	if len(existing) > 0 {
-		result = append(result, sep("ADDED"))
-		for _, c := range existing {
-			result = append(result, c.nodes...)
-		}
-	}
-	if len(available) > 0 {
-		if len(existing) > 0 {
-			result = append(result, sep("")) // blank line between sections
-		}
-		result = append(result, sep("AVAILABLE"))
-		for _, c := range available {
-			result = append(result, c.nodes...)
-		}
-	}
-	for _, c := range addNew {
-		result = append(result, c.nodes...)
-	}
-	return result
 }
 
 // restoreCursorToPath moves the cursor to the first visible node whose

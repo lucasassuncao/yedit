@@ -227,14 +227,6 @@ func main() {
 				"show-caller": "  show-caller: false\n",
 			},
 		},
-
-		// NOTE: PreCheckedFields is stored in Config but not yet consumed by
-		// the editor — fields that list sub-keys to pre-check on overlay open.
-		// Left here as documentation of the intended future behaviour.
-		// PreCheckedFields: map[string][]string{
-		//     "server":   {"host", "port"},
-		//     "database": {"driver", "dsn"},
-		// },
 	}); err != nil {
 		panic(err)
 	}
