@@ -3,21 +3,30 @@
 package theme
 
 import (
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
 
+// colorVal returns a lipgloss.Color unless NO_COLOR is set, in which case it
+// returns an empty color (terminal default) so all rendering is monochrome.
+func colorVal(c string) lipgloss.Color {
+	if os.Getenv("NO_COLOR") != "" {
+		return lipgloss.Color("")
+	}
+	return lipgloss.Color(c)
+}
+
 // Palette — narrow on purpose. Clients can extend it with their own colours;
 // add to this list only when at least two yedit components need it.
 var (
-	Accent       = lipgloss.Color("63")  // blue — active borders, primary highlight
-	AccentBright = lipgloss.Color("212") // pink — titles, selection
-	Muted        = lipgloss.Color("240") // grey — inactive borders, status hints
-	Dim          = lipgloss.Color("245") // light grey — secondary text
-	Success      = lipgloss.Color("82")  // green — existing/added items, success alerts
-	Warning      = lipgloss.Color("214") // orange — dirty marker
-	Danger       = lipgloss.Color("196") // red — error alerts
+	Accent       = colorVal("63")  // blue — active borders, primary highlight
+	AccentBright = colorVal("212") // pink — titles, selection
+	Muted        = colorVal("240") // grey — inactive borders, status hints
+	Dim          = colorVal("245") // light grey — secondary text
+	Success      = colorVal("82")  // green — existing/added items, success alerts
+	Danger       = colorVal("196") // red — error alerts
 )
 
 // Common item styles. Each TUI is free to compose its own variants on top.
@@ -52,25 +61,16 @@ func RenderHeader(title, subtitle, right string, width int) string {
 	return left + strings.Repeat(" ", spacerW) + rightRendered
 }
 
-// PanelBorder returns a rounded-border style coloured for the active/inactive
-// state. Width/Height are left to the caller because layout differs per TUI.
-func PanelBorder(active bool) lipgloss.Style {
-	colour := Muted
-	if active {
-		colour = Accent
-	}
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colour)
-}
-
 // TwoColumnWidths computes left and right column widths for the standard
-// two-panel layout: left is totalWidth/5 (min 40); right gets the remainder
-// minus 4 chars for the two border pairs.
+// two-panel layout: left is totalWidth/3, clamped to [30, 60]; right gets
+// the remainder minus 4 chars for the two border pairs.
 func TwoColumnWidths(totalWidth int) (listW, rightW int) {
-	listW = totalWidth / 5
-	if listW < 40 {
-		listW = 40
+	listW = totalWidth / 3
+	if listW < 30 {
+		listW = 30
+	}
+	if listW > 60 {
+		listW = 60
 	}
 	rightW = totalWidth - listW - 4
 	if rightW < 10 {

@@ -61,11 +61,13 @@ func UnknownKeys(raw []byte, known map[string]map[string]bool) []string
 UnknownKeys returns the dotted paths of any YAML keys not present in the schema described by known. Free\-form sub\-trees \(paths missing from known\) are not validated.
 
 <a name="FieldDef"></a>
-## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L21-L29>)
+## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L27-L35>)
 
 FieldDef describes a single editable field discovered from a Go struct.
 
 Children is populated when the field nests a struct \(Kind == KindStruct\) or when its type implements Provider.
+
+Required, Default, Description, and OneOf are populated by Discover but are not currently consumed by the built\-in editor UI. They are part of the public API for external tooling \(e.g. doc generators, custom renderers\) that wants richer field metadata without re\-running reflection. The built\-in editor may use them in a future release to render hints and pre\-fill defaults.
 
 ```go
 type FieldDef struct {
@@ -122,7 +124,7 @@ const (
 ```
 
 <a name="Provider"></a>
-## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L35-L37>)
+## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L41-L43>)
 
 Provider is an opt\-in interface for types that reflection cannot introspect correctly — typically union types \(e.g. a value that can be a string OR a struct OR a map\). Implementations return the FieldDef tree they want the editor to see in place of the wrapper type's own fields.
 

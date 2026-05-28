@@ -3,37 +3,17 @@
 A reusable TUI library for editing structured YAML files in Go.
 
 `yedit` turns any Go struct annotated with `yaml` tags into a two-panel
-bubbletea editor: the left panel lists the top-level keys discovered from
-the struct; the right panel shows a live YAML preview. Pressing `Space`
-on a key opens a full-screen block editor where the user toggles children
-on/off, picks from optional presets, and edits the YAML snippet directly.
+bubbletea editor. The left panel lists the top-level keys discovered from
+the struct; the right panel shows a live YAML preview. Pressing `Enter`
+on a key opens a full-screen block editor where sub-fields can be toggled
+on/off, edited with presets, or written directly in YAML.
 
-The library is headless of any specific schema — clients supply the
-struct, optional presets, and any cross-field validation rules.
+The library is schema-agnostic — clients supply a Go struct, optional
+presets, and any cross-field validation rules.
 
-## Tags
+## Requirements
 
-Only the `yaml` tag is **required**. Everything else is optional and
-enriches the editor when present:
-
-| Tag                              | Effect                                            |
-| -------------------------------- | ------------------------------------------------- |
-| `yaml:"name"`                    | Required. The key as it appears in the YAML file. |
-| `yaml:"-"`                       | Field is hidden from the editor.                  |
-| `validate:"required"`            | Marks the field as required (renders a `*`).      |
-| `validate:"oneof=a b c"`         | Restricts accepted values (available in `FieldDef.OneOf`). |
-| `jsonschema:"required"`          | Alternative way to mark required.                 |
-| `jsonschema:"default=X"`         | Default value (available in `FieldDef.Default`).  |
-| `jsonschema_description:"..."`   | Description (available in `FieldDef.Description`). |
-
-A struct with only `yaml` tags is enough to get a working editor:
-
-```go
-type Minimal struct {
-    Name string `yaml:"name"`
-    Port int    `yaml:"port"`
-}
-```
+Go 1.24+
 
 ## Install
 
@@ -41,20 +21,17 @@ type Minimal struct {
 go get github.com/lucasassuncao/yedit
 ```
 
-## Usage
-
-Minimal — only `yaml` tags:
+## Quick start
 
 ```go
 package main
 
 import (
     "log"
-
     "github.com/lucasassuncao/yedit/editor"
 )
 
-type MyConfig struct {
+type Config struct {
     Name  string `yaml:"name"`
     Image string `yaml:"image"`
     Build *struct {
@@ -64,59 +41,135 @@ type MyConfig struct {
 }
 
 func main() {
-    err := editor.Run(editor.Config{
+    if err := editor.Run(editor.Config{
         Path:   "config.yaml",
-        Schema: &MyConfig{},
+        Schema: &Config{},
         Title:  "my editor",
-    })
-    if err != nil {
+    }); err != nil {
         log.Fatal(err)
     }
 }
 ```
 
-Richer — add optional tags and validators to improve UX:
+A non-existent `Path` is not an error — the editor starts with an empty
+document and saves to that path on `Ctrl+S`.
+
+## UI layout
+
+The editor presents three distinct panels depending on the field type:
+
+**Main list** — shows all top-level keys split into ADDED (present in the
+file) and AVAILABLE (schema-known but not yet set). `Enter` opens a block.
+
+**Struct tree** (KindStruct) — left panel lists sub-fields in ADDED /
+AVAILABLE sections; `Space` toggles a field on/off. `Enter` expands or
+collapses a node. The right panel shows a live YAML preview.
+
+**Sequence navigator** (KindSlice with child defs) — left panel shows
+`[0] item`, `[1] item` … and a `[+ add new]` row. `Enter` expands an item
+or adds a new one. `Ctrl+D` deletes the selected item.
+
+**YAML-only** (KindScalar, KindMap, plain []string) — left panel shows
+`(no fields)`; the YAML editor takes focus immediately.
+
+## Keyboard reference
+
+### Main list
+
+| Key | Action |
+|-----|--------|
+| `↑` / `k`, `↓` / `j` | Navigate |
+| `g` / `G` | Jump to top / bottom |
+| `/` | Filter list |
+| `Enter` | Open or add block |
+| `Ctrl+D` | Delete block (with confirmation) |
+| `Ctrl+U` | Undo last change |
+| `Tab` | Switch to YAML editor |
+| `Ctrl+S` | Save file |
+| `Ctrl+L` | Validate document |
+| `?` | Help overlay |
+| `Esc` / `q` | Quit (prompts if unsaved) |
+
+### Block-edit tree
+
+| Key | Action |
+|-----|--------|
+| `↑` / `k`, `↓` / `j` | Navigate |
+| `g` / `G` | Jump to top / bottom |
+| `→` / `l`, `←` / `h` | Expand / collapse node |
+| `Space` | Toggle field on/off |
+| `Enter` | Expand/collapse node · add sequence item |
+| `Ctrl+D` | Delete sequence item (with confirmation) |
+| `p` | Open preset picker |
+| `Tab` | Switch to YAML editor |
+| `Ctrl+S` | Commit changes |
+| `?` | Help overlay |
+| `Esc` | Back (prompts if uncommitted) |
+
+### YAML editor (right panel)
+
+Only `Tab` and `Esc` are captured — all other keys go to the textarea.
+
+## Tags
+
+Only the `yaml` tag is **required**. The rest are optional enrichments:
+
+| Tag | Effect |
+|-----|--------|
+| `yaml:"name"` | Required. The YAML key name. |
+| `yaml:"-"` | Hide field from the editor. |
+| `validate:"required"` | Marks field as required (stored in `FieldDef.Required`). |
+| `validate:"oneof=a b c"` | Restricts accepted values (stored in `FieldDef.OneOf`). |
+| `jsonschema:"required"` | Alternative way to mark required. |
+| `jsonschema:"default=X"` | Default value (stored in `FieldDef.Default`). |
+| `jsonschema_description:"..."` | Description text (stored in `FieldDef.Description`). |
+
+> `Required`, `Default`, `OneOf`, and `Description` are available to external tooling
+> (doc generators, custom renderers) via `schema.FieldDef`. They are not yet rendered
+> by the built-in UI.
+
+## Full Config
 
 ```go
-type MyConfig struct {
-    Name  string `yaml:"name"  validate:"required"             jsonschema_description:"Project name."`
-    Image string `yaml:"image"                                 jsonschema_description:"Container image."`
-    Build *struct {
-        Dockerfile string `yaml:"dockerfile" validate:"required" jsonschema:"default=Dockerfile"`
-        Context    string `yaml:"context"    validate:"required" jsonschema:"default=."`
-    } `yaml:"build"`
-}
-
 editor.Run(editor.Config{
+    // Required
     Path:   "config.yaml",
     Schema: &MyConfig{},
+
+    // Optional
     Title:  "my editor",
+
+    // Preset snippets loaded from an fs.FS (see presets.FromFS)
+    Presets: presets.FromFS(embedFS, "."),
+
+    // Cross-field validation rules
     Validators: []editor.Validator{
         editor.MutuallyExclusive("image", "build"),
+        editor.RequiredWith("service", "dockerComposeFile"),
     },
+
+    // Sub-fields to pre-check when a new block is opened for the first time
+    PreCheckedFields: map[string][]string{
+        "build": {"dockerfile", "context"},
+    },
+
+    // Default YAML snippets inserted when a sub-field is toggled on
+    FieldSnippets: map[string]map[string]string{
+        "build": {
+            "dockerfile": "  dockerfile: Dockerfile\n",
+            "context":    "  context: .\n",
+        },
+    },
+
+    // Top-level keys to hide (e.g. legacy aliases)
+    Hidden: []string{"dockerFile"},
 })
 ```
 
-`editor.Run` blocks until the user quits. A non-existent `Path` is not
-an error — the editor starts with an empty document and saves to the path
-on `Ctrl+S`.
-
-## Sub-packages
-
-| Package      | Purpose                                                                 |
-| ------------ | ----------------------------------------------------------------------- |
-| `editor`     | Two-panel TUI; the main entry point (`editor.Run`)                      |
-| `schema`     | Reflection over Go structs into a `FieldDef` tree; opt-in `Provider` for union types |
-| `document`   | YAML document state: block-level parse/insert/remove/replace, undo, save |
-| `presets`    | `Source` interface + `FromFS` implementation for per-field YAML snippets |
-| `viewer`     | Read-only preset browser TUI                                            |
-| `theme`      | Shared palette and layout primitives                                    |
-| `components` | Reusable bubbletea widgets (`alert`, `picker`)                          |
-
 ## Union types
 
-Reflection cannot infer the shape of types that wrap a union of scalar /
-sequence / mapping. Such types opt into a small interface:
+Reflection cannot infer the shape of types that wrap a union (scalar /
+sequence / mapping). Such types opt into a small interface:
 
 ```go
 type Provider interface {
@@ -125,23 +178,26 @@ type Provider interface {
 ```
 
 If a field's type implements `Provider`, the editor uses the returned
-`[]FieldDef` instead of descending by reflection:
+`[]FieldDef` instead of descending by reflection. The field kind is set to
+`KindUnion` and the left panel shows `(no fields)` — the YAML editor
+takes focus directly.
 
 ```go
-type MountOrString struct{ /* ... */ }
+type TimeoutValue struct{}
 
-func (MountOrString) YeditSchema() []schema.FieldDef {
+func (TimeoutValue) YeditSchema() []schema.FieldDef {
     return []schema.FieldDef{
-        {YAMLName: "source", Kind: schema.KindScalar},
-        {YAMLName: "target", Kind: schema.KindScalar},
+        {YAMLName: "connect", Kind: schema.KindScalar},
+        {YAMLName: "read",    Kind: schema.KindScalar},
+        {YAMLName: "write",   Kind: schema.KindScalar},
     }
 }
 ```
 
 ## Presets
 
-Each field can have any number of named presets. Implement `presets.Source`,
-or pass an `fs.FS` to `presets.FromFS`:
+Each field can have named presets. Implement `presets.Source` or use
+`presets.FromFS` with a directory tree:
 
 ```
 my-presets/
@@ -149,12 +205,36 @@ my-presets/
 │   ├── base.yaml
 │   └── multi-stage.yaml
 └── customizations/
-    ├── base.yaml
     └── vscode-go.yaml
 ```
 
-The editor exposes a picker (`p` key in the overlay) over the names
-returned by `Source.ListPresets(field)`.
+The preset picker is opened with `p` in the block-edit tree panel.
+
+## Environment
+
+| Variable | Effect |
+|----------|--------|
+| `NO_COLOR` | Disables all color output (monochrome mode). |
+
+Minimum terminal size: **80 × 20**. Below that the editor shows a resize prompt.
+
+## Sub-packages
+
+| Package | Purpose |
+|---------|---------|
+| `editor` | Two-panel TUI; main entry point (`editor.Run`) |
+| `schema` | Reflection over Go structs into a `FieldDef` tree; opt-in `Provider` for union types |
+| `document` | YAML document state: block-level parse / insert / remove / replace, undo, save |
+| `presets` | `Source` interface + `FromFS` for per-field YAML snippets |
+| `viewer` | Read-only preset browser TUI |
+| `theme` | Shared palette and layout primitives |
+| `components` | Reusable bubbletea widgets (`alert`, `picker`) |
+
+## Examples
+
+See [`examples/test`](examples/test/main.go) for a self-contained program
+that exercises all three UI patterns, `KindUnion`, nested slices, deep
+nesting, `oneof`, `MutuallyExclusive`, and unknown-key validation.
 
 ## Status
 

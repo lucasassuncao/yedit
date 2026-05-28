@@ -150,9 +150,9 @@ func (a Model) View() string {
 	}
 
 	border := lipgloss.NewStyle().
-		Border(lipgloss.DoubleBorder()).
+		Border(lipgloss.RoundedBorder()).
 		BorderForeground(color).
-		Padding(1, 2)
+		Padding(1, 3)
 
 	box := border.Render(strings.Join([]string{title, "", body, "", buttons}, "\n"))
 

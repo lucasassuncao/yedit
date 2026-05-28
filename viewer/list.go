@@ -128,39 +128,6 @@ func (l *listModel) Back() {
 	}
 }
 
-// JumpFieldForward / JumpFieldBackward move the field cursor by one page (modeFields only).
-func (l *listModel) JumpFieldForward() {
-	if l.mode != modeFields {
-		return
-	}
-	step := l.height
-	if step < 1 {
-		step = 1
-	}
-	l.fieldCursor += step
-	if l.fieldCursor >= len(l.fields) {
-		l.fieldCursor = len(l.fields) - 1
-	}
-	l.activeField = l.fields[l.fieldCursor]
-	l.ensureCursorVisible()
-}
-
-func (l *listModel) JumpFieldBackward() {
-	if l.mode != modeFields {
-		return
-	}
-	step := l.height
-	if step < 1 {
-		step = 1
-	}
-	l.fieldCursor -= step
-	if l.fieldCursor < 0 {
-		l.fieldCursor = 0
-	}
-	l.activeField = l.fields[l.fieldCursor]
-	l.ensureCursorVisible()
-}
-
 func (l *listModel) SetSize(w, h int) {
 	l.width = w
 	l.height = h

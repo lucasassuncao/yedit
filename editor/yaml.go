@@ -199,10 +199,21 @@ func yamlForSeqItem(key, seqBase string, seqIdx int) string {
 }
 
 // syncTreeCheckedFromYAML re-derives checked states for all treeNodeField leaf
-// nodes from the current YAML text (the right panel value). Non-leaf and
-// non-field nodes are not touched.
+// nodes from the current YAML text (the right panel value), then re-applies
+// section grouping for KindStruct trees, restoring the cursor position.
 func syncTreeCheckedFromYAML(tm treeModel, key, yamlContent string) treeModel {
+	// Save selected node's path so we can restore the cursor after reorder.
+	var selectedPath []string
+	if ni := tm.currentNodeIdx(); ni >= 0 && tm.nodes[ni].kind == treeNodeField {
+		selectedPath = tm.nodes[ni].yamlPath
+	}
+
 	tm.nodes = syncTreeCheckedStates(tm.nodes, key, yamlContent)
+
+	if !tm.isSeq {
+		tm.nodes = applySections(tm.nodes)
+		tm = tm.restoreCursorToPath(selectedPath)
+	}
 	return tm
 }
 

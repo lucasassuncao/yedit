@@ -14,7 +14,17 @@ type Validator interface {
 	Validate(raw []byte, blocks []document.Block) []string
 }
 
-// ValidatorFunc adapts a plain function to the Validator interface.
+// ValidatorFunc adapts a plain function to the Validator interface, letting
+// callers register inline validators without defining a named type:
+//
+//	editor.Run(editor.Config{
+//	    Validators: []editor.Validator{
+//	        editor.ValidatorFunc(func(raw []byte, blocks []document.Block) []string {
+//	            // custom rule ...
+//	            return nil
+//	        }),
+//	    },
+//	})
 type ValidatorFunc func(raw []byte, blocks []document.Block) []string
 
 // Validate calls f.

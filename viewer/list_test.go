@@ -102,26 +102,6 @@ func TestBackReturnsToFields(t *testing.T) {
 	}
 }
 
-func TestJumpFieldForwardLandsOnNextField(t *testing.T) {
-	l := newListModel(testFields, testPresets)
-	l.JumpFieldForward()
-	f, _ := l.Selected()
-	if f != "image" {
-		t.Errorf("after JumpForward = %q, want \"image\"", f)
-	}
-}
-
-func TestJumpFieldBackwardLandsOnPrevField(t *testing.T) {
-	l := newListModel(testFields, testPresets)
-	l.JumpFieldForward()  // image
-	l.JumpFieldForward()  // build
-	l.JumpFieldBackward() // image
-	f, _ := l.Selected()
-	if f != "image" {
-		t.Errorf("after 2 Forward + Backward = %q, want \"image\"", f)
-	}
-}
-
 func TestModelEmptyStateRendersMessage(t *testing.T) {
 	m := NewModel(stubSource{})
 	_ = m.View()

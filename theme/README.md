@@ -14,7 +14,6 @@ Package theme provides the palette, base lipgloss styles, and shared layout prim
 
 - [Variables](<#variables>)
 - [func CenterBox\(box string, term Size\) string](<#CenterBox>)
-- [func PanelBorder\(active bool\) lipgloss.Style](<#PanelBorder>)
 - [func RenderHeader\(title, subtitle, right string, width int\) string](<#RenderHeader>)
 - [func RenderTitledPanel\(title string, size Size, active bool, content string\) string](<#RenderTitledPanel>)
 - [func RenderTwoColumnView\(layout TwoColumnLayout\) string](<#RenderTwoColumnView>)
@@ -29,13 +28,12 @@ Package theme provides the palette, base lipgloss styles, and shared layout prim
 
 ```go
 var (
-    Accent       = lipgloss.Color("63")  // blue — active borders, primary highlight
-    AccentBright = lipgloss.Color("212") // pink — titles, selection
-    Muted        = lipgloss.Color("240") // grey — inactive borders, status hints
-    Dim          = lipgloss.Color("245") // light grey — secondary text
-    Success      = lipgloss.Color("82")  // green — existing/added items, success alerts
-    Warning      = lipgloss.Color("214") // orange — dirty marker
-    Danger       = lipgloss.Color("196") // red — error alerts
+    Accent       = colorVal("63")  // blue — active borders, primary highlight
+    AccentBright = colorVal("212") // pink — titles, selection
+    Muted        = colorVal("240") // grey — inactive borders, status hints
+    Dim          = colorVal("245") // light grey — secondary text
+    Success      = colorVal("82")  // green — existing/added items, success alerts
+    Danger       = colorVal("196") // red — error alerts
 )
 ```
 
@@ -59,17 +57,8 @@ func CenterBox(box string, term Size) string
 
 CenterBox positions box at the centre of the given terminal Size by adding padding. Used by floating overlay/alert/picker views.
 
-<a name="PanelBorder"></a>
-## func [PanelBorder](<https://github.com/lucasassuncao/yedit/blob/main/theme/theme.go#L57>)
-
-```go
-func PanelBorder(active bool) lipgloss.Style
-```
-
-PanelBorder returns a rounded\-border style coloured for the active/inactive state. Width/Height are left to the caller because layout differs per TUI.
-
 <a name="RenderHeader"></a>
-## func [RenderHeader](<https://github.com/lucasassuncao/yedit/blob/main/theme/theme.go#L39>)
+## func [RenderHeader](<https://github.com/lucasassuncao/yedit/blob/main/theme/theme.go#L48>)
 
 ```go
 func RenderHeader(title, subtitle, right string, width int) string
@@ -96,13 +85,13 @@ func RenderTwoColumnView(layout TwoColumnLayout) string
 RenderTwoColumnView assembles the standard two\-panel screen: header, panels side by side, a feedback line, and a hint line.
 
 <a name="TwoColumnWidths"></a>
-## func [TwoColumnWidths](<https://github.com/lucasassuncao/yedit/blob/main/theme/theme.go#L70>)
+## func [TwoColumnWidths](<https://github.com/lucasassuncao/yedit/blob/main/theme/theme.go#L67>)
 
 ```go
 func TwoColumnWidths(totalWidth int) (listW, rightW int)
 ```
 
-TwoColumnWidths computes left and right column widths for the standard two\-panel layout: left is totalWidth/5 \(min 40\); right gets the remainder minus 4 chars for the two border pairs.
+TwoColumnWidths computes left and right column widths for the standard two\-panel layout: left is totalWidth/3, clamped to \[30, 60\]; right gets the remainder minus 4 chars for the two border pairs.
 
 <a name="Size"></a>
 ## type [Size](<https://github.com/lucasassuncao/yedit/blob/main/theme/theme.go#L84>)

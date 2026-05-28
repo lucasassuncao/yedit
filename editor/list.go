@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -191,12 +192,16 @@ func (lm listModel) Update(msg tea.Msg) (listModel, tea.Cmd) {
 		lm.moveCursor(-1)
 	case "down", "j":
 		lm.moveCursor(1)
-	case " ":
+	case "g":
+		lm.jumpToFirst()
+	case "G":
+		lm.jumpToLast()
+	case "enter":
 		if it := lm.SelectedItem(); it != nil {
 			item := *it
 			return lm, func() tea.Msg { return spaceOnItemMsg{Item: item} }
 		}
-	case "d":
+	case "ctrl+d":
 		if it := lm.SelectedItem(); it != nil && it.Existing {
 			k := it.Key
 			return lm, func() tea.Msg { return deleteItemMsg{Key: k} }
@@ -294,6 +299,26 @@ func (lm *listModel) clampScroll() {
 	}
 }
 
+func (lm *listModel) jumpToFirst() {
+	for i, it := range lm.items {
+		if !it.Separator {
+			lm.cursor = i
+			lm.offset = 0
+			return
+		}
+	}
+}
+
+func (lm *listModel) jumpToLast() {
+	for i := len(lm.items) - 1; i >= 0; i-- {
+		if !lm.items[i].Separator {
+			lm.cursor = i
+			lm.clampScroll()
+			return
+		}
+	}
+}
+
 func renderListItem(it listItem, selected bool) string {
 	if selected {
 		mark := "+"
@@ -312,11 +337,20 @@ func (lm listModel) View() string {
 	if lm.filtering {
 		return lm.viewFilter()
 	}
-	var sb strings.Builder
-	end := lm.offset + lm.height
+
+	// Reserve last row for a scroll indicator when items overflow below.
+	maxVisible := lm.height
+	hasMore := lm.offset+lm.height < len(lm.items)
+	if hasMore {
+		maxVisible = lm.height - 1
+	}
+
+	end := lm.offset + maxVisible
 	if end > len(lm.items) {
 		end = len(lm.items)
 	}
+
+	var sb strings.Builder
 	for i := lm.offset; i < end; i++ {
 		if i > lm.offset {
 			sb.WriteByte('\n')
@@ -328,6 +362,15 @@ func (lm listModel) View() string {
 			sb.WriteString(renderListItem(it, i == lm.cursor))
 		}
 	}
+
+	if hasMore {
+		remaining := len(lm.items) - end
+		if sb.Len() > 0 {
+			sb.WriteByte('\n')
+		}
+		sb.WriteString(availableItemStyle.Render(fmt.Sprintf("  ↓ %d more", remaining)))
+	}
+
 	return sb.String()
 }
 

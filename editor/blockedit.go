@@ -57,6 +57,7 @@ type blockEditState struct {
 	currentPreset string
 
 	confirmAlert *alert.Model // non-nil when showing "Discard changes?" prompt
+	helpVisible  bool
 }
 
 // newBlockEdit creates the full-screen block editing state.
@@ -104,6 +105,12 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 
 	be.yamlEditor = be.newYAMLEditor(content)
 
+	// For new struct blocks, pre-check fields listed in cfg.PreCheckedFields.
+	newBlock := spec.content == "" || spec.content == spec.key+":\n"
+	if newBlock && !structuredSeq {
+		be = be.withPreCheckedFields()
+	}
+
 	// For structured sequences: show the first item (or empty placeholder).
 	if structuredSeq {
 		firstItem := yamlForSeqItem(spec.key, be.seqBase, 0)
@@ -150,6 +157,13 @@ func (be blockEditState) innerH() int {
 func (be blockEditState) Init() tea.Cmd { return textarea.Blink }
 
 func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
+	// pendingRemoveMsg fires from the "Remove field?" confirm alert before the
+	// alert is cleared, so it must be handled before the confirmAlert guard.
+	if m, ok := msg.(pendingRemoveMsg); ok {
+		be.confirmAlert = nil
+		return be.applyPendingRemove(m.nodeIdx), nil
+	}
+
 	// Handle confirm-alert (Discard changes?) first.
 	if be.confirmAlert != nil {
 		if _, ok := msg.(alert.DismissedMsg); ok {
@@ -192,6 +206,13 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.yamlEditor.SetWidth(be.rightW - 2)
 		be.yamlEditor.SetHeight(be.innerH() - 1)
 		be.tree.height = be.innerH()
+		sz := theme.Size{W: m.Width, H: m.Height}
+		if be.confirmAlert != nil {
+			be.confirmAlert.Resize(sz)
+		}
+		if be.presetPicker != nil {
+			be.presetPicker.Resize(sz)
+		}
 		return be, nil
 	}
 
@@ -229,6 +250,11 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 		return be.switchPanel(), nil
 	}
 
+	if msg.String() == "?" {
+		be.helpVisible = !be.helpVisible
+		return be, nil
+	}
+
 	if be.active == blockEditPanelTree {
 		if msg.String() == "p" && be.cfg.Presets != nil {
 			names := be.cfg.Presets.ListPresets(be.key)
@@ -256,6 +282,103 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	return be, cmd
 }
 
+// withPreCheckedFields toggles ON the fields listed in cfg.PreCheckedFields for
+// this block, inserting their snippets into the YAML editor. Only called for
+// new (not yet existing) struct blocks so opening an existing block never
+// modifies content.
+func (be blockEditState) withPreCheckedFields() blockEditState {
+	fields := be.cfg.PreCheckedFields[be.key]
+	if len(fields) == 0 {
+		return be
+	}
+	ctx := toggleCtx{key: be.key, snippets: be.cfg.fieldSnippetsFor(be.key), childDefs: be.childDefs}
+	nodeByLabel := make(map[string]treeNode, len(be.tree.nodes))
+	for _, n := range be.tree.nodes {
+		if n.kind == treeNodeField && n.depth == 0 {
+			nodeByLabel[n.label] = n
+		}
+	}
+	yaml := be.yamlEditor.Value()
+	changed := false
+	for _, fieldName := range fields {
+		if n, ok := nodeByLabel[fieldName]; ok && !n.checked {
+			yaml = applyTreeToggle(ctx, n, true, yaml)
+			changed = true
+		}
+	}
+	if !changed {
+		return be
+	}
+	be.yamlEditor.SetValue(yaml)
+	be.tree = syncTreeCheckedFromYAML(be.tree, be.key, yaml)
+	return be
+}
+
+// fieldHasContent reports whether the field at node.yamlPath has a non-empty
+// value in the current YAML editor content.
+func (be blockEditState) fieldHasContent(node treeNode) bool {
+	var doc map[string]any
+	if err := yamlUnmarshal([]byte(be.yamlEditor.Value()), &doc); err != nil {
+		return false
+	}
+	sub, _ := doc[be.key].(map[string]any)
+	if sub == nil {
+		return false
+	}
+	cur := sub
+	path := node.yamlPath
+	for i := 0; i < len(path)-1; i++ {
+		cur, _ = cur[path[i]].(map[string]any)
+		if cur == nil {
+			return false
+		}
+	}
+	if len(path) == 0 {
+		return false
+	}
+	val, exists := cur[path[len(path)-1]]
+	if !exists || val == nil {
+		return false
+	}
+	switch v := val.(type) {
+	case string:
+		return v != ""
+	case map[string]any:
+		return len(v) > 0
+	case []any:
+		return len(v) > 0
+	default:
+		return true
+	}
+}
+
+// applyPendingRemove carries out the field removal that was held pending
+// confirmation. It sets the node to unchecked and applies the YAML change.
+func (be blockEditState) applyPendingRemove(nodeIdx int) blockEditState {
+	if nodeIdx < 0 || nodeIdx >= len(be.tree.nodes) {
+		return be
+	}
+	nodes := make([]treeNode, len(be.tree.nodes))
+	copy(nodes, be.tree.nodes)
+	nodes[nodeIdx].checked = false
+	be.tree.nodes = nodes
+
+	node := be.tree.nodes[nodeIdx]
+	ctx := toggleCtx{key: be.key, snippets: be.cfg.fieldSnippetsFor(be.key), childDefs: be.childDefs}
+	var newYAML string
+	if be.kind == schema.KindSlice {
+		newYAML = applyToggleToSeqItem(ctx, node, false, be.yamlEditor.Value())
+	} else {
+		newYAML = applyTreeToggle(ctx, node, false, be.yamlEditor.Value())
+	}
+	be.yamlEditor.SetValue(newYAML)
+	be.dirty = true
+	if be.kind == schema.KindSlice {
+		be.seqBase = be.rebuildSeqBase()
+	}
+	return be
+}
+
 func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	prevSeqIdx := be.tree.NearestSeqItem()
 
@@ -264,10 +387,27 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 
 	switch action {
 	case treeToggled:
-		be.dirty = true
 		idx := be.tree.currentNodeIdx()
 		if idx >= 0 {
 			node := be.tree.nodes[idx]
+			// If toggling OFF a field that has content, ask before destroying it.
+			if !node.checked && be.fieldHasContent(node) {
+				// Revert the tree toggle while waiting for confirmation.
+				nodes := make([]treeNode, len(be.tree.nodes))
+				copy(nodes, be.tree.nodes)
+				nodes[idx].checked = true
+				be.tree.nodes = nodes
+				capturedIdx := idx
+				al := alert.NewConfirm(
+					"Remove field?",
+					fmt.Sprintf("Remove %q? Its content will be lost.", node.label),
+					func() tea.Msg { return pendingRemoveMsg{nodeIdx: capturedIdx} },
+					theme.Size{W: be.width, H: be.height},
+				)
+				be.confirmAlert = &al
+				return be, nil
+			}
+			be.dirty = true
 			ctx := toggleCtx{key: be.key, snippets: be.cfg.fieldSnippetsFor(be.key), childDefs: be.childDefs}
 			var newYAML string
 			if be.kind == schema.KindSlice {
@@ -444,6 +584,9 @@ func (be blockEditState) View() string {
 	if be.presetPicker != nil {
 		return be.presetPicker.View()
 	}
+	if be.helpVisible {
+		return renderHelpOverlay(blockHelpSections, theme.Size{W: be.width, H: be.height})
+	}
 
 	// Build breadcrumb.
 	segs := be.tree.BreadcrumbSegments()
@@ -457,7 +600,11 @@ func (be blockEditState) View() string {
 	leftPanel := theme.RenderTitledPanel("Fields", theme.Size{W: be.listW, H: be.innerH() + 2}, treeActive, be.tree.View())
 
 	yamlActive := be.active == blockEditPanelYAML
-	rightPanel := theme.RenderTitledPanel("Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, yamlActive, be.yamlEditor.View())
+	yamlTitle := "Preview"
+	if yamlActive {
+		yamlTitle = "Editing YAML"
+	}
+	rightPanel := theme.RenderTitledPanel(yamlTitle, theme.Size{W: be.rightW, H: be.innerH() + 2}, yamlActive, be.yamlEditor.View())
 
 	hintText := be.currentHint()
 
@@ -477,22 +624,18 @@ func (be blockEditState) View() string {
 // currentHint returns the hint bar text for the current panel and cursor state.
 func (be blockEditState) currentHint() string {
 	if be.active != blockEditPanelTree {
-		return "[Tab] back to tree • [ctrl+s] commit • [Esc] back"
+		return "[Tab] tree • [ctrl+s] commit • [Esc] back • [?] help"
 	}
-	const nav = "[↑/↓] navigate • [→/←] expand/collapse"
-	const tail = "[Tab] edit YAML • [ctrl+s] commit • [Esc] back"
+	const nav = "[↑/↓] nav • [→/←] expand"
+	const tail = "[Tab] YAML • [ctrl+s] commit • [Esc] back • [?] help"
 	if be.kind == schema.KindSlice && len(be.childDefs) > 0 {
-		return nav + " • " + be.seqSpaceAction() + " • " + tail
+		return nav + " • [Enter] expand/add • [ctrl+d] delete • " + tail
 	}
-	return nav + " • [Space] toggle • [p] preset • " + tail
-}
-
-func (be blockEditState) seqSpaceAction() string {
-	idx := be.tree.currentNodeIdx()
-	if idx >= 0 && be.tree.nodes[idx].kind == treeNodeAddNew {
-		return "[Space] add item"
+	presetHint := ""
+	if be.cfg.Presets != nil {
+		presetHint = " • [p] preset"
 	}
-	return "[Space] toggle field"
+	return nav + presetHint + " • [Space] toggle • [Enter] expand • " + tail
 }
 
 // validateSnippetText checks that text is valid YAML.

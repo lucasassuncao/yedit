@@ -31,8 +31,6 @@ type Model struct {
 	listW  int
 	vpW    int
 
-	vpScroll int
-
 	active pane
 
 	renderer     *glamour.TermRenderer
@@ -79,16 +77,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.active == paneList {
 				m.list.MoveUp()
 				m.refreshRendered()
-			} else if m.vpScroll > 0 {
-				m.vpScroll--
 			}
 			return m, nil
 		case "down", "j":
 			if m.active == paneList {
 				m.list.MoveDown()
 				m.refreshRendered()
-			} else {
-				m.vpScroll++
 			}
 			return m, nil
 		case "enter", "l", "right":
@@ -165,9 +159,9 @@ func (m Model) View() string {
 	leftPanel := theme.RenderTitledPanel("Fields", theme.Size{W: m.listW, H: innerH + 2}, m.active == paneList, m.list.View())
 	rightPanel := theme.RenderTitledPanel(rightTitle, theme.Size{W: m.vpW, H: innerH + 2}, m.active == paneViewport, m.renderedPane)
 
-	hintText := "[↑/↓] navigate  [Enter/→] open  [Esc/←] back  [Tab] panel  [q] quit"
+	hintText := "[↑/↓] navigate • [Enter/→] open • [Esc/←] back • [Tab] panel • [q] quit"
 	if m.list.Mode() == modePresets {
-		hintText = "[↑/↓] navigate  [Esc/←] back to fields  [Tab] panel  [q] quit"
+		hintText = "[↑/↓] navigate • [Esc/←] back to fields • [Tab] panel • [q] quit"
 	}
 	header := theme.RenderHeader("yedit", "presets", "", m.width)
 	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: "", Hint: theme.StatusBar.Render(hintText)})

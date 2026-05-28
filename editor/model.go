@@ -44,6 +44,7 @@ type model struct {
 
 	previewFocused bool
 	statusMsg      string
+	helpVisible    bool
 
 	width, height, listW, innerH int
 }
@@ -153,6 +154,14 @@ type overlayConfirmedMsg struct{ Snippet string }
 // overlayCancelledMsg is sent when the user cancels a block edit (Esc).
 type overlayCancelledMsg struct{}
 
+// pendingRemoveMsg is dispatched by the "Remove field?" confirm alert when the
+// user chooses Yes. nodeIdx is the index into blockEditState.tree.nodes.
+type pendingRemoveMsg struct{ nodeIdx int }
+
+// confirmedDeleteMsg is dispatched by the "Remove block?" confirm alert when
+// the user confirms deleting a top-level block from the main list.
+type confirmedDeleteMsg struct{ Key string }
+
 func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -171,6 +180,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMsg = "Cancelled."
 		return m, nil
 	case deleteItemMsg:
+		return m.showConfirmAlert(
+			"Remove block?",
+			fmt.Sprintf("Remove %q? Its content will be lost.", msg.Key),
+			func() tea.Msg { return confirmedDeleteMsg(msg) },
+		)
+	case confirmedDeleteMsg:
+		m.alert = nil
 		return m.handleDelete(msg.Key)
 	case alert.DismissedMsg:
 		// Forward to blockEdit first so its confirmAlert is cleared.
@@ -219,8 +235,6 @@ func (m model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	case "ctrl+l":
 		mo, cmd := m.validateKeys()
 		return mo, cmd, true
-	case "ctrl+z":
-		return m.undo(), nil, true
 	}
 	return m, nil, false
 }
@@ -234,6 +248,11 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "tab":
 			return m.togglePreviewPane()
+		case "?":
+			m.helpVisible = !m.helpVisible
+			return m, nil
+		case "ctrl+u":
+			return m.undo(), nil
 		case "esc", "ctrl+c":
 			if m.doc.Dirty() {
 				return m.showConfirmAlert("Quit without saving?",
@@ -252,9 +271,6 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handlePreviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if mo, cmd, handled := m.handleGlobalKey(msg); handled {
-		return mo, cmd
-	}
 	switch msg.String() {
 	case "tab", "esc":
 		return m.togglePreviewPane()
@@ -443,6 +459,9 @@ func (m model) View() string {
 	if m.width == 0 {
 		return "Loading..."
 	}
+	if m.width < 80 || m.height < 20 {
+		return "Terminal too small — resize to at least 80×20."
+	}
 
 	switch m.activePane() {
 	case paneAlert:
@@ -451,23 +470,31 @@ func (m model) View() string {
 		return m.blockEdit.View()
 	}
 
+	if m.helpVisible {
+		return renderHelpOverlay(listHelpSections, theme.Size{W: m.width, H: m.height})
+	}
+
 	header := renderHeader(m.cfg.Title, m.doc.Path(), m.doc.Dirty(), m.width)
 
 	leftTitle := fmt.Sprintf("Blocks (%d/%d)", m.list.AddedCount(), len(m.list.knownKeys))
 	leftPanel := theme.RenderTitledPanel(leftTitle, theme.Size{W: m.listW, H: m.innerH + 2}, !m.previewFocused, m.list.View())
 
 	_, rightW := theme.TwoColumnWidths(m.width)
-	rightPanel := theme.RenderTitledPanel("Preview", theme.Size{W: rightW, H: m.innerH + 2}, m.previewFocused, m.preview.View())
+	previewTitle := "Preview"
+	if m.previewFocused {
+		previewTitle = "Editing YAML"
+	}
+	rightPanel := theme.RenderTitledPanel(previewTitle, theme.Size{W: rightW, H: m.innerH + 2}, m.previewFocused, m.preview.View())
 
 	var hintText string
 	if m.previewFocused {
-		hintText = "[Tab]/[Esc] back to list • [ctrl+l] validate • [ctrl+s] save"
+		hintText = "[Tab] / [Esc] back to list"
 	} else if m.list.IsFiltering() {
-		hintText = "[type] filter • [↑/↓] navigate • [Enter] select • [Esc] clear filter"
+		hintText = "[type] filter • [↑/↓] navigate • [Enter] select • [Esc] clear"
 	} else if it := m.list.SelectedItem(); it != nil && it.Existing {
-		hintText = "[↑/↓] navigate • [Space] edit block • [d] delete • [/] filter • [Tab] edit YAML • [ctrl+z] undo • [ctrl+s] save • [Esc] quit"
+		hintText = "[↑/↓] nav • [Enter] open • [ctrl+d] delete • [ctrl+u] undo • [ctrl+s] save • [ctrl+l] validate • [?] help"
 	} else {
-		hintText = "[↑/↓] navigate • [Space] add block • [/] filter • [Tab] edit YAML • [ctrl+z] undo • [ctrl+s] save • [Esc] quit"
+		hintText = "[↑/↓] nav • [Enter] add • [ctrl+u] undo • [ctrl+s] save • [ctrl+l] validate • [?] help"
 	}
 
 	feedback := lipgloss.NewStyle().Width(m.width).Render(statusStyle.Render(m.statusMsg))

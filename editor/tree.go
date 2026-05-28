@@ -13,9 +13,10 @@ import (
 type treeNodeKind int
 
 const (
-	treeNodeField   treeNodeKind = iota // a struct field (leaf or expandable struct)
-	treeNodeSeqItem                     // an existing sequence item ([N] label)
-	treeNodeAddNew                      // the virtual "+ add new" row
+	treeNodeField     treeNodeKind = iota // a struct field (leaf or expandable struct)
+	treeNodeSeqItem                       // an existing sequence item ([N] label)
+	treeNodeAddNew                        // the virtual "+ add new" row
+	treeNodeSeparator                     // ADDED / AVAILABLE section header (not selectable)
 )
 
 // treeNode is one entry in the flat DFS list stored by treeModel.
@@ -40,13 +41,13 @@ const (
 	treeExpanded             // → on a collapsible node
 	treeCollapsed            // ← on an expanded node
 	treeAddNew               // Space/Enter on the treeNodeAddNew row
-	treeDeleted              // d on a treeNodeSeqItem row
+	treeDeleted              // ctrl+d on a treeNodeSeqItem row
 )
 
 // treeModel is the unified left-panel component that replaces fieldListModel,
 // seqItemListModel, and composeListModel.
 type treeModel struct {
-	nodes  []treeNode // all nodes in DFS order, never reordered
+	nodes  []treeNode // nodes in display order (existing chunks first, then available)
 	cursor int        // position within the visible list
 	offset int        // scroll offset within the visible list
 	height int
@@ -70,6 +71,12 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 	case schema.KindStruct:
 		tm.nodes = flattenDefsAsTree(spec.defs, nil, 0)
 		tm.nodes = syncTreeCheckedStates(tm.nodes, spec.key, spec.content)
+		tm.nodes = applySections(tm.nodes)
+		// Start cursor on the first selectable node (skip opening separator).
+		vis := tm.visibleNodes()
+		for tm.cursor < len(vis) && tm.nodes[vis[tm.cursor]].kind == treeNodeSeparator {
+			tm.cursor++
+		}
 
 	default:
 		// KindScalar, KindMap, KindUnion — no tree nodes; YAML editor gets focus.
@@ -167,10 +174,10 @@ func syncTreeCheckedStates(nodes []treeNode, key, yamlContent string) []treeNode
 		// Walk the path through sub to see if the leaf key exists.
 		cur := sub
 		path := n.yamlPath
-		// For seq item children, path starts with the item label — skip it.
+		// For seq item children only (key==""), path[0] is the item label, not a
+		// YAML key — skip it. Regular nested struct fields must NOT skip path[0].
 		startIdx := 0
-		if len(path) > 0 && n.depth > 0 {
-			// path[0] is the seq item label; field path starts at index 1.
+		if key == "" && n.depth > 0 {
 			startIdx = 1
 		}
 		for j := startIdx; j < len(path)-1 && cur != nil; j++ {
@@ -259,18 +266,6 @@ func (tm treeModel) NearestSeqItem() int {
 		}
 	}
 	return -1
-}
-
-// SeqEntries reconstructs the []seqEntry from the current tree state.
-// Used when committing a sequence block.
-func (tm treeModel) SeqEntries() []seqEntry {
-	var entries []seqEntry
-	for _, n := range tm.nodes {
-		if n.kind == treeNodeSeqItem {
-			entries = append(entries, seqEntry{Label: n.label, Content: ""})
-		}
-	}
-	return entries
 }
 
 // WithDeletedSeqItem removes the seqItem at seqIdx and all its child nodes.
@@ -381,27 +376,61 @@ func (tm treeModel) Update(msg tea.KeyMsg) (treeModel, treeAction) {
 		return tm.handleLeft(vis)
 	case " ":
 		return tm.handleSpace()
+	case "enter":
+		return tm.handleEnter()
+	case "ctrl+d":
+		idx := tm.currentNodeIdx()
+		if idx >= 0 && tm.nodes[idx].kind == treeNodeSeqItem {
+			tm = tm.WithDeletedSeqItem(tm.nodes[idx].seqIdx)
+			return tm, treeDeleted
+		}
+	case "g":
+		tm.cursor = 0
+		tm.offset = 0
+		for tm.cursor < n-1 && tm.nodes[vis[tm.cursor]].kind == treeNodeSeparator {
+			tm.cursor++
+		}
+		return tm, treeNoAction
+	case "G":
+		if n > 0 {
+			tm.cursor = n - 1
+			for tm.cursor > 0 && tm.nodes[vis[tm.cursor]].kind == treeNodeSeparator {
+				tm.cursor--
+			}
+			if tm.cursor >= tm.offset+tm.height {
+				tm.offset = tm.cursor - tm.height + 1
+			}
+		}
+		return tm, treeNoAction
 	}
 
 	return tm, treeNoAction
 }
 
 func (tm treeModel) moveUp() treeModel {
-	if tm.cursor > 0 {
+	vis := tm.visibleNodes()
+	for tm.cursor > 0 {
 		tm.cursor--
-		if tm.cursor < tm.offset {
-			tm.offset = tm.cursor
+		if tm.nodes[vis[tm.cursor]].kind != treeNodeSeparator {
+			break
 		}
+	}
+	if tm.cursor < tm.offset {
+		tm.offset = tm.cursor
 	}
 	return tm
 }
 
 func (tm treeModel) moveDown(n int) treeModel {
-	if tm.cursor < n-1 {
+	vis := tm.visibleNodes()
+	for tm.cursor < n-1 {
 		tm.cursor++
-		if tm.cursor >= tm.offset+tm.height {
-			tm.offset = tm.cursor - tm.height + 1
+		if tm.nodes[vis[tm.cursor]].kind != treeNodeSeparator {
+			break
 		}
+	}
+	if tm.cursor >= tm.offset+tm.height {
+		tm.offset = tm.cursor - tm.height + 1
 	}
 	return tm
 }
@@ -452,9 +481,7 @@ func (tm treeModel) handleSpace() (treeModel, treeAction) {
 		return tm, treeNoAction
 	}
 	nd := tm.nodes[idx]
-	if nd.kind == treeNodeAddNew {
-		return tm, treeAddNew
-	}
+	// Space = toggle only. [+ add new] and navigation are Enter's job.
 	if nd.kind == treeNodeField && nd.isLeaf {
 		nodes := make([]treeNode, len(tm.nodes))
 		copy(nodes, tm.nodes)
@@ -465,6 +492,181 @@ func (tm treeModel) handleSpace() (treeModel, treeAction) {
 	return tm, treeNoAction
 }
 
+func (tm treeModel) handleEnter() (treeModel, treeAction) {
+	idx := tm.currentNodeIdx()
+	if idx < 0 {
+		return tm, treeNoAction
+	}
+	nd := tm.nodes[idx]
+	switch nd.kind {
+	case treeNodeAddNew:
+		return tm, treeAddNew
+
+	case treeNodeSeqItem:
+		nodes := make([]treeNode, len(tm.nodes))
+		copy(nodes, tm.nodes)
+		nodes[idx].expanded = !nodes[idx].expanded
+		tm.nodes = nodes
+		if nodes[idx].expanded {
+			return tm, treeExpanded
+		}
+		return tm, treeCollapsed
+
+	case treeNodeField:
+		if nd.isLeaf {
+			return tm.handleSpace() // leaf: Enter = toggle (same as Space)
+		}
+		nodes := make([]treeNode, len(tm.nodes))
+		copy(nodes, tm.nodes)
+		nodes[idx].expanded = !nodes[idx].expanded
+		tm.nodes = nodes
+		if nodes[idx].expanded {
+			return tm, treeExpanded
+		}
+		return tm, treeCollapsed
+	}
+	return tm, treeNoAction
+}
+
+// pathEqual reports whether two yamlPath slices are identical.
+func pathEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// applySections splits depth-0 field chunks into an ADDED group (has content)
+// and an AVAILABLE group (all unchecked), injecting treeNodeSeparator headers.
+// It is idempotent: existing separators are stripped before re-applying.
+// Only used for KindStruct trees (not KindSlice).
+func applySections(nodes []treeNode) []treeNode {
+	// Strip existing separators.
+	clean := make([]treeNode, 0, len(nodes))
+	for _, n := range nodes {
+		if n.kind != treeNodeSeparator {
+			clean = append(clean, n)
+		}
+	}
+
+	// Extract depth-0 chunks: each chunk is [depth-0 node + its depth>0 children].
+	type chunk struct {
+		nodes      []treeNode
+		hasContent bool
+	}
+	var chunks []chunk
+	var cur *chunk
+	for _, n := range clean {
+		if n.depth == 0 {
+			if cur != nil {
+				chunks = append(chunks, *cur)
+			}
+			cur = &chunk{nodes: []treeNode{n}}
+		} else if cur != nil {
+			cur.nodes = append(cur.nodes, n)
+		}
+	}
+	if cur != nil {
+		chunks = append(chunks, *cur)
+	}
+
+	// Classify each chunk.
+	for i, c := range chunks {
+		root := c.nodes[0]
+		if root.kind == treeNodeAddNew {
+			continue
+		}
+		if root.isLeaf {
+			chunks[i].hasContent = root.checked
+		} else {
+			for _, n := range c.nodes[1:] {
+				if n.isLeaf && n.checked {
+					chunks[i].hasContent = true
+					break
+				}
+			}
+		}
+	}
+
+	// Partition into existing / available / addNew.
+	var existing, available, addNew []chunk
+	for _, c := range chunks {
+		switch {
+		case c.nodes[0].kind == treeNodeAddNew:
+			addNew = append(addNew, c)
+		case c.hasContent:
+			existing = append(existing, c)
+		default:
+			available = append(available, c)
+		}
+	}
+
+	sep := func(label string) treeNode {
+		return treeNode{kind: treeNodeSeparator, label: label, depth: 0, isLeaf: true}
+	}
+	var result []treeNode
+	if len(existing) > 0 {
+		result = append(result, sep("ADDED"))
+		for _, c := range existing {
+			result = append(result, c.nodes...)
+		}
+	}
+	if len(available) > 0 {
+		if len(existing) > 0 {
+			result = append(result, sep("")) // blank line between sections
+		}
+		result = append(result, sep("AVAILABLE"))
+		for _, c := range available {
+			result = append(result, c.nodes...)
+		}
+	}
+	for _, c := range addNew {
+		result = append(result, c.nodes...)
+	}
+	return result
+}
+
+// restoreCursorToPath moves the cursor to the first visible node whose
+// yamlPath matches path. Used after node reordering to keep the selection stable.
+func (tm treeModel) restoreCursorToPath(path []string) treeModel {
+	if len(path) == 0 {
+		return tm
+	}
+	for vi, ni := range tm.visibleNodes() {
+		if pathEqual(tm.nodes[ni].yamlPath, path) {
+			tm.cursor = vi
+			if tm.cursor < tm.offset {
+				tm.offset = tm.cursor
+			} else if tm.height > 0 && tm.cursor >= tm.offset+tm.height {
+				tm.offset = tm.cursor - tm.height + 1
+			}
+			return tm
+		}
+	}
+	return tm
+}
+
+// hasCheckedDescendant reports whether any leaf descendant of nodes[parentIdx]
+// has checked=true. Used to give parent nodes an "existing" colour when they
+// contain at least one active field.
+func hasCheckedDescendant(nodes []treeNode, parentIdx int) bool {
+	parentDepth := nodes[parentIdx].depth
+	for i := parentIdx + 1; i < len(nodes); i++ {
+		if nodes[i].depth <= parentDepth {
+			break
+		}
+		if nodes[i].isLeaf && nodes[i].checked {
+			return true
+		}
+	}
+	return false
+}
+
 // View renders the tree panel content.
 func (tm treeModel) View() string {
 	vis := tm.visibleNodes()
@@ -472,7 +674,14 @@ func (tm treeModel) View() string {
 		return availableItemStyle.Render("  (no fields)")
 	}
 
-	end := tm.offset + tm.height
+	// Reserve last row for a scroll indicator when items overflow below.
+	maxVisible := tm.height
+	hasMore := tm.offset+tm.height < len(vis)
+	if hasMore {
+		maxVisible = tm.height - 1
+	}
+
+	end := tm.offset + maxVisible
 	if end > len(vis) {
 		end = len(vis)
 	}
@@ -484,6 +693,13 @@ func (tm treeModel) View() string {
 
 		var line string
 		switch nd.kind {
+		case treeNodeSeparator:
+			if nd.label == "" {
+				line = ""
+			} else {
+				line = sectionLabelStyle.Render(" " + nd.label)
+			}
+
 		case treeNodeAddNew:
 			label := "  [+ add new]"
 			if vi == tm.cursor {
@@ -525,8 +741,10 @@ func (tm treeModel) View() string {
 				line = selectedItemStyle.Render("▶ " + label)
 			case nd.checked:
 				line = existingItemStyle.Render("  " + label)
+			case !nd.isLeaf && hasCheckedDescendant(tm.nodes, ni):
+				line = existingItemStyle.Render("  " + label)
 			case !nd.isLeaf:
-				line = sectionLabelStyle.Render("  " + label)
+				line = sectionLabelStyle.Render(" " + label) // PaddingLeft(1) + 1 sp = 2 cells, matches cursor prefix
 			default:
 				line = availableItemStyle.Render("  " + label)
 			}
@@ -535,9 +753,15 @@ func (tm treeModel) View() string {
 		sb.WriteString(line + "\n")
 	}
 
-	rendered := end - tm.offset
-	for i := rendered; i < tm.height; i++ {
-		sb.WriteByte('\n')
+	if hasMore {
+		remaining := len(vis) - end
+		sb.WriteString(availableItemStyle.Render(fmt.Sprintf("  ↓ %d more", remaining)))
+	} else {
+		rendered := end - tm.offset
+		for i := rendered; i < tm.height; i++ {
+			sb.WriteByte('\n')
+		}
 	}
+
 	return strings.TrimSuffix(sb.String(), "\n")
 }

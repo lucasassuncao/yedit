@@ -43,7 +43,7 @@ func RunAll(validators []Validator, raw []byte, blocks []document.Block) []strin
 RunAll executes all validators against raw/blocks and collects violations. keysPresent is computed once and shared with validators that implement presenceValidator, avoiding redundant allocations per call.
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L42-L51>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L52-L61>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -100,16 +100,27 @@ func RequiredWith(key, parent string) Validator
 RequiredWith reports a violation when key is present but parent is not.
 
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L18>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L28>)
 
-ValidatorFunc adapts a plain function to the Validator interface.
+ValidatorFunc adapts a plain function to the Validator interface, letting callers register inline validators without defining a named type:
+
+```
+editor.Run(editor.Config{
+    Validators: []editor.Validator{
+        editor.ValidatorFunc(func(raw []byte, blocks []document.Block) []string {
+            // custom rule ...
+            return nil
+        }),
+    },
+})
+```
 
 ```go
 type ValidatorFunc func(raw []byte, blocks []document.Block) []string
 ```
 
 <a name="ValidatorFunc.Validate"></a>
-### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L21>)
+### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L31>)
 
 ```go
 func (f ValidatorFunc) Validate(raw []byte, blocks []document.Block) []string

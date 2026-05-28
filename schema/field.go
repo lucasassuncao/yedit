@@ -18,6 +18,12 @@ const (
 //
 // Children is populated when the field nests a struct (Kind == KindStruct) or
 // when its type implements Provider.
+//
+// Required, Default, Description, and OneOf are populated by Discover but are
+// not currently consumed by the built-in editor UI. They are part of the public
+// API for external tooling (e.g. doc generators, custom renderers) that wants
+// richer field metadata without re-running reflection. The built-in editor may
+// use them in a future release to render hints and pre-fill defaults.
 type FieldDef struct {
 	YAMLName    string
 	Kind        Kind

@@ -66,16 +66,16 @@ func (p Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if !ok {
 		return p, nil
 	}
-	switch key.Type {
-	case tea.KeyEsc:
+	switch key.String() {
+	case "esc":
 		return p, func() tea.Msg { return CancelledMsg{} }
-	case tea.KeyEnter:
+	case "enter":
 		return p, func() tea.Msg { return SelectedMsg{Name: p.SelectedName()} }
-	case tea.KeyUp:
+	case "up", "k":
 		if p.cursor > 0 {
 			p.cursor--
 		}
-	case tea.KeyDown:
+	case "down", "j":
 		if p.cursor < len(p.names)-1 {
 			p.cursor++
 		}
