@@ -2,10 +2,14 @@ package editor
 
 import (
 	"fmt"
+	"os"
+	"regexp"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lucasassuncao/yedit/components/alert"
@@ -35,10 +39,11 @@ type model struct {
 	knownByPath map[string]map[string]bool
 	childrenOf  map[string][]schema.FieldDef
 
-	list      listModel
-	preview   textarea.Model
-	blockEdit *blockEditState
-	alert     *alert.Model
+	list            listModel
+	preview         viewport.Model
+	previewRenderer *glamour.TermRenderer
+	blockEdit       *blockEditState
+	alert           *alert.Model
 
 	mode                         pane
 	statusMsg                    string
@@ -65,11 +70,8 @@ func newModel(cfg Config) (model, error) {
 
 	list := newListModel(knownOrder, doc.Blocks(), 0)
 
-	preview := textarea.New()
-	preview.CharLimit = 0
-	preview.ShowLineNumbers = false
-	preview.Blur()
-	preview.SetValue(string(doc.Raw()))
+	preview := viewport.New(0, 0)
+	preview.SetContent(renderPreviewYAML(string(doc.Raw()), nil))
 
 	return model{
 		cfg:         cfg,
@@ -252,34 +254,92 @@ func (m model) handlePreviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab", "esc":
 		return m.togglePreviewPane()
 	}
-	return m.updatePreviewEditor(msg)
+	// The preview is read-only; remaining keys only scroll the viewport.
+	var cmd tea.Cmd
+	m.preview, cmd = m.preview.Update(msg)
+	return m, cmd
 }
 
 func (m model) togglePreviewPane() (tea.Model, tea.Cmd) {
 	if m.mode == panePreview {
 		m.mode = paneList
-		m.preview.Blur()
 		m.statusMsg = ""
 		return m, nil
 	}
 	m.mode = panePreview
-	cmd := m.preview.Focus()
-	m.statusMsg = "Editing YAML directly — Tab/Esc back to list."
-	return m, cmd
-}
-
-func (m model) updatePreviewEditor(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	m.preview, cmd = m.preview.Update(msg)
-	if err := m.doc.ReplaceRaw([]byte(m.preview.Value())); err == nil {
-		m.list.Rebuild(m.doc.Blocks())
-	}
-	return m, cmd
+	m.statusMsg = "Viewing YAML — ↑/↓ scroll, Tab/Esc back to list."
+	return m, nil
 }
 
 func (m *model) syncView() {
-	m.preview.SetValue(string(m.doc.Raw()))
+	m.refreshPreview()
 	m.list.Rebuild(m.doc.Blocks())
+}
+
+// newPreviewRenderer builds a glamour renderer that word-wraps to wrap columns.
+// It starts from the dark style (or the colorless ASCII style under NO_COLOR)
+// and trims glamour's default chrome: the document and code-block left margins
+// stack to ~4 columns and the block prefix/suffix add blank lines, all wasteful
+// inside a panel that already has its own border. A single-column margin is
+// kept. Returns nil on error, in which case renderPreviewYAML falls back to
+// plain text.
+func newPreviewRenderer(wrap int) *glamour.TermRenderer {
+	cfg := styles.DarkStyleConfig
+	if os.Getenv("NO_COLOR") != "" {
+		cfg = styles.NoTTYStyleConfig
+	}
+	one, zero := uint(1), uint(0)
+	cfg.Document.Margin = &one
+	cfg.Document.BlockPrefix = ""
+	cfg.Document.BlockSuffix = ""
+	cfg.CodeBlock.Margin = &zero
+
+	r, err := glamour.NewTermRenderer(glamour.WithStyles(cfg), glamour.WithWordWrap(wrap))
+	if err != nil {
+		return nil
+	}
+	return r
+}
+
+// renderPreviewYAML renders raw YAML through r (wrapped in a markdown code fence)
+// for syntax-highlighted display. Falls back to the plain text when r is nil or
+// rendering fails.
+func renderPreviewYAML(raw string, r *glamour.TermRenderer) string {
+	raw = strings.TrimRight(raw, "\n")
+	if r == nil || raw == "" {
+		return raw
+	}
+	out, err := r.Render("```yaml\n" + raw + "\n```")
+	if err != nil {
+		return raw
+	}
+	return trimBlankLines(out)
+}
+
+var ansiEscapeRE = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// trimBlankLines drops leading and trailing whitespace-only lines — glamour
+// emits a padded blank line around the code block — while leaving any interior
+// blank lines intact. It is ANSI-aware so colored padding still reads as blank.
+func trimBlankLines(s string) string {
+	lines := strings.Split(s, "\n")
+	blank := func(l string) bool {
+		return strings.TrimSpace(ansiEscapeRE.ReplaceAllString(l, "")) == ""
+	}
+	start, end := 0, len(lines)
+	for start < end && blank(lines[start]) {
+		start++
+	}
+	for end > start && blank(lines[end-1]) {
+		end--
+	}
+	return strings.Join(lines[start:end], "\n")
+}
+
+// refreshPreview re-renders the document into the read-only preview viewport,
+// syntax-highlighted and wrapped to the current panel width.
+func (m *model) refreshPreview() {
+	m.preview.SetContent(renderPreviewYAML(string(m.doc.Raw()), m.previewRenderer))
 }
 
 func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
@@ -423,8 +483,10 @@ func (m *model) relayout() {
 		m.innerH = 1
 	}
 	m.list.SetHeight(m.innerH)
-	m.preview.SetWidth(previewW - 2)
-	m.preview.SetHeight(m.innerH)
+	m.preview.Width = previewW - 2
+	m.preview.Height = m.innerH
+	m.previewRenderer = newPreviewRenderer(m.preview.Width)
+	m.refreshPreview()
 }
 
 func (m model) View() string {
@@ -450,15 +512,11 @@ func (m model) View() string {
 	leftPanel := theme.RenderTitledPanel(leftTitle, theme.Size{W: m.listW, H: m.innerH + 2}, !previewFocused, m.list.View())
 
 	_, rightW := theme.TwoColumnWidths(m.width)
-	previewTitle := "Preview"
-	if previewFocused {
-		previewTitle = "Editing YAML"
-	}
-	rightPanel := theme.RenderTitledPanel(previewTitle, theme.Size{W: rightW, H: m.innerH + 2}, previewFocused, m.preview.View())
+	rightPanel := theme.RenderTitledPanel("Preview", theme.Size{W: rightW, H: m.innerH + 2}, previewFocused, m.preview.View())
 
 	var hintText string
 	if previewFocused {
-		hintText = "[Tab] / [Esc] back to list"
+		hintText = "[↑/↓] scroll • [Tab] / [Esc] back to list"
 	} else if m.list.IsFiltering() {
 		hintText = "[type] filter • [↑/↓] navigate • [Enter] select • [Esc] clear"
 	} else if it := m.list.SelectedItem(); it != nil && it.Existing {
