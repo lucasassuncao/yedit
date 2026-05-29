@@ -93,7 +93,7 @@ func applyHidden(fields []schema.FieldDef, hidden []string) []schema.FieldDef {
 	for _, h := range hidden {
 		skip[h] = true
 	}
-	out := fields[:0]
+	out := make([]schema.FieldDef, 0, len(fields))
 	for _, f := range fields {
 		if !skip[f.YAMLName] {
 			out = append(out, f)
@@ -246,6 +246,7 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
+	m.scrollPreviewToSelected()
 	return m, cmd
 }
 
@@ -274,6 +275,28 @@ func (m model) togglePreviewPane() (tea.Model, tea.Cmd) {
 func (m *model) syncView() {
 	m.refreshPreview()
 	m.list.Rebuild(m.doc.Blocks())
+	m.scrollPreviewToSelected()
+}
+
+// scrollPreviewToSelected scrolls the read-only preview so the YAML for the
+// selected top-level block sits near the top, letting list navigation track the
+// document. Applies only in the list pane and only for keys present in the file.
+// The scroll is line-based, so it can drift slightly when long lines above the
+// block wrap.
+func (m *model) scrollPreviewToSelected() {
+	if m.mode != paneList {
+		return
+	}
+	it := m.list.SelectedItem()
+	if it == nil || !it.Existing {
+		return
+	}
+	for _, b := range m.doc.Blocks() {
+		if b.Key == it.Key {
+			m.preview.SetYOffset(b.Line - 1)
+			return
+		}
+	}
 }
 
 // newPreviewRenderer builds a glamour renderer that word-wraps to wrap columns.
@@ -520,9 +543,9 @@ func (m model) View() string {
 	} else if m.list.IsFiltering() {
 		hintText = "[type] filter • [↑/↓] navigate • [Enter] select • [Esc] clear"
 	} else if it := m.list.SelectedItem(); it != nil && it.Existing {
-		hintText = "[↑/↓] nav • [Enter] open • [ctrl+d] delete • [ctrl+u] undo • [ctrl+s] save changes • [ctrl+l] validate"
+		hintText = "[↑/↓] nav • [/] filter • [Enter] open • [ctrl+d] delete • [ctrl+u] undo • [ctrl+s] save • [ctrl+l] validate"
 	} else {
-		hintText = "[↑/↓] nav • [Enter] add • [ctrl+u] undo • [ctrl+s] save changes • [ctrl+l] validate"
+		hintText = "[↑/↓] nav • [/] filter • [Enter] add • [ctrl+u] undo • [ctrl+s] save • [ctrl+l] validate"
 	}
 
 	feedback := lipgloss.NewStyle().Width(m.width).Render(statusStyle.Render(m.statusMsg))

@@ -2,7 +2,6 @@ package editor
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -68,13 +67,14 @@ func buildListItems(knownKeys []string, existing []document.Block) []listItem {
 		items = append(items, existingItems...)
 	}
 
+	// AVAILABLE keys keep the schema's canonical order (knownKeys), matching the
+	// order in which Insert places new blocks.
 	available := make([]string, 0)
 	for _, k := range knownKeys {
 		if !existingSet[k] {
 			available = append(available, k)
 		}
 	}
-	sort.Strings(available)
 
 	if len(available) > 0 {
 		items = append(items, listItem{Separator: true, Key: ""})
@@ -251,12 +251,11 @@ func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
 }
 
 func (lm *listModel) moveFCursor(delta int) {
-	items := lm.filteredItems()
-	n := len(items)
-	if n == 0 {
+	next := lm.fCursor + delta
+	if next < 0 || next >= len(lm.filteredItems()) {
 		return
 	}
-	lm.fCursor = (lm.fCursor + delta + n) % n
+	lm.fCursor = next
 	lm.clampFScroll()
 }
 
@@ -274,13 +273,11 @@ func (lm *listModel) clampFScroll() {
 }
 
 func (lm *listModel) moveCursor(delta int) {
-	n := len(lm.items)
-	if n == 0 {
-		return
-	}
-	for i := 0; i < n; i++ {
-		lm.cursor = (lm.cursor + delta + n) % n
-		if !lm.items[lm.cursor].Separator {
+	// Clamp at the list bounds (no wrap-around), skipping separator rows —
+	// matching the tree and viewer panels.
+	for i := lm.cursor + delta; i >= 0 && i < len(lm.items); i += delta {
+		if !lm.items[i].Separator {
+			lm.cursor = i
 			break
 		}
 	}

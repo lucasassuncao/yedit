@@ -104,5 +104,10 @@ func appendBlock(raw []byte, snippet string) []byte {
 	if len(trimmed) == 0 {
 		return []byte(snippet)
 	}
-	return append(trimmed, append([]byte("\n"), []byte(snippet)...)...)
+	// Build a fresh slice; appending onto trimmed would alias raw's backing array.
+	out := make([]byte, 0, len(trimmed)+1+len(snippet))
+	out = append(out, trimmed...)
+	out = append(out, '\n')
+	out = append(out, snippet...)
+	return out
 }

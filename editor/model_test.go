@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -95,5 +96,102 @@ func TestPreviewIsReadOnly(t *testing.T) {
 	}
 	if m.doc.Dirty() != dirtyBefore {
 		t.Errorf("preview changed dirty state: was %v now %v", dirtyBefore, m.doc.Dirty())
+	}
+}
+
+// TestBuildListItemsAvailableKeepsCanonicalOrder verifies AVAILABLE keys follow
+// the schema's declaration order (not alphabetical), matching Insert placement.
+func TestBuildListItemsAvailableKeepsCanonicalOrder(t *testing.T) {
+	known := []string{"name", "image", "build", "appPort"} // canonical, not alphabetical
+	var got []string
+	for _, it := range buildListItems(known, nil) {
+		if !it.Separator {
+			got = append(got, it.Key)
+		}
+	}
+	want := []string{"name", "image", "build", "appPort"}
+	if len(got) != len(want) {
+		t.Fatalf("available = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("available[%d] = %q, want %q (canonical order, not alphabetical)", i, got[i], want[i])
+		}
+	}
+}
+
+// TestListMoveCursorClampsAtBounds verifies the main list clamps at top/bottom
+// instead of wrapping around, matching the tree panel.
+func TestListMoveCursorClampsAtBounds(t *testing.T) {
+	lm := newListModel([]string{"a", "b", "c"}, nil, 10)
+	first := lm.cursor
+	lm.moveCursor(-1) // already at the top — must not wrap to the bottom
+	if lm.cursor != first {
+		t.Errorf("moveCursor(-1) at top moved cursor to %d, want %d (clamp)", lm.cursor, first)
+	}
+	lm.jumpToLast()
+	last := lm.cursor
+	lm.moveCursor(1) // at the bottom — must not wrap to the top
+	if lm.cursor != last {
+		t.Errorf("moveCursor(+1) at bottom moved cursor to %d, want %d (clamp)", lm.cursor, last)
+	}
+}
+
+// followCfg is a flat schema used to exercise preview-follows-selection.
+type followCfg struct {
+	A string `yaml:"a"`
+	B string `yaml:"b"`
+	C string `yaml:"c"`
+	D string `yaml:"d"`
+	E string `yaml:"e"`
+	F string `yaml:"f"`
+}
+
+// TestPreviewFollowsSelectedBlock verifies that navigating the ADDED list
+// scrolls the read-only preview to the selected block's line.
+func TestPreviewFollowsSelectedBlock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "f.yaml")
+	if err := os.WriteFile(path, []byte("a: 1\nb: 2\nc: 3\nd: 4\ne: 5\nf: 6\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(Config{Path: path, Schema: &followCfg{}})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	// Short viewport so the 6-line document overflows and can actually scroll.
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
+	m = updated.(model)
+	if m.preview.YOffset != 0 {
+		t.Fatalf("initial YOffset = %d, want 0", m.preview.YOffset)
+	}
+	// Navigate down to "c" (third block, line 3).
+	for i := 0; i < 2; i++ {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = updated.(model)
+	}
+	if it := m.list.SelectedItem(); it == nil || it.Key != "c" {
+		t.Fatalf("selected = %v, want c", it)
+	}
+	if m.preview.YOffset != 2 {
+		t.Errorf("YOffset following \"c\" = %d, want 2 (block at line 3)", m.preview.YOffset)
+	}
+}
+
+// TestListFilterByTyping verifies the "/" filter narrows the list as the user types.
+func TestListFilterByTyping(t *testing.T) {
+	lm := newListModel([]string{"alpha", "beta", "gamma"}, nil, 10)
+	if lm.IsFiltering() {
+		t.Fatal("should not start in filtering mode")
+	}
+	lm, _ = lm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	if !lm.IsFiltering() {
+		t.Fatal("\"/\" should enter filtering mode")
+	}
+	for _, r := range "be" {
+		lm, _ = lm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	got := lm.filteredItems()
+	if len(got) != 1 || got[0].Key != "beta" {
+		t.Errorf("filter \"be\" matched %v, want [beta]", got)
 	}
 }

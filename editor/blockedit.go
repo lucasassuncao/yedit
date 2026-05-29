@@ -317,19 +317,19 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 			nodeByLabel[n.label] = n
 		}
 	}
-	yaml := be.yamlEditor.Value()
+	content := be.yamlEditor.Value()
 	changed := false
 	for _, fieldName := range fields {
 		if n, ok := nodeByLabel[fieldName]; ok && !n.checked {
-			yaml = applyTreeToggle(ctx, n, true, yaml)
+			content = applyTreeToggle(ctx, n, true, content)
 			changed = true
 		}
 	}
 	if !changed {
 		return be
 	}
-	be.yamlEditor.SetValue(yaml)
-	be.tree = syncTreeCheckedFromYAML(be.tree, be.key, yaml)
+	be.yamlEditor.SetValue(content)
+	be.tree = syncTreeCheckedFromYAML(be.tree, be.key, content)
 	return be
 }
 
