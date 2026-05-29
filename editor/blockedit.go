@@ -125,11 +125,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 
 	// For structured sequences: show the first item (or empty placeholder).
 	if structuredSeq {
-		firstItem := yamlForSeqItem(spec.key, be.seqBase, 0)
-		if firstItem == spec.key+":\n" {
-			firstItem = spec.key + ":\n"
-		}
-		be.yamlEditor.SetValue(firstItem)
+		be.yamlEditor.SetValue(yamlForSeqItem(spec.key, be.seqBase, 0))
 	}
 
 	// If no child fields exist, focus the YAML editor immediately.
