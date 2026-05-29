@@ -69,6 +69,14 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 		entries := parseSeqEntries(spec.key, spec.content)
 		tm.nodes = buildSeqNodes(spec.defs, entries)
 
+	case schema.KindMap:
+		if len(spec.defs) == 0 {
+			break // free-form map (e.g. map[string]string) — no tree; raw YAML
+		}
+		tm.isSeq = true // collection navigator, keyed by the map key
+		entries := parseMapEntries(spec.key, spec.content)
+		tm.nodes = buildMapNodes(spec.defs, entries)
+
 	case schema.KindStruct:
 		tm.nodes = flattenDefsAsTree(spec.defs, nil, 0)
 		tm.nodes = syncTreeCheckedStates(tm.nodes, spec.key, spec.content)
@@ -113,6 +121,70 @@ func buildSeqNodes(childDefs []schema.FieldDef, entries []seqEntry) []treeNode {
 		isLeaf: true,
 	})
 	return nodes
+}
+
+// buildMapNodes creates the node list for a structured map block: one
+// treeNodeSeqItem per existing entry (labelled by the map key), then
+// treeNodeAddNew. Mirrors buildSeqNodes but reads each entry's struct value.
+func buildMapNodes(childDefs []schema.FieldDef, entries []seqEntry) []treeNode {
+	var nodes []treeNode
+	for i, e := range entries {
+		nodes = append(nodes, treeNode{
+			kind:     treeNodeSeqItem,
+			yamlPath: []string{e.Label},
+			label:    e.Label,
+			depth:    0,
+			isLeaf:   false,
+			checked:  true,
+			expanded: false,
+			seqIdx:   i,
+		})
+		children := flattenDefsAsTree(childDefs, []string{e.Label}, 1)
+		children = syncMapEntryChecked(children, e.Content)
+		nodes = append(nodes, children...)
+	}
+	nodes = append(nodes, treeNode{
+		kind:   treeNodeAddNew,
+		label:  "+ add new",
+		depth:  0,
+		isLeaf: true,
+	})
+	return nodes
+}
+
+// syncMapEntryChecked sets the checked flag on leaf field nodes from a single
+// map entry's content ("  <key>:\n    field: val"). It reads the entry's single
+// value mapping, so it is robust to how the key is quoted.
+func syncMapEntryChecked(nodes []treeNode, entryContent string) []treeNode {
+	if entryContent == "" {
+		return nodes
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte("x:\n"+entryContent), &doc); err != nil {
+		return nodes
+	}
+	outer, _ := doc["x"].(map[string]any)
+	var sub map[string]any
+	for _, v := range outer { // the entry has a single key; take its value
+		sub, _ = v.(map[string]any)
+		break
+	}
+	result := make([]treeNode, len(nodes))
+	copy(result, nodes)
+	for i, n := range result {
+		if n.kind != treeNodeField || !n.isLeaf {
+			continue
+		}
+		path := n.yamlPath
+		cur := sub
+		for j := 1; j < len(path)-1 && cur != nil; j++ { // skip path[0] = entry label
+			cur, _ = cur[path[j]].(map[string]any)
+		}
+		if cur != nil && len(path) > 1 {
+			_, result[i].checked = cur[path[len(path)-1]]
+		}
+	}
+	return result
 }
 
 // flattenDefsAsTree converts a []schema.FieldDef into a flat DFS list of

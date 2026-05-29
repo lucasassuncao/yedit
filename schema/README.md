@@ -42,7 +42,7 @@ func TopLevelOrder(fields []FieldDef) []string
 TopLevelOrder returns the discovered top\-level yaml names in declaration order. Use it as the knownOrder argument when constructing a document.Document.
 
 <a name="UnknownKeys"></a>
-## func [UnknownKeys](<https://github.com/lucasassuncao/yedit/blob/main/schema/validate.go#L37>)
+## func [UnknownKeys](<https://github.com/lucasassuncao/yedit/blob/main/schema/validate.go#L43>)
 
 ```go
 func UnknownKeys(raw []byte, known map[string]map[string]bool) []string

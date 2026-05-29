@@ -128,6 +128,35 @@ func itemContentFrom(key, value string) string {
 	return rest[1:]
 }
 
+// applyToggleToEntry is the shared implementation for surgically adding or
+// removing a leaf field within a single collection entry shown in the yamlEditor.
+// resolveEntry extracts the target mapping node (the entry's value) from the
+// block's value node; it differs between sequences and maps.
+func applyToggleToEntry(ctx toggleCtx, node treeNode, checked bool, yamlContent string,
+	resolveEntry func(blockValue *yaml.Node) *yaml.Node,
+) string {
+	if len(node.yamlPath) < 2 {
+		return yamlContent
+	}
+	return withYAMLRoot(yamlContent, func(root *yaml.Node) bool {
+		mapping := root.Content[0]
+		if mapping.Kind != yaml.MappingNode || len(mapping.Content) < 2 {
+			return false
+		}
+		entryNode := resolveEntry(mapping.Content[1])
+		if entryNode == nil {
+			return false
+		}
+		fieldPath := node.yamlPath[1:]
+		if !applyToggleAt(entryNode, fieldPath[:len(fieldPath)-1], fieldPath[len(fieldPath)-1], checked, ctx, false) {
+			return false
+		}
+		pruneEmptyMappings(entryNode)
+		reorderNestedMappingKeys(entryNode, ctx.childDefs)
+		return true
+	})
+}
+
 // applyToggleToSeqItem surgically adds or removes a field from a single
 // sequence item shown in the yamlEditor. yamlContent has the form:
 //
@@ -137,40 +166,117 @@ func itemContentFrom(key, value string) string {
 //
 // node.yamlPath[0] is the seq item label; the actual field path starts at [1].
 func applyToggleToSeqItem(ctx toggleCtx, node treeNode, checked bool, yamlContent string) string {
-	if len(node.yamlPath) < 2 {
-		return yamlContent
-	}
-	return withYAMLRoot(yamlContent, func(root *yaml.Node) bool {
-		mapping := root.Content[0]
-		if mapping.Kind != yaml.MappingNode || len(mapping.Content) < 2 {
-			return false
+	return applyToggleToEntry(ctx, node, checked, yamlContent, func(blockValue *yaml.Node) *yaml.Node {
+		if blockValue.Kind != yaml.SequenceNode || len(blockValue.Content) == 0 {
+			return nil
 		}
-		seqNode := mapping.Content[1]
-		if seqNode.Kind != yaml.SequenceNode || len(seqNode.Content) == 0 {
-			return false
+		if blockValue.Content[0].Kind != yaml.MappingNode {
+			return nil
 		}
-		itemNode := seqNode.Content[0]
-		if itemNode.Kind != yaml.MappingNode {
-			return false
-		}
-		fieldPath := node.yamlPath[1:]
-		if !applyToggleAt(itemNode, fieldPath[:len(fieldPath)-1], fieldPath[len(fieldPath)-1], checked, ctx, false) {
-			return false
-		}
-		pruneEmptyMappings(itemNode)
-		reorderNestedMappingKeys(itemNode, ctx.childDefs)
-		return true
+		return blockValue.Content[0]
 	})
 }
 
 // yamlForSeqItem returns the YAML editor value for a specific sequence item
 // (the full "key:\n  - ...\n" form), so the right panel can show just that item.
+// It also serves the map navigator: a map entry's Content already carries its
+// own "key:" line, so the same "block:\n" + Content assembly applies.
 func yamlForSeqItem(key, seqBase string, seqIdx int) string {
 	entries := parseSeqEntries(key, seqBase)
 	if seqIdx < 0 || seqIdx >= len(entries) {
 		return key + ":\n"
 	}
 	return key + ":\n" + entries[seqIdx].Content
+}
+
+// parseMapEntries parses the YAML mapping in mapBase ("block:\n  <entry>:\n
+// ...") into one entry per top-level map key, preserving each entry's raw lines.
+// The entry indentation is detected from the first non-blank line. It is the map
+// navigator's analogue of parseSeqEntries; the entry key becomes the Label.
+func parseMapEntries(key, mapBase string) []seqEntry {
+	prefix := key + ":\n"
+	if !strings.HasPrefix(mapBase, prefix) {
+		return nil
+	}
+	body := strings.TrimPrefix(mapBase, prefix)
+	lines := strings.Split(body, "\n")
+
+	entryIndent := -1
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		entryIndent = len(line) - len(strings.TrimLeft(line, " "))
+		break
+	}
+	if entryIndent < 0 {
+		return nil
+	}
+
+	var entries []seqEntry
+	var cur []string
+	var curKey string
+
+	flush := func() {
+		for len(cur) > 0 && strings.TrimSpace(cur[len(cur)-1]) == "" {
+			cur = cur[:len(cur)-1]
+		}
+		if len(cur) == 0 {
+			return
+		}
+		label := curKey
+		if label == "" {
+			label = fmt.Sprintf("entry %d", len(entries)+1)
+		}
+		entries = append(entries, seqEntry{Label: label, Content: strings.Join(cur, "\n") + "\n"})
+		cur = nil
+	}
+
+	for _, line := range lines {
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if strings.TrimSpace(line) != "" && indent == entryIndent {
+			flush()
+			curKey = mapEntryKey(line)
+			cur = []string{line}
+		} else if len(cur) > 0 {
+			cur = append(cur, line)
+		}
+	}
+	flush()
+	return entries
+}
+
+// mapEntryKey extracts the map key from an entry's first line, dropping the
+// trailing colon and surrounding quotes (`  "3000":` → "3000").
+func mapEntryKey(line string) string {
+	s := strings.TrimSpace(line)
+	if strings.HasSuffix(s, ":") {
+		s = strings.TrimSuffix(s, ":")
+	} else if i := strings.Index(s, ":"); i >= 0 {
+		s = s[:i]
+	}
+	return strings.Trim(strings.TrimSpace(s), `"'`)
+}
+
+// applyToggleToMapEntry surgically adds or removes a field from the single map
+// entry shown in the yamlEditor. yamlContent has the form:
+//
+//	block:
+//	  "3000":
+//	    label: web
+//
+// node.yamlPath[0] is the entry key; the field path starts at [1].
+func applyToggleToMapEntry(ctx toggleCtx, node treeNode, checked bool, yamlContent string) string {
+	return applyToggleToEntry(ctx, node, checked, yamlContent, func(blockValue *yaml.Node) *yaml.Node {
+		// blockValue is the map: entry-key → struct. Take the first entry's value.
+		if blockValue.Kind != yaml.MappingNode || len(blockValue.Content) < 2 {
+			return nil
+		}
+		if blockValue.Content[1].Kind != yaml.MappingNode {
+			return nil
+		}
+		return blockValue.Content[1]
+	})
 }
 
 // syncTreeCheckedFromYAML re-derives checked states for all treeNodeField leaf
@@ -252,6 +358,7 @@ func withYAMLRoot(current string, fn func(root *yaml.Node) bool) string {
 	if !fn(&root) {
 		return current
 	}
+	forceBlockStyle(&root)
 	var buf strings.Builder
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
@@ -259,6 +366,21 @@ func withYAMLRoot(current string, fn func(root *yaml.Node) bool) string {
 		return current
 	}
 	return strings.TrimRight(buf.String(), "\n") + "\n"
+}
+
+// forceBlockStyle clears flow style from every mapping/sequence node so the
+// re-encoded YAML is block-style (one field per line). Without this, a value
+// that was ever flow ("{}" or "{a: b}") stays inline through later edits.
+func forceBlockStyle(n *yaml.Node) {
+	if n == nil {
+		return
+	}
+	if n.Kind == yaml.MappingNode || n.Kind == yaml.SequenceNode {
+		n.Style &^= yaml.FlowStyle
+	}
+	for _, c := range n.Content {
+		forceBlockStyle(c)
+	}
 }
 
 // findOrCreateMappingChild finds a child mapping node by key, creating it if absent.
@@ -392,9 +514,10 @@ func appendLeafToMapping(mapping *yaml.Node, key, snippet string) {
 	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: key}
 	valNode := &yaml.Node{Kind: yaml.ScalarNode, Value: ""}
 	if snippet != "" {
-		// Parse the snippet to extract the value.
+		// snippet is a "key: value" line (possibly indented). Parse it directly
+		// and lift the value — prepending key+":\n" would nest it under itself.
 		var tmp map[string]any
-		if err := yaml.Unmarshal([]byte(key+":\n"+snippet), &tmp); err == nil {
+		if err := yaml.Unmarshal([]byte(snippet), &tmp); err == nil {
 			if v, ok := tmp[key]; ok {
 				valNode.Value = fmt.Sprintf("%v", v)
 			}

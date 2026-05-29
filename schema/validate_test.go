@@ -79,6 +79,26 @@ func TestUnknownKeys_freeFormArgs(t *testing.T) {
 	}
 }
 
+type portAttr struct {
+	Label         string `yaml:"label"`
+	OnAutoForward string `yaml:"onAutoForward"`
+}
+
+type mapOfStructConfig struct {
+	PortsAttributes map[string]*portAttr `yaml:"portsAttributes"`
+}
+
+// TestUnknownKeys_mapOfStructKeysAreFreeForm verifies that the keys of a
+// map[string]*Struct field are not validated against the value-struct's field
+// names (they are user-chosen, e.g. port specs).
+func TestUnknownKeys_mapOfStructKeysAreFreeForm(t *testing.T) {
+	known := schema.KnownChildren(schema.Discover(&mapOfStructConfig{}))
+	raw := []byte("portsAttributes:\n  \"3000\":\n    label: web\n  lucas:\n    onAutoForward: notify\n")
+	if u := schema.UnknownKeys(raw, known); len(u) != 0 {
+		t.Errorf("map keys must be free-form; got unknown: %v", u)
+	}
+}
+
 func TestUnknownKeys_buildSubKeyTypo(t *testing.T) {
 	raw := []byte("build:\n  dockerfilee: Dockerfile\n  context: .\n")
 	u := schema.UnknownKeys(raw, known(t))

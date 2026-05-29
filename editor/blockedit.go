@@ -91,8 +91,11 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	// For KindSlice with child defs, seqBase holds the full sequence YAML so we
 	// can extract individual item previews and rebuild the snippet on commit.
 	// Scalar sequences (no defs) are edited directly as raw YAML.
-	structuredSeq := spec.kind == schema.KindSlice && len(spec.defs) > 0
-	if structuredSeq {
+	// Structured collections (KindSlice or KindMap with child defs) hold the full
+	// block YAML in seqBase so we can extract per-entry previews and rebuild on
+	// commit. Scalar/free-form blocks are edited directly as raw YAML.
+	structured := (spec.kind == schema.KindSlice || spec.kind == schema.KindMap) && len(spec.defs) > 0
+	if structured {
 		if spec.content == "" {
 			be.seqBase = spec.key + ":\n"
 		} else {
@@ -103,7 +106,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	// If presets are available and this is a new block, try the "base" preset.
 	content := spec.content
 	trivial := spec.key + ":\n"
-	if (content == "" || content == trivial) && !structuredSeq {
+	if (content == "" || content == trivial) && !structured {
 		if cfg.Presets != nil {
 			if y, err := cfg.Presets.PresetYAML(spec.key, "base"); err == nil {
 				content = y
@@ -119,17 +122,18 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 
 	// For new struct blocks, pre-check fields listed in cfg.PreCheckedFields.
 	newBlock := spec.content == "" || spec.content == spec.key+":\n"
-	if newBlock && !structuredSeq {
+	if newBlock && !structured {
 		be = be.withPreCheckedFields()
 	}
 
-	// For structured sequences: show the first item (or empty placeholder).
-	if structuredSeq {
-		be.yamlEditor.SetValue(yamlForSeqItem(spec.key, be.seqBase, 0))
+	// For structured collections: show the first entry (or empty placeholder).
+	if structured {
+		be.yamlEditor.SetValue(be.entryYAML(0))
 	}
 
-	// If no child fields exist, focus the YAML editor immediately.
-	if len(spec.defs) == 0 || spec.kind == schema.KindScalar || spec.kind == schema.KindMap {
+	// If there is no tree to show, focus the YAML editor immediately. A map with
+	// child defs uses the navigator; a free-form map (no defs) stays raw YAML.
+	if len(spec.defs) == 0 || spec.kind == schema.KindScalar || (spec.kind == schema.KindMap && !structured) {
 		be.active = blockEditPanelYAML
 		be.yamlEditor.Focus()
 	}
@@ -282,8 +286,8 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	var cmd tea.Cmd
 	be.yamlEditor, cmd = be.yamlEditor.Update(msg)
 	be.dirty = true
-	if be.kind == schema.KindSlice && len(be.childDefs) > 0 {
-		// Structured sequence: update seqBase with the edited item content.
+	if be.isCollectionNav() {
+		// Structured collection: update seqBase with the edited entry content.
 		be.seqBase = be.rebuildSeqBase()
 	}
 	be.tree = be.resyncTreeFromYAML()
@@ -295,10 +299,86 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 // For structured sequences the editor shows a single item, so the lookup uses
 // the synthetic "x:\n<item>" form expected by syncTreeCheckedStates.
 func (be blockEditState) resyncTreeFromYAML() treeModel {
-	if be.kind == schema.KindSlice && len(be.childDefs) > 0 {
-		return syncTreeCheckedFromYAML(be.tree, "", "x:\n"+be.currentItemContent())
+	if be.isCollectionNav() {
+		return be.syncCurrentEntry()
 	}
 	return syncTreeCheckedFromYAML(be.tree, be.key, be.yamlEditor.Value())
+}
+
+// syncCurrentEntry updates the displayed entry's label and the checked state of
+// its own field nodes from its YAML content, leaving sibling entries untouched —
+// so editing one entry never overwrites another's label or checkmarks.
+func (be blockEditState) syncCurrentEntry() treeModel {
+	tm := be.tree
+	seqIdx := tm.NearestSeqItem()
+	if seqIdx < 0 {
+		return tm
+	}
+	content := be.currentItemContent()
+	newLabel := be.entryLabel(content)
+	fields := entryFieldValues(be.isMapNav(), content)
+
+	nodes := make([]treeNode, len(tm.nodes))
+	copy(nodes, tm.nodes)
+	for i := 0; i < len(nodes); i++ {
+		if nodes[i].kind != treeNodeSeqItem || nodes[i].seqIdx != seqIdx {
+			continue
+		}
+		if newLabel != "" {
+			nodes[i].label = newLabel
+			nodes[i].yamlPath = []string{newLabel}
+		}
+		for j := i + 1; j < len(nodes) && nodes[j].depth > 0; j++ {
+			if nodes[j].kind != treeNodeField {
+				continue
+			}
+			if newLabel != "" && len(nodes[j].yamlPath) > 0 {
+				p := append([]string(nil), nodes[j].yamlPath...)
+				p[0] = newLabel
+				nodes[j].yamlPath = p
+			}
+			if !nodes[j].isLeaf {
+				continue
+			}
+			cur := fields
+			path := nodes[j].yamlPath
+			for k := 1; k < len(path)-1 && cur != nil; k++ {
+				cur, _ = cur[path[k]].(map[string]any)
+			}
+			if cur != nil && len(path) > 1 {
+				_, nodes[j].checked = cur[path[len(path)-1]]
+			}
+		}
+		break
+	}
+	tm.nodes = nodes
+	return tm
+}
+
+// entryFieldValues returns the field map of a single collection entry's content
+// ("  - name: x" for sequences, "  key:\n    field: x" for maps).
+func entryFieldValues(isMap bool, content string) map[string]any {
+	if content == "" {
+		return nil
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte("x:\n"+content), &doc); err != nil {
+		return nil
+	}
+	if isMap {
+		outer, _ := doc["x"].(map[string]any)
+		for _, v := range outer { // single entry: take its value
+			m, _ := v.(map[string]any)
+			return m
+		}
+		return nil
+	}
+	items, _ := doc["x"].([]any)
+	if len(items) > 0 {
+		m, _ := items[0].(map[string]any)
+		return m
+	}
+	return nil
 }
 
 // withPreCheckedFields toggles ON the fields listed in cfg.PreCheckedFields for
@@ -397,14 +477,14 @@ func (be blockEditState) applyPendingRemove(nodeIdx int) blockEditState {
 	node := be.tree.nodes[nodeIdx]
 	ctx := toggleCtx{key: be.key, snippets: be.cfg.fieldSnippetsFor(be.key), childDefs: be.childDefs}
 	var newYAML string
-	if be.kind == schema.KindSlice {
-		newYAML = applyToggleToSeqItem(ctx, node, false, be.yamlEditor.Value())
+	if be.isCollectionNav() {
+		newYAML = be.applyEntryToggle(ctx, node, false, be.yamlEditor.Value())
 	} else {
 		newYAML = applyTreeToggle(ctx, node, false, be.yamlEditor.Value())
 	}
 	be.yamlEditor.SetValue(newYAML)
 	be.dirty = true
-	if be.kind == schema.KindSlice {
+	if be.isCollectionNav() {
 		be.seqBase = be.rebuildSeqBase()
 	}
 	be.tree = be.resyncTreeFromYAML()
@@ -443,13 +523,13 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 			be.dirty = true
 			ctx := toggleCtx{key: be.key, snippets: be.cfg.fieldSnippetsFor(be.key), childDefs: be.childDefs}
 			var newYAML string
-			if be.kind == schema.KindSlice {
-				newYAML = applyToggleToSeqItem(ctx, node, node.checked, be.yamlEditor.Value())
+			if be.isCollectionNav() {
+				newYAML = be.applyEntryToggle(ctx, node, node.checked, be.yamlEditor.Value())
 			} else {
 				newYAML = applyTreeToggle(ctx, node, node.checked, be.yamlEditor.Value())
 			}
 			be.yamlEditor.SetValue(newYAML)
-			if be.kind == schema.KindSlice {
+			if be.isCollectionNav() {
 				be.seqBase = be.rebuildSeqBase()
 			}
 			be.tree = be.resyncTreeFromYAML()
@@ -457,29 +537,30 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 
 	case treeAddNew:
 		be.dirty = true
-		be.tree = be.tree.WithNewSeqItem(be.childDefs, "")
+		be.tree = be.tree.WithNewSeqItem(be.childDefs, be.newEntryLabel())
 		be.seqBase = be.rebuildSeqBase()
-		// Update YAML editor to show the new (empty) item.
+		// Show the new entry and reflect its seeded field in the tree.
 		newSeqIdx := be.tree.NearestSeqItem()
-		be.yamlEditor.SetValue(yamlForSeqItem(be.key, be.seqBase, newSeqIdx))
+		be.yamlEditor.SetValue(be.entryYAML(newSeqIdx))
+		be.tree = be.resyncTreeFromYAML()
 
 	case treeDeleted:
 		be.dirty = true
 		be.seqBase = be.rebuildSeqBase()
 		newSeqIdx := be.tree.NearestSeqItem()
 		if newSeqIdx >= 0 {
-			be.yamlEditor.SetValue(yamlForSeqItem(be.key, be.seqBase, newSeqIdx))
+			be.yamlEditor.SetValue(be.entryYAML(newSeqIdx))
 		} else {
 			be.yamlEditor.SetValue(be.key + ":\n")
 		}
 	}
 
-	// Update preview when cursor moved to a different seq item.
+	// Update preview when cursor moved to a different entry.
 	if action == treeNoAction || action == treeExpanded || action == treeCollapsed {
 		newSeqIdx := be.tree.NearestSeqItem()
-		if be.kind == schema.KindSlice && newSeqIdx != prevSeqIdx {
+		if be.isCollectionNav() && newSeqIdx != prevSeqIdx {
 			if newSeqIdx >= 0 {
-				be.yamlEditor.SetValue(yamlForSeqItem(be.key, be.seqBase, newSeqIdx))
+				be.yamlEditor.SetValue(be.entryYAML(newSeqIdx))
 			} else {
 				be.yamlEditor.SetValue(be.key + ":\n")
 			}
@@ -493,14 +574,14 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 // For seq items that exist in seqBase, preserves their original content;
 // for new items, uses the current YAML editor value.
 func (be blockEditState) rebuildSeqBase() string {
-	entries := parseSeqEntries(be.key, be.seqBase)
+	entries := be.parseEntries()
 
 	// Update the entry corresponding to the currently displayed item.
 	currentIdx := be.tree.NearestSeqItem()
 	if currentIdx >= 0 && currentIdx < len(entries) {
 		content := itemContentFrom(be.key, be.yamlEditor.Value())
 		if content != "" {
-			label := labelFromContent(content)
+			label := be.entryLabel(content)
 			if label == "" {
 				label = entries[currentIdx].Label
 			}
@@ -522,7 +603,7 @@ func (be blockEditState) rebuildSeqBase() string {
 		label := seqItems[idx].label
 		entries = append(entries, seqEntry{
 			Label:   label,
-			Content: be.initialSeqItemContent(label),
+			Content: be.initialEntryContent(label),
 		})
 	}
 	// If entries were deleted, trim.
@@ -549,6 +630,88 @@ func (be blockEditState) initialSeqItemContent(label string) string {
 		return "  - name: \"" + label + "\"\n"
 	}
 	return "  - " + first + ": \"\"\n"
+}
+
+// --- Collection navigator: shared by structured sequences and structured maps ---
+
+// isSeqNav reports whether this block is a structured sequence ([]Struct).
+func (be blockEditState) isSeqNav() bool {
+	return be.kind == schema.KindSlice && len(be.childDefs) > 0
+}
+
+// isMapNav reports whether this block is a structured map (map[string]Struct).
+func (be blockEditState) isMapNav() bool {
+	return be.kind == schema.KindMap && len(be.childDefs) > 0
+}
+
+// isCollectionNav reports whether this block uses the [N] / [+ add new] navigator.
+func (be blockEditState) isCollectionNav() bool {
+	return be.isSeqNav() || be.isMapNav()
+}
+
+// parseEntries splits be.seqBase into entries using the kind-appropriate parser.
+func (be blockEditState) parseEntries() []seqEntry {
+	if be.isMapNav() {
+		return parseMapEntries(be.key, be.seqBase)
+	}
+	return parseSeqEntries(be.key, be.seqBase)
+}
+
+// entryYAML is the single-entry editor view ("block:\n  <entry>") for index idx.
+func (be blockEditState) entryYAML(idx int) string {
+	if !be.isMapNav() {
+		return yamlForSeqItem(be.key, be.seqBase, idx)
+	}
+	entries := parseMapEntries(be.key, be.seqBase)
+	if idx < 0 || idx >= len(entries) {
+		return be.key + ":\n"
+	}
+	// Normalize to block style so a flow entry ("key: {a: b}") shown in the YAML
+	// pane renders one field per line, like every other block.
+	return withYAMLRoot(be.key+":\n"+entries[idx].Content, func(*yaml.Node) bool { return true })
+}
+
+// applyEntryToggle adds/removes a field within the current entry view.
+func (be blockEditState) applyEntryToggle(ctx toggleCtx, node treeNode, checked bool, content string) string {
+	if be.isMapNav() {
+		return applyToggleToMapEntry(ctx, node, checked, content)
+	}
+	return applyToggleToSeqItem(ctx, node, checked, content)
+}
+
+// entryLabel derives an entry's label from its content: the map key for maps,
+// the "name" field for sequences.
+func (be blockEditState) entryLabel(content string) string {
+	if be.isMapNav() {
+		if i := strings.IndexByte(content, '\n'); i >= 0 {
+			return mapEntryKey(content[:i])
+		}
+		return mapEntryKey(content)
+	}
+	return labelFromContent(content)
+}
+
+// initialEntryContent returns the YAML template for a freshly added entry.
+func (be blockEditState) initialEntryContent(label string) string {
+	if be.isMapNav() {
+		return "  " + label + ":\n    " + be.childDefs[0].YAMLName + ": \"\"\n"
+	}
+	return be.initialSeqItemContent(label)
+}
+
+// newEntryLabel is the label for a freshly added entry: a placeholder key for
+// maps (the user renames it in the YAML pane), or "" for sequences (auto "item N").
+func (be blockEditState) newEntryLabel() string {
+	if !be.isMapNav() {
+		return ""
+	}
+	n := 1
+	for _, node := range be.tree.nodes {
+		if node.kind == treeNodeSeqItem {
+			n++
+		}
+	}
+	return fmt.Sprintf("key%d", n)
 }
 
 func (be blockEditState) switchPanel() blockEditState {
@@ -597,16 +760,20 @@ func (be blockEditState) applyPreset(name string) blockEditState {
 	be.errMsg = ""
 	be.dirty = true
 
-	if be.kind == schema.KindSlice && len(be.childDefs) > 0 {
-		// Structured sequence: rebuild seqBase and tree from the preset, then
-		// show the first item in the YAML editor.
+	if be.isCollectionNav() {
+		// Structured collection: rebuild seqBase and tree from the preset, then
+		// show the first entry in the YAML editor.
 		be.seqBase = y
-		entries := parseSeqEntries(be.key, y)
-		be.tree.nodes = buildSeqNodes(be.childDefs, entries)
+		entries := be.parseEntries()
+		if be.isMapNav() {
+			be.tree.nodes = buildMapNodes(be.childDefs, entries)
+		} else {
+			be.tree.nodes = buildSeqNodes(be.childDefs, entries)
+		}
 		be.tree.cursor = 0
 		be.tree.offset = 0
 		if len(entries) > 0 {
-			be.yamlEditor.SetValue(yamlForSeqItem(be.key, y, 0))
+			be.yamlEditor.SetValue(be.entryYAML(0))
 		} else {
 			be.yamlEditor.SetValue(be.key + ":\n")
 		}
@@ -622,8 +789,8 @@ func (be blockEditState) commit() (blockEditState, tea.Cmd) {
 	be.errMsg = ""
 
 	var snippet string
-	if be.kind == schema.KindSlice && len(be.childDefs) > 0 {
-		// Structured sequence: save current item back into seqBase before assembling.
+	if be.isCollectionNav() {
+		// Structured collection: save current entry back into seqBase before assembling.
 		be.seqBase = be.rebuildSeqBase()
 		snippet = be.seqBase
 	} else {
@@ -696,7 +863,7 @@ func (be blockEditState) currentHint() string {
 	}
 	const nav = "[↑/↓] nav • [→/←] expand"
 	const tail = "[Tab] change pane • [ctrl+s] save changes • [Esc] back"
-	if be.kind == schema.KindSlice && len(be.childDefs) > 0 {
+	if be.isCollectionNav() {
 		return nav + " • [Enter] add • [ctrl+d] delete • " + tail
 	}
 	presetHint := ""

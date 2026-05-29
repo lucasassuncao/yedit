@@ -23,6 +23,12 @@ func walkChildren(out map[string]map[string]bool, prefix string, fields []FieldD
 	}
 	out[prefix] = allowed
 	for _, f := range fields {
+		// A map's keys are free-form (user-chosen), so its value-struct's fields
+		// must not be registered as the allowed keys under it. Leaving the path
+		// unregistered makes UnknownKeys treat the sub-tree as free-form.
+		if f.Kind == KindMap {
+			continue
+		}
 		path := f.YAMLName
 		if prefix != "" {
 			path = prefix + "." + f.YAMLName
