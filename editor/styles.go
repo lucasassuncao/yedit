@@ -15,6 +15,9 @@ var (
 
 	statusStyle       = theme.StatusBar
 	filterPromptStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.AccentBright)
+
+	hintKeyStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Accent)
+	hintDimStyle = lipgloss.NewStyle().Foreground(theme.Muted)
 )
 
 func renderHeader(title, file string, dirty bool, width int) string {

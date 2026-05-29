@@ -72,13 +72,17 @@ func discoverFields(t reflect.Type, depth int) []FieldDef {
 
 		// Custom union types take precedence over reflective descent.
 		if children := providerChildren(f.Type); children != nil {
-			info.Kind = KindUnion
+			info.Kind = KindVariant
 			info.Children = children
 		} else {
 			nested := unwrap(f.Type)
 			if nested.Kind() == reflect.Struct {
 				info.Children = discoverFields(nested, depth+1)
 			}
+		}
+		// A primitive field with a fixed oneof set is an enum.
+		if info.Kind == KindPrimitive && len(info.OneOf) > 0 {
+			info.Kind = KindEnum
 		}
 
 		out = append(out, info)
@@ -113,13 +117,13 @@ func kindOf(t reflect.Type) Kind {
 	case reflect.Ptr:
 		return kindOf(t.Elem())
 	case reflect.Struct:
-		return KindStruct
+		return KindObject
 	case reflect.Slice, reflect.Array:
-		return KindSlice
+		return KindList
 	case reflect.Map:
-		return KindMap
+		return KindDictionary
 	default:
-		return KindScalar
+		return KindPrimitive
 	}
 }
 

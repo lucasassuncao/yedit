@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"gopkg.in/yaml.v3"
 
@@ -51,11 +52,12 @@ type blockEditState struct {
 	tree        treeModel
 	childDefs   []schema.FieldDef          // schema children for this block
 	kind        schema.Kind                // block kind (Struct, Slice, …)
-	seqBase     string                     // for KindSlice: accumulates full sequence YAML
+	seqBase     string                     // for KindList: accumulates full sequence YAML
 	knownByPath map[string]map[string]bool // for schema validation at commit
 
-	yamlEditor textarea.Model
-	active     blockEditPanel
+	yamlEditor      textarea.Model
+	previewRenderer *glamour.TermRenderer // non-nil only for KindObject blocks
+	active          blockEditPanel
 
 	isEdit bool // false = add new block, true = edit existing
 	dirty  bool // uncommitted changes since last ctrl+s
@@ -93,13 +95,13 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 
 	be.tree = newTreeModel(spec, be.innerH())
 
-	// For KindSlice with child defs, seqBase holds the full sequence YAML so we
+	// For KindList with child defs, seqBase holds the full sequence YAML so we
 	// can extract individual item previews and rebuild the snippet on commit.
 	// Scalar sequences (no defs) are edited directly as raw YAML.
-	// Structured collections (KindSlice or KindMap with child defs) hold the full
+	// Structured collections (KindList or KindDictionary with child defs) hold the full
 	// block YAML in seqBase so we can extract per-entry previews and rebuild on
 	// commit. Scalar/free-form blocks are edited directly as raw YAML.
-	structured := (spec.kind == schema.KindSlice || spec.kind == schema.KindMap) && len(spec.defs) > 0
+	structured := (spec.kind == schema.KindList || spec.kind == schema.KindDictionary) && len(spec.defs) > 0
 	if structured {
 		if spec.content == "" {
 			be.seqBase = spec.key + ":\n"
@@ -138,7 +140,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 
 	// If there is no tree to show, focus the YAML editor immediately. A map with
 	// child defs uses the navigator; a free-form map (no defs) stays raw YAML.
-	if len(spec.defs) == 0 || spec.kind == schema.KindScalar || (spec.kind == schema.KindMap && !structured) {
+	if len(spec.defs) == 0 || spec.kind == schema.KindPrimitive || spec.kind == schema.KindEnum || (spec.kind == schema.KindDictionary && !structured) {
 		be.active = blockEditPanelYAML
 		be.yamlEditor.Focus()
 	}
@@ -149,7 +151,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 func (be blockEditState) newYAMLEditor(content string) textarea.Model {
 	ta := textarea.New()
 	ta.SetWidth(be.rightW - 2)
-	ta.SetHeight(be.innerH() - 1)
+	ta.SetHeight(be.editorH() - 1)
 	ta.CharLimit = 0
 	ta.ShowLineNumbers = false
 	ta.Blur()
@@ -161,6 +163,9 @@ func (be blockEditState) newYAMLEditor(content string) textarea.Model {
 
 func (be *blockEditState) relayout() {
 	be.listW, be.rightW = theme.TwoColumnWidths(be.width)
+	if be.kind == schema.KindObject {
+		be.previewRenderer = newPreviewRenderer(be.rightW - 2)
+	}
 }
 
 func (be blockEditState) innerH() int {
@@ -169,6 +174,28 @@ func (be blockEditState) innerH() int {
 		h = 1
 	}
 	return h
+}
+
+// hintH returns the content height of the hint panel (bottom-right).
+// The hint takes ~1/3 of the right column, floored at 5 lines.
+func (be blockEditState) hintH() int {
+	total := be.innerH() - 2 // subtract 2 for the extra border row from stacking
+	h := total / 3
+	if h < 5 {
+		h = 5
+	}
+	if total-h < 5 {
+		h = total - 5
+	}
+	if h < 0 {
+		h = 0
+	}
+	return h
+}
+
+// editorH returns the content height of the top-right panel (editor/preview).
+func (be blockEditState) editorH() int {
+	return be.innerH() - 2 - be.hintH()
 }
 
 func (be blockEditState) Init() tea.Cmd { return textarea.Blink }
@@ -187,7 +214,7 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.height = m.Height
 		be.relayout()
 		be.yamlEditor.SetWidth(be.rightW - 2)
-		be.yamlEditor.SetHeight(be.innerH() - 1)
+		be.yamlEditor.SetHeight(be.editorH() - 1)
 		be.tree.height = be.innerH()
 		if be.confirmAlert != nil {
 			be.confirmAlert.Resize(theme.Size{W: m.Width, H: m.Height})
@@ -668,12 +695,12 @@ func (be blockEditState) initialSeqItemContent(label string) string {
 
 // isSeqNav reports whether this block is a structured sequence ([]Struct).
 func (be blockEditState) isSeqNav() bool {
-	return be.kind == schema.KindSlice && len(be.childDefs) > 0
+	return be.kind == schema.KindList && len(be.childDefs) > 0
 }
 
 // isMapNav reports whether this block is a structured map (map[string]Struct).
 func (be blockEditState) isMapNav() bool {
-	return be.kind == schema.KindMap && len(be.childDefs) > 0
+	return be.kind == schema.KindDictionary && len(be.childDefs) > 0
 }
 
 // isCollectionNav reports whether this block uses the [N] / [+ add new] navigator.
@@ -867,11 +894,18 @@ func (be blockEditState) View() string {
 	leftPanel := theme.RenderTitledPanel("Fields", theme.Size{W: be.listW, H: be.innerH() + 2}, treeActive, be.tree.View())
 
 	yamlActive := be.active == blockEditPanelYAML
-	yamlTitle := "Preview"
-	if yamlActive {
-		yamlTitle = "Editing YAML"
+	var topTitle, topContent string
+	if !yamlActive && be.kind == schema.KindObject {
+		topTitle = "Preview"
+		topContent = renderPreviewYAML(be.yamlEditor.Value(), be.previewRenderer)
+	} else {
+		topTitle = "Editing YAML"
+		topContent = be.yamlEditor.View()
 	}
-	rightPanel := theme.RenderTitledPanel(yamlTitle, theme.Size{W: be.rightW, H: be.innerH() + 2}, yamlActive, be.yamlEditor.View())
+	topPanel := theme.RenderTitledPanel(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, topContent)
+
+	hintPanel := theme.RenderTitledPanel("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, false, be.hintContent())
+	rightPanel := lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)
 
 	hintText := be.currentHint()
 
@@ -954,4 +988,150 @@ func (be blockEditState) presetPreviewYAML() string {
 func validateSnippetText(text string) error {
 	var check any
 	return yaml.Unmarshal([]byte(text), &check)
+}
+
+// --- Hint panel ----------------------------------------------------------
+
+func kindHumanLabel(k schema.Kind) string {
+	switch k {
+	case schema.KindPrimitive:
+		return "primitive"
+	case schema.KindObject:
+		return "object"
+	case schema.KindList:
+		return "list"
+	case schema.KindDictionary:
+		return "dictionary"
+	case schema.KindVariant:
+		return "variant"
+	case schema.KindEnum:
+		return "enum"
+	default:
+		return "unknown"
+	}
+}
+
+// hintContent returns the rendered string for the bottom-right hint panel.
+func (be blockEditState) hintContent() string {
+	idx := be.tree.currentNodeIdx()
+	if idx < 0 {
+		return hintDimStyle.Render("  select a field to see hints")
+	}
+	node := be.tree.nodes[idx]
+	if node.kind != treeNodeField {
+		return hintDimStyle.Render("  select a field to see hints")
+	}
+	return be.fieldHint(node)
+}
+
+// fieldHint builds the hint text for a single treeNodeField.
+func (be blockEditState) fieldHint(node treeNode) string {
+	def := node.def
+	var sb strings.Builder
+
+	sb.WriteString(hintKeyStyle.Render("type") + "  " + kindHumanLabel(def.Kind) + "\n")
+
+	if def.Required {
+		sb.WriteString(hintKeyStyle.Render("required") + "\n")
+	}
+	if def.Default != "" {
+		sb.WriteString(hintKeyStyle.Render("default") + "  " + def.Default + "\n")
+	}
+	if len(def.OneOf) > 0 {
+		sb.WriteString("\n" + hintKeyStyle.Render("values") + "\n")
+		for _, v := range def.OneOf {
+			sb.WriteString("  • " + v + "\n")
+		}
+	}
+	if def.Description != "" {
+		sb.WriteString("\n" + def.Description + "\n")
+	}
+
+	example := be.fieldExample(def)
+	if example != "" {
+		sb.WriteString("\n" + hintKeyStyle.Render("Example") + "\n")
+		for _, line := range strings.Split(strings.TrimRight(example, "\n"), "\n") {
+			sb.WriteString("  " + line + "\n")
+		}
+	}
+
+	return sb.String()
+}
+
+// fieldExample returns a YAML snippet for the field: Config.FieldExamples takes
+// precedence, then the "base" preset, then a structural fallback is generated
+// from the FieldDef so there is always something useful to show.
+func (be blockEditState) fieldExample(def schema.FieldDef) string {
+	if be.cfg.FieldExamples != nil {
+		if ex := be.cfg.FieldExamples[be.key][def.YAMLName]; ex != "" {
+			return ex
+		}
+	}
+	if ex := be.extractFromBasePreset(def.YAMLName); ex != "" {
+		return ex
+	}
+	return generateFallbackExample(def)
+}
+
+// generateFallbackExample produces a minimal valid YAML snippet for def when no
+// explicit example or preset value is available.
+func generateFallbackExample(def schema.FieldDef) string {
+	switch def.Kind {
+	case schema.KindEnum:
+		if len(def.OneOf) > 0 {
+			return def.YAMLName + ": " + def.OneOf[0]
+		}
+		return def.YAMLName + ": \"\""
+	case schema.KindList:
+		return def.YAMLName + ":\n  - "
+	case schema.KindDictionary:
+		return def.YAMLName + ":\n  key: value"
+	case schema.KindObject:
+		if len(def.Children) == 0 {
+			return def.YAMLName + ":\n  # ..."
+		}
+		var sb strings.Builder
+		sb.WriteString(def.YAMLName + ":\n")
+		for _, child := range def.Children {
+			val := "\"\""
+			if child.Default != "" {
+				val = child.Default
+			}
+			sb.WriteString("  " + child.YAMLName + ": " + val + "\n")
+		}
+		return strings.TrimRight(sb.String(), "\n")
+	case schema.KindVariant:
+		return def.YAMLName + ": \"\""
+	default: // KindPrimitive
+		if def.Default != "" {
+			return def.YAMLName + ": " + def.Default
+		}
+		return def.YAMLName + ": \"\""
+	}
+}
+
+// extractFromBasePreset parses the "base" preset for be.key and returns the
+// YAML representation of the top-level child fieldName, or "" if unavailable.
+func (be blockEditState) extractFromBasePreset(fieldName string) string {
+	if be.cfg.Presets == nil {
+		return ""
+	}
+	presetYAML, err := be.cfg.Presets.PresetYAML(be.key, "base")
+	if err != nil {
+		return ""
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte(presetYAML), &doc); err != nil {
+		return ""
+	}
+	root, _ := doc[be.key].(map[string]any)
+	val, ok := root[fieldName]
+	if !ok {
+		return ""
+	}
+	out, err := yaml.Marshal(map[string]any{fieldName: val})
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(string(out), "\n")
 }

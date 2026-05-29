@@ -88,10 +88,10 @@ func mapSpec() blockSpec {
 	return blockSpec{
 		key: "portsAttributes",
 		defs: []schema.FieldDef{
-			{YAMLName: "label", Kind: schema.KindScalar},
-			{YAMLName: "onAutoForward", Kind: schema.KindScalar},
+			{YAMLName: "label", Kind: schema.KindPrimitive},
+			{YAMLName: "onAutoForward", Kind: schema.KindPrimitive},
 		},
-		kind:    schema.KindMap,
+		kind:    schema.KindDictionary,
 		content: "portsAttributes:\n  \"3000\":\n    label: web\n    onAutoForward: notify\n  \"8080\":\n    label: api\n",
 	}
 }
@@ -215,10 +215,10 @@ func TestSeqBlockStillNavigates(t *testing.T) {
 	spec := blockSpec{
 		key: "workers",
 		defs: []schema.FieldDef{
-			{YAMLName: "name", Kind: schema.KindScalar},
-			{YAMLName: "queue", Kind: schema.KindScalar},
+			{YAMLName: "name", Kind: schema.KindPrimitive},
+			{YAMLName: "queue", Kind: schema.KindPrimitive},
 		},
-		kind:    schema.KindSlice,
+		kind:    schema.KindList,
 		content: "workers:\n  - name: a\n    queue: q1\n  - name: b\n",
 	}
 	be := newBlockEdit(Config{}, spec, 100, 40)
@@ -239,10 +239,10 @@ func TestSeqBlockResyncNoContamination(t *testing.T) {
 	spec := blockSpec{
 		key: "workers",
 		defs: []schema.FieldDef{
-			{YAMLName: "name", Kind: schema.KindScalar},
-			{YAMLName: "queue", Kind: schema.KindScalar},
+			{YAMLName: "name", Kind: schema.KindPrimitive},
+			{YAMLName: "queue", Kind: schema.KindPrimitive},
 		},
-		kind:    schema.KindSlice,
+		kind:    schema.KindList,
 		content: "workers:\n  - name: a\n    queue: q1\n  - name: b\n",
 	}
 	be := newBlockEdit(Config{}, spec, 100, 40)

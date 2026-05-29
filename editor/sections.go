@@ -3,7 +3,7 @@ package editor
 // applySections splits depth-0 field chunks into an ADDED group (has content)
 // and an AVAILABLE group (all unchecked), injecting treeNodeSeparator headers.
 // It is idempotent: existing separators are stripped before re-applying.
-// Only used for KindStruct trees (not KindSlice).
+// Only used for KindObject trees (not KindList).
 func applySections(nodes []treeNode) []treeNode {
 	// Strip existing separators.
 	clean := make([]treeNode, 0, len(nodes))

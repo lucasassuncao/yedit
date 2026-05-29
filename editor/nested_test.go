@@ -16,15 +16,15 @@ func ceStructSpec() blockSpec {
 	return blockSpec{
 		key: "containerengine",
 		defs: []schema.FieldDef{
-			{YAMLName: "deployment", Kind: schema.KindStruct, Children: []schema.FieldDef{
-				{YAMLName: "replicas", Kind: schema.KindScalar},
+			{YAMLName: "deployment", Kind: schema.KindObject, Children: []schema.FieldDef{
+				{YAMLName: "replicas", Kind: schema.KindPrimitive},
 			}},
-			{YAMLName: "httproutes", Kind: schema.KindMap, Children: []schema.FieldDef{
-				{YAMLName: "host", Kind: schema.KindScalar},
-				{YAMLName: "port", Kind: schema.KindScalar},
+			{YAMLName: "httproutes", Kind: schema.KindDictionary, Children: []schema.FieldDef{
+				{YAMLName: "host", Kind: schema.KindPrimitive},
+				{YAMLName: "port", Kind: schema.KindPrimitive},
 			}},
 		},
-		kind:    schema.KindStruct,
+		kind:    schema.KindObject,
 		content: "containerengine:\n  httproutes:\n    web:\n      host: example.com\n",
 	}
 }
@@ -83,7 +83,7 @@ func TestEnterOnNestedMapEmitsOpenChild(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected openChildMsg, got %T", cmd())
 	}
-	if msg.key != "httproutes" || msg.kind != schema.KindMap {
+	if msg.key != "httproutes" || msg.kind != schema.KindDictionary {
 		t.Errorf("openChildMsg = {key:%q kind:%d}, want {httproutes map}", msg.key, msg.kind)
 	}
 	if len(msg.path) != 1 || msg.path[0] != "httproutes" {
@@ -164,8 +164,8 @@ func TestDrillInSplicesBackToParent(t *testing.T) {
 
 	updated, _ = m.Update(openChildMsg{
 		key:     "httproutes",
-		defs:    []schema.FieldDef{{YAMLName: "host", Kind: schema.KindScalar}},
-		kind:    schema.KindMap,
+		defs:    []schema.FieldDef{{YAMLName: "host", Kind: schema.KindPrimitive}},
+		kind:    schema.KindDictionary,
 		content: "httproutes:\n",
 		path:    []string{"httproutes"},
 	})

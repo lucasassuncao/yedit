@@ -7,16 +7,17 @@ package schema
 type Kind int
 
 const (
-	KindScalar Kind = iota
-	KindStruct
-	KindSlice
-	KindMap
-	KindUnion // tagged via the Provider interface
+	KindPrimitive  Kind = iota // scalar: string, int, bool, …
+	KindObject                 // struct with typed fields
+	KindList                   // slice or array
+	KindDictionary             // map[K]V
+	KindVariant                // union type via the Provider interface
+	KindEnum                   // scalar with a fixed oneof set (validate:"oneof=…")
 )
 
 // FieldDef describes a single editable field discovered from a Go struct.
 //
-// Children is populated when the field nests a struct (Kind == KindStruct) or
+// Children is populated when the field nests a struct (Kind == KindObject) or
 // when its type implements Provider.
 //
 // Required, Default, Description, and OneOf are populated by Discover but are

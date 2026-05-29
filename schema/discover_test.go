@@ -83,8 +83,8 @@ type unionItem struct{}
 
 func (unionItem) YeditSchema() []schema.FieldDef {
 	return []schema.FieldDef{
-		{YAMLName: "type", Kind: schema.KindScalar, Required: true},
-		{YAMLName: "target", Kind: schema.KindScalar, Required: true},
+		{YAMLName: "type", Kind: schema.KindPrimitive, Required: true},
+		{YAMLName: "target", Kind: schema.KindPrimitive, Required: true},
 	}
 }
 
@@ -153,8 +153,8 @@ func TestDiscover_providerOverridesReflection(t *testing.T) {
 	if len(fields) != 1 || fields[0].YAMLName != "items" {
 		t.Fatalf("expected single field 'items', got %v", fields)
 	}
-	if fields[0].Kind != schema.KindUnion {
-		t.Errorf("items Kind = %v, want KindUnion", fields[0].Kind)
+	if fields[0].Kind != schema.KindVariant {
+		t.Errorf("items Kind = %v, want KindVariant", fields[0].Kind)
 	}
 	if len(fields[0].Children) != 2 {
 		t.Fatalf("expected 2 children from Provider, got %d", len(fields[0].Children))

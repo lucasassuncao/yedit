@@ -43,7 +43,7 @@ func RunAll(validators []Validator, raw []byte, blocks []document.Block) []strin
 RunAll executes all validators against raw/blocks and collects violations.
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L52-L61>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L56-L66>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -57,6 +57,8 @@ PreCheckedFields lists which sub\-fields of a parent key start checked when the 
 
 FieldSnippets provides the indented YAML chunk inserted when the user toggles a sub\-field on \(keyed by parent key → child yaml name → snippet\). When a snippet is missing, the editor falls back to "\<child\>: \\n".
 
+FieldExamples provides a YAML snippet shown in the hint panel for each field \(keyed by block yaml name → field yaml name → snippet\). When absent the editor falls back to the "base" preset for that block, if one exists.
+
 ```go
 type Config struct {
     Path             string
@@ -66,6 +68,7 @@ type Config struct {
     Validators       []Validator
     PreCheckedFields map[string][]string
     FieldSnippets    map[string]map[string]string
+    FieldExamples    map[string]map[string]string
     Hidden           []string // additional top-level keys to omit from the UI
 }
 ```

@@ -11,10 +11,10 @@
 // # Patterns demonstrated
 //
 //	Pattern 1 — (no fields) + YAML pane
-//	  KindScalar  : app-name, debug, version, port
-//	  KindMap     : labels, settings
-//	  KindSlice   : tags, ports          ([]string / []int, no child defs)
-//	  KindUnion   : timeout              (implements schema.Provider)
+//	  KindPrimitive    : app-name, debug, version, port
+//	  KindDictionary   : labels, settings
+//	  KindList         : tags, ports          ([]string / []int, no child defs)
+//	  KindVariant      : timeout              (implements schema.Provider)
 //
 //	Pattern 2 — ADDED/AVAILABLE struct tree
 //	  server      : flat struct          (host, port, tls)
@@ -27,13 +27,13 @@
 //
 // # Edge cases demonstrated
 //
-//	[]string inside KindStruct           → server.allowed-ips (leaf, no sub-tree)
-//	map[string]string inside KindStruct  → server.headers     (leaf, no sub-tree)
+//	[]string inside KindObject           → server.allowed-ips (leaf, no sub-tree)
+//	map[string]string inside KindObject  → server.headers     (leaf, no sub-tree)
 //	[]string inside a seq-item struct    → workers[N].tags    (leaf, no sub-tree)
-//	KindMap at top level                 → labels, settings
-//	KindUnion (Provider)                 → timeout            → (no fields) + YAML pane
+//	KindDictionary at top level          → labels, settings
+//	KindVariant (Provider)               → timeout            → (no fields) + YAML pane
+//	KindEnum (oneof)                     → database.driver, route.method, logging.level
 //	Deep nesting (3 levels)              → database.pool.*
-//	oneof validation                     → database.driver, route.method
 //	required + MutuallyExclusive         → validators wired via editor.Config
 //	Unknown YAML key in seed file        → "unknown-key" flagged by ctrl+l
 package main
@@ -45,24 +45,24 @@ import (
 	"github.com/lucasassuncao/yedit/schema"
 )
 
-// ── Pattern 1: KindScalar / KindMap / KindSlice (no defs) / KindUnion ────────
+// ── Pattern 1: KindPrimitive / KindDictionary / KindList (no defs) / KindVariant ────────
 
 // TimeoutValue is a union type: in YAML it can be a plain duration string
 // ("30s") or a structured object. Implementing schema.Provider signals yedit
 // to skip reflection and instead show whatever YeditSchema() returns.
-// Because Kind is set to KindUnion in the editor, the overlay falls through to
+// Because Kind is set to KindVariant in the editor, the overlay falls through to
 // Pattern 1: the left panel shows "(no fields)" and the YAML pane gets focus.
 type TimeoutValue struct{}
 
 func (TimeoutValue) YeditSchema() []schema.FieldDef {
 	return []schema.FieldDef{
-		{YAMLName: "connect", Kind: schema.KindScalar},
-		{YAMLName: "read", Kind: schema.KindScalar},
-		{YAMLName: "write", Kind: schema.KindScalar},
+		{YAMLName: "connect", Kind: schema.KindPrimitive},
+		{YAMLName: "read", Kind: schema.KindPrimitive},
+		{YAMLName: "write", Kind: schema.KindPrimitive},
 	}
 }
 
-// ── Pattern 2: KindStruct (ADDED/AVAILABLE tree) ──────────────────────────────
+// ── Pattern 2: KindObject (ADDED/AVAILABLE tree) ──────────────────────────────
 
 // ServerConfig exercises a flat struct.
 // Edge cases:
@@ -99,7 +99,7 @@ type LoggingConfig struct {
 	ShowCaller bool   `yaml:"show-caller"`
 }
 
-// ── Pattern 3: KindSlice with child defs ([N] sequence navigator) ─────────────
+// ── Pattern 3: KindList with child defs ([N] sequence navigator) ─────────────
 
 // Worker exercises a seq-item struct with a nested []string leaf.
 type Worker struct {
@@ -120,29 +120,29 @@ type Route struct {
 // ── Root config — all patterns in one struct ──────────────────────────────────
 
 type TestConfig struct {
-	// Pattern 1 — KindScalar
+	// Pattern 1 — KindPrimitive
 	AppName string `yaml:"app-name"`
 	Debug   bool   `yaml:"debug"`
 	Version string `yaml:"version" validate:"required" jsonschema:"default=0.1.0"`
 	Port    int    `yaml:"port"    jsonschema:"default=8080"`
 
-	// Pattern 1 — KindMap (free-form; left panel shows "(no fields)")
+	// Pattern 1 — KindDictionary (free-form; left panel shows "(no fields)")
 	Labels   map[string]string `yaml:"labels"`
 	Settings map[string]any    `yaml:"settings"`
 
-	// Pattern 1 — KindSlice, no child defs (left panel shows "(no fields)")
+	// Pattern 1 — KindList, no child defs (left panel shows "(no fields)")
 	Tags  []string `yaml:"tags"`
 	Ports []int    `yaml:"ports"`
 
-	// Pattern 1 — KindUnion via Provider (left panel shows "(no fields)")
+	// Pattern 1 — KindVariant via Provider (left panel shows "(no fields)")
 	Timeout TimeoutValue `yaml:"timeout"`
 
-	// Pattern 2 — KindStruct (ADDED/AVAILABLE tree)
+	// Pattern 2 — KindObject (ADDED/AVAILABLE tree)
 	Server   ServerConfig   `yaml:"server"`
 	Database DatabaseConfig `yaml:"database"`
 	Logging  LoggingConfig  `yaml:"logging"`
 
-	// Pattern 3 — KindSlice + child defs ([N] navigator + add new)
+	// Pattern 3 — KindList + child defs ([N] navigator + add new)
 	Workers []Worker `yaml:"workers"`
 	Routes  []Route  `yaml:"routes"`
 }

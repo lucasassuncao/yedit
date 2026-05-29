@@ -107,15 +107,25 @@ func applyHidden(fields []schema.FieldDef, hidden []string) []schema.FieldDef {
 	if len(hidden) == 0 {
 		return fields
 	}
-	skip := make(map[string]bool, len(hidden))
+	topHide := make(map[string]bool)
+	nestedHide := make(map[string][]string)
 	for _, h := range hidden {
-		skip[h] = true
+		if i := strings.IndexByte(h, '.'); i >= 0 {
+			parent := h[:i]
+			nestedHide[parent] = append(nestedHide[parent], h[i+1:])
+		} else {
+			topHide[h] = true
+		}
 	}
 	out := make([]schema.FieldDef, 0, len(fields))
 	for _, f := range fields {
-		if !skip[f.YAMLName] {
-			out = append(out, f)
+		if topHide[f.YAMLName] {
+			continue
 		}
+		if nested, ok := nestedHide[f.YAMLName]; ok {
+			f.Children = applyHidden(f.Children, nested)
+		}
+		out = append(out, f)
 	}
 	return out
 }
@@ -128,14 +138,14 @@ func buildChildrenMap(fields []schema.FieldDef) map[string][]schema.FieldDef {
 	return m
 }
 
-// fieldKind returns the Kind of the named top-level field, or KindScalar if not found.
+// fieldKind returns the Kind of the named top-level field, or KindPrimitive if not found.
 func fieldKind(fields []schema.FieldDef, name string) schema.Kind {
 	for _, f := range fields {
 		if f.YAMLName == name {
 			return f.Kind
 		}
 	}
-	return schema.KindScalar
+	return schema.KindPrimitive
 }
 
 // openChildMsg requests drilling into a nested map-of-struct field, pushing a

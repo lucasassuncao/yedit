@@ -49,6 +49,10 @@ func (f ValidatorFunc) Validate(raw []byte, blocks []document.Block) []string {
 // FieldSnippets provides the indented YAML chunk inserted when the user
 // toggles a sub-field on (keyed by parent key → child yaml name → snippet).
 // When a snippet is missing, the editor falls back to "<child>: \n".
+//
+// FieldExamples provides a YAML snippet shown in the hint panel for each
+// field (keyed by block yaml name → field yaml name → snippet). When absent
+// the editor falls back to the "base" preset for that block, if one exists.
 type Config struct {
 	Path             string
 	Schema           any
@@ -57,6 +61,7 @@ type Config struct {
 	Validators       []Validator
 	PreCheckedFields map[string][]string
 	FieldSnippets    map[string]map[string]string
+	FieldExamples    map[string]map[string]string
 	Hidden           []string // additional top-level keys to omit from the UI
 }
 

@@ -26,7 +26,7 @@ func walkChildren(out map[string]map[string]bool, prefix string, fields []FieldD
 		// A map's keys are free-form (user-chosen), so its value-struct's fields
 		// must not be registered as the allowed keys under it. Leaving the path
 		// unregistered makes UnknownKeys treat the sub-tree as free-form.
-		if f.Kind == KindMap {
+		if f.Kind == KindDictionary {
 			continue
 		}
 		path := f.YAMLName

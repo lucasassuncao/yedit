@@ -50,11 +50,12 @@ const (
 // treeModel is the unified left-panel component that replaces fieldListModel,
 // seqItemListModel, and composeListModel.
 type treeModel struct {
-	nodes  []treeNode // nodes in display order (existing chunks first, then available)
-	cursor int        // position within the visible list
-	offset int        // scroll offset within the visible list
-	height int
-	isSeq  bool // true when the block root is KindSlice
+	nodes    []treeNode // nodes in display order (existing chunks first, then available)
+	cursor   int        // position within the visible list
+	offset   int        // scroll offset within the visible list
+	height   int
+	isSeq    bool   // true when the block root is KindSlice
+	emptyMsg string // shown when nodes is empty; defaults to "(no fields)"
 }
 
 // newTreeModel builds a treeModel from a blockSpec and a panel height.
@@ -62,7 +63,7 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 	tm := treeModel{height: h}
 
 	switch spec.kind {
-	case schema.KindSlice:
+	case schema.KindList:
 		if len(spec.defs) == 0 {
 			// Scalar sequence — no tree; YAML editor gets focus directly.
 			break
@@ -71,7 +72,7 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 		entries := parseSeqEntries(spec.key, spec.content)
 		tm.nodes = buildSeqNodes(spec.defs, entries)
 
-	case schema.KindMap:
+	case schema.KindDictionary:
 		if len(spec.defs) == 0 {
 			break // free-form map (e.g. map[string]string) — no tree; raw YAML
 		}
@@ -79,7 +80,7 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 		entries := parseMapEntries(spec.key, spec.content)
 		tm.nodes = buildMapNodes(spec.defs, entries)
 
-	case schema.KindStruct:
+	case schema.KindObject:
 		tm.nodes = flattenDefsAsTree(spec.defs, nil, 0)
 		tm.nodes = syncTreeCheckedStates(tm.nodes, spec.key, spec.content)
 		tm.nodes = applySections(tm.nodes)
@@ -90,15 +91,24 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 		}
 
 	default:
-		// KindScalar, KindMap, KindUnion — no tree nodes; YAML editor gets focus.
+		// KindPrimitive, KindEnum, KindDictionary, KindVariant — no tree nodes; YAML editor gets focus.
 	}
 	return tm
 }
 
 // buildSeqNodes creates the node list for a sequence block:
 // one treeNodeSeqItem per existing entry (collapsed), then treeNodeAddNew.
+// When entries is empty a non-selectable "(empty list)" separator is prepended.
 func buildSeqNodes(childDefs []schema.FieldDef, entries []seqEntry) []treeNode {
 	var nodes []treeNode
+	if len(entries) == 0 {
+		nodes = append(nodes, treeNode{
+			kind:   treeNodeSeparator,
+			label:  "(empty list)",
+			depth:  0,
+			isLeaf: true,
+		})
+	}
 	for i, e := range entries {
 		seqNode := treeNode{
 			kind:     treeNodeSeqItem,
@@ -198,10 +208,10 @@ func flattenDefsAsTree(defs []schema.FieldDef, prefix []string, depth int) []tre
 		copy(path, prefix)
 		path[len(prefix)] = d.YAMLName
 
-		isLeaf := d.Kind != schema.KindStruct || len(d.Children) == 0
+		isLeaf := d.Kind != schema.KindObject || len(d.Children) == 0
 		// A map[string]Struct field has no inline children, but it is not a plain
 		// leaf either: pressing Enter/→ drills into a dedicated map editor.
-		openable := d.Kind == schema.KindMap && len(d.Children) > 0
+		openable := d.Kind == schema.KindDictionary && len(d.Children) > 0
 		out = append(out, treeNode{
 			kind:     treeNodeField,
 			yamlPath: path,
@@ -643,7 +653,11 @@ func hasCheckedDescendant(nodes []treeNode, parentIdx int) bool {
 func (tm treeModel) View() string {
 	vis := tm.visibleNodes()
 	if len(vis) == 0 {
-		return availableItemStyle.Render("  (no fields)")
+		msg := "  (no fields)"
+		if tm.emptyMsg != "" {
+			msg = tm.emptyMsg
+		}
+		return availableItemStyle.Render(msg)
 	}
 
 	// Reserve last row for a scroll indicator when items overflow below.

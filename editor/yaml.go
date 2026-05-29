@@ -281,7 +281,7 @@ func applyToggleToMapEntry(ctx toggleCtx, node treeNode, checked bool, yamlConte
 
 // syncTreeCheckedFromYAML re-derives checked states for all treeNodeField leaf
 // nodes from the current YAML text (the right panel value), then re-applies
-// section grouping for KindStruct trees, restoring the cursor position.
+// section grouping for KindObject trees, restoring the cursor position.
 func syncTreeCheckedFromYAML(tm treeModel, key, yamlContent string) treeModel {
 	// Save selected node's path so we can restore the cursor after reorder.
 	var selectedPath []string
