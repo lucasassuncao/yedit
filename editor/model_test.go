@@ -38,20 +38,21 @@ func TestWindowSizeReachesBlockEdit(t *testing.T) {
 	// Open the "server" block to enter block-edit mode.
 	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "server"}})
 	m = updated.(model)
-	if m.mode != paneBlockEdit || m.blockEdit == nil {
-		t.Fatalf("expected paneBlockEdit with non-nil blockEdit, got mode=%d blockEdit=%v", m.mode, m.blockEdit)
+	if m.mode != paneBlockEdit || m.topBE() == nil {
+		t.Fatalf("expected paneBlockEdit with non-nil blockEdit, got mode=%d blockEdit=%v", m.mode, m.topBE())
 	}
 
 	// Resize the terminal while the block editor is open.
 	updated, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 50})
 	m = updated.(model)
 
-	if m.blockEdit == nil {
+	top := m.topBE()
+	if top == nil {
 		t.Fatal("blockEdit went nil after resize")
 	}
-	if m.blockEdit.width != 120 || m.blockEdit.height != 50 {
+	if top.width != 120 || top.height != 50 {
 		t.Errorf("block edit not resized: got %dx%d, want 120x50",
-			m.blockEdit.width, m.blockEdit.height)
+			top.width, top.height)
 	}
 }
 

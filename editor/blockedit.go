@@ -60,6 +60,11 @@ type blockEditState struct {
 	isEdit bool // false = add new block, true = edit existing
 	dirty  bool // uncommitted changes since last ctrl+s
 
+	// childPath is set when this editor was opened by drilling into a nested
+	// map-of-struct field of a parent editor. On commit the snippet is spliced
+	// back into the parent at this path (relative to the parent block's value).
+	childPath []string
+
 	width, height int
 	listW, rightW int
 
@@ -498,6 +503,33 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 	be.tree = tree
 
 	switch action {
+	case treeOpenChild:
+		// Drill into a nested map-of-struct field. Only struct blocks expose
+		// openable fields directly under the block value; inside a collection
+		// navigator the entry path is keyed differently, so it is left as-is.
+		if be.isCollectionNav() {
+			break
+		}
+		idx := be.tree.currentNodeIdx()
+		if idx < 0 {
+			break
+		}
+		node := be.tree.nodes[idx]
+		childContent := extractSubBlock(be.yamlEditor.Value(), node.yamlPath)
+		childKey := node.def.YAMLName
+		childDefs := node.def.Children
+		childKind := node.def.Kind
+		childPath := append([]string(nil), node.yamlPath...)
+		return be, func() tea.Msg {
+			return openChildMsg{
+				key:     childKey,
+				defs:    childDefs,
+				kind:    childKind,
+				content: childContent,
+				path:    childPath,
+			}
+		}
+
 	case treeToggled:
 		idx := be.tree.currentNodeIdx()
 		if idx >= 0 {

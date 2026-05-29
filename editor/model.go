@@ -29,9 +29,9 @@ const (
 
 // model is the root bubbletea model.
 //
-// The active pane is explicit via the mode field. The alert/blockEdit pointers
-// hold per-mode data: alert is non-nil iff mode == paneAlert, blockEdit is
-// non-nil iff mode == paneBlockEdit.
+// The active pane is explicit via the mode field. The alert/blockEdits fields
+// hold per-mode data: alert is non-nil iff mode == paneAlert, blockEdits is
+// non-empty iff mode == paneBlockEdit (its last element is the visible editor).
 type model struct {
 	cfg         Config
 	doc         *document.Document
@@ -42,8 +42,11 @@ type model struct {
 	list            listModel
 	preview         viewport.Model
 	previewRenderer *glamour.TermRenderer
-	blockEdit       *blockEditState
-	alert           *alert.Model
+	// blockEdits is a stack of block editors. Index 0 is the top-level block
+	// opened from the list; deeper entries are nested map-of-struct drill-ins.
+	// The last element is the visible/active editor.
+	blockEdits []*blockEditState
+	alert      *alert.Model
 
 	mode                         pane
 	statusMsg                    string
@@ -85,6 +88,21 @@ func newModel(cfg Config) (model, error) {
 	}, nil
 }
 
+// topBE returns the active (deepest) block editor, or nil when none is open.
+func (m *model) topBE() *blockEditState {
+	if len(m.blockEdits) == 0 {
+		return nil
+	}
+	return m.blockEdits[len(m.blockEdits)-1]
+}
+
+// setTopBE replaces the active block editor in place.
+func (m *model) setTopBE(be *blockEditState) {
+	if len(m.blockEdits) > 0 {
+		m.blockEdits[len(m.blockEdits)-1] = be
+	}
+}
+
 func applyHidden(fields []schema.FieldDef, hidden []string) []schema.FieldDef {
 	if len(hidden) == 0 {
 		return fields
@@ -120,6 +138,16 @@ func fieldKind(fields []schema.FieldDef, name string) schema.Kind {
 	return schema.KindScalar
 }
 
+// openChildMsg requests drilling into a nested map-of-struct field, pushing a
+// new block editor scoped to that field onto the stack.
+type openChildMsg struct {
+	key     string
+	defs    []schema.FieldDef
+	kind    schema.Kind
+	content string
+	path    []string // path in the parent block's value to splice back into
+}
+
 // blockEditCommittedMsg is sent when the user commits a block edit (Ctrl+S).
 type blockEditCommittedMsg struct{ Snippet string }
 
@@ -142,11 +170,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.relayout()
-		// relayout only sizes the root list/preview; forward the resize to the
-		// active sub-model so its own panels resize too.
-		if m.blockEdit != nil {
-			be, cmd := m.blockEdit.Update(msg)
-			m.blockEdit = &be
+		// relayout only sizes the root list/preview; forward the resize to every
+		// stacked sub-model so each editor's panels resize too.
+		if len(m.blockEdits) > 0 {
+			var cmd tea.Cmd
+			for i := range m.blockEdits {
+				be, c := m.blockEdits[i].Update(msg)
+				m.blockEdits[i] = &be
+				if i == len(m.blockEdits)-1 {
+					cmd = c
+				}
+			}
 			return m, cmd
 		}
 		if m.alert != nil {
@@ -155,12 +189,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case openItemMsg:
 		return m.handleOpenItem(msg.Item)
+	case openChildMsg:
+		return m.handleOpenChild(msg)
 	case blockEditCommittedMsg:
 		return m.handleOverlayConfirmed(msg.Snippet)
 	case blockEditDiscardedMsg:
-		m.blockEdit = nil
-		m.mode = paneList
-		m.statusMsg = "Cancelled."
+		if len(m.blockEdits) > 0 {
+			m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
+		}
+		if len(m.blockEdits) == 0 {
+			m.mode = paneList
+			m.statusMsg = "Cancelled."
+		} else {
+			m.statusMsg = ""
+		}
 		return m, nil
 	case deleteItemMsg:
 		return m.showConfirmAlert(
@@ -173,10 +215,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mode = paneList
 		return m.handleDelete(msg.Key)
 	case alert.DismissedMsg:
-		// Forward to blockEdit first so its confirmAlert is cleared.
-		if m.blockEdit != nil {
-			be, cmd := m.blockEdit.Update(msg)
-			m.blockEdit = &be
+		// Forward to the active blockEdit first so its confirmAlert is cleared.
+		if top := m.topBE(); top != nil {
+			be, cmd := top.Update(msg)
+			m.setTopBE(&be)
 			return m, cmd
 		}
 		m.alert = nil
@@ -194,8 +236,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case paneBlockEdit:
-		be, cmd := m.blockEdit.Update(msg)
-		m.blockEdit = &be
+		top := m.topBE()
+		if top == nil {
+			m.mode = paneList
+			return m, nil
+		}
+		be, cmd := top.Update(msg)
+		m.setTopBE(&be)
 		return m, cmd
 	case panePreview:
 		if key, ok := msg.(tea.KeyMsg); ok {
@@ -382,7 +429,24 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 	kind := fieldKind(m.schemaTree, it.Key)
 	be := newBlockEdit(m.cfg, blockSpec{key: it.Key, defs: children, kind: kind, content: initial, knownByPath: m.knownByPath}, m.width, m.height)
 	be.isEdit = it.Existing
-	m.blockEdit = &be
+	m.blockEdits = []*blockEditState{&be}
+	m.mode = paneBlockEdit
+	return m, be.Init()
+}
+
+// handleOpenChild pushes a nested block editor for a map-of-struct field that
+// the user drilled into from the parent editor. Unknown-key validation is left
+// to the parent commit, so the child editor uses a nil knownByPath (its root key
+// is the field name, which would otherwise read as an unknown top-level key).
+func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
+	content := msg.content
+	if content == "" {
+		content = msg.key + ":\n"
+	}
+	be := newBlockEdit(m.cfg, blockSpec{key: msg.key, defs: msg.defs, kind: msg.kind, content: content, knownByPath: nil}, m.width, m.height)
+	be.isEdit = true
+	be.childPath = msg.path
+	m.blockEdits = append(m.blockEdits, &be)
 	m.mode = paneBlockEdit
 	return m, be.Init()
 }
@@ -398,11 +462,30 @@ func (m model) handleDelete(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleOverlayConfirmed(snippet string) (tea.Model, tea.Cmd) {
-	isEdit := m.blockEdit != nil && m.blockEdit.isEdit
+	if len(m.blockEdits) == 0 {
+		return m, nil
+	}
 
+	// Nested child commit: splice the snippet back into the parent editor's YAML
+	// at the drill-in path, resync the parent tree, then pop back to the parent.
+	if len(m.blockEdits) > 1 {
+		child := m.blockEdits[len(m.blockEdits)-1]
+		parent := m.blockEdits[len(m.blockEdits)-2]
+		newYAML := replaceSubBlock(parent.yamlEditor.Value(), child.childPath, snippet)
+		parent.yamlEditor.SetValue(newYAML)
+		parent.dirty = true
+		parent.tree = parent.resyncTreeFromYAML()
+		m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
+		m.statusMsg = fmt.Sprintf("Updated %q (not saved yet) — Esc to return.", child.key)
+		return m, nil
+	}
+
+	// Top-level block commit → write to the document.
+	be := m.blockEdits[0]
+	isEdit := be.isEdit
 	var err error
 	if isEdit {
-		err = m.doc.Replace(m.blockEdit.key, snippet)
+		err = m.doc.Replace(be.key, snippet)
 	} else {
 		err = m.doc.Insert(snippet)
 	}
@@ -416,9 +499,7 @@ func (m model) handleOverlayConfirmed(snippet string) (tea.Model, tea.Cmd) {
 		m.statusMsg = "Block updated (not saved yet) — Esc to return."
 	} else {
 		// First commit transitions the block edit to edit mode.
-		if m.blockEdit != nil {
-			m.blockEdit.isEdit = true
-		}
+		be.isEdit = true
 		m.statusMsg = "Block added (not saved yet) — Esc to return."
 	}
 	return m, nil
@@ -524,7 +605,9 @@ func (m model) View() string {
 	case paneAlert:
 		return m.alert.View()
 	case paneBlockEdit:
-		return m.blockEdit.View()
+		if top := m.topBE(); top != nil {
+			return top.View()
+		}
 	}
 
 	previewFocused := m.mode == panePreview

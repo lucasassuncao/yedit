@@ -27,6 +27,7 @@ type treeNode struct {
 	label    string   // display label
 	depth    int
 	isLeaf   bool // scalar/slice/map field — no children to expand
+	openable bool // map-of-struct field — Enter/→ drills into a child editor
 	checked  bool // field is present in the YAML
 	expanded bool
 	seqIdx   int             // for treeNodeSeqItem: index in the sequence
@@ -43,6 +44,7 @@ const (
 	treeCollapsed            // ← on an expanded node
 	treeAddNew               // Space/Enter on the treeNodeAddNew row
 	treeDeleted              // ctrl+d on a treeNodeSeqItem row
+	treeOpenChild            // Enter/→ on an openable map-of-struct field — drill in
 )
 
 // treeModel is the unified left-panel component that replaces fieldListModel,
@@ -197,12 +199,16 @@ func flattenDefsAsTree(defs []schema.FieldDef, prefix []string, depth int) []tre
 		path[len(prefix)] = d.YAMLName
 
 		isLeaf := d.Kind != schema.KindStruct || len(d.Children) == 0
+		// A map[string]Struct field has no inline children, but it is not a plain
+		// leaf either: pressing Enter/→ drills into a dedicated map editor.
+		openable := d.Kind == schema.KindMap && len(d.Children) > 0
 		out = append(out, treeNode{
 			kind:     treeNodeField,
 			yamlPath: path,
 			label:    d.YAMLName,
 			depth:    depth,
 			isLeaf:   isLeaf,
+			openable: openable,
 			expanded: false,
 			def:      d,
 		})
@@ -489,6 +495,12 @@ func (tm treeModel) moveDown(n int) treeModel {
 
 func (tm treeModel) handleRight() (treeModel, treeAction) {
 	idx := tm.currentNodeIdx()
+	if idx < 0 {
+		return tm, treeNoAction
+	}
+	if tm.nodes[idx].openable {
+		return tm, treeOpenChild
+	}
 	if idx >= 0 && !tm.nodes[idx].isLeaf && !tm.nodes[idx].expanded &&
 		tm.nodes[idx].kind != treeNodeAddNew {
 		nodes := make([]treeNode, len(tm.nodes))
@@ -540,6 +552,9 @@ func (tm treeModel) handleEnter() (treeModel, treeAction) {
 	case treeNodeAddNew:
 		return tm, treeAddNew
 	case treeNodeField:
+		if nd.openable {
+			return tm, treeOpenChild
+		}
 		if nd.isLeaf && !nd.checked {
 			nodes := make([]treeNode, len(tm.nodes))
 			copy(nodes, tm.nodes)
@@ -683,6 +698,8 @@ func (tm treeModel) View() string {
 			indent := strings.Repeat("  ", nd.depth)
 			var mark string
 			switch {
+			case nd.openable:
+				mark = "▸" // drill-in arrow for map-of-struct fields
 			case !nd.isLeaf && nd.expanded:
 				mark = "▾"
 			case !nd.isLeaf:

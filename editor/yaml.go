@@ -348,6 +348,120 @@ func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked 
 	return true
 }
 
+// childByKey returns the value node mapped to key in a MappingNode, or nil.
+func childByKey(mapping *yaml.Node, key string) *yaml.Node {
+	if mapping == nil || mapping.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			return mapping.Content[i+1]
+		}
+	}
+	return nil
+}
+
+// extractSubBlock pulls the nested collection at path out of a parent block's
+// editor value and returns it as a standalone "<key>:\n  ...". parentYAML is the
+// parent block's value ("<blockKey>:\n  ..."); path is relative to the block
+// value (e.g. ["httproutes"] or ["sub", "mymap"]). It returns "<key>:\n" when
+// the path is absent or empty so the child opens as a fresh collection.
+func extractSubBlock(parentYAML string, path []string) string {
+	if len(path) == 0 {
+		return parentYAML
+	}
+	key := path[len(path)-1]
+	empty := key + ":\n"
+
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(parentYAML), &root); err != nil || len(root.Content) == 0 {
+		return empty
+	}
+	doc := root.Content[0]
+	if doc.Kind != yaml.MappingNode || len(doc.Content) < 2 {
+		return empty
+	}
+	cur := doc.Content[1] // parent block's value mapping
+	for _, k := range path {
+		cur = childByKey(cur, k)
+		if cur == nil {
+			return empty
+		}
+	}
+	if cur.Kind != yaml.MappingNode && cur.Kind != yaml.SequenceNode {
+		return empty // null/scalar placeholder — treat as empty collection
+	}
+
+	wrapper := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: key},
+		cur,
+	}}
+	forceBlockStyle(wrapper)
+	var buf strings.Builder
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(wrapper); err != nil {
+		return empty
+	}
+	return strings.TrimRight(buf.String(), "\n") + "\n"
+}
+
+// replaceSubBlock writes childSnippet (a standalone "<key>:\n  ...") back into
+// parentYAML at path, creating intermediate mappings as needed. An empty or null
+// child value removes the key instead, so deleting every entry prunes the block.
+func replaceSubBlock(parentYAML string, path []string, childSnippet string) string {
+	if len(path) == 0 {
+		return parentYAML
+	}
+	key := path[len(path)-1]
+
+	var childVal *yaml.Node
+	var childRoot yaml.Node
+	if err := yaml.Unmarshal([]byte(childSnippet), &childRoot); err == nil && len(childRoot.Content) > 0 {
+		if cm := childRoot.Content[0]; cm.Kind == yaml.MappingNode && len(cm.Content) >= 2 {
+			childVal = cm.Content[1]
+		}
+	}
+	emptyChild := childVal == nil ||
+		(childVal.Kind == yaml.MappingNode && len(childVal.Content) == 0) ||
+		(childVal.Kind == yaml.SequenceNode && len(childVal.Content) == 0) ||
+		(childVal.Kind == yaml.ScalarNode && (childVal.Tag == "!!null" || childVal.Value == ""))
+
+	return withYAMLRoot(parentYAML, func(root *yaml.Node) bool {
+		doc := root.Content[0]
+		if doc.Kind != yaml.MappingNode || len(doc.Content) < 2 {
+			return false
+		}
+		cur := doc.Content[1] // parent block's value mapping
+		if cur.Kind != yaml.MappingNode {
+			// Empty/null block value (e.g. "containerengine:\n") — coerce it into
+			// an empty mapping so the nested key can be attached.
+			cur.Kind = yaml.MappingNode
+			cur.Tag = ""
+			cur.Value = ""
+			cur.Content = nil
+		}
+		for _, k := range path[:len(path)-1] {
+			cur = findOrCreateMappingChild(cur, k)
+			if cur == nil {
+				return false
+			}
+		}
+		if emptyChild {
+			removeMappingKey(cur, key)
+			return true
+		}
+		for i := 0; i+1 < len(cur.Content); i += 2 {
+			if cur.Content[i].Value == key {
+				cur.Content[i+1] = childVal
+				return true
+			}
+		}
+		cur.Content = append(cur.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, childVal)
+		return true
+	})
+}
+
 // withYAMLRoot parses current as a YAML node, calls fn on it, and re-encodes.
 // Returns current unchanged on any parse/encode error or when fn returns false.
 func withYAMLRoot(current string, fn func(root *yaml.Node) bool) string {
