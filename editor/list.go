@@ -36,6 +36,7 @@ type listModel struct {
 	fOffset   int
 }
 
+// IsFiltering reports whether the list is in text-filter mode (/ was pressed).
 func (lm listModel) IsFiltering() bool { return lm.filtering }
 
 // buildListItems merges the canonical key order with the blocks present in the
@@ -87,6 +88,7 @@ func buildListItems(knownKeys []string, existing []document.Block) []listItem {
 	return items
 }
 
+// SetHeight updates the visible row count and re-clamps the scroll offset.
 func (lm *listModel) SetHeight(h int) {
 	lm.height = h
 	lm.clampScroll()
@@ -155,6 +157,9 @@ func (lm listModel) filteredItems() []listItem {
 	return out
 }
 
+// SelectedItem returns the item under the cursor, or nil when the cursor sits
+// on a separator or when the list is empty. In filter mode it returns the item
+// under the filter cursor instead of the main cursor.
 func (lm listModel) SelectedItem() *listItem {
 	if lm.filtering {
 		items := lm.filteredItems()
@@ -174,6 +179,7 @@ func (lm listModel) SelectedItem() *listItem {
 	return &it
 }
 
+// Update handles keyboard input for both normal and filter modes.
 func (lm listModel) Update(msg tea.Msg) (listModel, tea.Cmd) {
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
@@ -330,6 +336,7 @@ func renderListItem(it listItem, selected bool) string {
 	return availableItemStyle.Render("  +  " + it.Key)
 }
 
+// View renders the scrollable list or the filter prompt, depending on mode.
 func (lm listModel) View() string {
 	if lm.filtering {
 		return lm.viewFilter()

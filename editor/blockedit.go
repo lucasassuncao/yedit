@@ -531,93 +531,20 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 
 	switch action {
 	case treeOpenChild:
-		// Drill into a nested map-of-struct field. Only struct blocks expose
-		// openable fields directly under the block value; inside a collection
-		// navigator the entry path is keyed differently, so it is left as-is.
-		if be.isCollectionNav() {
-			break
-		}
-		idx := be.tree.currentNodeIdx()
-		if idx < 0 {
-			break
-		}
-		node := be.tree.nodes[idx]
-		childContent := extractSubBlock(be.yamlEditor.Value(), node.yamlPath)
-		childKey := node.def.YAMLName
-		childDefs := node.def.Children
-		childKind := node.def.Kind
-		childPath := append([]string(nil), node.yamlPath...)
-		return be, func() tea.Msg {
-			return openChildMsg{
-				key:     childKey,
-				defs:    childDefs,
-				kind:    childKind,
-				content: childContent,
-				path:    childPath,
-			}
-		}
-
+		return be.handleTreeOpenChild()
 	case treeToggled:
-		idx := be.tree.currentNodeIdx()
-		if idx >= 0 {
-			node := be.tree.nodes[idx]
-			// If toggling OFF a field that has content, ask before destroying it.
-			if !node.checked && be.fieldHasContent(node) {
-				// Revert the tree toggle while waiting for confirmation.
-				nodes := make([]treeNode, len(be.tree.nodes))
-				copy(nodes, be.tree.nodes)
-				nodes[idx].checked = true
-				be.tree.nodes = nodes
-				capturedIdx := idx
-				al := alert.NewConfirm(
-					"Remove field?",
-					fmt.Sprintf("Remove %q? Its content will be lost.", node.label),
-					func() tea.Msg { return pendingRemoveMsg{nodeIdx: capturedIdx} },
-					theme.Size{W: be.width, H: be.height},
-				)
-				be.confirmAlert = &al
-				be.mode = modeConfirming
-				return be, nil
-			}
-			be.dirty = true
-			ctx := toggleCtx{key: be.key, snippets: be.cfg.fieldSnippetsFor(be.key), childDefs: be.childDefs}
-			var newYAML string
-			if be.isCollectionNav() {
-				newYAML = be.applyEntryToggle(ctx, node, node.checked, be.yamlEditor.Value())
-			} else {
-				newYAML = applyTreeToggle(ctx, node, node.checked, be.yamlEditor.Value())
-			}
-			be.yamlEditor.SetValue(newYAML)
-			if be.isCollectionNav() {
-				be.seqBase = be.rebuildSeqBase()
-			}
-			be.tree = be.resyncTreeFromYAML()
-		}
-
+		return be.handleTreeToggled()
 	case treeAddNew:
-		be.dirty = true
-		be.tree = be.tree.WithNewSeqItem(be.childDefs, be.newEntryLabel())
-		be.seqBase = be.rebuildSeqBase()
-		// Show the new entry and reflect its seeded field in the tree.
-		newSeqIdx := be.tree.NearestSeqItem()
-		be.yamlEditor.SetValue(be.entryYAML(newSeqIdx))
-		be.tree = be.resyncTreeFromYAML()
-
+		return be.handleTreeAddNew(), nil
 	case treeDeleted:
-		be.dirty = true
-		be.seqBase = be.rebuildSeqBase()
-		newSeqIdx := be.tree.NearestSeqItem()
-		if newSeqIdx >= 0 {
-			be.yamlEditor.SetValue(be.entryYAML(newSeqIdx))
-		} else {
-			be.yamlEditor.SetValue(be.key + ":\n")
-		}
+		return be.handleTreeDeleted(), nil
 	}
 
-	// Update preview when cursor moved to a different entry.
-	if action == treeNoAction || action == treeExpanded || action == treeCollapsed {
+	// Collection entries are shown one at a time; moving to a different entry
+	// requires reloading its content into the YAML editor.
+	if be.isCollectionNav() && (action == treeNoAction || action == treeExpanded || action == treeCollapsed) {
 		newSeqIdx := be.tree.NearestSeqItem()
-		if be.isCollectionNav() && newSeqIdx != prevSeqIdx {
+		if newSeqIdx != prevSeqIdx {
 			if newSeqIdx >= 0 {
 				be.yamlEditor.SetValue(be.entryYAML(newSeqIdx))
 			} else {
@@ -627,6 +554,99 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 	}
 
 	return be, nil
+}
+
+// handleTreeOpenChild drills into the openable map-of-struct field under the
+// cursor by emitting an openChildMsg. Collection navigators are excluded because
+// their entry paths are position-keyed, not field-path-keyed.
+func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
+	if be.isCollectionNav() {
+		return be, nil
+	}
+	idx := be.tree.currentNodeIdx()
+	if idx < 0 {
+		return be, nil
+	}
+	node := be.tree.nodes[idx]
+	childContent := extractSubBlock(be.yamlEditor.Value(), node.yamlPath)
+	childPath := append([]string(nil), node.yamlPath...)
+	return be, func() tea.Msg {
+		return openChildMsg{
+			key:     node.def.YAMLName,
+			defs:    node.def.Children,
+			kind:    node.def.Kind,
+			content: childContent,
+			path:    childPath,
+		}
+	}
+}
+
+// handleTreeToggled applies or reverts a field toggle. Toggling a field OFF when
+// it already has content requires confirmation to avoid silent data loss.
+func (be blockEditState) handleTreeToggled() (blockEditState, tea.Cmd) {
+	idx := be.tree.currentNodeIdx()
+	if idx < 0 {
+		return be, nil
+	}
+	node := be.tree.nodes[idx]
+	if !node.checked && be.fieldHasContent(node) {
+		// Revert the toggle in the tree while waiting for the user to confirm.
+		nodes := make([]treeNode, len(be.tree.nodes))
+		copy(nodes, be.tree.nodes)
+		nodes[idx].checked = true
+		be.tree.nodes = nodes
+		capturedIdx := idx
+		al := alert.NewConfirm(
+			"Remove field?",
+			fmt.Sprintf("Remove %q? Its content will be lost.", node.label),
+			func() tea.Msg { return pendingRemoveMsg{nodeIdx: capturedIdx} },
+			theme.Size{W: be.width, H: be.height},
+		)
+		be.confirmAlert = &al
+		be.mode = modeConfirming
+		return be, nil
+	}
+	be.dirty = true
+	ctx := toggleCtx{key: be.key, snippets: be.cfg.fieldSnippetsFor(be.key), childDefs: be.childDefs}
+	var newYAML string
+	if be.isCollectionNav() {
+		newYAML = be.applyEntryToggle(ctx, node, node.checked, be.yamlEditor.Value())
+	} else {
+		newYAML = applyTreeToggle(ctx, node, node.checked, be.yamlEditor.Value())
+	}
+	be.yamlEditor.SetValue(newYAML)
+	if be.isCollectionNav() {
+		be.seqBase = be.rebuildSeqBase()
+	}
+	be.tree = be.resyncTreeFromYAML()
+	return be, nil
+}
+
+// handleTreeAddNew appends a fresh entry to the collection and moves the cursor
+// to it so the user can start filling in its fields immediately.
+func (be blockEditState) handleTreeAddNew() blockEditState {
+	be.dirty = true
+	be.tree = be.tree.WithNewSeqItem(be.childDefs, be.newEntryLabel())
+	be.seqBase = be.rebuildSeqBase()
+	newSeqIdx := be.tree.NearestSeqItem()
+	be.yamlEditor.SetValue(be.entryYAML(newSeqIdx))
+	be.tree = be.resyncTreeFromYAML()
+	return be
+}
+
+// handleTreeDeleted rebuilds seqBase after the tree has already removed the
+// entry node, then shows the entry now under the cursor (or a blank placeholder
+// when the collection becomes empty).
+func (be blockEditState) handleTreeDeleted() blockEditState {
+	be.dirty = true
+	be.seqBase = be.rebuildSeqBase()
+	newSeqIdx := be.tree.NearestSeqItem()
+	if newSeqIdx >= 0 {
+		be.yamlEditor.SetValue(be.entryYAML(newSeqIdx))
+	} else {
+		be.yamlEditor.SetValue(be.key + ":\n")
+	}
+	return be
 }
 
 // rebuildSeqBase reconstructs the full sequence YAML from tree node data.
