@@ -632,13 +632,13 @@ func (m model) View() string {
 
 	var hintText string
 	if previewFocused {
-		hintText = "[↑/↓] scroll • [Tab] / [Esc] back to list"
+		hintText = hintModelPreviewFocused
 	} else if m.list.IsFiltering() {
-		hintText = "[type] filter • [↑/↓] navigate • [Enter] select • [Esc] clear"
+		hintText = hintModelFiltering
 	} else if it := m.list.SelectedItem(); it != nil && it.Existing {
-		hintText = "[↑/↓] nav • [/] filter • [Enter] open • [ctrl+d] delete • [ctrl+u] undo • [ctrl+s] save • [ctrl+l] validate"
+		hintText = hintModelExisting
 	} else {
-		hintText = "[↑/↓] nav • [/] filter • [Enter] add • [ctrl+u] undo • [ctrl+s] save • [ctrl+l] validate"
+		hintText = hintModelNew
 	}
 
 	feedback := lipgloss.NewStyle().Width(m.width).Render(statusStyle.Render(m.statusMsg))

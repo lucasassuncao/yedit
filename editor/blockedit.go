@@ -77,6 +77,9 @@ type blockEditState struct {
 	presetCursor int
 	presetNames  []string
 	confirmAlert *alert.Model // alert data when mode == modeConfirming
+
+	previewFocus  bool // preset browser: right panel has keyboard focus
+	previewScroll int  // preset browser: line scroll offset in preview panel
 }
 
 // newBlockEdit creates the full-screen block editing state.
@@ -253,19 +256,37 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 	}
 	switch key.String() {
 	case "esc":
-		be.mode = modeEditing
-	case "enter":
-		if be.presetCursor >= 0 && be.presetCursor < len(be.presetNames) {
-			be = be.applyPreset(be.presetNames[be.presetCursor])
+		if be.previewFocus {
+			be.previewFocus = false
+		} else {
+			be.mode = modeEditing
 		}
-		be.mode = modeEditing
+	case "tab":
+		be.previewFocus = !be.previewFocus
+	case "enter":
+		if !be.previewFocus {
+			if be.presetCursor >= 0 && be.presetCursor < len(be.presetNames) {
+				be = be.applyPreset(be.presetNames[be.presetCursor])
+			}
+			be.mode = modeEditing
+		}
 	case "up", "k":
-		if be.presetCursor > 0 {
-			be.presetCursor--
+		if be.previewFocus {
+			if be.previewScroll > 0 {
+				be.previewScroll--
+			}
+		} else {
+			if be.presetCursor > 0 {
+				be.presetCursor--
+				be.previewScroll = 0
+			}
 		}
 	case "down", "j":
-		if be.presetCursor < len(be.presetNames)-1 {
+		if be.previewFocus {
+			be.previewScroll++
+		} else if be.presetCursor < len(be.presetNames)-1 {
 			be.presetCursor++
+			be.previewScroll = 0
 		}
 	}
 	return be, nil
@@ -817,6 +838,8 @@ func (be blockEditState) openPresetPicker() blockEditState {
 	be.mode = modePresetBrowser
 	be.presetNames = names
 	be.presetCursor = 0
+	be.previewFocus = false
+	be.previewScroll = 0
 	for i, n := range names {
 		if n == be.currentPreset {
 			be.presetCursor = i
@@ -935,7 +958,7 @@ func (be blockEditState) View() string {
 			Render(lipgloss.NewStyle().Foreground(theme.Danger).Render(be.errMsg))
 	} else if be.dirty {
 		feedback = lipgloss.NewStyle().Width(be.width).
-			Render(statusStyle.Render("Uncommitted changes — ctrl+s to commit"))
+			Render(statusStyle.Render(msgUncommittedChanges))
 	}
 	hint := lipgloss.NewStyle().Width(be.width).Render(statusStyle.Render(hintText))
 
@@ -945,18 +968,19 @@ func (be blockEditState) View() string {
 // currentHint returns the hint bar text for the current panel and cursor state.
 func (be blockEditState) currentHint() string {
 	if be.active != blockEditPanelTree {
-		return "[Tab] change pane • [ctrl+s] save changes • [Esc] back"
+		return hintSaveTail
 	}
-	const nav = "[↑/↓] nav • [→/←] expand"
-	const tail = "[Tab] change pane • [ctrl+s] save changes • [Esc] back"
+	parts := []string{keyNav, keyExpand}
+	if be.cfg.Presets != nil && len(be.cfg.Presets.ListPresets(be.key)) > 0 {
+		parts = append(parts, keyPreset)
+	}
 	if be.isCollectionNav() {
-		return nav + " • [Enter] add • [ctrl+d] delete • " + tail
+		parts = append(parts, keyEnterAdd, keyCtrlDDelete)
+	} else {
+		parts = append(parts, keyEnterAdd, keyCtrlDRemove)
 	}
-	presetHint := ""
-	if be.cfg.Presets != nil {
-		presetHint = " • [p] preset"
-	}
-	return nav + presetHint + " • [Enter] add • [ctrl+d] remove • " + tail
+	parts = append(parts, keyTabPane, keyCtrlSSaveChg, keyEscBack)
+	return strings.Join(parts, hintSep)
 }
 
 func (be blockEditState) presetView() string {
@@ -967,12 +991,42 @@ func (be blockEditState) presetView() string {
 	}
 	header := theme.RenderHeader(be.cfg.Title, breadcrumb, "", be.width)
 
-	leftPanel := theme.RenderTitledPanel("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, true, be.renderPresetList())
-	rightPanel := theme.RenderTitledPanel("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, false, be.presetPreviewYAML())
+	leftPanel := theme.RenderTitledPanel("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, !be.previewFocus, be.renderPresetList())
+	rightPanel := theme.RenderTitledPanel("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, be.previewFocus, be.scrolledPreview())
 
-	hint := lipgloss.NewStyle().Width(be.width).Render(statusStyle.Render("[↑/↓] navigate • [Enter] apply • [Esc] cancel"))
+	hintStr := hintPresetListFocused
+	if be.previewFocus {
+		hintStr = hintPresetPreviewFocused
+	}
+	hint := lipgloss.NewStyle().Width(be.width).Render(statusStyle.Render(hintStr))
 
 	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Hint: hint})
+}
+
+func (be blockEditState) scrolledPreview() string {
+	full := be.presetPreviewYAML()
+	if full == "" {
+		return ""
+	}
+	lines := strings.Split(full, "\n")
+	visibleH := be.innerH()
+	if visibleH < 1 {
+		visibleH = 1
+	}
+	total := len(lines)
+	maxScroll := total - visibleH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	scroll := be.previewScroll
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+	end := scroll + visibleH
+	if end > total {
+		end = total
+	}
+	return strings.Join(lines[scroll:end], "\n")
 }
 
 func (be blockEditState) renderPresetList() string {
