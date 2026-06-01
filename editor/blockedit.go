@@ -80,6 +80,17 @@ type blockEditState struct {
 
 	previewFocus  bool // preset browser: right panel has keyboard focus
 	previewScroll int  // preset browser: line scroll offset in preview panel
+
+	undoSnap *blockEditUndoSnap // one-level undo for preset apply/append
+}
+
+// blockEditUndoSnap captures the state of a blockEditState before a preset
+// operation so it can be restored by a single ctrl+u.
+type blockEditUndoSnap struct {
+	seqBase   string
+	yamlValue string
+	dirty     bool
+	preset    string
 }
 
 // newBlockEdit creates the full-screen block editing state.
@@ -267,6 +278,13 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 		if !be.previewFocus {
 			if be.presetCursor >= 0 && be.presetCursor < len(be.presetNames) {
 				be = be.applyPreset(be.presetNames[be.presetCursor])
+			}
+			be.mode = modeEditing
+		}
+	case "a":
+		if !be.previewFocus && be.isCollectionNav() {
+			if be.presetCursor >= 0 && be.presetCursor < len(be.presetNames) {
+				be = be.appendPreset(be.presetNames[be.presetCursor])
 			}
 			be.mode = modeEditing
 		}
@@ -849,6 +867,49 @@ func (be blockEditState) openPresetPicker() blockEditState {
 	return be
 }
 
+func (be blockEditState) saveUndo() blockEditState {
+	be.undoSnap = &blockEditUndoSnap{
+		seqBase:   be.seqBase,
+		yamlValue: be.yamlEditor.Value(),
+		dirty:     be.dirty,
+		preset:    be.currentPreset,
+	}
+	return be
+}
+
+func (be blockEditState) restoreUndo() blockEditState {
+	snap := be.undoSnap
+	be.undoSnap = nil
+	be.currentPreset = snap.preset
+	be.dirty = snap.dirty
+	be.errMsg = ""
+
+	if be.isCollectionNav() {
+		return be.restoreUndoCollection(snap)
+	}
+	be.yamlEditor.SetValue(snap.yamlValue)
+	be.tree = syncTreeCheckedFromYAML(be.tree, be.key, snap.yamlValue)
+	return be
+}
+
+func (be blockEditState) restoreUndoCollection(snap *blockEditUndoSnap) blockEditState {
+	be.seqBase = snap.seqBase
+	entries := be.parseEntries()
+	if be.isMapNav() {
+		be.tree.nodes = buildMapNodes(be.childDefs, entries)
+	} else {
+		be.tree.nodes = buildSeqNodes(be.childDefs, entries)
+	}
+	be.tree.cursor = 0
+	be.tree.offset = 0
+	if len(entries) > 0 {
+		be.yamlEditor.SetValue(be.entryYAML(0))
+	} else {
+		be.yamlEditor.SetValue(be.key + ":\n")
+	}
+	return be
+}
+
 func (be blockEditState) applyPreset(name string) blockEditState {
 	if be.cfg.Presets == nil {
 		return be
@@ -858,6 +919,7 @@ func (be blockEditState) applyPreset(name string) blockEditState {
 		be.errMsg = fmt.Sprintf("preset error: %v", err)
 		return be
 	}
+	be = be.saveUndo()
 	be.currentPreset = name
 	be.errMsg = ""
 	be.dirty = true
@@ -884,6 +946,55 @@ func (be blockEditState) applyPreset(name string) blockEditState {
 
 	be.yamlEditor.SetValue(y)
 	be.tree = syncTreeCheckedFromYAML(be.tree, be.key, y)
+	return be
+}
+
+func (be blockEditState) appendPreset(name string) blockEditState {
+	if be.cfg.Presets == nil || !be.isCollectionNav() {
+		return be
+	}
+	y, err := be.cfg.Presets.PresetYAML(be.key, name)
+	if err != nil {
+		be.errMsg = fmt.Sprintf("preset error: %v", err)
+		return be
+	}
+	be = be.saveUndo()
+
+	var newEntries []seqEntry
+	if be.isMapNav() {
+		newEntries = parseMapEntries(be.key, y)
+	} else {
+		newEntries = parseSeqEntries(be.key, y)
+		// Normalize indentation of preset entries to match the existing seqBase so
+		// the combined seqBase can be re-parsed consistently.
+		dst := seqItemIndent(be.seqBase, be.key)
+		src := seqItemIndent(y, be.key)
+		if src != dst && src > 0 && dst > 0 {
+			for i, e := range newEntries {
+				newEntries[i].Content = reindentSeqContent(e.Content, src, dst)
+			}
+		}
+	}
+	if len(newEntries) == 0 {
+		return be
+	}
+
+	combined := append(be.parseEntries(), newEntries...)
+	be.seqBase = seqEntriesToBase(be.key, combined)
+
+	if be.isMapNav() {
+		be.tree.nodes = buildMapNodes(be.childDefs, combined)
+	} else {
+		be.tree.nodes = buildSeqNodes(be.childDefs, combined)
+	}
+	be.tree.offset = 0
+	// All entries start collapsed, so visible index equals entry index.
+	be.tree.cursor = len(combined) - 1
+
+	be.yamlEditor.SetValue(be.entryYAML(len(combined) - 1))
+	be.currentPreset = name
+	be.errMsg = ""
+	be.dirty = true
 	return be
 }
 
@@ -945,9 +1056,9 @@ func (be blockEditState) View() string {
 		topTitle = "Editing YAML"
 		topContent = be.yamlEditor.View()
 	}
-	topPanel := theme.RenderTitledPanel(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, topContent)
+	topPanel := theme.RenderTitledPanel(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, clampLines(topContent, be.editorH()))
 
-	hintPanel := theme.RenderTitledPanel("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, false, be.hintContent())
+	hintPanel := theme.RenderTitledPanel("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, false, clampLines(be.hintContent(), be.hintH()))
 	rightPanel := lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)
 
 	hintText := be.currentHint()
@@ -979,7 +1090,7 @@ func (be blockEditState) currentHint() string {
 	} else {
 		parts = append(parts, keyEnterAdd, keyCtrlDRemove)
 	}
-	parts = append(parts, keyTabPane, keyCtrlSSaveChg, keyEscBack)
+	parts = append(parts, keyCtrlUUndo, keyTabPane, keyCtrlSSaveChg, keyEscBack)
 	return strings.Join(parts, hintSep)
 }
 
@@ -994,9 +1105,11 @@ func (be blockEditState) presetView() string {
 	leftPanel := theme.RenderTitledPanel("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, !be.previewFocus, be.renderPresetList())
 	rightPanel := theme.RenderTitledPanel("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, be.previewFocus, be.scrolledPreview())
 
-	hintStr := hintPresetListFocused
+	hintStr := hintPresetListScalar
 	if be.previewFocus {
 		hintStr = hintPresetPreviewFocused
+	} else if be.isCollectionNav() {
+		hintStr = hintPresetListCollection
 	}
 	hint := lipgloss.NewStyle().Width(be.width).Render(statusStyle.Render(hintStr))
 

@@ -104,6 +104,47 @@ func labelFromContent(content string) string {
 }
 
 // seqEntriesToBase assembles the full sequence YAML from key and entries.
+// seqItemIndent returns the number of leading spaces before the first "- "
+// marker in seqBase (after the "key:\n" prefix). Returns 0 if not detectable.
+func seqItemIndent(seqBase, key string) int {
+	prefix := key + ":\n"
+	if !strings.HasPrefix(seqBase, prefix) {
+		return 0
+	}
+	for _, line := range strings.Split(strings.TrimPrefix(seqBase, prefix), "\n") {
+		trimmed := strings.TrimLeft(line, " ")
+		if strings.HasPrefix(trimmed, "- ") || trimmed == "-" {
+			return len(line) - len(trimmed)
+		}
+	}
+	return 0
+}
+
+// reindentSeqContent shifts the indentation of all lines in a sequence entry's
+// Content by (dstIndent - srcIndent) spaces. Used to normalize entries from
+// different YAML sources before concatenating into a shared seqBase.
+func reindentSeqContent(content string, srcIndent, dstIndent int) string {
+	if srcIndent == dstIndent || srcIndent == 0 {
+		return content
+	}
+	shift := dstIndent - srcIndent
+	lines := strings.Split(content, "\n")
+	result := make([]string, len(lines))
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			result[i] = line
+			continue
+		}
+		spaces := len(line) - len(strings.TrimLeft(line, " "))
+		newSpaces := spaces + shift
+		if newSpaces < 0 {
+			newSpaces = 0
+		}
+		result[i] = strings.Repeat(" ", newSpaces) + strings.TrimLeft(line, " ")
+	}
+	return strings.Join(result, "\n")
+}
+
 func seqEntriesToBase(key string, entries []seqEntry) string {
 	var sb strings.Builder
 	sb.WriteString(key + ":\n")

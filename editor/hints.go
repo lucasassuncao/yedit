@@ -26,10 +26,13 @@ const (
 	keyEscCancel = "[Esc] cancel"
 	keyEscClear  = "[Esc] clear"
 
-	keyEnterAdd    = "[Enter] add"
-	keyEnterApply  = "[Enter] apply"
-	keyEnterOpen   = "[Enter] open"
-	keyEnterSelect = "[Enter] select"
+	keyEnterAdd     = "[Enter] add"
+	keyEnterApply   = "[Enter] apply"
+	keyEnterOpen    = "[Enter] open"
+	keyEnterReplace = "[Enter] replace"
+	keyEnterSelect  = "[Enter] select"
+
+	keyAAppend = "[a] append"
 
 	keyFilter     = "[/] filter"
 	keyTypeFilter = "[type] filter"
@@ -38,10 +41,11 @@ const (
 
 // Composite hints built by concatenating atoms with hintSep.
 const (
-	hintSaveTail = keyTabPane + hintSep + keyCtrlSSaveChg + hintSep + keyEscBack
+	hintSaveTail = keyTabPane + hintSep + keyCtrlUUndo + hintSep + keyCtrlSSaveChg + hintSep + keyEscBack
 
 	hintPresetPreviewFocused = keyScroll + hintSep + keyTabPresets + hintSep + keyEscBack
-	hintPresetListFocused    = keyNavigate + hintSep + keyTabPreview + hintSep + keyEnterApply + hintSep + keyEscCancel
+	hintPresetListScalar     = keyNavigate + hintSep + keyTabPreview + hintSep + keyEnterApply + hintSep + keyEscCancel
+	hintPresetListCollection = keyNavigate + hintSep + keyTabPreview + hintSep + keyEnterReplace + hintSep + keyAAppend + hintSep + keyEscCancel
 
 	hintModelPreviewFocused = keyScroll + hintSep + keyTabEscList
 	hintModelFiltering      = keyTypeFilter + hintSep + keyNavigate + hintSep + keyEnterSelect + hintSep + keyEscClear

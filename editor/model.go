@@ -251,6 +251,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mode = paneList
 			return m, nil
 		}
+		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+u" {
+			if top.undoSnap != nil {
+				be := top.restoreUndo()
+				m.setTopBE(&be)
+				return m, nil
+			}
+			return m.undo(), nil
+		}
 		be, cmd := top.Update(msg)
 		m.setTopBE(&be)
 		return m, cmd
@@ -414,6 +422,21 @@ func trimBlankLines(s string) string {
 		end--
 	}
 	return strings.Join(lines[start:end], "\n")
+}
+
+// clampLines truncates s to at most maxLines newline-separated lines so that
+// content passed to RenderTitledPanel never overflows its allocated height.
+// lipgloss.Height() is a minimum, not a cap — without this, a tall hint or
+// preview would push the right column taller than the left.
+func clampLines(s string, maxLines int) string {
+	if maxLines <= 0 {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) <= maxLines {
+		return s
+	}
+	return strings.Join(lines[:maxLines], "\n")
 }
 
 // refreshPreview re-renders the document into the read-only preview viewport,
