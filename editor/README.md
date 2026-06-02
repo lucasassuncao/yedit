@@ -43,7 +43,7 @@ func RunAll(validators []Validator, raw []byte, blocks []document.Block) []strin
 RunAll executes all validators against raw/blocks and collects violations.
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L56-L66>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L57-L68>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -69,12 +69,13 @@ type Config struct {
     PreCheckedFields map[string][]string
     FieldSnippets    map[string]map[string]string
     FieldExamples    map[string]map[string]string
-    Hidden           []string // additional top-level keys to omit from the UI
+    Hidden           []string    // additional top-level keys to omit from the UI
+    Theme            theme.Theme // zero-value resolves to ThemeDark
 }
 ```
 
 <a name="Validator"></a>
-## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L13-L15>)
+## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L14-L16>)
 
 Validator is a pluggable rule executed at validate/save time. It returns human\-readable messages for every violation it finds. Returning an empty slice \(or nil\) means "all good".
 
@@ -103,7 +104,7 @@ func RequiredWith(key, parent string) Validator
 RequiredWith reports a violation when key is present but parent is not.
 
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L28>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L29>)
 
 ValidatorFunc adapts a plain function to the Validator interface, letting callers register inline validators without defining a named type:
 
@@ -123,7 +124,7 @@ type ValidatorFunc func(raw []byte, blocks []document.Block) []string
 ```
 
 <a name="ValidatorFunc.Validate"></a>
-### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L31>)
+### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L32>)
 
 ```go
 func (f ValidatorFunc) Validate(raw []byte, blocks []document.Block) []string

@@ -82,6 +82,7 @@ type blockEditState struct {
 	previewScroll int  // preset browser: line scroll offset in preview panel
 
 	undoSnap *blockEditUndoSnap // one-level undo for preset apply/append
+	theme    resolvedTheme
 }
 
 // blockEditUndoSnap captures the state of a blockEditState before a preset
@@ -104,6 +105,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 		currentPreset: "custom",
 		width:         w,
 		height:        h,
+		theme:         resolveTheme(cfg.Theme),
 	}
 	be.relayout()
 
@@ -1045,10 +1047,10 @@ func (be blockEditState) View() string {
 	if len(segs) > 0 {
 		breadcrumb = be.key + " › " + strings.Join(segs, " › ")
 	}
-	header := theme.RenderHeader(be.cfg.Title, breadcrumb, "", be.width)
+	header := theme.RenderHeaderWith(be.cfg.Title, breadcrumb, "", be.width, be.theme.colors)
 
 	treeActive := be.active == blockEditPanelTree
-	leftPanel := theme.RenderTitledPanel("Fields", theme.Size{W: be.listW, H: be.innerH() + 2}, treeActive, be.tree.View())
+	leftPanel := theme.RenderTitledPanelWith("Fields", theme.Size{W: be.listW, H: be.innerH() + 2}, treeActive, be.tree.View(be.theme), be.theme.colors)
 
 	yamlActive := be.active == blockEditPanelYAML
 	var topTitle, topContent string
@@ -1059,9 +1061,9 @@ func (be blockEditState) View() string {
 		topTitle = "Editing YAML"
 		topContent = be.yamlEditor.View()
 	}
-	topPanel := theme.RenderTitledPanel(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, clampLines(topContent, be.editorH()))
+	topPanel := theme.RenderTitledPanelWith(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, clampLines(topContent, be.editorH()), be.theme.colors)
 
-	hintPanel := theme.RenderTitledPanel("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, false, clampLines(be.hintContent(), be.hintH()))
+	hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, false, clampLines(be.hintContent(), be.hintH()), be.theme.colors)
 	rightPanel := lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)
 
 	hintText := be.currentHint()
@@ -1069,12 +1071,12 @@ func (be blockEditState) View() string {
 	var feedback string
 	if be.errMsg != "" {
 		feedback = lipgloss.NewStyle().Width(be.width).
-			Render(lipgloss.NewStyle().Foreground(theme.Danger).Render(be.errMsg))
+			Render(be.theme.errorText.Render(be.errMsg))
 	} else if be.dirty {
 		feedback = lipgloss.NewStyle().Width(be.width).
-			Render(statusStyle.Render(msgUncommittedChanges))
+			Render(be.theme.status.Render(msgUncommittedChanges))
 	}
-	hint := lipgloss.NewStyle().Width(be.width).Render(statusStyle.Render(hintText))
+	hint := lipgloss.NewStyle().Width(be.width).Render(be.theme.status.Render(hintText))
 
 	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Hint: hint})
 }
@@ -1103,10 +1105,10 @@ func (be blockEditState) presetView() string {
 	if len(segs) > 0 {
 		breadcrumb = be.key + " › " + strings.Join(segs, " › ")
 	}
-	header := theme.RenderHeader(be.cfg.Title, breadcrumb, "", be.width)
+	header := theme.RenderHeaderWith(be.cfg.Title, breadcrumb, "", be.width, be.theme.colors)
 
-	leftPanel := theme.RenderTitledPanel("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, !be.previewFocus, be.renderPresetList())
-	rightPanel := theme.RenderTitledPanel("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, be.previewFocus, be.scrolledPreview())
+	leftPanel := theme.RenderTitledPanelWith("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, !be.previewFocus, be.renderPresetList(), be.theme.colors)
+	rightPanel := theme.RenderTitledPanelWith("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, be.previewFocus, be.scrolledPreview(), be.theme.colors)
 
 	hintStr := hintPresetListScalar
 	if be.previewFocus {
@@ -1114,7 +1116,7 @@ func (be blockEditState) presetView() string {
 	} else if be.isCollectionNav() {
 		hintStr = hintPresetListCollection
 	}
-	hint := lipgloss.NewStyle().Width(be.width).Render(statusStyle.Render(hintStr))
+	hint := lipgloss.NewStyle().Width(be.width).Render(be.theme.status.Render(hintStr))
 
 	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Hint: hint})
 }
@@ -1152,9 +1154,9 @@ func (be blockEditState) renderPresetList() string {
 			sb.WriteByte('\n')
 		}
 		if i == be.presetCursor {
-			sb.WriteString(selectedItemStyle.Render("▶  " + name))
+			sb.WriteString(be.theme.selectedItem.Render("▶  " + name))
 		} else {
-			sb.WriteString(availableItemStyle.Render("   " + name))
+			sb.WriteString(be.theme.availableItem.Render("   " + name))
 		}
 	}
 	return sb.String()
@@ -1205,11 +1207,11 @@ func kindHumanLabel(k schema.Kind) string {
 func (be blockEditState) hintContent() string {
 	idx := be.tree.currentNodeIdx()
 	if idx < 0 {
-		return hintDimStyle.Render("  select a field to see hints")
+		return be.theme.hintDim.Render("  select a field to see hints")
 	}
 	node := be.tree.nodes[idx]
 	if node.kind != treeNodeField {
-		return hintDimStyle.Render("  select a field to see hints")
+		return be.theme.hintDim.Render("  select a field to see hints")
 	}
 	return be.fieldHint(node)
 }
@@ -1219,16 +1221,16 @@ func (be blockEditState) fieldHint(node treeNode) string {
 	def := node.def
 	var sb strings.Builder
 
-	sb.WriteString(hintKeyStyle.Render("type") + "  " + kindHumanLabel(def.Kind) + "\n")
+	sb.WriteString(be.theme.hintKey.Render("type") + "  " + kindHumanLabel(def.Kind) + "\n")
 
 	if def.Required {
-		sb.WriteString(hintKeyStyle.Render("required") + "\n")
+		sb.WriteString(be.theme.hintKey.Render("required") + "\n")
 	}
 	if def.Default != "" {
-		sb.WriteString(hintKeyStyle.Render("default") + "  " + def.Default + "\n")
+		sb.WriteString(be.theme.hintKey.Render("default") + "  " + def.Default + "\n")
 	}
 	if len(def.OneOf) > 0 {
-		sb.WriteString("\n" + hintKeyStyle.Render("values") + "\n")
+		sb.WriteString("\n" + be.theme.hintKey.Render("values") + "\n")
 		for _, v := range def.OneOf {
 			sb.WriteString("  • " + v + "\n")
 		}
@@ -1239,7 +1241,7 @@ func (be blockEditState) fieldHint(node treeNode) string {
 
 	example := be.fieldExample(def)
 	if example != "" {
-		sb.WriteString("\n" + hintKeyStyle.Render("Example") + "\n")
+		sb.WriteString("\n" + be.theme.hintKey.Render("Example") + "\n")
 		for _, line := range strings.Split(strings.TrimRight(example, "\n"), "\n") {
 			sb.WriteString("  " + line + "\n")
 		}

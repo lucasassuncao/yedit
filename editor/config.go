@@ -5,6 +5,7 @@ package editor
 import (
 	"github.com/lucasassuncao/yedit/document"
 	"github.com/lucasassuncao/yedit/presets"
+	"github.com/lucasassuncao/yedit/theme"
 )
 
 // Validator is a pluggable rule executed at validate/save time. It returns
@@ -62,7 +63,8 @@ type Config struct {
 	PreCheckedFields map[string][]string
 	FieldSnippets    map[string]map[string]string
 	FieldExamples    map[string]map[string]string
-	Hidden           []string // additional top-level keys to omit from the UI
+	Hidden           []string    // additional top-level keys to omit from the UI
+	Theme            theme.Theme // zero-value resolves to ThemeDark
 }
 
 // fieldSnippetsFor returns the snippet map for parent (may be nil).

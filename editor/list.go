@@ -13,6 +13,7 @@ import (
 type listItem struct {
 	Key       string
 	Existing  bool
+	Unknown   bool // key present in YAML but not in schema
 	Separator bool // visual divider row, not selectable
 }
 
@@ -85,6 +86,19 @@ func buildListItems(knownKeys []string, existing []document.Block) []listItem {
 		}
 	}
 
+	// UNKNOWN: blocks present in the file but absent from the schema.
+	var unknownItems []listItem
+	for _, b := range existing {
+		if !knownSet[b.Key] {
+			unknownItems = append(unknownItems, listItem{Key: b.Key, Existing: true, Unknown: true})
+		}
+	}
+	if len(unknownItems) > 0 {
+		items = append(items, listItem{Separator: true, Key: ""})
+		items = append(items, listItem{Separator: true, Key: "UNKNOWN"})
+		items = append(items, unknownItems...)
+	}
+
 	return items
 }
 
@@ -136,7 +150,7 @@ func (lm *listModel) Rebuild(existing []document.Block) {
 func (lm listModel) AddedCount() int {
 	n := 0
 	for _, it := range lm.items {
-		if it.Existing {
+		if it.Existing && !it.Unknown {
 			n++
 		}
 	}
@@ -322,24 +336,29 @@ func (lm *listModel) jumpToLast() {
 	}
 }
 
-func renderListItem(it listItem, selected bool) string {
+func renderListItem(it listItem, selected bool, th resolvedTheme) string {
 	if selected {
 		mark := "+"
-		if it.Existing {
+		if it.Unknown {
+			mark = "⚠"
+		} else if it.Existing {
 			mark = "●"
 		}
-		return selectedItemStyle.Render("▶ " + mark + "  " + it.Key)
+		return th.selectedItem.Render("▶ " + mark + "  " + it.Key)
+	}
+	if it.Unknown {
+		return th.unknownItem.Render("  ⚠  " + it.Key)
 	}
 	if it.Existing {
-		return existingItemStyle.Render("  ●  " + it.Key)
+		return th.existingItem.Render("  ●  " + it.Key)
 	}
-	return availableItemStyle.Render("  +  " + it.Key)
+	return th.availableItem.Render("  +  " + it.Key)
 }
 
 // View renders the scrollable list or the filter prompt, depending on mode.
-func (lm listModel) View() string {
+func (lm listModel) View(th resolvedTheme) string {
 	if lm.filtering {
-		return lm.viewFilter()
+		return lm.viewFilter(th)
 	}
 
 	// Reserve last row for a scroll indicator when items overflow below.
@@ -361,9 +380,9 @@ func (lm listModel) View() string {
 		}
 		it := lm.items[i]
 		if it.Separator {
-			sb.WriteString(sectionLabelStyle.Render(it.Key))
+			sb.WriteString(th.sectionLabel.Render(it.Key))
 		} else {
-			sb.WriteString(renderListItem(it, i == lm.cursor))
+			sb.WriteString(renderListItem(it, i == lm.cursor, th))
 		}
 	}
 
@@ -372,13 +391,13 @@ func (lm listModel) View() string {
 		if sb.Len() > 0 {
 			sb.WriteByte('\n')
 		}
-		sb.WriteString(availableItemStyle.Render(fmt.Sprintf("  ↓ %d more", remaining)))
+		sb.WriteString(th.availableItem.Render(fmt.Sprintf("  ↓ %d more", remaining)))
 	}
 
 	return sb.String()
 }
 
-func (lm listModel) viewFilter() string {
+func (lm listModel) viewFilter(th resolvedTheme) string {
 	items := lm.filteredItems()
 	visH := lm.height - 1
 	end := lm.fOffset + visH
@@ -388,11 +407,11 @@ func (lm listModel) viewFilter() string {
 
 	lines := make([]string, 0, lm.height)
 	for i := lm.fOffset; i < end; i++ {
-		lines = append(lines, renderListItem(items[i], i == lm.fCursor))
+		lines = append(lines, renderListItem(items[i], i == lm.fCursor, th))
 	}
 	for len(lines) < visH {
 		lines = append(lines, "")
 	}
-	lines = append(lines, filterPromptStyle.Render("/"+lm.filter+"▋"))
+	lines = append(lines, th.filterPrompt.Render("/"+lm.filter+"▋"))
 	return strings.Join(lines, "\n")
 }

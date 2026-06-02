@@ -108,6 +108,68 @@ func RenderTitledPanel(title string, size Size, active bool, content string) str
 	return lipgloss.JoinVertical(lipgloss.Left, top, body)
 }
 
+// RenderTitledPanelWith is like RenderTitledPanel but derives border and title
+// colors from c instead of the package-level palette vars.
+func RenderTitledPanelWith(title string, size Size, active bool, content string, c Colors) string {
+	width, height := size.W, size.H
+	if width < 4 {
+		width = 4
+	}
+	if height < 3 {
+		height = 3
+	}
+
+	var borderColor, titleColor lipgloss.Color
+	if active {
+		borderColor = lipgloss.Color(c.Accent)
+		titleColor = lipgloss.Color(c.AccentBright)
+	} else {
+		borderColor = lipgloss.Color(c.Muted)
+		titleColor = lipgloss.Color(c.Dim)
+	}
+
+	innerW := width - 2
+	titleSegment := lipgloss.NewStyle().Bold(true).Foreground(titleColor).Render(" " + title + " ")
+	fillLen := innerW - 1 - lipgloss.Width(titleSegment)
+	if fillLen < 0 {
+		fillLen = 0
+	}
+
+	borderInk := lipgloss.NewStyle().Foreground(borderColor)
+	top := borderInk.Render("╭─") + titleSegment + borderInk.Render(strings.Repeat("─", fillLen)+"╮")
+
+	body := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderTop(false).
+		BorderForeground(borderColor).
+		Width(innerW).
+		Height(height - 2).
+		Render(content)
+
+	return lipgloss.JoinVertical(lipgloss.Left, top, body)
+}
+
+// RenderHeaderWith is like RenderHeader but derives title and info colors from
+// c instead of the package-level palette vars.
+func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string {
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(c.AccentBright)).PaddingLeft(1)
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(c.Dim)).PaddingRight(1)
+
+	left := titleStyle.Render(title)
+	if subtitle != "" {
+		left += infoStyle.Render(" · " + subtitle)
+	}
+	rightRendered := ""
+	if right != "" {
+		rightRendered = infoStyle.Render(right)
+	}
+	spacerW := width - lipgloss.Width(left) - lipgloss.Width(rightRendered)
+	if spacerW < 1 {
+		spacerW = 1
+	}
+	return left + strings.Repeat(" ", spacerW) + rightRendered
+}
+
 // CenterBox positions box at the centre of the given terminal Size by adding
 // padding. Used by floating overlay/alert/picker views.
 func CenterBox(box string, term Size) string {

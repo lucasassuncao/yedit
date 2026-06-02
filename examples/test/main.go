@@ -8,6 +8,11 @@
 // A test.yaml file is created in the working directory on first run and reused
 // on subsequent runs so you can see undo/save/validate in action.
 //
+// # Theme selection
+//
+// The theme is configured directly in appTheme() below. Edit that function
+// to switch presets, override colors, or apply custom lipgloss styles.
+//
 // # Patterns demonstrated
 //
 //	Pattern 1 — (no fields) + YAML pane
@@ -39,10 +44,12 @@
 package main
 
 import (
+	"flag"
 	"os"
 
 	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/theme"
 )
 
 // ── Pattern 1: KindPrimitive / KindDictionary / KindList (no defs) / KindVariant ────────
@@ -181,9 +188,73 @@ workers:
 unknown-key: "flagged by ctrl+l validate"
 `
 
+// ── Theme ─────────────────────────────────────────────────────────────────────
+
+// appTheme demonstrates all three customization layers:
+//
+//   - Layer 3: --theme flag selects the base preset:
+//     dark (default), light, dracula, monokai, solarized,
+//     banana, mint, strawberry, blueberry, mango, watermelon, peach, kiwi,
+//     lemon, orange, grape, cherry, pineapple, raspberry, lime, pomegranate
+//   - Layer 1: individual color overrides on top of the preset
+//   - Layer 2: full lipgloss style overrides for granular control
+func appTheme(name string) theme.Theme {
+	// Layer 3 — named preset via --theme flag.
+	presets := map[string]*theme.Theme{
+		"light":       &theme.ThemeLight,
+		"dracula":     &theme.ThemeDracula,
+		"monokai":     &theme.ThemeMonokai,
+		"solarized":   &theme.ThemeSolarized,
+		"banana":      &theme.ThemeBanana,
+		"mint":        &theme.ThemeMint,
+		"strawberry":  &theme.ThemeStrawberry,
+		"blueberry":   &theme.ThemeBlueberry,
+		"mango":       &theme.ThemeMango,
+		"watermelon":  &theme.ThemeWatermelon,
+		"peach":       &theme.ThemePeach,
+		"kiwi":        &theme.ThemeKiwi,
+		"lemon":       &theme.ThemeLemon,
+		"orange":      &theme.ThemeOrange,
+		"grape":       &theme.ThemeGrape,
+		"cherry":      &theme.ThemeCherry,
+		"pineapple":   &theme.ThemePineapple,
+		"raspberry":   &theme.ThemeRaspberry,
+		"lime":        &theme.ThemeLime,
+		"pomegranate": &theme.ThemePomegranate,
+		"apple":       &theme.ThemeApple,
+		"plum":        &theme.ThemePlum,
+		"apricot":     &theme.ThemeApricot,
+		"dragonfruit": &theme.ThemeDragonfruit,
+		"blackberry":  &theme.ThemeBlackberry,
+		"tangerine":   &theme.ThemeTangerine,
+		"fig":         &theme.ThemeFig,
+		"guava":       &theme.ThemeGuava,
+		"acai":        &theme.ThemeAcai,
+		"coconut":     &theme.ThemeCoconut,
+		"guarana":     &theme.ThemeGuarana,
+	}
+	base := presets[name] // nil → ThemeDark
+
+	return theme.Theme{
+		Base: base,
+
+		// Layer 1 — per-color overrides. Empty string = inherit from Base.
+		// Example: uncomment to tint the accent regardless of preset.
+		// Colors: theme.Colors{Accent: "#e6ff79"},
+
+		// Layer 2 — element-level lipgloss overrides. Nil = inherit from colors.
+		// Example: uncomment to apply custom styles regardless of preset.
+		// activeBorder := lipgloss.NewStyle().BorderForeground(lipgloss.Color("#e6ff79"))
+		// Styles: theme.Styles{ActiveBorder: &activeBorder},
+	}
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 func main() {
+	themeName := flag.String("theme", "dark", "theme preset name (dark, light, dracula, monokai, solarized, banana, mint, strawberry, blueberry, mango, watermelon, peach, kiwi, lemon, orange, grape, cherry, pineapple, raspberry, lime, pomegranate)")
+	flag.Parse()
+
 	const path = "test.yaml"
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -193,6 +264,7 @@ func main() {
 	}
 
 	if err := editor.Run(editor.Config{
+		Theme:  appTheme(*themeName),
 		Path:   path,
 		Schema: &TestConfig{},
 		Title:  "yedit test",

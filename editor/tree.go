@@ -650,14 +650,14 @@ func hasCheckedDescendant(nodes []treeNode, parentIdx int) bool {
 }
 
 // View renders the tree panel content.
-func (tm treeModel) View() string {
+func (tm treeModel) View(th resolvedTheme) string {
 	vis := tm.visibleNodes()
 	if len(vis) == 0 {
 		msg := "  (no fields)"
 		if tm.emptyMsg != "" {
 			msg = tm.emptyMsg
 		}
-		return availableItemStyle.Render(msg)
+		return th.availableItem.Render(msg)
 	}
 
 	// Reserve last row for a scroll indicator when items overflow below.
@@ -683,15 +683,15 @@ func (tm treeModel) View() string {
 			if nd.label == "" {
 				line = ""
 			} else {
-				line = sectionLabelStyle.Render(" " + nd.label)
+				line = th.sectionLabel.Render(" " + nd.label)
 			}
 
 		case treeNodeAddNew:
 			label := "  [+ add new]"
 			if vi == tm.cursor {
-				line = selectedItemStyle.Render("▶" + label)
+				line = th.selectedItem.Render("▶" + label)
 			} else {
-				line = availableItemStyle.Render(" " + label)
+				line = th.availableItem.Render(" " + label)
 			}
 
 		case treeNodeSeqItem:
@@ -703,9 +703,9 @@ func (tm treeModel) View() string {
 			}
 			label := fmt.Sprintf("%s [%d] %s", arrow, nd.seqIdx, nd.label)
 			if vi == tm.cursor {
-				line = selectedItemStyle.Render("▶ " + label)
+				line = th.selectedItem.Render("▶ " + label)
 			} else {
-				line = existingItemStyle.Render("  " + label)
+				line = th.existingItem.Render("  " + label)
 			}
 
 		default: // treeNodeField
@@ -726,15 +726,15 @@ func (tm treeModel) View() string {
 			label := fmt.Sprintf("%s%s %s", indent, mark, nd.label)
 			switch {
 			case vi == tm.cursor:
-				line = selectedItemStyle.Render("▶ " + label)
+				line = th.selectedItem.Render("▶ " + label)
 			case nd.checked:
-				line = existingItemStyle.Render("  " + label)
+				line = th.existingItem.Render("  " + label)
 			case !nd.isLeaf && hasCheckedDescendant(tm.nodes, ni):
-				line = existingItemStyle.Render("  " + label)
+				line = th.existingItem.Render("  " + label)
 			case !nd.isLeaf:
-				line = sectionLabelStyle.Render(" " + label) // PaddingLeft(1) + 1 sp = 2 cells, matches cursor prefix
+				line = th.sectionLabel.Render(" " + label) // PaddingLeft(1) + 1 sp = 2 cells, matches cursor prefix
 			default:
-				line = availableItemStyle.Render("  " + label)
+				line = th.availableItem.Render("  " + label)
 			}
 		}
 
@@ -743,7 +743,7 @@ func (tm treeModel) View() string {
 
 	if hasMore {
 		remaining := len(vis) - end
-		sb.WriteString(availableItemStyle.Render(fmt.Sprintf("  ↓ %d more", remaining)))
+		sb.WriteString(th.availableItem.Render(fmt.Sprintf("  ↓ %d more", remaining)))
 	} else {
 		rendered := end - tm.offset
 		for i := rendered; i < tm.height; i++ {

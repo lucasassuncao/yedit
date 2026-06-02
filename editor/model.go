@@ -47,6 +47,7 @@ type model struct {
 	// The last element is the visible/active editor.
 	blockEdits []*blockEditState
 	alert      *alert.Model
+	theme      resolvedTheme
 
 	mode                         pane
 	statusMsg                    string
@@ -85,6 +86,7 @@ func newModel(cfg Config) (model, error) {
 
 		list:    list,
 		preview: preview,
+		theme:   resolveTheme(cfg.Theme),
 	}, nil
 }
 
@@ -463,7 +465,12 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 
 	children := m.childrenOf[it.Key]
 	kind := fieldKind(m.schemaTree, it.Key)
-	be := newBlockEdit(m.cfg, blockSpec{key: it.Key, defs: children, kind: kind, content: initial, knownByPath: m.knownByPath}, m.width, m.height)
+	// Unknown items have no schema, so skip unknown-key validation inside the overlay.
+	knownByPath := m.knownByPath
+	if it.Unknown {
+		knownByPath = nil
+	}
+	be := newBlockEdit(m.cfg, blockSpec{key: it.Key, defs: children, kind: kind, content: initial, knownByPath: knownByPath}, m.width, m.height)
 	be.isEdit = it.Existing
 	m.blockEdits = []*blockEditState{&be}
 	m.mode = paneBlockEdit
@@ -531,6 +538,13 @@ func (m model) handleOverlayConfirmed(snippet string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.syncView()
+	// Re-sync the editor's textarea with the document's actual block content so
+	// repeated ctrl+s calls are idempotent (the next commit sends exactly what
+	// is already stored, preventing duplication of multi-block snippets).
+	if fresh, err := m.doc.BlockContent(be.key); err == nil {
+		be.yamlEditor.SetValue(fresh)
+		be.dirty = false
+	}
 	// Keep blockEdit open — user stays in editing mode after commit.
 	if isEdit {
 		m.statusMsg = "Block updated (not saved yet) — Esc to return."
@@ -649,13 +663,13 @@ func (m model) View() string {
 
 	previewFocused := m.mode == panePreview
 
-	header := renderHeader(m.cfg.Title, m.doc.Path(), m.doc.Dirty(), m.width)
+	header := renderHeader(m.cfg.Title, m.doc.Path(), m.doc.Dirty(), m.width, m.theme)
 
 	leftTitle := fmt.Sprintf("Blocks (%d/%d)", m.list.AddedCount(), len(m.list.knownKeys))
-	leftPanel := theme.RenderTitledPanel(leftTitle, theme.Size{W: m.listW, H: m.innerH + 2}, !previewFocused, m.list.View())
+	leftPanel := theme.RenderTitledPanelWith(leftTitle, theme.Size{W: m.listW, H: m.innerH + 2}, !previewFocused, m.list.View(m.theme), m.theme.colors)
 
 	_, rightW := theme.TwoColumnWidths(m.width)
-	rightPanel := theme.RenderTitledPanel("Preview", theme.Size{W: rightW, H: m.innerH + 2}, previewFocused, m.preview.View())
+	rightPanel := theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.innerH + 2}, previewFocused, m.preview.View(), m.theme.colors)
 
 	var hintText string
 	if previewFocused {
@@ -668,8 +682,8 @@ func (m model) View() string {
 		hintText = hintModelNew
 	}
 
-	feedback := lipgloss.NewStyle().Width(m.width).Render(statusStyle.Render(m.statusMsg))
-	hint := lipgloss.NewStyle().Width(m.width).Render(statusStyle.Render(hintText))
+	feedback := lipgloss.NewStyle().Width(m.width).Render(m.theme.status.Render(m.statusMsg))
+	hint := lipgloss.NewStyle().Width(m.width).Render(m.theme.status.Render(hintText))
 
 	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Hint: hint})
 }

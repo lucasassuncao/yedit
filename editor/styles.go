@@ -1,29 +1,11 @@
 package editor
 
-import (
-	"github.com/charmbracelet/lipgloss"
+import "github.com/lucasassuncao/yedit/theme"
 
-	"github.com/lucasassuncao/yedit/theme"
-)
-
-// Short aliases over the shared palette to keep call sites tidy.
-var (
-	existingItemStyle  = theme.ExistingItem
-	availableItemStyle = theme.AvailableItem
-	selectedItemStyle  = theme.SelectedItem
-	sectionLabelStyle  = lipgloss.NewStyle().Bold(true).Foreground(theme.Accent).PaddingLeft(1)
-
-	statusStyle       = theme.StatusBar
-	filterPromptStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.AccentBright)
-
-	hintKeyStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Accent)
-	hintDimStyle = lipgloss.NewStyle().Foreground(theme.Muted)
-)
-
-func renderHeader(title, file string, dirty bool, width int) string {
+func renderHeader(title, file string, dirty bool, width int, th resolvedTheme) string {
 	info := file
 	if dirty {
 		info = file + " ● modified"
 	}
-	return theme.RenderHeader(title, info, "", width)
+	return theme.RenderHeaderWith(title, info, "", width, th.colors)
 }
