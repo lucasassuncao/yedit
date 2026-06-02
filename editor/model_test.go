@@ -100,6 +100,51 @@ func TestPreviewIsReadOnly(t *testing.T) {
 	}
 }
 
+// TestCtrlU_blockEditorNoSnapDoesNotTouchDocument verifies that pressing ctrl+u
+// inside a block editor when there is no undoSnap is a no-op: the document and
+// the editor mode must be unchanged. Without this guard the fallback m.doc.Undo()
+// would revert the document while the editor is still open, leaving it showing
+// stale content.
+func TestCtrlU_blockEditorNoSnapDoesNotTouchDocument(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cfg.yaml")
+	if err := os.WriteFile(path, []byte("server:\n  host: localhost\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	// Open the "server" block editor.
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "server", Existing: true}})
+	m = updated.(model)
+	if m.mode != paneBlockEdit {
+		t.Fatalf("expected paneBlockEdit, got %d", m.mode)
+	}
+	if m.topBE().undoSnap != nil {
+		t.Fatal("undoSnap should be nil on a freshly opened editor")
+	}
+
+	rawBefore := string(m.doc.Raw())
+	canUndoBefore := m.doc.CanUndo()
+
+	// ctrl+u with no undoSnap must be a no-op.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	m = updated.(model)
+
+	if m.mode != paneBlockEdit {
+		t.Errorf("ctrl+u changed pane: got %d, want %d (paneBlockEdit)", m.mode, paneBlockEdit)
+	}
+	if got := string(m.doc.Raw()); got != rawBefore {
+		t.Errorf("ctrl+u modified the document:\n was: %q\n now: %q", rawBefore, got)
+	}
+	if m.doc.CanUndo() != canUndoBefore {
+		t.Errorf("ctrl+u consumed a document history entry (CanUndo: %v → %v)", canUndoBefore, m.doc.CanUndo())
+	}
+}
+
 // TestBuildListItemsAvailableKeepsCanonicalOrder verifies AVAILABLE keys follow
 // the schema's declaration order (not alphabetical), matching Insert placement.
 func TestBuildListItemsAvailableKeepsCanonicalOrder(t *testing.T) {

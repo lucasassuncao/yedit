@@ -628,6 +628,7 @@ func (be blockEditState) handleTreeToggled() (blockEditState, tea.Cmd) {
 		return be, nil
 	}
 	node := be.tree.nodes[idx]
+	be = be.saveUndo()
 	if !node.checked && be.fieldHasContent(node) {
 		// Revert the toggle in the tree while waiting for the user to confirm.
 		nodes := make([]treeNode, len(be.tree.nodes))
@@ -664,6 +665,7 @@ func (be blockEditState) handleTreeToggled() (blockEditState, tea.Cmd) {
 // handleTreeAddNew appends a fresh entry to the collection and moves the cursor
 // to it so the user can start filling in its fields immediately.
 func (be blockEditState) handleTreeAddNew() blockEditState {
+	be = be.saveUndo()
 	be.dirty = true
 	be.tree = be.tree.WithNewSeqItem(be.childDefs, be.newEntryLabel())
 	be.seqBase = be.rebuildSeqBase()
@@ -677,6 +679,7 @@ func (be blockEditState) handleTreeAddNew() blockEditState {
 // entry node, then shows the entry now under the cursor (or a blank placeholder
 // when the collection becomes empty).
 func (be blockEditState) handleTreeDeleted() blockEditState {
+	be = be.saveUndo()
 	be.dirty = true
 	be.seqBase = be.rebuildSeqBase()
 	newSeqIdx := be.tree.NearestSeqItem()

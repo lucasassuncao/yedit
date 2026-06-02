@@ -257,7 +257,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.setTopBE(&be)
 				return m, nil
 			}
-			return m.undo(), nil
+			// No block-editor snap: nothing to undo here.
+			// Never fall through to m.doc.Undo() while a block editor is open —
+			// that would revert the document but leave the editor showing stale content.
+			return m, nil
 		}
 		be, cmd := top.Update(msg)
 		m.setTopBE(&be)
@@ -504,6 +507,7 @@ func (m model) handleOverlayConfirmed(snippet string) (tea.Model, tea.Cmd) {
 	if len(m.blockEdits) > 1 {
 		child := m.blockEdits[len(m.blockEdits)-1]
 		parent := m.blockEdits[len(m.blockEdits)-2]
+		*parent = parent.saveUndo()
 		newYAML := replaceSubBlock(parent.yamlEditor.Value(), child.childPath, snippet)
 		parent.yamlEditor.SetValue(newYAML)
 		parent.dirty = true
