@@ -71,8 +71,16 @@ func newModel(cfg Config) (model, error) {
 	if err != nil {
 		return model{}, fmt.Errorf("loading %s: %w", cfg.Path, err)
 	}
+	if cfg.SavePath != "" {
+		doc.SetPath(cfg.SavePath)
+	}
 
-	list := newListModel(knownOrder, doc.Blocks(), 0)
+	passthrough := make(map[string]bool, len(cfg.PassthroughKeys))
+	for _, k := range cfg.PassthroughKeys {
+		passthrough[k] = true
+	}
+
+	list := newListModel(knownOrder, doc.Blocks(), passthrough, 0)
 
 	preview := viewport.New(0, 0)
 	preview.SetContent(renderPreviewYAML(string(doc.Raw()), nil))
@@ -179,49 +187,21 @@ func (m model) Init() tea.Cmd { return nil }
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		m.relayout()
-		// relayout only sizes the root list/preview; forward the resize to every
-		// stacked sub-model so each editor's panels resize too.
-		if len(m.blockEdits) > 0 {
-			var cmd tea.Cmd
-			for i := range m.blockEdits {
-				be, c := m.blockEdits[i].Update(msg)
-				m.blockEdits[i] = &be
-				if i == len(m.blockEdits)-1 {
-					cmd = c
-				}
-			}
-			return m, cmd
-		}
-		if m.alert != nil {
-			m.alert.Resize(theme.Size{W: m.width, H: m.height})
-		}
-		return m, nil
+		return m.handleWindowSizeMsg(msg)
 	case openItemMsg:
+		if m.cfg.ReadOnly {
+			m.statusMsg = "Read-only mode — editing is disabled."
+			return m, nil
+		}
 		return m.handleOpenItem(msg.Item)
 	case openChildMsg:
 		return m.handleOpenChild(msg)
 	case blockEditCommittedMsg:
 		return m.handleOverlayConfirmed(msg.Snippet)
 	case blockEditDiscardedMsg:
-		if len(m.blockEdits) > 0 {
-			m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
-		}
-		if len(m.blockEdits) == 0 {
-			m.mode = paneList
-			m.statusMsg = "Cancelled."
-		} else {
-			m.statusMsg = ""
-		}
-		return m, nil
+		return m.handleBlockEditDiscarded()
 	case deleteItemMsg:
-		return m.showConfirmAlert(
-			"Remove block?",
-			fmt.Sprintf("Remove %q? Its content will be lost.", msg.Key),
-			func() tea.Msg { return confirmedDeleteMsg(msg) },
-		)
+		return m.handleDeleteItemMsg(msg)
 	case confirmedDeleteMsg:
 		m.alert = nil
 		m.mode = paneList
@@ -248,25 +228,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case paneBlockEdit:
-		top := m.topBE()
-		if top == nil {
-			m.mode = paneList
-			return m, nil
-		}
-		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+u" {
-			if top.undoSnap != nil {
-				be := top.restoreUndo()
-				m.setTopBE(&be)
-				return m, nil
-			}
-			// No block-editor snap: nothing to undo here.
-			// Never fall through to m.doc.Undo() while a block editor is open —
-			// that would revert the document but leave the editor showing stale content.
-			return m, nil
-		}
-		be, cmd := top.Update(msg)
-		m.setTopBE(&be)
-		return m, cmd
+		return m.handlePaneBlockEdit(msg)
 	case panePreview:
 		if key, ok := msg.(tea.KeyMsg); ok {
 			return m.handlePreviewKey(key)
@@ -282,9 +244,86 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
+	m.width = msg.Width
+	m.height = msg.Height
+	m.relayout()
+	// relayout only sizes the root list/preview; forward the resize to every
+	// stacked sub-model so each editor's panels resize too.
+	if len(m.blockEdits) > 0 {
+		var cmd tea.Cmd
+		for i := range m.blockEdits {
+			be, c := m.blockEdits[i].Update(msg)
+			m.blockEdits[i] = &be
+			if i == len(m.blockEdits)-1 {
+				cmd = c
+			}
+		}
+		return m, cmd
+	}
+	if m.alert != nil {
+		m.alert.Resize(theme.Size{W: m.width, H: m.height})
+	}
+	return m, nil
+}
+
+func (m model) handleBlockEditDiscarded() (tea.Model, tea.Cmd) {
+	if len(m.blockEdits) > 0 {
+		m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
+	}
+	if len(m.blockEdits) == 0 {
+		m.mode = paneList
+		m.statusMsg = "Cancelled."
+	} else {
+		m.statusMsg = ""
+	}
+	return m, nil
+}
+
+func (m model) handleDeleteItemMsg(msg deleteItemMsg) (tea.Model, tea.Cmd) {
+	if m.cfg.ReadOnly {
+		m.statusMsg = "Read-only mode — deletion is disabled."
+		return m, nil
+	}
+	if m.cfg.NoDeleteConfirm {
+		return m.handleDelete(msg.Key)
+	}
+	return m.showConfirmAlert(
+		"Remove block?",
+		fmt.Sprintf("Remove %q? Its content will be lost.", msg.Key),
+		func() tea.Msg { return confirmedDeleteMsg(msg) },
+	)
+}
+
+func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
+	top := m.topBE()
+	if top == nil {
+		m.mode = paneList
+		return m, nil
+	}
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+u" {
+		if top.undoSnap != nil {
+			be := top.restoreUndo()
+			m.setTopBE(&be)
+			return m, nil
+		}
+		// No block-editor snap: nothing to undo here.
+		// Never fall through to m.doc.Undo() while a block editor is open —
+		// that would revert the document but leave the editor showing stale content.
+		return m, nil
+	}
+	be, cmd := top.Update(msg)
+	m.setTopBE(&be)
+	return m, cmd
+}
+
 func (m model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch msg.String() {
 	case "ctrl+s":
+		if m.cfg.ReadOnly {
+			m.statusMsg = "Read-only mode — saving is disabled."
+			return m, nil, true
+		}
 		mo, cmd := m.save()
 		return mo, cmd, true
 	case "ctrl+l":
@@ -538,11 +577,17 @@ func (m model) handleOverlayConfirmed(snippet string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.syncView()
-	// Re-sync the editor's textarea with the document's actual block content so
-	// repeated ctrl+s calls are idempotent (the next commit sends exactly what
-	// is already stored, preventing duplication of multi-block snippets).
+	// Re-sync after commit so repeated Ctrl+S is idempotent.
+	// For collection blocks (sequences/maps), update seqBase and show only the
+	// current entry — setting the full block into yamlEditor would cause
+	// rebuildSeqBase to treat all entries as one entry on the next commit.
 	if fresh, err := m.doc.BlockContent(be.key); err == nil {
-		be.yamlEditor.SetValue(fresh)
+		if be.isCollectionNav() {
+			be.seqBase = fresh
+			be.yamlEditor.SetValue(be.entryYAML(be.tree.NearestSeqItem()))
+		} else {
+			be.yamlEditor.SetValue(fresh)
+		}
 		be.dirty = false
 	}
 	// Keep blockEdit open — user stays in editing mode after commit.
@@ -569,7 +614,15 @@ func (m model) undo() tea.Model {
 func (m model) collectErrors() []string {
 	var errs []string
 	if u := schema.UnknownKeys(m.doc.Raw(), m.knownByPath); len(u) > 0 {
-		errs = append(errs, "Unknown key(s): "+strings.Join(u, ", "))
+		var filtered []string
+		for _, k := range u {
+			if !m.list.passthrough[k] {
+				filtered = append(filtered, k)
+			}
+		}
+		if len(filtered) > 0 {
+			errs = append(errs, "Unknown key(s): "+strings.Join(filtered, ", "))
+		}
 	}
 	errs = append(errs, RunAll(m.cfg.Validators, m.doc.Raw(), m.doc.Blocks())...)
 	return errs
@@ -588,10 +641,19 @@ func formatErrors(errs []string) string {
 }
 
 func (m model) save() (tea.Model, tea.Cmd) {
-	if errs := m.collectErrors(); len(errs) > 0 {
+	errs := m.collectErrors()
+	if len(errs) > 0 && !m.cfg.NoValidateOnSave {
 		return m.showAlert("Cannot save — fix errors first", formatErrors(errs), alert.KindError)
 	}
 	doSave := func() tea.Msg { return doSaveMsg{} }
+	if len(errs) > 0 {
+		// NoValidateOnSave: always confirm — warning is substantive, not routine.
+		msg := fmt.Sprintf("Save to %s?\n\nWarnings:\n%s", m.doc.Path(), formatErrors(errs))
+		return m.showConfirmAlert("Save with warnings?", msg, doSave)
+	}
+	if m.cfg.NoSaveConfirm {
+		return m, doSave
+	}
 	return m.showConfirmAlert("Save changes?", fmt.Sprintf("Save to %s?", m.doc.Path()), doSave)
 }
 
@@ -663,7 +725,7 @@ func (m model) View() string {
 
 	previewFocused := m.mode == panePreview
 
-	header := renderHeader(m.cfg.Title, m.doc.Path(), m.doc.Dirty(), m.width, m.theme)
+	header := renderHeader(m.cfg.Title, m.doc.Path(), m.doc.Dirty(), m.cfg.ReadOnly, m.width, m.theme)
 
 	leftTitle := fmt.Sprintf("Blocks (%d/%d)", m.list.AddedCount(), len(m.list.knownKeys))
 	leftPanel := theme.RenderTitledPanelWith(leftTitle, theme.Size{W: m.listW, H: m.innerH + 2}, !previewFocused, m.list.View(m.theme), m.theme.colors)

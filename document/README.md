@@ -33,6 +33,7 @@ Package document provides primitives for editing YAML files structured as a flat
   - [func \(d \*Document\) Replace\(key, snippet string\) error](<#Document.Replace>)
   - [func \(d \*Document\) ReplaceRaw\(raw \[\]byte\) error](<#Document.ReplaceRaw>)
   - [func \(d \*Document\) Save\(\) error](<#Document.Save>)
+  - [func \(d \*Document\) SetPath\(path string\)](<#Document.SetPath>)
   - [func \(d \*Document\) Undo\(\) bool](<#Document.Undo>)
 
 
@@ -136,7 +137,7 @@ func New(raw []byte, knownOrder []string) (*Document, error)
 New builds a Document from raw bytes. Intended for tests and in\-memory use; the resulting document has no file path.
 
 <a name="Document.BlockContent"></a>
-### func \(\*Document\) [BlockContent](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L73>)
+### func \(\*Document\) [BlockContent](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L77>)
 
 ```go
 func (d *Document) BlockContent(key string) (string, error)
@@ -172,7 +173,7 @@ func (d *Document) Dirty() bool
 
 
 <a name="Document.Insert"></a>
-### func \(\*Document\) [Insert](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L89>)
+### func \(\*Document\) [Insert](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L93>)
 
 ```go
 func (d *Document) Insert(snippet string) error
@@ -199,7 +200,7 @@ func (d *Document) Raw() []byte
 
 
 <a name="Document.Remove"></a>
-### func \(\*Document\) [Remove](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L107>)
+### func \(\*Document\) [Remove](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L111>)
 
 ```go
 func (d *Document) Remove(key string) error
@@ -208,7 +209,7 @@ func (d *Document) Remove(key string) error
 Remove deletes the block with the given key. Returns an error if the key is not present.
 
 <a name="Document.Replace"></a>
-### func \(\*Document\) [Replace](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L125>)
+### func \(\*Document\) [Replace](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L129>)
 
 ```go
 func (d *Document) Replace(key, snippet string) error
@@ -217,7 +218,7 @@ func (d *Document) Replace(key, snippet string) error
 Replace removes the block at key and inserts snippet in its schema\-ordered position. Records a single history snapshot for the combined operation.
 
 <a name="Document.ReplaceRaw"></a>
-### func \(\*Document\) [ReplaceRaw](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L149>)
+### func \(\*Document\) [ReplaceRaw](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L153>)
 
 ```go
 func (d *Document) ReplaceRaw(raw []byte) error
@@ -226,7 +227,7 @@ func (d *Document) ReplaceRaw(raw []byte) error
 ReplaceRaw replaces the document content with raw, normalising CRLF. If raw fails to parse, the document is left untouched and the error is returned. Does NOT snapshot — direct YAML editing is not tracked in the undo history; only committed block operations \(Insert, Replace, Remove\) are undoable.
 
 <a name="Document.Save"></a>
-### func \(\*Document\) [Save](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L180>)
+### func \(\*Document\) [Save](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L184>)
 
 ```go
 func (d *Document) Save() error
@@ -234,8 +235,17 @@ func (d *Document) Save() error
 
 Save writes the current raw to disk at d.path with mode 0600 and clears dirty. Returns an error if d.path is empty.
 
+<a name="Document.SetPath"></a>
+### func \(\*Document\) [SetPath](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L74>)
+
+```go
+func (d *Document) SetPath(path string)
+```
+
+SetPath overrides the path used by Save. Call after Load when the save destination differs from the source \(e.g. writing a template to a new file\).
+
 <a name="Document.Undo"></a>
-### func \(\*Document\) [Undo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L164>)
+### func \(\*Document\) [Undo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L168>)
 
 ```go
 func (d *Document) Undo() bool

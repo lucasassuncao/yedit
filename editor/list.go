@@ -25,11 +25,12 @@ type deleteItemMsg struct{ Key string }
 
 // listModel is the scrollable left-panel list of known + existing top-level keys.
 type listModel struct {
-	knownKeys []string // canonical order from the schema
-	items     []listItem
-	cursor    int
-	height    int
-	offset    int
+	knownKeys   []string // canonical order from the schema
+	passthrough map[string]bool
+	items       []listItem
+	cursor      int
+	height      int
+	offset      int
 
 	filter    string
 	filtering bool
@@ -43,7 +44,7 @@ func (lm listModel) IsFiltering() bool { return lm.filtering }
 // buildListItems merges the canonical key order with the blocks present in the
 // current document, keeping existing keys (in file order) above available keys
 // (alphabetised). Hidden keys are stripped beforehand by the caller.
-func buildListItems(knownKeys []string, existing []document.Block) []listItem {
+func buildListItems(knownKeys []string, existing []document.Block, passthrough map[string]bool) []listItem {
 	knownSet := make(map[string]bool, len(knownKeys))
 	for _, k := range knownKeys {
 		knownSet[k] = true
@@ -86,10 +87,11 @@ func buildListItems(knownKeys []string, existing []document.Block) []listItem {
 		}
 	}
 
-	// UNKNOWN: blocks present in the file but absent from the schema.
+	// UNKNOWN: blocks present in the file but absent from the schema and not
+	// declared as passthrough keys (which are silently preserved).
 	var unknownItems []listItem
 	for _, b := range existing {
-		if !knownSet[b.Key] {
+		if !knownSet[b.Key] && !passthrough[b.Key] {
 			unknownItems = append(unknownItems, listItem{Key: b.Key, Existing: true, Unknown: true})
 		}
 	}
@@ -108,8 +110,8 @@ func (lm *listModel) SetHeight(h int) {
 	lm.clampScroll()
 }
 
-func newListModel(knownKeys []string, existing []document.Block, height int) listModel {
-	items := buildListItems(knownKeys, existing)
+func newListModel(knownKeys []string, existing []document.Block, passthrough map[string]bool, height int) listModel {
+	items := buildListItems(knownKeys, existing, passthrough)
 	cursor := 0
 	for i, it := range items {
 		if !it.Separator {
@@ -117,7 +119,7 @@ func newListModel(knownKeys []string, existing []document.Block, height int) lis
 			break
 		}
 	}
-	return listModel{knownKeys: knownKeys, items: items, cursor: cursor, height: height}
+	return listModel{knownKeys: knownKeys, passthrough: passthrough, items: items, cursor: cursor, height: height}
 }
 
 // Rebuild refreshes the list after blocks change without losing cursor position.
@@ -126,7 +128,7 @@ func (lm *listModel) Rebuild(existing []document.Block) {
 	if lm.cursor < len(lm.items) && !lm.items[lm.cursor].Separator {
 		prevKey = lm.items[lm.cursor].Key
 	}
-	lm.items = buildListItems(lm.knownKeys, existing)
+	lm.items = buildListItems(lm.knownKeys, existing, lm.passthrough)
 	if prevKey != "" {
 		for i, it := range lm.items {
 			if it.Key == prevKey {

@@ -63,8 +63,14 @@ type Config struct {
 	PreCheckedFields map[string][]string
 	FieldSnippets    map[string]map[string]string
 	FieldExamples    map[string]map[string]string
-	Hidden           []string    // additional top-level keys to omit from the UI
+	Hidden           []string    // top-level keys to omit from the UI entirely
+	PassthroughKeys  []string    // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
 	Theme            theme.Theme // zero-value resolves to ThemeDark
+	NoDeleteConfirm  bool        // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
+	NoValidateOnSave bool        // allow saving even when validators report errors; a warning alert is shown but does not block
+	NoSaveConfirm    bool        // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
+	ReadOnly         bool        // disable all edits and saves; the title displays "(READ-ONLY MODE)"
+	SavePath         string      // write to this path instead of Path; Path is still used for loading
 }
 
 // fieldSnippetsFor returns the snippet map for parent (may be nil).

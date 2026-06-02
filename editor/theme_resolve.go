@@ -57,23 +57,23 @@ func resolveTheme(t theme.Theme) resolvedTheme {
 }
 
 func mergeColors(base, over theme.Colors) theme.Colors {
-	if over.Accent != "" {
-		base.Accent = over.Accent
+	if over.ActiveBorderColor != "" {
+		base.ActiveBorderColor = over.ActiveBorderColor
 	}
-	if over.AccentBright != "" {
-		base.AccentBright = over.AccentBright
+	if over.SelectionColor != "" {
+		base.SelectionColor = over.SelectionColor
 	}
-	if over.Muted != "" {
-		base.Muted = over.Muted
+	if over.InactiveBorderColor != "" {
+		base.InactiveBorderColor = over.InactiveBorderColor
 	}
-	if over.Dim != "" {
-		base.Dim = over.Dim
+	if over.AvailableItemColor != "" {
+		base.AvailableItemColor = over.AvailableItemColor
 	}
-	if over.Success != "" {
-		base.Success = over.Success
+	if over.ExistingItemColor != "" {
+		base.ExistingItemColor = over.ExistingItemColor
 	}
-	if over.Danger != "" {
-		base.Danger = over.Danger
+	if over.ErrorColor != "" {
+		base.ErrorColor = over.ErrorColor
 	}
 	return base
 }
@@ -81,12 +81,12 @@ func mergeColors(base, over theme.Colors) theme.Colors {
 // buildDerivedStyles creates the internal lipgloss styles from the resolved
 // color palette. Respects NO_COLOR by producing empty colors when set.
 func buildDerivedStyles(c theme.Colors) resolvedTheme {
-	accent := toColor(c.Accent)
-	accentBright := toColor(c.AccentBright)
-	muted := toColor(c.Muted)
-	dim := toColor(c.Dim)
-	success := toColor(c.Success)
-	danger := toColor(c.Danger)
+	accent := toColor(c.ActiveBorderColor)
+	accentBright := toColor(c.SelectionColor)
+	muted := toColor(c.InactiveBorderColor)
+	dim := toColor(c.AvailableItemColor)
+	success := toColor(c.ExistingItemColor)
+	danger := toColor(c.ErrorColor)
 
 	return resolvedTheme{
 		existingItem:  lipgloss.NewStyle().Foreground(success),

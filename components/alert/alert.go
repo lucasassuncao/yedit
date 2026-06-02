@@ -23,6 +23,7 @@ type Kind int
 const (
 	KindError   Kind = iota // red border, OK button
 	KindSuccess             // green border, OK button
+	KindWarning             // orange border, OK button
 	KindConfirm             // accent border, Yes/No buttons
 )
 
@@ -73,6 +74,8 @@ func (a Model) accentColor() lipgloss.Color {
 	switch a.kind {
 	case KindSuccess:
 		return theme.Success
+	case KindWarning:
+		return theme.Warning
 	case KindConfirm:
 		return theme.Accent
 	default:

@@ -121,11 +121,11 @@ func RenderTitledPanelWith(title string, size Size, active bool, content string,
 
 	var borderColor, titleColor lipgloss.Color
 	if active {
-		borderColor = lipgloss.Color(c.Accent)
-		titleColor = lipgloss.Color(c.AccentBright)
+		borderColor = lipgloss.Color(c.ActiveBorderColor)
+		titleColor = lipgloss.Color(c.SelectionColor)
 	} else {
-		borderColor = lipgloss.Color(c.Muted)
-		titleColor = lipgloss.Color(c.Dim)
+		borderColor = lipgloss.Color(c.InactiveBorderColor)
+		titleColor = lipgloss.Color(c.AvailableItemColor)
 	}
 
 	innerW := width - 2
@@ -152,8 +152,8 @@ func RenderTitledPanelWith(title string, size Size, active bool, content string,
 // RenderHeaderWith is like RenderHeader but derives title and info colors from
 // c instead of the package-level palette vars.
 func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(c.AccentBright)).PaddingLeft(1)
-	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(c.Dim)).PaddingRight(1)
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(c.SelectionColor)).PaddingLeft(1)
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(c.AvailableItemColor)).PaddingRight(1)
 
 	left := titleStyle.Render(title)
 	if subtitle != "" {

@@ -48,12 +48,13 @@ type Kind int
 const (
     KindError   Kind = iota // red border, OK button
     KindSuccess             // green border, OK button
+    KindWarning             // orange border, OK button
     KindConfirm             // accent border, Yes/No buttons
 )
 ```
 
 <a name="Model"></a>
-## type [Model](<https://github.com/lucasassuncao/yedit/blob/main/components/alert/alert.go#L34-L41>)
+## type [Model](<https://github.com/lucasassuncao/yedit/blob/main/components/alert/alert.go#L35-L42>)
 
 Model is a centred modal that overlays a parent TUI.
 
@@ -66,7 +67,7 @@ type Model struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/lucasassuncao/yedit/blob/main/components/alert/alert.go#L44>)
+### func [New](<https://github.com/lucasassuncao/yedit/blob/main/components/alert/alert.go#L45>)
 
 ```go
 func New(title, message string, kind Kind, term theme.Size) Model
@@ -75,7 +76,7 @@ func New(title, message string, kind Kind, term theme.Size) Model
 New builds an informational modal with a single OK button.
 
 <a name="NewConfirm"></a>
-### func [NewConfirm](<https://github.com/lucasassuncao/yedit/blob/main/components/alert/alert.go#L55>)
+### func [NewConfirm](<https://github.com/lucasassuncao/yedit/blob/main/components/alert/alert.go#L56>)
 
 ```go
 func NewConfirm(title, message string, confirmCmd tea.Cmd, term theme.Size) Model
@@ -84,7 +85,7 @@ func NewConfirm(title, message string, confirmCmd tea.Cmd, term theme.Size) Mode
 NewConfirm builds a Yes/No modal that runs confirmCmd when the user picks Yes. Yes is the default focus.
 
 <a name="Model.Resize"></a>
-### func \(\*Model\) [Resize](<https://github.com/lucasassuncao/yedit/blob/main/components/alert/alert.go#L68>)
+### func \(\*Model\) [Resize](<https://github.com/lucasassuncao/yedit/blob/main/components/alert/alert.go#L69>)
 
 ```go
 func (a *Model) Resize(term theme.Size)
@@ -93,7 +94,7 @@ func (a *Model) Resize(term theme.Size)
 Resize updates the centre region the modal is rendered against. Call on tea.WindowSizeMsg if the parent forwards resizes.
 
 <a name="Model.Update"></a>
-### func \(Model\) [Update](<https://github.com/lucasassuncao/yedit/blob/main/components/alert/alert.go#L85>)
+### func \(Model\) [Update](<https://github.com/lucasassuncao/yedit/blob/main/components/alert/alert.go#L88>)
 
 ```go
 func (a Model) Update(msg tea.KeyMsg) (Model, tea.Cmd)
@@ -102,7 +103,7 @@ func (a Model) Update(msg tea.KeyMsg) (Model, tea.Cmd)
 Update processes a key event and returns the new model and any command. Non\-key messages are ignored \(the parent decides what reaches the modal\).
 
 <a name="Model.View"></a>
-### func \(Model\) [View](<https://github.com/lucasassuncao/yedit/blob/main/components/alert/alert.go#L110>)
+### func \(Model\) [View](<https://github.com/lucasassuncao/yedit/blob/main/components/alert/alert.go#L113>)
 
 ```go
 func (a Model) View() string

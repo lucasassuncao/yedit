@@ -150,7 +150,7 @@ func TestCtrlU_blockEditorNoSnapDoesNotTouchDocument(t *testing.T) {
 func TestBuildListItemsAvailableKeepsCanonicalOrder(t *testing.T) {
 	known := []string{"name", "image", "build", "appPort"} // canonical, not alphabetical
 	var got []string
-	for _, it := range buildListItems(known, nil) {
+	for _, it := range buildListItems(known, nil, nil) {
 		if !it.Separator {
 			got = append(got, it.Key)
 		}
@@ -169,7 +169,7 @@ func TestBuildListItemsAvailableKeepsCanonicalOrder(t *testing.T) {
 // TestListMoveCursorClampsAtBounds verifies the main list clamps at top/bottom
 // instead of wrapping around, matching the tree panel.
 func TestListMoveCursorClampsAtBounds(t *testing.T) {
-	lm := newListModel([]string{"a", "b", "c"}, nil, 10)
+	lm := newListModel([]string{"a", "b", "c"}, nil, nil, 10)
 	first := lm.cursor
 	lm.moveCursor(-1) // already at the top — must not wrap to the bottom
 	if lm.cursor != first {
@@ -225,7 +225,7 @@ func TestPreviewFollowsSelectedBlock(t *testing.T) {
 
 // TestListFilterByTyping verifies the "/" filter narrows the list as the user types.
 func TestListFilterByTyping(t *testing.T) {
-	lm := newListModel([]string{"alpha", "beta", "gamma"}, nil, 10)
+	lm := newListModel([]string{"alpha", "beta", "gamma"}, nil, nil, 10)
 	if lm.IsFiltering() {
 		t.Fatal("should not start in filtering mode")
 	}

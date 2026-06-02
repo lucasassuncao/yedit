@@ -201,6 +201,7 @@ unknown-key: "flagged by ctrl+l validate"
 func appTheme(name string) theme.Theme {
 	// Layer 3 — named preset via --theme flag.
 	presets := map[string]*theme.Theme{
+		"plain":       &theme.ThemePlain,
 		"light":       &theme.ThemeLight,
 		"dracula":     &theme.ThemeDracula,
 		"monokai":     &theme.ThemeMonokai,
@@ -240,7 +241,7 @@ func appTheme(name string) theme.Theme {
 
 		// Layer 1 — per-color overrides. Empty string = inherit from Base.
 		// Example: uncomment to tint the accent regardless of preset.
-		// Colors: theme.Colors{Accent: "#e6ff79"},
+		// Colors: theme.Colors{ActiveBorderColor: "#e6ff79"},
 
 		// Layer 2 — element-level lipgloss overrides. Nil = inherit from colors.
 		// Example: uncomment to apply custom styles regardless of preset.

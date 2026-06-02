@@ -69,6 +69,10 @@ func (d *Document) Path() string    { return d.path }
 func (d *Document) Dirty() bool     { return d.dirty }
 func (d *Document) CanUndo() bool   { return len(d.history) > 0 }
 
+// SetPath overrides the path used by Save. Call after Load when the save
+// destination differs from the source (e.g. writing a template to a new file).
+func (d *Document) SetPath(path string) { d.path = path }
+
 // BlockContent returns the raw lines for a given block key.
 func (d *Document) BlockContent(key string) (string, error) {
 	return BlockContent(d.raw, d.blocks, key)
