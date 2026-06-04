@@ -314,6 +314,11 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.confirmAlert = nil
 		return be.applyPendingRemove(m.nodeIdx), nil
 	}
+	if m, ok := msg.(pendingEntryDeleteMsg); ok {
+		be.mode = modeEditing
+		be.confirmAlert = nil
+		return be.performEntryDelete(m.seqIdx), nil
+	}
 
 	if m, ok := msg.(tea.WindowSizeMsg); ok {
 		be.width = m.Width
@@ -813,31 +818,41 @@ func (be blockEditState) handleTreeAddNew() blockEditState {
 	return be
 }
 
-// handleTreeDeleted removes the current entry from entries[] after the tree has
-// already removed its node, then loads the entry the cursor landed on.
+// handleTreeDeleted fires when ctrl+d targets a collection entry. Dropping a whole
+// entry is the most destructive tree action, so it confirms first (unless
+// NoDeleteConfirm); the actual removal runs in performEntryDelete.
 func (be blockEditState) handleTreeDeleted() blockEditState {
-	be = be.saveUndo()
-	// WithDeletedSeqItem already ran inside tree.Update before this handler fires,
-	// so snap.treeNodes captured the post-deletion tree (missing the deleted entry).
-	// Rebuild the snap's tree nodes from be.entries (still pre-deletion) so that
-	// restoreUndo correctly brings back both the deleted entry and its tree node.
-	if be.undoSnap != nil {
-		var preDeleteNodes []treeNode
-		if be.isMapNav() {
-			preDeleteNodes = buildMapNodes(be.childDefs, be.coll.entries)
-		} else {
-			preDeleteNodes = buildSeqNodes(be.childDefs, be.coll.entries)
-		}
-		be.undoSnap.treeNodes = preDeleteNodes
-		be.undoSnap.treeCursor = 0
-		be.undoSnap.treeOffset = 0
+	idx := be.tree.currentNodeIdx()
+	if idx < 0 || be.tree.nodes[idx].kind != treeNodeSeqItem {
+		return be
 	}
+	seqIdx := be.tree.nodes[idx].seqIdx
+	if be.cfg.NoDeleteConfirm {
+		return be.performEntryDelete(seqIdx)
+	}
+	label := be.tree.nodes[idx].label
+	al := alert.NewConfirm(
+		"Remove entry?",
+		fmt.Sprintf("Remove %q? Its content will be lost.", label),
+		func() tea.Msg { return pendingEntryDeleteMsg{seqIdx: seqIdx} },
+		theme.Size{W: be.width, H: be.height},
+	)
+	be.confirmAlert = &al
+	be.mode = modeConfirming
+	return be
+}
+
+// performEntryDelete removes collection entry seqIdx from both the tree and the
+// buffer, saving undo first. saveUndo runs before the tree is mutated, so the
+// snapshot captures the pre-deletion tree directly and ctrl+u restores the entry.
+func (be blockEditState) performEntryDelete(seqIdx int) blockEditState {
+	be = be.saveUndo()
 	be.dirty = true
-	cur := be.coll.current
-	if cur >= 0 && cur < len(be.coll.entries) {
+	be.tree = be.tree.WithDeletedSeqItem(seqIdx)
+	if seqIdx >= 0 && seqIdx < len(be.coll.entries) {
 		entries := make([]seqEntry, 0, len(be.coll.entries)-1)
-		entries = append(entries, be.coll.entries[:cur]...)
-		entries = append(entries, be.coll.entries[cur+1:]...)
+		entries = append(entries, be.coll.entries[:seqIdx]...)
+		entries = append(entries, be.coll.entries[seqIdx+1:]...)
 		be.coll.entries = entries
 	}
 	be = be.loadEntry(be.tree.NearestSeqItem())
@@ -1062,6 +1077,11 @@ func (be blockEditState) restoreUndo() blockEditState {
 			be.tree.offset = 0
 		}
 		be = be.loadEntry(be.coll.current)
+		// loadEntry pulls the current entry from coll.entries, but in-progress edits
+		// to that entry live only in the editor until navigation/commit flushes them
+		// (toggles do not flush). snap.yamlValue captured the editor at saveUndo time,
+		// so restore from it — otherwise undo also drops unflushed edits to the entry.
+		be.yamlEditor.SetValue(snap.yamlValue)
 		// Resync checked states from the restored yamlEditor content.
 		// snap.treeNodes preserves expanded/collapsed state but may have stale
 		// checked values (e.g. when the toggle happened before saveUndo ran).

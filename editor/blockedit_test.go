@@ -367,8 +367,12 @@ func TestUndo_seqItemDelete(t *testing.T) {
 	be := newBlockEdit(Config{}, spec, 100, 40)
 	wantBase := seqEntriesToBase("categories", be.coll.entries)
 
-	// ctrl+d on the first item (alpha).
+	// ctrl+d on the first item (alpha) now confirms before deleting.
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	if be.mode != modeConfirming {
+		t.Fatalf("ctrl+d on a seq item should confirm first; mode=%d", be.mode)
+	}
+	be, _ = be.Update(pendingEntryDeleteMsg{seqIdx: 0})
 
 	if be.undoSnap == nil {
 		t.Fatal("undoSnap must be set after seq item delete")

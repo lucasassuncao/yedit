@@ -267,6 +267,10 @@ type blockEditDiscardedMsg struct{ discarded bool }
 // user chooses Yes. nodeIdx is the index into blockEditState.tree.nodes.
 type pendingRemoveMsg struct{ nodeIdx int }
 
+// pendingEntryDeleteMsg is dispatched by the "Remove entry?" confirm alert when
+// the user confirms deleting a whole collection entry. seqIdx indexes the entry.
+type pendingEntryDeleteMsg struct{ seqIdx int }
+
 // confirmedDeleteMsg is dispatched by the "Remove block?" confirm alert when
 // the user confirms deleting a top-level block from the main list.
 type confirmedDeleteMsg struct{ Key string }

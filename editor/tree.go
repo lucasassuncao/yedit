@@ -218,10 +218,6 @@ func flattenDefsAsTree(defs []schema.FieldDef, prefix []string, depth int) []tre
 		// A map[string]Struct or []Struct field has no inline children, but can be
 		// opened in a dedicated editor: pressing Enter/→ drills into the collection.
 		openable := (d.Kind == schema.KindDictionary || d.Kind == schema.KindList) && len(d.Children) > 0
-		// If a collection field is openable, it's not a plain leaf.
-		if openable && d.Kind == schema.KindList {
-			isLeaf = false
-		}
 		out = append(out, treeNode{
 			kind:     treeNodeField,
 			yamlPath: path,
@@ -232,7 +228,10 @@ func flattenDefsAsTree(defs []schema.FieldDef, prefix []string, depth int) []tre
 			expanded: false,
 			def:      d,
 		})
-		if !isLeaf && len(d.Children) > 0 {
+		// Only inline struct parents (KindObject) get expandable children in the
+		// tree. Openable collections (list/map of struct) drill into a dedicated
+		// editor instead, so they carry no inline children.
+		if d.Kind == schema.KindObject && len(d.Children) > 0 {
 			out = append(out, flattenDefsAsTree(d.Children, path, depth+1)...)
 		}
 	}
@@ -477,7 +476,9 @@ func (tm treeModel) WithNewSeqItem(defs []schema.FieldDef, label string) treeMod
 	return tm
 }
 
-// Update handles all keyboard input for the tree panel.
+// Update handles all keyboard input for the tree panel. The full (cursor target
+// × key) → treeAction matrix is documented in INTERACTION.md and enforced by
+// TestMatrix_TreeActions.
 func (tm treeModel) Update(msg tea.KeyMsg) (treeModel, treeAction) {
 	vis := tm.visibleNodes()
 	n := len(vis)
@@ -613,6 +614,20 @@ func (tm treeModel) handleEnter() (treeModel, treeAction) {
 		if nd.openable {
 			return tm, treeOpenChild
 		}
+		if !nd.isLeaf {
+			// Inline struct parent: its presence in the YAML is derived from its
+			// children (toggling a child auto-creates the parent). Enter expands it
+			// like → rather than inserting a stray empty key with a phantom checked
+			// state that sync never clears.
+			if !nd.expanded {
+				nodes := make([]treeNode, len(tm.nodes))
+				copy(nodes, tm.nodes)
+				nodes[idx].expanded = true
+				tm.nodes = nodes
+				return tm, treeExpanded
+			}
+			return tm, treeNoAction
+		}
 		if !nd.checked {
 			nodes := make([]treeNode, len(tm.nodes))
 			copy(nodes, tm.nodes)
@@ -634,7 +649,8 @@ func (tm treeModel) handleRemove() (treeModel, treeAction) {
 	nd := tm.nodes[idx]
 	switch nd.kind {
 	case treeNodeSeqItem:
-		tm = tm.WithDeletedSeqItem(nd.seqIdx)
+		// Deletion is deferred to the block editor so it can confirm first; the
+		// tree is mutated only when the removal is actually performed.
 		return tm, treeDeleted
 	case treeNodeField:
 		if nd.checked {
@@ -697,7 +713,9 @@ func hasCheckedDescendant(nodes []treeNode, parentIdx int) bool {
 		if nodes[i].depth <= parentDepth {
 			break
 		}
-		if nodes[i].isLeaf && nodes[i].checked {
+		// Leaves and openable fields (nested collections) both carry a checked
+		// state; an openable child holding content counts just like a leaf.
+		if (nodes[i].isLeaf || nodes[i].openable) && nodes[i].checked {
 			return true
 		}
 	}
