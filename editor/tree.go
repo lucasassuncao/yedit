@@ -644,6 +644,13 @@ func (tm treeModel) handleRemove() (treeModel, treeAction) {
 			tm.nodes = nodes
 			return tm, treeToggled
 		}
+		// A non-leaf parent struct (e.g. hooks.before) carries no checkbox of its
+		// own, but ctrl+d should still remove the whole subtree when it holds
+		// content. Route through treeToggled; the block editor confirms removal
+		// and deletes the parent mapping by its path.
+		if !nd.isLeaf && hasCheckedDescendant(tm.nodes, idx) {
+			return tm, treeToggled
+		}
 	}
 	return tm, treeNoAction
 }

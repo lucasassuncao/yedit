@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/schema"
@@ -407,5 +408,58 @@ func TestToggleChildUnderEmptyParent(t *testing.T) {
 	got := applyToggleToSeqItem(ctx, node, true, content)
 	if !strings.Contains(got, "path:") {
 		t.Errorf("toggling source.path did not add the field:\n%s", got)
+	}
+}
+
+// TestCtrlDRemovesNestedParentBlock reproduces the movelooper bug: ctrl+d on a
+// nested struct parent (hooks.before) carries no checkbox of its own, so the old
+// handleRemove returned treeNoAction and nothing happened. ctrl+d must now offer
+// removal and delete the whole subtree, leaving sibling blocks (after) intact.
+func TestCtrlDRemovesNestedParentBlock(t *testing.T) {
+	defs := []schema.FieldDef{
+		{YAMLName: "name", Kind: schema.KindPrimitive},
+		{YAMLName: "hooks", Kind: schema.KindObject, Children: []schema.FieldDef{
+			{YAMLName: "before", Kind: schema.KindObject, Children: []schema.FieldDef{
+				{YAMLName: "shell", Kind: schema.KindPrimitive},
+				{YAMLName: "run", Kind: schema.KindPrimitive},
+			}},
+			{YAMLName: "after", Kind: schema.KindObject, Children: []schema.FieldDef{
+				{YAMLName: "shell", Kind: schema.KindPrimitive},
+			}},
+		}},
+	}
+	content := "categories:\n  - name: \"lucas\"\n    hooks:\n      before:\n        shell: bash\n        run: echo hi\n      after:\n        shell: bash\n"
+	be := newBlockEdit(Config{}, blockSpec{key: "categories", defs: defs, kind: schema.KindList, content: content}, 120, 40)
+
+	// Expand every node so "before" is visible, then place the cursor on it.
+	for i := range be.tree.nodes {
+		be.tree.nodes[i].expanded = true
+	}
+	be = cursorToLabel(be, "before")
+
+	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyCtrlD})
+	if be.mode != modeConfirming {
+		t.Fatalf("ctrl+d on nested parent did not offer removal (mode=%d, want modeConfirming)", be.mode)
+	}
+
+	// Locate the captured "before" node index and confirm the removal.
+	beforeIdx := -1
+	for i, n := range be.tree.nodes {
+		if n.kind == treeNodeField && n.label == "before" {
+			beforeIdx = i
+			break
+		}
+	}
+	if beforeIdx < 0 {
+		t.Fatal("before node not found")
+	}
+	be, _ = be.Update(pendingRemoveMsg{nodeIdx: beforeIdx})
+
+	got := be.yamlEditor.Value()
+	if strings.Contains(got, "before:") {
+		t.Errorf("before block was not removed:\n%s", got)
+	}
+	if !strings.Contains(got, "after:") {
+		t.Errorf("after block should remain:\n%s", got)
 	}
 }
