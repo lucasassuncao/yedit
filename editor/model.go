@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
+	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/components/alert"
 	"github.com/lucasassuncao/yedit/document"
@@ -43,13 +44,23 @@ type model struct {
 	preview         viewport.Model
 	previewRenderer *glamour.TermRenderer
 	// blockEdits is a stack of block editors. Index 0 is the top-level block
-	// opened from the list; deeper entries are nested map-of-struct drill-ins.
-	// The last element is the visible/active editor.
+	// opened from the list; deeper entries are nested drill-ins. The last element
+	// is the visible/active editor. The stack carries only UI state (cursor,
+	// expansion) and each editor's focus path — the canonical data lives in
+	// editRoot.
 	blockEdits []*blockEditState
-	alert      *alert.Model
-	theme      resolvedTheme
+	// editRoot is the single canonical *yaml.Node for the block currently being
+	// edited: the parsed value of the top-level block. Drilling in moves a focus
+	// path within this one tree (be.focus) rather than copying substrings between
+	// stacked editors, and committing serializes it once. Non-focused parts stay
+	// as live nodes, so nested edits can never corrupt them via string splicing.
+	editRoot     *yaml.Node
+	editBlockKey string // top-level YAML key of editRoot
+	alert        *alert.Model
+	theme        resolvedTheme
 
 	mode                         pane
+	showHint                     bool // root view: split the right column to show the Hint/Example panel
 	statusMsg                    string
 	width, height, listW, innerH int
 }
@@ -98,6 +109,21 @@ func newModel(cfg Config) (model, error) {
 	}, nil
 }
 
+// blockBreadcrumbPrefix returns the breadcrumb segments for all editors in the
+// stack except the top one. The top editor appends its own key and tree segments.
+func (m model) blockBreadcrumbPrefix() []string {
+	n := len(m.blockEdits)
+	if n <= 1 {
+		return nil
+	}
+	var segs []string
+	for _, be := range m.blockEdits[:n-1] {
+		segs = append(segs, be.key)
+		segs = append(segs, be.tree.BreadcrumbSegments()...)
+	}
+	return segs
+}
+
 // topBE returns the active (deepest) block editor, or nil when none is open.
 func (m *model) topBE() *blockEditState {
 	if len(m.blockEdits) == 0 {
@@ -111,6 +137,46 @@ func (m *model) setTopBE(be *blockEditState) {
 	if len(m.blockEdits) > 0 {
 		m.blockEdits[len(m.blockEdits)-1] = be
 	}
+}
+
+// --- Screen transitions ---
+//
+// These are the ONLY functions that assign m.mode. Each one sets the active
+// pane together with the data that pane owns, so the two invariants
+//
+//	m.alert != nil        ⟺  m.mode == paneAlert
+//	len(m.blockEdits) > 0  ⟺  m.mode == paneBlockEdit
+//
+// cannot be violated by a caller that forgets to clear a sibling field. The
+// model-level alert is always a modal over the list (the block editor uses its
+// own confirmAlert), so enterAlert preserves blockEdits and dismissal returns to
+// the list via enterList.
+
+// enterList makes the block list the active screen, discarding any open editor
+// stack and alert.
+func (m *model) enterList() {
+	m.mode = paneList
+	m.alert = nil
+	m.blockEdits = nil
+}
+
+// enterPreview focuses the read-only preview pane.
+func (m *model) enterPreview() {
+	m.mode = panePreview
+	m.alert = nil
+}
+
+// enterBlockEdit makes the block-editor stack the active screen. The caller is
+// responsible for having pushed onto m.blockEdits first.
+func (m *model) enterBlockEdit() {
+	m.mode = paneBlockEdit
+	m.alert = nil
+}
+
+// enterAlert shows a modal alert over the current (list) screen.
+func (m *model) enterAlert(al alert.Model) {
+	m.mode = paneAlert
+	m.alert = &al
 }
 
 func applyHidden(fields []schema.FieldDef, hidden []string) []schema.FieldDef {
@@ -158,21 +224,44 @@ func fieldKind(fields []schema.FieldDef, name string) schema.Kind {
 	return schema.KindPrimitive
 }
 
-// openChildMsg requests drilling into a nested map-of-struct field, pushing a
-// new block editor scoped to that field onto the stack.
+// fieldDefByName returns the FieldDef of the named top-level field, or a zero
+// FieldDef when it has no schema entry (e.g. an unknown key).
+func fieldDefByName(fields []schema.FieldDef, name string) schema.FieldDef {
+	for _, f := range fields {
+		if f.YAMLName == name {
+			return f
+		}
+	}
+	return schema.FieldDef{}
+}
+
+// openChildMsg requests drilling into a nested field, pushing a new block editor
+// scoped to that field onto the stack. relSegs is the focus-path suffix from the
+// parent editor's focus to the drilled-into node (e.g. [segIdx(2), segKey("any")]
+// for the "any" field of the parent collection's current item). The model
+// resolves the actual content from editRoot at the resulting focus path.
 type openChildMsg struct {
 	key     string
 	defs    []schema.FieldDef
 	kind    schema.Kind
-	content string
-	path    []string // path in the parent block's value to splice back into
+	relSegs []pathSeg
 }
 
 // blockEditCommittedMsg is sent when the user commits a block edit (Ctrl+S).
 type blockEditCommittedMsg struct{ Snippet string }
 
-// blockEditDiscardedMsg is sent when the user cancels a block edit (Esc).
-type blockEditDiscardedMsg struct{}
+// drillOutMsg is sent when the user presses Esc inside a nested editor. Unlike
+// blockEditDiscardedMsg (which abandons the whole block edit), it navigates up
+// one level while KEEPING edits: the current level is flushed into the canonical
+// editRoot, popped, and the parent editor is refreshed to reflect the change.
+type drillOutMsg struct{}
+
+// blockEditDiscardedMsg is sent when the user closes a block edit (Esc).
+// discarded is true only when uncommitted changes were intentionally thrown away
+// (user confirmed the "Discard changes?" dialog). It is false when Esc is pressed
+// on a clean editor (no uncommitted changes) — in that case the status message
+// from the last commit should be preserved.
+type blockEditDiscardedMsg struct{ discarded bool }
 
 // pendingRemoveMsg is dispatched by the "Remove field?" confirm alert when the
 // user chooses Yes. nodeIdx is the index into blockEditState.tree.nodes.
@@ -199,12 +288,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case blockEditCommittedMsg:
 		return m.handleOverlayConfirmed(msg.Snippet)
 	case blockEditDiscardedMsg:
-		return m.handleBlockEditDiscarded()
+		return m.handleBlockEditDiscarded(msg)
+	case drillOutMsg:
+		return m.handleDrillOut()
 	case deleteItemMsg:
 		return m.handleDeleteItemMsg(msg)
 	case confirmedDeleteMsg:
-		m.alert = nil
-		m.mode = paneList
+		m.enterList()
 		return m.handleDelete(msg.Key)
 	case alert.DismissedMsg:
 		// Forward to the active blockEdit first so its confirmAlert is cleared.
@@ -213,8 +303,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setTopBE(&be)
 			return m, cmd
 		}
-		m.alert = nil
-		m.mode = paneList
+		m.enterList()
 		return m, nil
 	case doSaveMsg:
 		return m.execSave()
@@ -267,17 +356,77 @@ func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) handleBlockEditDiscarded() (tea.Model, tea.Cmd) {
+func (m model) handleBlockEditDiscarded(msg blockEditDiscardedMsg) (tea.Model, tea.Cmd) {
 	if len(m.blockEdits) > 0 {
 		m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
 	}
 	if len(m.blockEdits) == 0 {
-		m.mode = paneList
-		m.statusMsg = "Cancelled."
+		m.enterList()
+		if msg.discarded {
+			// User threw away uncommitted changes — show explicit feedback.
+			m.statusMsg = "Cancelled."
+		}
+		// else: clean Esc after a commit — preserve the existing status message
+		// (e.g. "Block updated (not saved yet)").
 	} else {
 		m.statusMsg = ""
 	}
 	return m, nil
+}
+
+// handleDrillOut navigates up one level while keeping edits. The current (child)
+// editor is flushed into editRoot, popped, and the parent editor is refreshed
+// from editRoot so it reflects what the child changed. Editing a child and
+// returning to fix a parent field is therefore non-destructive — nothing is
+// committed to the document until Ctrl+S. Only fired for nested editors.
+func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
+	if len(m.blockEdits) <= 1 {
+		return m, nil
+	}
+	childWasDirty := m.topBE().dirty
+
+	var ok bool
+	if m, ok = m.flushTopToRoot(); !ok {
+		// Invalid YAML in the child — cannot write it into the canonical tree.
+		// The error is already shown; stay so the user can fix it.
+		return m, nil
+	}
+	m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
+	m = m.refreshTopFromRoot(childWasDirty)
+	m.statusMsg = ""
+	return m, nil
+}
+
+// refreshTopFromRoot rebuilds the active editor's content from the node at its
+// focus path in editRoot, preserving tree cursor/expansion and the current
+// collection entry. markDirty propagates uncommitted-changes state up from a
+// child so the top-level "Discard changes?" guard still fires.
+func (m model) refreshTopFromRoot(markDirty bool) model {
+	top := m.topBE()
+	if top == nil {
+		return m
+	}
+	node := nodeAt(m.editRoot, top.focus)
+	if node == nil {
+		return m
+	}
+	be := *top
+	content := nodeToContent(be.key, node)
+	if be.isCollectionNav() {
+		be.coll.entries = collectionEntries(be.key, content, be.isMapNav())
+		if be.coll.current >= len(be.coll.entries) {
+			be.coll.current = len(be.coll.entries) - 1
+		}
+		be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
+	} else {
+		be.yamlEditor.SetValue(content)
+	}
+	be.tree = be.resyncTreeFromYAML()
+	if markDirty {
+		be.dirty = true
+	}
+	m.setTopBE(&be)
+	return m
 }
 
 func (m model) handleDeleteItemMsg(msg deleteItemMsg) (tea.Model, tea.Cmd) {
@@ -298,19 +447,31 @@ func (m model) handleDeleteItemMsg(msg deleteItemMsg) (tea.Model, tea.Cmd) {
 func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 	top := m.topBE()
 	if top == nil {
-		m.mode = paneList
+		m.enterList()
 		return m, nil
 	}
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+u" {
-		if top.undoSnap != nil {
-			be := top.restoreUndo()
-			m.setTopBE(&be)
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "ctrl+s":
+			if m.cfg.ReadOnly {
+				top.statusMsg = "Read-only mode — saving is disabled."
+				m.setTopBE(top)
+				return m, nil
+			}
+			// Commit all stacked editors at once, then save the file.
+			return m.saveAll()
+		case "ctrl+u":
+			if top.undoSnap != nil {
+				be := top.restoreUndo()
+				be.statusMsg = "Undone."
+				m.setTopBE(&be)
+				return m, nil
+			}
+			// Never fall through to m.doc.Undo() while a block editor is open.
+			top.statusMsg = "Nothing to undo."
+			m.setTopBE(top)
 			return m, nil
 		}
-		// No block-editor snap: nothing to undo here.
-		// Never fall through to m.doc.Undo() while a block editor is open —
-		// that would revert the document but leave the editor showing stale content.
-		return m, nil
 	}
 	be, cmd := top.Update(msg)
 	m.setTopBE(&be)
@@ -324,7 +485,7 @@ func (m model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 			m.statusMsg = "Read-only mode — saving is disabled."
 			return m, nil, true
 		}
-		mo, cmd := m.save()
+		mo, cmd := m.saveAll()
 		return mo, cmd, true
 	case "ctrl+l":
 		mo, cmd := m.validateKeys()
@@ -342,6 +503,11 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "tab":
 			return m.togglePreviewPane()
+		case "h":
+			m.showHint = !m.showHint
+			m.relayout()
+			m.scrollPreviewToSelected()
+			return m, nil
 		case "ctrl+u":
 			return m.undo(), nil
 		case "esc", "ctrl+c":
@@ -372,11 +538,11 @@ func (m model) handlePreviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) togglePreviewPane() (tea.Model, tea.Cmd) {
 	if m.mode == panePreview {
-		m.mode = paneList
+		m.enterList()
 		m.statusMsg = ""
 		return m, nil
 	}
-	m.mode = panePreview
+	m.enterPreview()
 	m.statusMsg = "Viewing YAML — ↑/↓ scroll, Tab/Esc back to list."
 	return m, nil
 }
@@ -489,6 +655,34 @@ func (m *model) refreshPreview() {
 	m.preview.SetContent(renderPreviewYAML(string(m.doc.Raw()), m.previewRenderer))
 }
 
+// selectedHint renders the Hint/Example panel body for the currently selected
+// list item, using its schema metadata.
+func (m model) selectedHint() string {
+	it := m.list.SelectedItem()
+	if it == nil || it.Separator {
+		return m.theme.hintDim.Render("  select a field to see hints")
+	}
+	if it.Unknown {
+		return m.theme.hintDim.Render("  unknown key — not in the schema")
+	}
+	def := fieldDefByName(m.schemaTree, it.Key)
+	if def.YAMLName == "" {
+		def.YAMLName = it.Key
+	}
+	return renderFieldHint(m.theme, def, m.hintExample(it.Key, def))
+}
+
+// hintExample resolves the Example snippet for a top-level field: its "base"
+// preset when one exists, otherwise a structural fallback from the schema.
+func (m model) hintExample(key string, def schema.FieldDef) string {
+	if m.cfg.Presets != nil {
+		if y, err := m.cfg.Presets.PresetYAML(key, "base"); err == nil {
+			return y
+		}
+	}
+	return generateFallbackExample(def)
+}
+
 func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 	var initial string
 	if it.Existing {
@@ -509,27 +703,70 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 	if it.Unknown {
 		knownByPath = nil
 	}
-	be := newBlockEdit(m.cfg, blockSpec{key: it.Key, defs: children, kind: kind, content: initial, knownByPath: knownByPath}, m.width, m.height)
+	be := newBlockEdit(m.cfg, blockSpec{key: it.Key, defs: children, kind: kind, def: fieldDefByName(m.schemaTree, it.Key), content: initial, knownByPath: knownByPath}, m.width, m.height)
 	be.isEdit = it.Existing
+	be.focus = nil // top-level editor edits the whole block
 	m.blockEdits = []*blockEditState{&be}
-	m.mode = paneBlockEdit
+	m.editBlockKey = it.Key
+	// Canonical tree, refreshed from the top editor on every flush (drill-in /
+	// commit). A non-nil placeholder is enough; the first flush populates it.
+	m.editRoot = &yaml.Node{Kind: yaml.MappingNode}
+	m.enterBlockEdit()
 	return m, be.Init()
 }
 
-// handleOpenChild pushes a nested block editor for a map-of-struct field that
-// the user drilled into from the parent editor. Unknown-key validation is left
-// to the parent commit, so the child editor uses a nil knownByPath (its root key
-// is the field name, which would otherwise read as an unknown top-level key).
+// flushTopToRoot commits the active editor and writes its value node into
+// editRoot at the editor's focus path. Returns (updatedModel, true) on success;
+// on a validation error it sets the editor's error and returns false so the
+// caller aborts the navigation/commit.
+func (m model) flushTopToRoot() (model, bool) {
+	top := m.topBE()
+	committed, cmd := top.commit()
+	m.setTopBE(&committed)
+	if cmd == nil {
+		m.statusMsg = committed.errMsg
+		return m, false
+	}
+	snippet := cmd().(blockEditCommittedMsg).Snippet
+	val := valueNodeOfSnippet(snippet)
+	if val == nil || !setNodeAt(m.editRoot, committed.focus, val) {
+		m.statusMsg = "internal error: could not write editor into canonical tree"
+		return m, false
+	}
+	return m, true
+}
+
+// handleOpenChild drills into a nested field. It flushes the parent editor into
+// the canonical editRoot, then builds the child editor from the node living at
+// the child's focus path within that same tree — no substring copy. Unknown-key
+// validation is left to the parent, so the child uses a nil knownByPath (its
+// root key is the field name, which would otherwise read as an unknown key).
 func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
-	content := msg.content
-	if content == "" {
-		content = msg.key + ":\n"
+	const maxNestingDepth = 10
+	if len(m.blockEdits) >= maxNestingDepth {
+		m.statusMsg = fmt.Sprintf("Maximum nesting depth (%d) reached.", maxNestingDepth)
+		return m, nil
+	}
+
+	// Flush the parent into editRoot so the child reads the parent's live state.
+	parentFocus := append([]pathSeg(nil), m.topBE().focus...)
+	var ok bool
+	if m, ok = m.flushTopToRoot(); !ok {
+		return m, nil
+	}
+
+	childFocus := append([]pathSeg(nil), parentFocus...)
+	childFocus = append(childFocus, msg.relSegs...)
+	content := msg.key + ":\n"
+	if node := nodeAt(m.editRoot, childFocus); node != nil {
+		content = nodeToContent(msg.key, node)
 	}
 	be := newBlockEdit(m.cfg, blockSpec{key: msg.key, defs: msg.defs, kind: msg.kind, content: content, knownByPath: nil}, m.width, m.height)
 	be.isEdit = true
-	be.childPath = msg.path
+	be.focus = childFocus
+
 	m.blockEdits = append(m.blockEdits, &be)
-	m.mode = paneBlockEdit
+	m.enterBlockEdit()
 	return m, be.Init()
 }
 
@@ -543,23 +780,12 @@ func (m model) handleDelete(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleOverlayConfirmed handles a blockEditCommittedMsg: the editor committing
+// itself to the document while staying open. The live Ctrl+S flow uses commitAll
+// (canonical-tree flush) instead; this path remains for direct top-level commits
+// such as tests seeding content. Nested commits are never produced this way.
 func (m model) handleOverlayConfirmed(snippet string) (tea.Model, tea.Cmd) {
-	if len(m.blockEdits) == 0 {
-		return m, nil
-	}
-
-	// Nested child commit: splice the snippet back into the parent editor's YAML
-	// at the drill-in path, resync the parent tree, then pop back to the parent.
-	if len(m.blockEdits) > 1 {
-		child := m.blockEdits[len(m.blockEdits)-1]
-		parent := m.blockEdits[len(m.blockEdits)-2]
-		*parent = parent.saveUndo()
-		newYAML := replaceSubBlock(parent.yamlEditor.Value(), child.childPath, snippet)
-		parent.yamlEditor.SetValue(newYAML)
-		parent.dirty = true
-		parent.tree = parent.resyncTreeFromYAML()
-		m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
-		m.statusMsg = fmt.Sprintf("Updated %q (not saved yet) — Esc to return.", child.key)
+	if len(m.blockEdits) != 1 {
 		return m, nil
 	}
 
@@ -578,17 +804,8 @@ func (m model) handleOverlayConfirmed(snippet string) (tea.Model, tea.Cmd) {
 	}
 	m.syncView()
 	// Re-sync after commit so repeated Ctrl+S is idempotent.
-	// For collection blocks (sequences/maps), update seqBase and show only the
-	// current entry — setting the full block into yamlEditor would cause
-	// rebuildSeqBase to treat all entries as one entry on the next commit.
 	if fresh, err := m.doc.BlockContent(be.key); err == nil {
-		if be.isCollectionNav() {
-			be.seqBase = fresh
-			be.yamlEditor.SetValue(be.entryYAML(be.tree.NearestSeqItem()))
-		} else {
-			be.yamlEditor.SetValue(fresh)
-		}
-		be.dirty = false
+		*be = be.resyncAfterCommit(fresh)
 	}
 	// Keep blockEdit open — user stays in editing mode after commit.
 	if isEdit {
@@ -640,6 +857,49 @@ func formatErrors(errs []string) string {
 	return sb.String()
 }
 
+// saveAll is the Ctrl+S handler. When block editors are open it commits all
+// stacked editors into m.doc and returns to the list — file save is a separate
+// action triggered by Ctrl+S from the list view. When no editors are open it
+// saves the file directly.
+func (m model) saveAll() (tea.Model, tea.Cmd) {
+	if len(m.blockEdits) > 0 {
+		return m.commitAll()
+	}
+	return m.save()
+}
+
+// commitAll commits the open editor stack into m.doc and returns to the list
+// without writing the file. Because every drill-in already flushed its parent
+// into editRoot, only the active (top) editor is still live: flush it, then
+// serialize the whole canonical tree once. No per-level string splicing.
+func (m model) commitAll() (tea.Model, tea.Cmd) {
+	if len(m.blockEdits) == 0 {
+		return m, nil
+	}
+	isEdit := m.blockEdits[0].isEdit
+
+	var ok bool
+	if m, ok = m.flushTopToRoot(); !ok {
+		return m, nil
+	}
+
+	final := nodeToContent(m.editBlockKey, m.editRoot)
+	var err error
+	if isEdit {
+		err = m.doc.Replace(m.editBlockKey, final)
+	} else {
+		err = m.doc.Insert(final)
+	}
+	if err != nil {
+		m.statusMsg = fmt.Sprintf("Apply error: %v", err)
+		return m, nil
+	}
+	m.syncView()
+	m.enterList()
+	m.statusMsg = "Changes committed (not saved yet) — ctrl+s to save."
+	return m, nil
+}
+
 func (m model) save() (tea.Model, tea.Cmd) {
 	errs := m.collectErrors()
 	if len(errs) > 0 && !m.cfg.NoValidateOnSave {
@@ -674,16 +934,12 @@ func (m model) validateKeys() (tea.Model, tea.Cmd) {
 }
 
 func (m model) showAlert(title, message string, kind alert.Kind) (tea.Model, tea.Cmd) {
-	al := alert.New(title, message, kind, theme.Size{W: m.width, H: m.height})
-	m.alert = &al
-	m.mode = paneAlert
+	m.enterAlert(alert.New(title, message, kind, theme.Size{W: m.width, H: m.height}))
 	return m, nil
 }
 
 func (m model) showConfirmAlert(title, message string, confirmCmd tea.Cmd) (tea.Model, tea.Cmd) {
-	al := alert.NewConfirm(title, message, confirmCmd, theme.Size{W: m.width, H: m.height})
-	m.alert = &al
-	m.mode = paneAlert
+	m.enterAlert(alert.NewConfirm(title, message, confirmCmd, theme.Size{W: m.width, H: m.height}))
 	return m, nil
 }
 
@@ -701,9 +957,43 @@ func (m *model) relayout() {
 	}
 	m.list.SetHeight(m.innerH)
 	m.preview.Width = previewW - 2
-	m.preview.Height = m.innerH
+	ph := m.innerH
+	if m.showHint {
+		ph = m.previewPanelH()
+	}
+	if ph < 1 {
+		ph = 1
+	}
+	m.preview.Height = ph
 	m.previewRenderer = newPreviewRenderer(m.preview.Width)
 	m.refreshPreview()
+}
+
+// hintPanelH is the content height of the Hint/Example panel when it shares the
+// right column with the preview. Mirrors blockEditState.hintH: ~1/3, floored.
+func (m model) hintPanelH() int {
+	total := m.innerH - 2 // extra border row from stacking two panels
+	h := total / 3
+	if h < 5 {
+		h = 5
+	}
+	if total-h < 5 {
+		h = total - 5
+	}
+	if h < 0 {
+		h = 0
+	}
+	return h
+}
+
+// previewPanelH is the content height of the preview when the hint panel shares
+// the right column.
+func (m model) previewPanelH() int {
+	h := m.innerH - 2 - m.hintPanelH()
+	if h < 0 {
+		h = 0
+	}
+	return h
 }
 
 func (m model) View() string {
@@ -719,7 +1009,7 @@ func (m model) View() string {
 		return m.alert.View()
 	case paneBlockEdit:
 		if top := m.topBE(); top != nil {
-			return top.View()
+			return top.View(m.blockBreadcrumbPrefix())
 		}
 	}
 
@@ -731,7 +1021,14 @@ func (m model) View() string {
 	leftPanel := theme.RenderTitledPanelWith(leftTitle, theme.Size{W: m.listW, H: m.innerH + 2}, !previewFocused, m.list.View(m.theme), m.theme.colors)
 
 	_, rightW := theme.TwoColumnWidths(m.width)
-	rightPanel := theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.innerH + 2}, previewFocused, m.preview.View(), m.theme.colors)
+	var rightPanel string
+	if m.showHint {
+		previewPanel := theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.previewPanelH() + 2}, previewFocused, m.preview.View(), m.theme.colors)
+		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: rightW, H: m.hintPanelH() + 2}, false, clampLines(m.selectedHint(), m.hintPanelH()), m.theme.colors)
+		rightPanel = lipgloss.JoinVertical(lipgloss.Left, previewPanel, hintPanel)
+	} else {
+		rightPanel = theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.innerH + 2}, previewFocused, m.preview.View(), m.theme.colors)
+	}
 
 	var hintText string
 	if previewFocused {
@@ -742,6 +1039,13 @@ func (m model) View() string {
 		hintText = hintModelExisting
 	} else {
 		hintText = hintModelNew
+	}
+	if !previewFocused && !m.list.IsFiltering() {
+		if m.showHint {
+			hintText += hintSep + keyHintHide
+		} else {
+			hintText += hintSep + keyHint
+		}
 	}
 
 	feedback := lipgloss.NewStyle().Width(m.width).Render(m.theme.status.Render(m.statusMsg))

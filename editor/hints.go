@@ -37,6 +37,9 @@ const (
 	keyFilter     = "[/] filter"
 	keyTypeFilter = "[type] filter"
 	keyPreset     = "[p] preset"
+
+	keyHint     = "[h] hint"
+	keyHintHide = "[h] hide hint"
 )
 
 // Composite hints built by concatenating atoms with hintSep.

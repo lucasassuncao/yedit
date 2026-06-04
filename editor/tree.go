@@ -96,6 +96,12 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 	return tm
 }
 
+// isEmpty reports whether the tree has no nodes — true for primitive, enum, and
+// free-form collection blocks, which have no sub-fields to navigate.
+func (tm treeModel) isEmpty() bool {
+	return len(tm.nodes) == 0
+}
+
 // buildSeqNodes creates the node list for a sequence block:
 // one treeNodeSeqItem per existing entry (collapsed), then treeNodeAddNew.
 // When entries is empty a non-selectable "(empty list)" separator is prepended.
@@ -209,9 +215,13 @@ func flattenDefsAsTree(defs []schema.FieldDef, prefix []string, depth int) []tre
 		path[len(prefix)] = d.YAMLName
 
 		isLeaf := d.Kind != schema.KindObject || len(d.Children) == 0
-		// A map[string]Struct field has no inline children, but it is not a plain
-		// leaf either: pressing Enter/→ drills into a dedicated map editor.
-		openable := d.Kind == schema.KindDictionary && len(d.Children) > 0
+		// A map[string]Struct or []Struct field has no inline children, but can be
+		// opened in a dedicated editor: pressing Enter/→ drills into the collection.
+		openable := (d.Kind == schema.KindDictionary || d.Kind == schema.KindList) && len(d.Children) > 0
+		// If a collection field is openable, it's not a plain leaf.
+		if openable && d.Kind == schema.KindList {
+			isLeaf = false
+		}
 		out = append(out, treeNode{
 			kind:     treeNodeField,
 			yamlPath: path,
@@ -257,7 +267,10 @@ func syncTreeCheckedStates(nodes []treeNode, key, yamlContent string) []treeNode
 	result := make([]treeNode, len(nodes))
 	copy(result, nodes)
 	for i, n := range result {
-		if n.kind != treeNodeField || !n.isLeaf {
+		// Leaves track key presence; openable fields (nested collections) track
+		// non-empty content. Inline-expandable structs are derived from their
+		// descendants instead, so they are skipped here.
+		if n.kind != treeNodeField || (!n.isLeaf && !n.openable) {
 			continue
 		}
 		// Walk the path through sub to see if the leaf key exists.
@@ -273,10 +286,35 @@ func syncTreeCheckedStates(nodes []treeNode, key, yamlContent string) []treeNode
 			cur, _ = cur[path[j]].(map[string]any)
 		}
 		if cur != nil && len(path) > startIdx {
-			_, result[i].checked = cur[path[len(path)-1]]
+			v, exists := cur[path[len(path)-1]]
+			if n.openable {
+				result[i].checked = exists && nonEmptyYAMLValue(v)
+			} else {
+				result[i].checked = exists
+			}
+		} else {
+			result[i].checked = false
 		}
 	}
 	return result
+}
+
+// nonEmptyYAMLValue reports whether a decoded YAML value carries real content.
+// Used to decide whether an openable field (a nested collection) renders as
+// active: an absent key, null, empty string, or empty list/map counts as empty.
+func nonEmptyYAMLValue(v any) bool {
+	switch t := v.(type) {
+	case nil:
+		return false
+	case string:
+		return t != ""
+	case []any:
+		return len(t) > 0
+	case map[string]any:
+		return len(t) > 0
+	default:
+		return true
+	}
 }
 
 // visibleNodes returns the indices into tm.nodes that should be rendered,
@@ -451,7 +489,7 @@ func (tm treeModel) Update(msg tea.KeyMsg) (treeModel, treeAction) {
 	case "up":
 		return tm.moveUp(), treeNoAction
 	case "down":
-		return tm.moveDown(n), treeNoAction
+		return tm.moveDown(), treeNoAction
 	case "right":
 		return tm.handleRight()
 	case "left":
@@ -484,20 +522,32 @@ func (tm treeModel) moveUp() treeModel {
 	return tm
 }
 
-func (tm treeModel) moveDown(n int) treeModel {
+func (tm treeModel) moveDown() treeModel {
 	vis := tm.visibleNodes()
 	start := tm.cursor
-	for tm.cursor < n-1 {
+	// Move down, skipping separators, while staying within bounds
+	for tm.cursor+1 < len(vis) {
 		tm.cursor++
 		if tm.nodes[vis[tm.cursor]].kind != treeNodeSeparator {
 			break
 		}
 	}
-	// If no non-separator was found below, stay put.
-	if tm.nodes[vis[tm.cursor]].kind == treeNodeSeparator {
+	// If we're now on a separator (or couldn't move), stay at the original position
+	if tm.cursor < len(vis) && tm.nodes[vis[tm.cursor]].kind == treeNodeSeparator {
 		tm.cursor = start
 	}
 	if tm.cursor >= tm.offset+tm.height {
+		tm.offset = tm.cursor - tm.height + 1
+	}
+	return tm
+}
+
+// clampOffset scrolls the viewport so the current cursor row stays visible.
+func (tm treeModel) clampOffset() treeModel {
+	if tm.cursor < tm.offset {
+		tm.offset = tm.cursor
+	}
+	if tm.height > 0 && tm.cursor >= tm.offset+tm.height {
 		tm.offset = tm.cursor - tm.height + 1
 	}
 	return tm
@@ -539,9 +589,7 @@ func (tm treeModel) handleLeft(vis []int) (treeModel, treeAction) {
 		for vi := tm.cursor - 1; vi >= 0; vi-- {
 			if tm.nodes[vis[vi]].depth == nd.depth-1 {
 				tm.cursor = vi
-				if tm.cursor < tm.offset {
-					tm.offset = tm.cursor
-				}
+				tm = tm.clampOffset()
 				break
 			}
 		}
@@ -565,7 +613,7 @@ func (tm treeModel) handleEnter() (treeModel, treeAction) {
 		if nd.openable {
 			return tm, treeOpenChild
 		}
-		if nd.isLeaf && !nd.checked {
+		if !nd.checked {
 			nodes := make([]treeNode, len(tm.nodes))
 			copy(nodes, tm.nodes)
 			nodes[idx].checked = true
@@ -577,7 +625,7 @@ func (tm treeModel) handleEnter() (treeModel, treeAction) {
 }
 
 // handleRemove removes the item under the cursor (ctrl+d = universal remove).
-// For seq items it fires treeDeleted; for checked leaf fields it unchecks them.
+// For seq items it fires treeDeleted; for checked fields it unchecks them.
 func (tm treeModel) handleRemove() (treeModel, treeAction) {
 	idx := tm.currentNodeIdx()
 	if idx < 0 {
@@ -589,7 +637,7 @@ func (tm treeModel) handleRemove() (treeModel, treeAction) {
 		tm = tm.WithDeletedSeqItem(nd.seqIdx)
 		return tm, treeDeleted
 	case treeNodeField:
-		if nd.isLeaf && nd.checked {
+		if nd.checked {
 			nodes := make([]treeNode, len(tm.nodes))
 			copy(nodes, tm.nodes)
 			nodes[idx].checked = false
@@ -675,70 +723,7 @@ func (tm treeModel) View(th resolvedTheme) string {
 	var sb strings.Builder
 	for vi := tm.offset; vi < end; vi++ {
 		ni := vis[vi]
-		nd := tm.nodes[ni]
-
-		var line string
-		switch nd.kind {
-		case treeNodeSeparator:
-			if nd.label == "" {
-				line = ""
-			} else {
-				line = th.sectionLabel.Render(" " + nd.label)
-			}
-
-		case treeNodeAddNew:
-			label := "  [+ add new]"
-			if vi == tm.cursor {
-				line = th.selectedItem.Render("▶" + label)
-			} else {
-				line = th.availableItem.Render(" " + label)
-			}
-
-		case treeNodeSeqItem:
-			var arrow string
-			if nd.expanded {
-				arrow = "▼"
-			} else {
-				arrow = "▶"
-			}
-			label := fmt.Sprintf("%s [%d] %s", arrow, nd.seqIdx, nd.label)
-			if vi == tm.cursor {
-				line = th.selectedItem.Render("▶ " + label)
-			} else {
-				line = th.existingItem.Render("  " + label)
-			}
-
-		default: // treeNodeField
-			indent := strings.Repeat("  ", nd.depth)
-			var mark string
-			switch {
-			case nd.openable:
-				mark = "▸" // drill-in arrow for map-of-struct fields
-			case !nd.isLeaf && nd.expanded:
-				mark = "▾"
-			case !nd.isLeaf:
-				mark = "▸"
-			case nd.checked:
-				mark = "●"
-			default:
-				mark = "○"
-			}
-			label := fmt.Sprintf("%s%s %s", indent, mark, nd.label)
-			switch {
-			case vi == tm.cursor:
-				line = th.selectedItem.Render("▶ " + label)
-			case nd.checked:
-				line = th.existingItem.Render("  " + label)
-			case !nd.isLeaf && hasCheckedDescendant(tm.nodes, ni):
-				line = th.existingItem.Render("  " + label)
-			case !nd.isLeaf:
-				line = th.sectionLabel.Render(" " + label) // PaddingLeft(1) + 1 sp = 2 cells, matches cursor prefix
-			default:
-				line = th.availableItem.Render("  " + label)
-			}
-		}
-
-		sb.WriteString(line + "\n")
+		sb.WriteString(tm.nodeLine(tm.nodes[ni], ni, vi, th) + "\n")
 	}
 
 	if hasMore {
@@ -752,4 +737,76 @@ func (tm treeModel) View(th resolvedTheme) string {
 	}
 
 	return strings.TrimSuffix(sb.String(), "\n")
+}
+
+// nodeLine renders a single tree row. vi is the visible index (compared against
+// the cursor); ni indexes tm.nodes (for descendant lookups).
+func (tm treeModel) nodeLine(nd treeNode, ni, vi int, th resolvedTheme) string {
+	switch nd.kind {
+	case treeNodeSeparator:
+		if nd.label == "" {
+			return ""
+		}
+		return th.sectionLabel.Render(" " + nd.label)
+
+	case treeNodeAddNew:
+		label := "  [+ add new]"
+		if vi == tm.cursor {
+			return th.selectedItem.Render("▶" + label)
+		}
+		return th.availableItem.Render(" " + label)
+
+	case treeNodeSeqItem:
+		arrow := "▶"
+		if nd.expanded {
+			arrow = "▼"
+		}
+		label := fmt.Sprintf("%s [%d] %s", arrow, nd.seqIdx, nd.label)
+		if vi == tm.cursor {
+			return th.selectedItem.Render("▶ " + label)
+		}
+		return th.existingItem.Render("  " + label)
+
+	default: // treeNodeField
+		return tm.fieldLine(nd, ni, vi, th)
+	}
+}
+
+// fieldLine renders a treeNodeField row, choosing its mark and colour from the
+// node's leaf/openable/checked/expanded state.
+func (tm treeModel) fieldLine(nd treeNode, ni, vi int, th resolvedTheme) string {
+	indent := strings.Repeat("  ", nd.depth)
+	var mark string
+	switch {
+	case nd.openable:
+		mark = "→" // drill-in: opens a nested editor (distinct from inline expand)
+	case !nd.isLeaf && nd.expanded:
+		mark = "▾"
+	case !nd.isLeaf:
+		mark = "▸"
+	case nd.checked:
+		mark = "●"
+	default:
+		mark = "○"
+	}
+	label := fmt.Sprintf("%s%s %s", indent, mark, nd.label)
+	switch {
+	case vi == tm.cursor:
+		return th.selectedItem.Render("▶ " + label)
+	case nd.openable:
+		// Openable fields are leaf-like for styling: active when they hold
+		// content, muted when empty — never the inline-struct header style.
+		if nd.checked {
+			return th.existingItem.Render("  " + label)
+		}
+		return th.availableItem.Render("  " + label)
+	case nd.checked:
+		return th.existingItem.Render("  " + label)
+	case !nd.isLeaf && hasCheckedDescendant(tm.nodes, ni):
+		return th.existingItem.Render("  " + label)
+	case !nd.isLeaf:
+		return th.sectionLabel.Render(" " + label) // PaddingLeft(1) + 1 sp = 2 cells, matches cursor prefix
+	default:
+		return th.availableItem.Render("  " + label)
+	}
 }

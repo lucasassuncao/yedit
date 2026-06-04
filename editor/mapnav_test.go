@@ -168,7 +168,6 @@ func TestMapBlockAddEntrySeedsCheckedField(t *testing.T) {
 func TestMapBlockRenameUpdatesTreeLabel(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	be.yamlEditor.SetValue("portsAttributes:\n  lucas:\n    label: web\n    onAutoForward: notify\n")
-	be.seqBase = be.rebuildSeqBase()
 	be.tree = be.resyncTreeFromYAML()
 	if labels := seqItemLabels(be); len(labels) == 0 || labels[0] != "lucas" {
 		t.Errorf("after rename, labels = %v, want first = lucas", labels)
@@ -180,7 +179,6 @@ func TestMapBlockRenameUpdatesTreeLabel(t *testing.T) {
 func TestMapBlockNoCrossEntryContamination(t *testing.T) {
 	// 3000 has label+onAutoForward; 8080 has only label.
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
-	be.seqBase = be.rebuildSeqBase() // current entry = 3000
 	be.tree = be.resyncTreeFromYAML()
 
 	if c, _ := fieldNodeChecked(be, "8080", "onAutoForward"); c {
@@ -246,12 +244,46 @@ func TestSeqBlockResyncNoContamination(t *testing.T) {
 		content: "workers:\n  - name: a\n    queue: q1\n  - name: b\n",
 	}
 	be := newBlockEdit(Config{}, spec, 100, 40)
-	be.seqBase = be.rebuildSeqBase() // current item = a (has name + queue)
 	be.tree = be.resyncTreeFromYAML()
 	if c, _ := fieldNodeChecked(be, "b", "queue"); c {
 		t.Error("worker b's queue must stay unchecked (only a has it)")
 	}
 	if c, _ := fieldNodeChecked(be, "a", "queue"); !c {
 		t.Error("worker a's queue should be checked")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// YAML edge cases: tab indentation, anchors in collection content
+// ---------------------------------------------------------------------------
+
+func TestParseSeqEntries_tabIndented_doesNotPanic(t *testing.T) {
+	// Tab-indented YAML is invalid; parseSeqEntries must not panic.
+	seqBase := "categories:\n\t- name: foo\n"
+	entries := parseSeqEntries("categories", seqBase)
+	// May return nil (invalid YAML) or an empty slice — both are acceptable.
+	_ = entries
+}
+
+func TestParseSeqEntries_anchorInEntry_doesNotPanic(t *testing.T) {
+	// Anchors inside entries are unusual but should not cause a panic.
+	seqBase := "categories:\n  - &ref\n    name: images\n  - *ref\n"
+	entries := parseSeqEntries("categories", seqBase)
+	// At least one entry should be parsed if the YAML is syntactically valid for gopkg.
+	_ = entries
+}
+
+func TestParseMapEntries_colonInKey(t *testing.T) {
+	// Map keys that contain colons (e.g. devcontainer feature keys) must round-trip.
+	mapBase := "portsAttributes:\n  \"3000:80\":\n    label: web\n  \"8080\":\n    label: api\n"
+	entries := parseMapEntries("portsAttributes", mapBase)
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 map entries, got %d", len(entries))
+	}
+	if entries[0].Label != "3000:80" {
+		t.Errorf("entry[0].Label = %q, want %q", entries[0].Label, "3000:80")
+	}
+	if entries[1].Label != "8080" {
+		t.Errorf("entry[1].Label = %q, want %q", entries[1].Label, "8080")
 	}
 }

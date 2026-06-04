@@ -2,6 +2,7 @@ package schema_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/lucasassuncao/yedit/schema"
 )
@@ -161,5 +162,40 @@ func TestDiscover_providerOverridesReflection(t *testing.T) {
 	}
 	if fields[0].Children[0].YAMLName != "type" || fields[0].Children[1].YAMLName != "target" {
 		t.Errorf("Provider children = %+v, want [type target]", fields[0].Children)
+	}
+}
+
+type scalarConfig struct {
+	Str  string        `yaml:"str"`
+	Num  int           `yaml:"num"`
+	Flag bool          `yaml:"flag"`
+	Rate float64       `yaml:"rate"`
+	Size uint          `yaml:"size"`
+	TTL  time.Duration `yaml:"ttl"`
+	Ptr  *bool         `yaml:"ptr"`
+	Mode string        `yaml:"mode" validate:"oneof=a b"`
+	Tags []string      `yaml:"tags"`
+}
+
+func TestDiscover_scalarType(t *testing.T) {
+	got := map[string]string{}
+	for _, f := range schema.Discover(&scalarConfig{}) {
+		got[f.YAMLName] = f.Scalar
+	}
+	want := map[string]string{
+		"str":  "string",
+		"num":  "int",
+		"flag": "bool",
+		"rate": "float",
+		"size": "uint",
+		"ttl":  "duration",
+		"ptr":  "bool",
+		"mode": "string", // enum reclassification keeps the underlying scalar
+		"tags": "",       // a slice is not a scalar
+	}
+	for name, w := range want {
+		if got[name] != w {
+			t.Errorf("%s.Scalar = %q, want %q", name, got[name], w)
+		}
 	}
 }

@@ -276,3 +276,135 @@ func TestSave_noPath(t *testing.T) {
 		t.Error("expected error saving in-memory document, got nil")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// YAML edge cases: anchors, multi-document, tab indentation
+// ---------------------------------------------------------------------------
+
+func TestParseBlocks_withAnchors(t *testing.T) {
+	// Anchors must not crash ParseBlocks; the resolved content is what matters.
+	raw := "base: &anchor\n  value: x\nderived:\n  <<: *anchor\n"
+	blocks, err := document.ParseBlocks([]byte(raw))
+	if err != nil {
+		t.Fatalf("ParseBlocks with anchors: unexpected error: %v", err)
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 blocks, got %d", len(blocks))
+	}
+	if blocks[0].Key != "base" || blocks[1].Key != "derived" {
+		t.Errorf("unexpected block keys: %v", blocks)
+	}
+}
+
+func TestParseBlocks_multiDocument(t *testing.T) {
+	// Only the first YAML document should be returned; no panic.
+	raw := "key1: val1\n---\nkey2: val2\n"
+	blocks, err := document.ParseBlocks([]byte(raw))
+	if err != nil {
+		t.Fatalf("ParseBlocks with multi-document: unexpected error: %v", err)
+	}
+	// yaml.Unmarshal into a single node only reads the first document.
+	for _, b := range blocks {
+		if b.Key == "key2" {
+			t.Error("ParseBlocks returned a block from the second document")
+		}
+	}
+}
+
+func TestParseBlocks_tabIndented(t *testing.T) {
+	// Tab-indented YAML is invalid; ParseBlocks should return an error, not panic.
+	raw := "key:\n\tvalue: x\n"
+	_, err := document.ParseBlocks([]byte(raw))
+	if err == nil {
+		t.Error("expected error for tab-indented YAML, got nil")
+	}
+}
+
+func TestDocument_ReplaceRoundTrip(t *testing.T) {
+	// After Replace, the stored block must be semantically equal to the snippet.
+	raw := []byte("name: mydev\nimage: ubuntu:22.04\n")
+	doc, err := document.New(raw, []string{"name", "image"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snippet := "image: debian:12\n"
+	if err := doc.Replace("image", snippet); err != nil {
+		t.Fatalf("Replace failed: %v", err)
+	}
+	if !doc.Dirty() {
+		t.Error("expected dirty=true after Replace")
+	}
+	got := string(doc.Raw())
+	if !containsSubstring(got, "debian:12") {
+		t.Errorf("replaced content not found in document:\n%s", got)
+	}
+}
+
+func TestDocument_InsertRoundTrip(t *testing.T) {
+	// After Insert, the stored block must be semantically equal to the snippet.
+	raw := []byte("name: mydev\n")
+	doc, err := document.New(raw, []string{"name", "image"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snippet := "image: ubuntu:22.04\n"
+	if err := doc.Insert(snippet); err != nil {
+		t.Fatalf("Insert failed: %v", err)
+	}
+	got := string(doc.Raw())
+	if !containsSubstring(got, "ubuntu:22.04") {
+		t.Errorf("inserted content not found in document:\n%s", got)
+	}
+}
+
+func containsSubstring(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(s) > 0 && containsSubstringSearch(s, sub))
+}
+
+func containsSubstringSearch(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
+// TestRemoveBlock_staleRangeNoPanic ensures RemoveBlock clamps a block range that
+// runs past the current line slice (e.g. blocks stale relative to raw) instead of
+// panicking on lines[end:].
+func TestRemoveBlock_staleRangeNoPanic(t *testing.T) {
+	raw := []byte("a: 1\nb: 2\n")
+	blocks := []document.Block{{Key: "a", Line: 1, EndLine: 99}}
+	if _, err := document.RemoveBlock(raw, blocks, "a"); err != nil {
+		t.Fatalf("RemoveBlock must not error on a stale range: %v", err)
+	}
+}
+
+// TestBlockContent_staleRangeNoPanic ensures BlockContent clamps a start index
+// past the line slice (a previously unclamped panic path) instead of slicing
+// lines[start:end] with start > end.
+func TestBlockContent_staleRangeNoPanic(t *testing.T) {
+	raw := []byte("a: 1\n")
+	blocks := []document.Block{{Key: "a", Line: 9, EndLine: 99}}
+	if _, err := document.BlockContent(raw, blocks, "a"); err != nil {
+		t.Fatalf("BlockContent must not error on a stale range: %v", err)
+	}
+}
+
+// TestDocument_InsertStripsTrailingBlankLines ensures a snippet with trailing
+// blank lines does not leave a blank line wedged between blocks.
+func TestDocument_InsertStripsTrailingBlankLines(t *testing.T) {
+	doc, err := document.New([]byte("name: x\n"), canonicalOrder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Insert("image: y\n\n"); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	got := string(doc.Raw())
+	want := "name: x\nimage: y\n"
+	if got != want {
+		t.Errorf("Insert left blank lines: got %q want %q", got, want)
+	}
+}

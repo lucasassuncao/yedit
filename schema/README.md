@@ -33,7 +33,7 @@ KnownChildren collapses a FieldDef tree into a map of dotted paths to the set of
 A nil value at a path means "free\-form" — children at that path are not validated \(e.g. customizations.vscode.settings has no fixed schema\).
 
 <a name="TopLevelOrder"></a>
-## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L144>)
+## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L173>)
 
 ```go
 func TopLevelOrder(fields []FieldDef) []string
@@ -51,7 +51,7 @@ func UnknownKeys(raw []byte, known map[string]map[string]bool) []string
 UnknownKeys returns the dotted paths of any YAML keys not present in the schema described by known. Free\-form sub\-trees \(paths missing from known\) are not validated.
 
 <a name="FieldDef"></a>
-## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L28-L36>)
+## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L28-L37>)
 
 FieldDef describes a single editable field discovered from a Go struct.
 
@@ -63,6 +63,7 @@ Required, Default, Description, and OneOf are populated by Discover but are not 
 type FieldDef struct {
     YAMLName    string
     Kind        Kind
+    Scalar      string   // concrete scalar type for primitives/enums ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
     Required    bool     // from validate:"required" or jsonschema:"required"
     Default     string   // from jsonschema:"default=X"
     Description string   // from jsonschema_description
@@ -115,7 +116,7 @@ const (
 ```
 
 <a name="Provider"></a>
-## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L42-L44>)
+## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L43-L45>)
 
 Provider is an opt\-in interface for types that reflection cannot introspect correctly — typically union types \(e.g. a value that can be a string OR a struct OR a map\). Implementations return the FieldDef tree they want the editor to see in place of the wrapper type's own fields.
 

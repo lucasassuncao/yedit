@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // HistoryLimit caps the undo stack.
@@ -89,7 +92,9 @@ func (d *Document) snapshot() {
 }
 
 // Insert adds snippet to the document, positioned by the canonical key order.
-// Snapshots history and sets dirty on success.
+// Snapshots history and sets dirty on success. Returns an error (and rolls back)
+// if a post-write round-trip check detects that the stored block diverges from
+// the submitted snippet.
 func (d *Document) Insert(snippet string) error {
 	newRaw, err := InsertBlock(d.raw, snippet, d.knownOrder)
 	if err != nil {
@@ -103,6 +108,16 @@ func (d *Document) Insert(snippet string) error {
 	}
 	d.blocks = blocks
 	d.dirty = true
+
+	if sBlocks, err2 := ParseBlocks([]byte(snippet)); err2 == nil && len(sBlocks) > 0 {
+		key := sBlocks[0].Key
+		if recovered, err2 := BlockContent(d.raw, d.blocks, key); err2 == nil {
+			if !blockSemanticEqual(snippet, recovered) {
+				d.Undo()
+				return fmt.Errorf("round-trip verification failed after insert of %q", key)
+			}
+		}
+	}
 	return nil
 }
 
@@ -126,6 +141,8 @@ func (d *Document) Remove(key string) error {
 
 // Replace removes the block at key and inserts snippet in its schema-ordered
 // position. Records a single history snapshot for the combined operation.
+// Returns an error (and rolls back) if a post-write round-trip check detects
+// that the stored block diverges from the submitted snippet.
 func (d *Document) Replace(key, snippet string) error {
 	removed, err := RemoveBlock(d.raw, d.blocks, key)
 	if err != nil {
@@ -143,7 +160,28 @@ func (d *Document) Replace(key, snippet string) error {
 	}
 	d.blocks = blocks
 	d.dirty = true
+
+	if recovered, err2 := BlockContent(d.raw, d.blocks, key); err2 == nil {
+		if !blockSemanticEqual(snippet, recovered) {
+			d.Undo()
+			return fmt.Errorf("round-trip verification failed after replace of %q", key)
+		}
+	}
 	return nil
+}
+
+// blockSemanticEqual reports whether two YAML strings are semantically equivalent —
+// same structure and values regardless of formatting, key order, or quoting style.
+// Returns true on any parse error so callers always fall through to the happy path.
+func blockSemanticEqual(a, b string) bool {
+	var va, vb any
+	if err := yaml.Unmarshal([]byte(a), &va); err != nil {
+		return true
+	}
+	if err := yaml.Unmarshal([]byte(b), &vb); err != nil {
+		return true
+	}
+	return reflect.DeepEqual(va, vb)
 }
 
 // ReplaceRaw replaces the document content with raw, normalising CRLF.

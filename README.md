@@ -56,21 +56,29 @@ document and saves to that path on `Ctrl+S`.
 
 ## UI layout
 
-The editor presents three distinct panels depending on the field type:
+The editor adapts its left panel to the field type:
 
 **Main list** — shows all top-level keys split into ADDED (present in the
-file) and AVAILABLE (schema-known but not yet set). `Enter` opens a block.
+file) and AVAILABLE (schema-known but not yet set). `Enter` opens a block;
+`h` toggles a Hint/Example panel describing the selected key.
 
-**Struct tree** (KindStruct) — left panel lists sub-fields in ADDED /
-AVAILABLE sections; `Space` toggles a field on/off. `Enter` expands or
-collapses a node. The right panel shows a live YAML preview.
+**Struct tree** (KindObject) — left panel lists sub-fields in ADDED /
+AVAILABLE sections; `Enter` adds a field, `Ctrl+D` removes it, and `→` / `←`
+expand or collapse a node. The right panel shows a live YAML preview.
 
-**Sequence navigator** (KindSlice with child defs) — left panel shows
-`[0] item`, `[1] item` … and a `[+ add new]` row. `Enter` expands an item
-or adds a new one. `Ctrl+D` deletes the selected item.
+**Collection navigator** (KindList / KindDictionary with child defs) — left
+panel shows `[0] item`, `[1] item` … (map entries are keyed by their map key)
+and a `[+ add new]` row. `Enter` adds an item, `Ctrl+D` deletes the selected
+one.
 
-**YAML-only** (KindScalar, KindMap, plain []string) — left panel shows
-`(no fields)`; the YAML editor takes focus immediately.
+**Single field** (KindPrimitive, KindEnum, free-form map/list) — the YAML
+editor takes focus immediately; the left panel shows the field itself and the
+Hint/Example panel shows its type, constraints, and an example.
+
+A **Hint/Example** panel (bottom-right) shows the focused field's concrete type
+(`string`, `int`, `bool`, …), whether it is required, its default, allowed
+values, and an example. It is always visible in the block editor and toggled
+with `h` in the main list.
 
 ## Keyboard reference
 
@@ -81,10 +89,11 @@ or adds a new one. `Ctrl+D` deletes the selected item.
 | `↑` / `k`, `↓` / `j` | Navigate |
 | `g` / `G` | Jump to top / bottom |
 | `/` | Filter list |
+| `h` | Toggle the Hint/Example panel |
 | `Enter` | Open or add block |
 | `Ctrl+D` | Delete block (with confirmation) |
 | `Ctrl+U` | Undo last change |
-| `Tab` | Switch to YAML editor |
+| `Tab` | Focus the read-only preview pane |
 | `Ctrl+S` | Save changes |
 | `Ctrl+L` | Validate document |
 | `Esc` / `q` | Quit (prompts if unsaved) |
@@ -94,8 +103,8 @@ or adds a new one. `Ctrl+D` deletes the selected item.
 | Key | Action |
 |-----|--------|
 | `↑`, `↓` | Navigate |
-| `→`, `←` | Expand / collapse node |
-| `Enter` | Add field / sequence item |
+| `→`, `←` | Expand / collapse node (on an openable `→` field, drills into a nested editor) |
+| `Enter` | Add field / item, or drill into an openable field |
 | `Ctrl+D` | Remove field / sequence item |
 | `p` | Open preset picker |
 | `Tab` | Switch to YAML editor |
@@ -120,9 +129,9 @@ Only the `yaml` tag is **required**. The rest are optional enrichments:
 | `jsonschema:"default=X"` | Default value (stored in `FieldDef.Default`). |
 | `jsonschema_description:"..."` | Description text (stored in `FieldDef.Description`). |
 
-> `Required`, `Default`, `OneOf`, and `Description` are available to external tooling
-> (doc generators, custom renderers) via `schema.FieldDef`. They are not yet rendered
-> by the built-in UI.
+> `Required`, `Default`, `OneOf`, and `Description` are surfaced in the editor's
+> Hint/Example panel, and are also available to external tooling (doc generators,
+> custom renderers) via `schema.FieldDef`.
 
 ## Full Config
 
@@ -175,17 +184,16 @@ type Provider interface {
 
 If a field's type implements `Provider`, the editor uses the returned
 `[]FieldDef` instead of descending by reflection. The field kind is set to
-`KindUnion` and the left panel shows `(no fields)` — the YAML editor
-takes focus directly.
+`KindVariant` and the YAML editor takes focus directly.
 
 ```go
 type TimeoutValue struct{}
 
 func (TimeoutValue) YeditSchema() []schema.FieldDef {
     return []schema.FieldDef{
-        {YAMLName: "connect", Kind: schema.KindScalar},
-        {YAMLName: "read",    Kind: schema.KindScalar},
-        {YAMLName: "write",   Kind: schema.KindScalar},
+        {YAMLName: "connect", Kind: schema.KindPrimitive},
+        {YAMLName: "read",    Kind: schema.KindPrimitive},
+        {YAMLName: "write",   Kind: schema.KindPrimitive},
     }
 }
 ```
@@ -229,7 +237,7 @@ Minimum terminal size: **80 × 20**. Below that the editor shows a resize prompt
 ## Examples
 
 See [`examples/test`](examples/test/main.go) for a self-contained program
-that exercises all three UI patterns, `KindUnion`, nested slices, deep
+that exercises all four schema patterns, `KindVariant`, nested slices, deep
 nesting, `oneof`, `MutuallyExclusive`, and unknown-key validation.
 
 ## Status

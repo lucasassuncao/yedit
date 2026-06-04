@@ -44,6 +44,94 @@ func seqSpec(content string) blockSpec {
 	}
 }
 
+// filterSpec builds a self-referential KindList blockSpec: each filter item has a
+// leaf "regex" and an openable "any" ([]filter), mirroring the workload Filter type.
+func filterSpec(content string) blockSpec {
+	return blockSpec{
+		key:  "filters",
+		kind: schema.KindList,
+		defs: []schema.FieldDef{
+			{YAMLName: "regex", Kind: schema.KindPrimitive},
+			{YAMLName: "any", Kind: schema.KindList, Children: []schema.FieldDef{
+				{YAMLName: "regex", Kind: schema.KindPrimitive},
+			}},
+		},
+		content: content,
+	}
+}
+
+// findFieldNode returns the first treeNodeField with the given label.
+func findFieldNode(tm treeModel, label string) (treeNode, bool) {
+	for _, n := range tm.nodes {
+		if n.kind == treeNodeField && n.label == label {
+			return n, true
+		}
+	}
+	return treeNode{}, false
+}
+
+// cursorToFieldExpanded expands all seq items so field rows are visible, then
+// positions the cursor on the named field.
+func cursorToFieldExpanded(be blockEditState, label string) blockEditState {
+	for i := range be.tree.nodes {
+		if be.tree.nodes[i].kind == treeNodeSeqItem {
+			be.tree.nodes[i].expanded = true
+		}
+	}
+	for vi, ni := range be.tree.visibleNodes() {
+		if be.tree.nodes[ni].kind == treeNodeField && be.tree.nodes[ni].label == label {
+			be.tree.cursor = vi
+			break
+		}
+	}
+	return be
+}
+
+// TestOpenableChildReflectsContent verifies that an openable field (any/all)
+// is "checked" (rendered active) only when it holds content, and muted when
+// empty — fixing the bug where openable fields always looked active.
+func TestOpenableChildReflectsContent(t *testing.T) {
+	filled := newBlockEdit(Config{}, filterSpec("filters:\n  - regex: \"x\"\n    any:\n      - regex: \"y\"\n"), 100, 40)
+	tm := filled.syncCurrentEntry()
+	if n, ok := findFieldNode(tm, "any"); !ok || !n.checked {
+		t.Errorf("filled 'any' should be checked/active; got ok=%v checked=%v", ok, n.checked)
+	}
+
+	empty := newBlockEdit(Config{}, filterSpec("filters:\n  - regex: \"x\"\n"), 100, 40)
+	tm = empty.syncCurrentEntry()
+	if n, ok := findFieldNode(tm, "any"); !ok || n.checked {
+		t.Errorf("empty 'any' should be unchecked/muted; got ok=%v checked=%v", ok, n.checked)
+	}
+}
+
+// TestCtrlDOnFilledOpenableAsksRemove verifies ctrl+d now acts on an openable
+// field with content (opens the remove confirm), instead of being a no-op.
+func TestCtrlDOnFilledOpenableAsksRemove(t *testing.T) {
+	be := newBlockEdit(Config{}, filterSpec("filters:\n  - regex: \"x\"\n    any:\n      - regex: \"y\"\n"), 100, 40)
+	be.tree = be.syncCurrentEntry()
+	be = cursorToFieldExpanded(be, "any")
+
+	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+
+	if be.mode != modeConfirming {
+		t.Errorf("ctrl+d on a filled openable should open the remove confirm; mode=%d", be.mode)
+	}
+}
+
+// TestCtrlDOnEmptyOpenableNoop verifies ctrl+d on an empty openable does nothing
+// (there is no content to remove) and never opens a confirm.
+func TestCtrlDOnEmptyOpenableNoop(t *testing.T) {
+	be := newBlockEdit(Config{}, filterSpec("filters:\n  - regex: \"x\"\n"), 100, 40)
+	be.tree = be.syncCurrentEntry()
+	be = cursorToFieldExpanded(be, "any")
+
+	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+
+	if be.mode != modeEditing {
+		t.Errorf("ctrl+d on an empty openable should be a no-op; mode=%d", be.mode)
+	}
+}
+
 // TestAppendPreset_addsEntriesToExisting verifies that appendPreset appends
 // all entries from the preset after the existing entries and positions the
 // cursor on the last entry.
@@ -57,11 +145,12 @@ func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
 	be = be.openPresetPicker()
 	be = be.appendPreset("extra")
 
-	if !strings.Contains(be.seqBase, "name: existing") {
-		t.Errorf("seqBase missing original entry:\n%s", be.seqBase)
+	base := seqEntriesToBase("categories", be.coll.entries)
+	if !strings.Contains(base, "name: existing") {
+		t.Errorf("entries missing original entry:\n%s", base)
 	}
-	if !strings.Contains(be.seqBase, "name: appended") {
-		t.Errorf("seqBase missing appended entry:\n%s", be.seqBase)
+	if !strings.Contains(base, "name: appended") {
+		t.Errorf("entries missing appended entry:\n%s", base)
 	}
 
 	seqCount := 0
@@ -104,11 +193,12 @@ func TestAppendPreset_indentMismatch(t *testing.T) {
 	be = be.openPresetPicker()
 	be = be.appendPreset("extra")
 
-	if !strings.Contains(be.seqBase, "name: existing") {
-		t.Errorf("seqBase missing original entry:\n%s", be.seqBase)
+	base2 := seqEntriesToBase("categories", be.coll.entries)
+	if !strings.Contains(base2, "name: existing") {
+		t.Errorf("entries missing original entry:\n%s", base2)
 	}
-	if !strings.Contains(be.seqBase, "name: appended") {
-		t.Errorf("seqBase missing appended entry:\n%s", be.seqBase)
+	if !strings.Contains(base2, "name: appended") {
+		t.Errorf("entries missing appended entry:\n%s", base2)
 	}
 	if !strings.Contains(be.yamlEditor.Value(), "appended") {
 		t.Errorf("yamlEditor not showing appended entry:\n%s", be.yamlEditor.Value())
@@ -271,11 +361,11 @@ func TestUndo_structFieldAdd(t *testing.T) {
 }
 
 // TestUndo_seqItemDelete verifies that deleting a seq item saves an undo snap
-// and that restoreUndo restores the original seqBase.
+// and that restoreUndo restores the original entries.
 func TestUndo_seqItemDelete(t *testing.T) {
 	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
 	be := newBlockEdit(Config{}, spec, 100, 40)
-	wantSeqBase := be.seqBase
+	wantBase := seqEntriesToBase("categories", be.coll.entries)
 
 	// ctrl+d on the first item (alpha).
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
@@ -285,8 +375,9 @@ func TestUndo_seqItemDelete(t *testing.T) {
 	}
 
 	be = be.restoreUndo()
-	if be.seqBase != wantSeqBase {
-		t.Errorf("after undo seqBase = %q, want %q", be.seqBase, wantSeqBase)
+	gotBase := seqEntriesToBase("categories", be.coll.entries)
+	if gotBase != wantBase {
+		t.Errorf("after undo entries = %q, want %q", gotBase, wantBase)
 	}
 	if got := seqItemCount(be); got != 2 {
 		t.Errorf("after undo got %d seq items, want 2", got)
@@ -298,7 +389,7 @@ func TestUndo_seqItemDelete(t *testing.T) {
 func TestUndo_seqItemAdd(t *testing.T) {
 	spec := seqSpec("categories:\n  - name: alpha\n")
 	be := newBlockEdit(Config{}, spec, 100, 40)
-	wantSeqBase := be.seqBase
+	wantBase := seqEntriesToBase("categories", be.coll.entries)
 
 	// Navigate to [+ add new] and press Enter.
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -312,10 +403,127 @@ func TestUndo_seqItemAdd(t *testing.T) {
 	}
 
 	be = be.restoreUndo()
-	if be.seqBase != wantSeqBase {
-		t.Errorf("after undo seqBase = %q, want %q", be.seqBase, wantSeqBase)
+	gotBase := seqEntriesToBase("categories", be.coll.entries)
+	if gotBase != wantBase {
+		t.Errorf("after undo entries = %q, want %q", gotBase, wantBase)
 	}
 	if got := seqItemCount(be); got != 1 {
 		t.Errorf("after undo got %d seq items, want 1", got)
+	}
+}
+
+// TestCollectionNav_KeystrokeDoesNotFlushEntries verifies that typing in the
+// YAML panel does not update entries[]. Only navigation and commit do.
+func TestCollectionNav_KeystrokeDoesNotFlushEntries(t *testing.T) {
+	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
+	be := newBlockEdit(Config{}, spec, 100, 40)
+
+	original := be.coll.entries[0].Content
+
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
+	be.dirty = true
+
+	if be.coll.entries[0].Content != original {
+		t.Fatalf("entries[0] was mutated by yamlEditor change; got %q, want %q",
+			be.coll.entries[0].Content, original)
+	}
+}
+
+// TestCollectionNav_CommitFlushesAndSerializesAll verifies that commit() flushes
+// the current buffer into entries and includes all entries in the snippet.
+func TestCollectionNav_CommitFlushesAndSerializesAll(t *testing.T) {
+	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
+	be := newBlockEdit(Config{}, spec, 100, 40)
+
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
+	be.dirty = true
+
+	_, cmd := be.commit()
+	msg := cmd().(blockEditCommittedMsg)
+
+	if !strings.Contains(msg.Snippet, "name: alpha_edited") {
+		t.Fatalf("snippet missing edited entry: %s", msg.Snippet)
+	}
+	if !strings.Contains(msg.Snippet, "name: beta") {
+		t.Fatalf("snippet missing second entry: %s", msg.Snippet)
+	}
+}
+
+// TestCollectionNav_DoubleCommitIdempotent is a regression test for the
+// duplication bug: committing twice must produce identical snippets.
+func TestCollectionNav_DoubleCommitIdempotent(t *testing.T) {
+	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
+	be := newBlockEdit(Config{}, spec, 100, 40)
+
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
+	be.dirty = true
+
+	be, cmd := be.commit()
+	snippet1 := cmd().(blockEditCommittedMsg).Snippet
+
+	// Simulate handleOverlayConfirmed re-sync (new architecture)
+	freshEntries := parseSeqEntries("categories", snippet1)
+	be.coll.entries = freshEntries
+	be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
+	be.dirty = false
+
+	_, cmd2 := be.commit()
+	snippet2 := cmd2().(blockEditCommittedMsg).Snippet
+
+	if snippet1 != snippet2 {
+		t.Fatalf("double commit diverged:\nfirst:  %q\nsecond: %q", snippet1, snippet2)
+	}
+	if strings.Count(snippet2, "name: beta") != 1 {
+		t.Fatalf("duplication detected: %q", snippet2)
+	}
+}
+
+// TestPrimitiveBlock_showsFieldItemAndHint verifies that a tree-less block shows
+// the field itself in the left panel and its metadata in the hint panel, instead
+// of the "(no fields)" / "select a field" placeholders.
+func TestPrimitiveBlock_showsFieldItemAndHint(t *testing.T) {
+	spec := blockSpec{
+		key:     "debug",
+		kind:    schema.KindPrimitive,
+		def:     schema.FieldDef{YAMLName: "debug", Kind: schema.KindPrimitive, Scalar: "bool", Default: "false"},
+		content: "debug: false\n",
+	}
+	be := newBlockEdit(Config{}, spec, 100, 40)
+
+	if !be.tree.isEmpty() {
+		t.Fatal("expected an empty tree for a primitive block")
+	}
+
+	left := be.fieldItemView()
+	if !strings.Contains(left, "debug") {
+		t.Errorf("left panel should name the field; got %q", left)
+	}
+
+	hint := be.hintContent()
+	for _, want := range []string{"type", "bool", "default", "false"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("hint panel missing %q; got %q", want, hint)
+		}
+	}
+
+	if view := be.View(nil); strings.Contains(view, "(no fields)") {
+		t.Error("full view should no longer show the (no fields) placeholder")
+	}
+}
+
+// TestRestoreUndo_nilSnapIsNoOp guards restoreUndo against a nil snapshot: the
+// production caller checks undoSnap != nil, but the function must not panic if
+// called without a snapshot.
+func TestRestoreUndo_nilSnapIsNoOp(t *testing.T) {
+	be := newBlockEdit(Config{}, blockSpec{key: "debug", kind: schema.KindPrimitive}, 100, 40)
+	if be.undoSnap != nil {
+		t.Fatal("a freshly opened editor must have no undoSnap")
+	}
+	got := be.restoreUndo() // must not panic with a nil snapshot
+	if got.undoSnap != nil {
+		t.Error("restoreUndo with a nil snapshot should leave it nil")
 	}
 }

@@ -40,7 +40,7 @@ func Discover(v any) []FieldDef {
 }
 
 func discoverFields(t reflect.Type, depth int) []FieldDef {
-	if depth > 3 || t.Kind() != reflect.Struct {
+	if depth > 10 || t.Kind() != reflect.Struct {
 		return nil
 	}
 	var out []FieldDef
@@ -64,6 +64,7 @@ func discoverFields(t reflect.Type, depth int) []FieldDef {
 		info := FieldDef{
 			YAMLName:    yamlName,
 			Kind:        kindOf(f.Type),
+			Scalar:      scalarLabel(f.Type),
 			Required:    containsTagOption(validateTag, "required") || containsTagOption(jsTag, "required"),
 			Default:     extractValue(jsTag, "default="),
 			Description: f.Tag.Get("jsonschema_description"),
@@ -124,6 +125,34 @@ func kindOf(t reflect.Type) Kind {
 		return KindDictionary
 	default:
 		return KindPrimitive
+	}
+}
+
+// scalarLabel returns a human label for a scalar Go type ("string", "int",
+// "bool", "float", "duration", "uint") or "" when t is not a scalar. Named
+// types with their own meaning (time.Duration) take precedence over their
+// underlying kind. It enriches FieldDef.Scalar so the UI can show the concrete
+// type instead of the generic "primitive".
+func scalarLabel(t reflect.Type) string {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.PkgPath() == "time" && t.Name() == "Duration" {
+		return "duration"
+	}
+	switch t.Kind() {
+	case reflect.String:
+		return "string"
+	case reflect.Bool:
+		return "bool"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return "int"
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return "uint"
+	case reflect.Float32, reflect.Float64:
+		return "float"
+	default:
+		return ""
 	}
 }
 

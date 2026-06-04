@@ -3,9 +3,12 @@ package editor
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/lucasassuncao/yedit/components/alert"
 )
 
 // sizeProbeConfig is a minimal schema with one struct block so the test can
@@ -223,6 +226,68 @@ func TestPreviewFollowsSelectedBlock(t *testing.T) {
 	}
 }
 
+// checkScreenInvariant asserts the two screen invariants that the enter* helpers
+// are meant to guarantee:
+//
+//	m.alert != nil        ⟺  m.mode == paneAlert
+//	len(m.blockEdits) > 0  ⟺  m.mode == paneBlockEdit
+func checkScreenInvariant(t *testing.T, m model, where string) {
+	t.Helper()
+	if (m.alert != nil) != (m.mode == paneAlert) {
+		t.Errorf("%s: alert/mode invariant broken: alert=%v mode=%d", where, m.alert != nil, m.mode)
+	}
+	if (len(m.blockEdits) > 0) != (m.mode == paneBlockEdit) {
+		t.Errorf("%s: blockEdits/mode invariant broken: len=%d mode=%d", where, len(m.blockEdits), m.mode)
+	}
+}
+
+// TestScreenInvariantAcrossTransitions drives the model through every reachable
+// screen transition and asserts the mode/data invariants hold at each step. This
+// guards the centralized enter* transitions against a future raw `m.mode = …`
+// that forgets to clear a sibling field.
+func TestScreenInvariantAcrossTransitions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inv.yaml")
+	if err := os.WriteFile(path, []byte("server:\n  host: localhost\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+	checkScreenInvariant(t, m, "initial list")
+
+	// list → block edit
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "server", Existing: true}})
+	m = updated.(model)
+	checkScreenInvariant(t, m, "after openItem")
+
+	// block edit → list (discard)
+	updated, _ = m.Update(blockEditDiscardedMsg{})
+	m = updated.(model)
+	checkScreenInvariant(t, m, "after discard")
+
+	// list → preview → list
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(model)
+	checkScreenInvariant(t, m, "after tab to preview")
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(model)
+	checkScreenInvariant(t, m, "after tab back to list")
+
+	// list → alert (save confirm) → list (dismiss)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = updated.(model)
+	checkScreenInvariant(t, m, "after ctrl+s save confirm")
+	if m.mode != paneAlert {
+		t.Fatalf("expected paneAlert after ctrl+s from list, got %d", m.mode)
+	}
+	updated, _ = m.Update(alert.DismissedMsg{})
+	m = updated.(model)
+	checkScreenInvariant(t, m, "after alert dismiss")
+}
+
 // TestListFilterByTyping verifies the "/" filter narrows the list as the user types.
 func TestListFilterByTyping(t *testing.T) {
 	lm := newListModel([]string{"alpha", "beta", "gamma"}, nil, nil, 10)
@@ -239,5 +304,46 @@ func TestListFilterByTyping(t *testing.T) {
 	got := lm.filteredItems()
 	if len(got) != 1 || got[0].Key != "beta" {
 		t.Errorf("filter \"be\" matched %v, want [beta]", got)
+	}
+}
+
+// TestRootHintPanelToggle verifies that "h" splits the right column to show the
+// Hint/Example panel for the selected field, and toggles it back off.
+func TestRootHintPanelToggle(t *testing.T) {
+	m, err := newModel(Config{
+		Path:   filepath.Join(t.TempDir(), "hint.yaml"),
+		Schema: &sizeProbeConfig{},
+	})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	if strings.Contains(m.View(), "Hint/Example") {
+		t.Fatal("hint panel should be hidden by default")
+	}
+
+	// "server" (a KindObject) is selected by default; toggling on shows its hint.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	m = updated.(model)
+	if !m.showHint {
+		t.Fatal("pressing h should enable the hint panel")
+	}
+	view := m.View()
+	if !strings.Contains(view, "Hint/Example") {
+		t.Error("view should show the Hint/Example panel after toggling on")
+	}
+	if !strings.Contains(view, "object") {
+		t.Error("hint should show the selected field's type (server → object)")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	m = updated.(model)
+	if m.showHint {
+		t.Fatal("pressing h again should disable the hint panel")
+	}
+	if strings.Contains(m.View(), "Hint/Example") {
+		t.Error("hint panel should be hidden after toggling off")
 	}
 }

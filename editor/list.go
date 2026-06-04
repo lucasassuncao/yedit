@@ -316,6 +316,12 @@ func (lm *listModel) clampScroll() {
 	if lm.cursor >= lm.offset+lm.height {
 		lm.offset = lm.cursor - lm.height + 1
 	}
+	// The last visible row is replaced by the "↓ N more" indicator when items
+	// overflow below the view. If the cursor lands on that row, advance offset
+	// by one so the cursor remains visible.
+	if lm.offset+lm.height < len(lm.items) && lm.cursor >= lm.offset+lm.height-1 {
+		lm.offset = lm.cursor - lm.height + 2
+	}
 }
 
 func (lm *listModel) jumpToFirst() {

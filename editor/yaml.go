@@ -30,6 +30,11 @@ type seqEntry struct {
 func parseSeqEntries(key, seqBase string) []seqEntry {
 	prefix := key + ":\n"
 	if !strings.HasPrefix(seqBase, prefix) {
+		// The value may be on the same line (flow style: `key: [{...}]`).
+		// Attempt conversion to block style before giving up.
+		if converted := flowToBlockSeq(seqBase); converted != "" {
+			return parseSeqEntries(key, converted)
+		}
 		return nil
 	}
 	body := strings.TrimPrefix(seqBase, prefix)
@@ -45,6 +50,11 @@ func parseSeqEntries(key, seqBase string) []seqEntry {
 		}
 	}
 	if itemPrefix == "" {
+		// Block prefix present but no items found — also try flow-style conversion
+		// for the case `key:\n[{...}]` (unlikely but defensive).
+		if converted := flowToBlockSeq(seqBase); converted != "" {
+			return parseSeqEntries(key, converted)
+		}
 		return nil
 	}
 	bareMarker := strings.TrimSuffix(itemPrefix, " ") // e.g. "  -"
@@ -218,18 +228,6 @@ func applyToggleToSeqItem(ctx toggleCtx, node treeNode, checked bool, yamlConten
 	})
 }
 
-// yamlForSeqItem returns the YAML editor value for a specific sequence item
-// (the full "key:\n  - ...\n" form), so the right panel can show just that item.
-// It also serves the map navigator: a map entry's Content already carries its
-// own "key:" line, so the same "block:\n" + Content assembly applies.
-func yamlForSeqItem(key, seqBase string, seqIdx int) string {
-	entries := parseSeqEntries(key, seqBase)
-	if seqIdx < 0 || seqIdx >= len(entries) {
-		return key + ":\n"
-	}
-	return key + ":\n" + entries[seqIdx].Content
-}
-
 // parseMapEntries parses the YAML mapping in mapBase ("block:\n  <entry>:\n
 // ...") into one entry per top-level map key, preserving each entry's raw lines.
 // The entry indentation is detected from the first non-blank line. It is the map
@@ -289,10 +287,14 @@ func parseMapEntries(key, mapBase string) []seqEntry {
 
 // mapEntryKey extracts the map key from an entry's first line, dropping the
 // trailing colon and surrounding quotes (`  "3000":` → "3000").
+// Uses ": " as the separator before falling back to ":" so keys that contain
+// colons (e.g. "ghcr.io/features/git:1") are preserved intact.
 func mapEntryKey(line string) string {
 	s := strings.TrimSpace(line)
 	if strings.HasSuffix(s, ":") {
 		s = strings.TrimSuffix(s, ":")
+	} else if i := strings.Index(s, ": "); i >= 0 {
+		s = s[:i]
 	} else if i := strings.Index(s, ":"); i >= 0 {
 		s = s[:i]
 	}
@@ -349,7 +351,12 @@ func applyTreeToggle(ctx toggleCtx, node treeNode, checked bool, current string)
 		}
 		valueNode := mapping.Content[1]
 		if valueNode.Kind != yaml.MappingNode {
-			return false
+			// Coerce null/scalar to an empty mapping so fields can be added to
+			// a block that was opened with no content yet (e.g. "database:\n").
+			valueNode.Kind = yaml.MappingNode
+			valueNode.Tag = ""
+			valueNode.Value = ""
+			valueNode.Content = nil
 		}
 		path := node.yamlPath
 		if !applyToggleAt(valueNode, path[:len(path)-1], path[len(path)-1], checked, ctx, node.depth == 0) {
@@ -384,7 +391,13 @@ func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked 
 			appendLeafToMapping(cur, leafName, "")
 		}
 	default:
-		appendLeafToMapping(cur, leafName, snippet)
+		// Try to append as a structured field first (for complex snippets like arrays/maps).
+		// Fall back to a simple scalar if the snippet is empty or not a valid structure.
+		if snippet != "" && appendFieldFromSnippet(cur, leafName, snippet) {
+			// Successfully appended the complex structure
+		} else {
+			appendLeafToMapping(cur, leafName, "")
+		}
 	}
 	return true
 }
@@ -402,105 +415,127 @@ func childByKey(mapping *yaml.Node, key string) *yaml.Node {
 	return nil
 }
 
-// extractSubBlock pulls the nested collection at path out of a parent block's
-// editor value and returns it as a standalone "<key>:\n  ...". parentYAML is the
-// parent block's value ("<blockKey>:\n  ..."); path is relative to the block
-// value (e.g. ["httproutes"] or ["sub", "mymap"]). It returns "<key>:\n" when
-// the path is absent or empty so the child opens as a fresh collection.
-func extractSubBlock(parentYAML string, path []string) string {
-	if len(path) == 0 {
-		return parentYAML
-	}
-	key := path[len(path)-1]
-	empty := key + ":\n"
+// pathSeg is one step in a focus path through a YAML node tree: either a mapping
+// key (isIndex == false) or a sequence index (isIndex == true). A focus path is
+// the canonical, unambiguous address of a node. Rooted at the filters sequence,
+// filters[0].any[1] is [segIdx(0), segKey("any"), segIdx(1)].
+type pathSeg struct {
+	key     string
+	idx     int
+	isIndex bool
+}
 
-	var root yaml.Node
-	if err := yaml.Unmarshal([]byte(parentYAML), &root); err != nil || len(root.Content) == 0 {
-		return empty
-	}
-	doc := root.Content[0]
-	if doc.Kind != yaml.MappingNode || len(doc.Content) < 2 {
-		return empty
-	}
-	cur := doc.Content[1] // parent block's value mapping
-	for _, k := range path {
-		cur = childByKey(cur, k)
-		if cur == nil {
-			return empty
-		}
-	}
-	if cur.Kind != yaml.MappingNode && cur.Kind != yaml.SequenceNode {
-		return empty // null/scalar placeholder — treat as empty collection
-	}
+func segKey(k string) pathSeg { return pathSeg{key: k} }
+func segIdx(i int) pathSeg    { return pathSeg{idx: i, isIndex: true} }
 
+// nodeToContent serializes a value node as a standalone "<key>:\n  ..." block,
+// forcing block style so the result renders one field per line. Returns
+// "<key>:\n" when encoding fails. This is the inverse of valueNodeOfSnippet.
+func nodeToContent(key string, value *yaml.Node) string {
 	wrapper := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
 		{Kind: yaml.ScalarNode, Value: key},
-		cur,
+		value,
 	}}
 	forceBlockStyle(wrapper)
 	var buf strings.Builder
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
 	if err := enc.Encode(wrapper); err != nil {
-		return empty
+		return key + ":\n"
 	}
 	return strings.TrimRight(buf.String(), "\n") + "\n"
 }
 
-// replaceSubBlock writes childSnippet (a standalone "<key>:\n  ...") back into
-// parentYAML at path, creating intermediate mappings as needed. An empty or null
-// child value removes the key instead, so deleting every entry prunes the block.
-func replaceSubBlock(parentYAML string, path []string, childSnippet string) string {
-	if len(path) == 0 {
-		return parentYAML
+// valueNodeOfSnippet parses a standalone "<key>:\n  ..." block and returns the
+// value node mapped to that key (the inverse of nodeToContent), or nil on a
+// parse error or unexpected shape. The returned node is detached and safe to
+// splice into another tree via setNodeAt.
+func valueNodeOfSnippet(snippet string) *yaml.Node {
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(snippet), &root); err != nil || len(root.Content) == 0 {
+		return nil
 	}
-	key := path[len(path)-1]
+	doc := root.Content[0]
+	if doc.Kind != yaml.MappingNode || len(doc.Content) < 2 {
+		return nil
+	}
+	return doc.Content[1]
+}
 
-	var childVal *yaml.Node
-	var childRoot yaml.Node
-	if err := yaml.Unmarshal([]byte(childSnippet), &childRoot); err == nil && len(childRoot.Content) > 0 {
-		if cm := childRoot.Content[0]; cm.Kind == yaml.MappingNode && len(cm.Content) >= 2 {
-			childVal = cm.Content[1]
+// nodeAt returns the node reached by following segs from node, or nil when any
+// step fails to resolve (wrong kind, missing key, index out of range). It never
+// descends implicitly — every step is explicit, so it can address a sequence
+// node itself as well as an element inside it.
+func nodeAt(node *yaml.Node, segs []pathSeg) *yaml.Node {
+	for _, s := range segs {
+		if node == nil {
+			return nil
+		}
+		if s.isIndex {
+			if node.Kind != yaml.SequenceNode || s.idx < 0 || s.idx >= len(node.Content) {
+				return nil
+			}
+			node = node.Content[s.idx]
+		} else {
+			if node.Kind != yaml.MappingNode {
+				return nil
+			}
+			node = childByKey(node, s.key)
 		}
 	}
-	emptyChild := childVal == nil ||
-		(childVal.Kind == yaml.MappingNode && len(childVal.Content) == 0) ||
-		(childVal.Kind == yaml.SequenceNode && len(childVal.Content) == 0) ||
-		(childVal.Kind == yaml.ScalarNode && (childVal.Tag == "!!null" || childVal.Value == ""))
+	return node
+}
 
-	return withYAMLRoot(parentYAML, func(root *yaml.Node) bool {
-		doc := root.Content[0]
-		if doc.Kind != yaml.MappingNode || len(doc.Content) < 2 {
-			return false
-		}
-		cur := doc.Content[1] // parent block's value mapping
-		if cur.Kind != yaml.MappingNode {
-			// Empty/null block value (e.g. "containerengine:\n") — coerce it into
-			// an empty mapping so the nested key can be attached.
-			cur.Kind = yaml.MappingNode
-			cur.Tag = ""
-			cur.Value = ""
-			cur.Content = nil
-		}
-		for _, k := range path[:len(path)-1] {
-			cur = findOrCreateMappingChild(cur, k)
-			if cur == nil {
+// setNodeAt replaces the node addressed by segs within root with newVal,
+// creating intermediate mapping keys as needed. Returns false when a sequence
+// index is out of range or an intermediate node has a conflicting kind. This is
+// structurally safe: it operates on live nodes, so it can never turn a sequence
+// into a mapping the way string splicing could.
+func setNodeAt(root *yaml.Node, segs []pathSeg, newVal *yaml.Node) bool {
+	if len(segs) == 0 {
+		*root = *newVal
+		return true
+	}
+	parent := root
+	for _, s := range segs[:len(segs)-1] {
+		if s.isIndex {
+			if parent.Kind != yaml.SequenceNode || s.idx < 0 || s.idx >= len(parent.Content) {
 				return false
 			}
+			parent = parent.Content[s.idx]
+		} else {
+			if parent.Kind != yaml.MappingNode {
+				return false
+			}
+			child := childByKey(parent, s.key)
+			if child == nil {
+				child = &yaml.Node{Kind: yaml.MappingNode}
+				parent.Content = append(parent.Content,
+					&yaml.Node{Kind: yaml.ScalarNode, Value: s.key}, child)
+			}
+			parent = child
 		}
-		if emptyChild {
-			removeMappingKey(cur, key)
+	}
+	last := segs[len(segs)-1]
+	if last.isIndex {
+		if parent.Kind != yaml.SequenceNode || last.idx < 0 || last.idx >= len(parent.Content) {
+			return false
+		}
+		parent.Content[last.idx] = newVal
+		return true
+	}
+	if parent.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(parent.Content); i += 2 {
+		if parent.Content[i].Value == last.key {
+			parent.Content[i+1] = newVal
 			return true
 		}
-		for i := 0; i+1 < len(cur.Content); i += 2 {
-			if cur.Content[i].Value == key {
-				cur.Content[i+1] = childVal
-				return true
-			}
-		}
-		cur.Content = append(cur.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, childVal)
-		return true
-	})
+	}
+	parent.Content = append(parent.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Value: last.key}, newVal)
+	return true
 }
 
 // withYAMLRoot parses current as a YAML node, calls fn on it, and re-encodes.
@@ -523,14 +558,16 @@ func withYAMLRoot(current string, fn func(root *yaml.Node) bool) string {
 	return strings.TrimRight(buf.String(), "\n") + "\n"
 }
 
-// forceBlockStyle clears flow style from every mapping/sequence node so the
-// re-encoded YAML is block-style (one field per line). Without this, a value
-// that was ever flow ("{}" or "{a: b}") stays inline through later edits.
+// forceBlockStyle clears flow style from mapping nodes so the re-encoded YAML
+// is block-style (one field per line). Without this, a mapping that was ever
+// flow ("{}" or "{a: b}") stays inline through later edits.
+// Sequence nodes are intentionally left untouched: flow sequences on leaf fields
+// (e.g. extensions: ["pdf", "txt"]) are an accepted style and must be preserved.
 func forceBlockStyle(n *yaml.Node) {
 	if n == nil {
 		return
 	}
-	if n.Kind == yaml.MappingNode || n.Kind == yaml.SequenceNode {
+	if n.Kind == yaml.MappingNode {
 		n.Style &^= yaml.FlowStyle
 	}
 	for _, c := range n.Content {
@@ -681,9 +718,9 @@ func appendLeafToMapping(mapping *yaml.Node, key, snippet string) {
 	mapping.Content = append(mapping.Content, keyNode, valNode)
 }
 
-// appendFieldFromSnippet parses snippet under parentKey, extracts the first
-// child key/value pair, and appends it to valueNode. Returns false if the
-// snippet is malformed.
+// appendFieldFromSnippet parses snippet under parentKey, extracts all child
+// key/value pairs from the snippet's struct value, and appends them to valueNode.
+// Returns false if the snippet is malformed or has no fields.
 func appendFieldFromSnippet(valueNode *yaml.Node, parentKey, snippet string) bool {
 	var templateRoot yaml.Node
 	if err := yaml.Unmarshal([]byte(parentKey+":\n"+snippet), &templateRoot); err != nil {
@@ -700,6 +737,42 @@ func appendFieldFromSnippet(valueNode *yaml.Node, parentKey, snippet string) boo
 	if tValue.Kind != yaml.MappingNode || len(tValue.Content) < 2 {
 		return false
 	}
-	valueNode.Content = append(valueNode.Content, tValue.Content[0], tValue.Content[1])
+	valueNode.Content = append(valueNode.Content, tValue.Content...)
 	return true
+}
+
+// flowToBlockSeq attempts to convert a flow-style sequence (e.g.
+// `categories: [{name: foo}]`) to block style so parseSeqEntries can handle it.
+// Returns the converted string, or "" if conversion fails or is unnecessary.
+func flowToBlockSeq(seqBase string) string {
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(seqBase), &doc); err != nil {
+		return ""
+	}
+	if doc.Kind == 0 || len(doc.Content) == 0 {
+		return ""
+	}
+	mapping := doc.Content[0]
+	if mapping.Kind != yaml.MappingNode || len(mapping.Content) < 2 {
+		return ""
+	}
+	seqNode := mapping.Content[1]
+	if seqNode.Kind != yaml.SequenceNode || seqNode.Style == 0 {
+		return "" // already block style or not a sequence
+	}
+	// Force block style on the sequence and all child nodes.
+	setBlockStyle(&doc)
+	out, err := yaml.Marshal(&doc)
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+// setBlockStyle recursively clears flow style flags so yaml.Marshal emits block style.
+func setBlockStyle(n *yaml.Node) {
+	n.Style = 0
+	for _, child := range n.Content {
+		setBlockStyle(child)
+	}
 }

@@ -17,9 +17,7 @@ func blockContentFromLines(lines []string, blocks []Block, key string) (string, 
 		if b.Key == key {
 			start := b.Line - 1
 			end := b.EndLine
-			if end > len(lines) {
-				end = len(lines)
-			}
+			start, end = clampRange(start, end, len(lines))
 			return strings.Join(lines[start:end], "\n"), nil
 		}
 	}
@@ -42,8 +40,26 @@ func RemoveBlock(raw []byte, blocks []Block, key string) ([]byte, error) {
 	lines := strings.Split(string(raw), "\n")
 	start := target.Line - 1
 	end := target.EndLine // exclusive upper bound (0-based = EndLine)
+	start, end = clampRange(start, end, len(lines))
 	lines = append(lines[:start:start], lines[end:]...)
 	return []byte(strings.Join(lines, "\n")), nil
+}
+
+// clampRange bounds a [start, end) line range to [0, n], guarding against blocks
+// whose recorded line numbers are stale relative to the current line slice (or
+// inverted, as a flow-style root mapping can produce). It guarantees
+// 0 <= start <= end <= n so slicing never panics.
+func clampRange(start, end, n int) (int, int) {
+	if start < 0 {
+		start = 0
+	}
+	if end > n {
+		end = n
+	}
+	if start > end {
+		start = end
+	}
+	return start, end
 }
 
 // InsertBlock inserts a YAML snippet into raw, respecting the canonical key
@@ -51,6 +67,9 @@ func RemoveBlock(raw []byte, blocks []Block, key string) ([]byte, error) {
 // whose key follows the new key in knownOrder. If the new key is unknown to
 // knownOrder, or no later block exists, the snippet is appended at the end.
 func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error) {
+	// Collapse trailing blank lines to a single newline so neither the append nor
+	// the ordered path wedges a blank line between blocks.
+	snippet = strings.TrimRight(snippet, "\n") + "\n"
 	snippetBlocks, err := ParseBlocks([]byte(snippet))
 	if err != nil {
 		return nil, err
@@ -89,7 +108,7 @@ func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error
 	lines := strings.Split(string(raw), "\n")
 	idx := insertBeforeLine - 1
 	snippetLines := strings.Split(snippet, "\n")
-	if len(snippetLines) > 0 && snippetLines[len(snippetLines)-1] == "" {
+	for len(snippetLines) > 0 && snippetLines[len(snippetLines)-1] == "" {
 		snippetLines = snippetLines[:len(snippetLines)-1]
 	}
 	merged := make([]string, 0, len(lines)+len(snippetLines))

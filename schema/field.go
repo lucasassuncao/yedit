@@ -28,6 +28,7 @@ const (
 type FieldDef struct {
 	YAMLName    string
 	Kind        Kind
+	Scalar      string   // concrete scalar type for primitives/enums ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
 	Required    bool     // from validate:"required" or jsonschema:"required"
 	Default     string   // from jsonschema:"default=X"
 	Description string   // from jsonschema_description

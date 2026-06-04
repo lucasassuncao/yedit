@@ -1,11 +1,13 @@
 package editor
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/schema"
 )
@@ -70,8 +72,8 @@ func TestNestedMapFieldIsOpenable(t *testing.T) {
 }
 
 // TestEnterOnNestedMapEmitsOpenChild guards that pressing Enter on the nested
-// map field emits an openChildMsg scoped to that field, carrying its current
-// content and splice path.
+// map field emits an openChildMsg scoped to that field, carrying the focus-path
+// suffix to it (the model resolves content from the canonical tree).
 func TestEnterOnNestedMapEmitsOpenChild(t *testing.T) {
 	be := newBlockEdit(Config{}, ceStructSpec(), 100, 40)
 	be = cursorToLabel(be, "httproutes")
@@ -86,57 +88,17 @@ func TestEnterOnNestedMapEmitsOpenChild(t *testing.T) {
 	if msg.key != "httproutes" || msg.kind != schema.KindDictionary {
 		t.Errorf("openChildMsg = {key:%q kind:%d}, want {httproutes map}", msg.key, msg.kind)
 	}
-	if len(msg.path) != 1 || msg.path[0] != "httproutes" {
-		t.Errorf("splice path = %v, want [httproutes]", msg.path)
-	}
-	if !strings.Contains(msg.content, "web:") || !strings.Contains(msg.content, "host: example.com") {
-		t.Errorf("child content missing existing entry:\n%s", msg.content)
+	// A struct block addresses its child by a single mapping-key segment.
+	if len(msg.relSegs) != 1 || msg.relSegs[0].isIndex || msg.relSegs[0].key != "httproutes" {
+		t.Errorf("relSegs = %+v, want [segKey(httproutes)]", msg.relSegs)
 	}
 }
 
-func TestExtractSubBlock(t *testing.T) {
-	parent := "containerengine:\n  deployment:\n    replicas: 2\n  httproutes:\n    web:\n      host: example.com\n"
-	got := extractSubBlock(parent, []string{"httproutes"})
-	want := "httproutes:\n  web:\n    host: example.com\n"
-	if got != want {
-		t.Errorf("extractSubBlock:\n got %q\nwant %q", got, want)
-	}
-	// Absent path yields an empty collection header.
-	if got := extractSubBlock("containerengine:\n  deployment:\n    replicas: 2\n", []string{"httproutes"}); got != "httproutes:\n" {
-		t.Errorf("absent path = %q, want %q", got, "httproutes:\n")
-	}
-}
-
-func TestReplaceSubBlock(t *testing.T) {
-	parent := "containerengine:\n  deployment:\n    replicas: 2\n"
-	child := "httproutes:\n  web:\n    host: example.com\n"
-	got := replaceSubBlock(parent, []string{"httproutes"}, child)
-	if !strings.Contains(got, "httproutes:") || !strings.Contains(got, "web:") || !strings.Contains(got, "host: example.com") {
-		t.Errorf("replaceSubBlock dropped the child block:\n%s", got)
-	}
-	if !strings.Contains(got, "deployment:") {
-		t.Errorf("replaceSubBlock dropped the sibling deployment block:\n%s", got)
-	}
-	// An empty child removes the key.
-	pruned := replaceSubBlock(got, []string{"httproutes"}, "httproutes:\n")
-	if strings.Contains(pruned, "httproutes:") {
-		t.Errorf("empty child should prune the key:\n%s", pruned)
-	}
-}
-
-func TestExtractReplaceRoundTrip(t *testing.T) {
-	parent := "containerengine:\n  httproutes:\n    web:\n      host: example.com\n      port: 8080\n"
-	child := extractSubBlock(parent, []string{"httproutes"})
-	got := replaceSubBlock(parent, []string{"httproutes"}, child)
-	if !strings.Contains(got, "port: 8080") || !strings.Contains(got, "host: example.com") {
-		t.Errorf("round-trip lost fields:\n%s", got)
-	}
-}
-
-// TestDrillInSplicesBackToParent exercises the model stack: opening a child map
-// editor and committing it must splice the snippet into the parent block and pop
-// back to the parent.
-func TestDrillInSplicesBackToParent(t *testing.T) {
+// TestDrillInCommitsThroughCanonicalTree exercises the canonical-tree model:
+// drilling into a nested field reads its content from editRoot (no substring
+// copy), and Ctrl+S flushes the focused editor back into editRoot and serializes
+// the whole block to the document — structurally intact, with no per-level splice.
+func TestDrillInCommitsThroughCanonicalTree(t *testing.T) {
 	type ceProbe struct {
 		HTTPRoutes map[string]struct {
 			Host string `yaml:"host,omitempty"`
@@ -146,28 +108,29 @@ func TestDrillInSplicesBackToParent(t *testing.T) {
 		ContainerEngine *ceProbe `yaml:"containerengine,omitempty"`
 	}
 
-	m, err := newModel(Config{
-		Path:   filepath.Join(t.TempDir(), "w.yaml"),
-		Schema: &rootProbe{},
-	})
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	if err := os.WriteFile(path, []byte("containerengine:\n  httproutes:\n    web:\n      host: example.com\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
 	if err != nil {
 		t.Fatalf("newModel: %v", err)
 	}
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "containerengine"}})
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "containerengine", Existing: true}})
 	m = updated.(model)
 	if len(m.blockEdits) != 1 {
 		t.Fatalf("after open: stack depth %d, want 1", len(m.blockEdits))
 	}
 
+	// Drill into httproutes by focus suffix; the model resolves content from editRoot.
 	updated, _ = m.Update(openChildMsg{
 		key:     "httproutes",
 		defs:    []schema.FieldDef{{YAMLName: "host", Kind: schema.KindPrimitive}},
 		kind:    schema.KindDictionary,
-		content: "httproutes:\n",
-		path:    []string{"httproutes"},
+		relSegs: []pathSeg{segKey("httproutes")},
 	})
 	m = updated.(model)
 	if len(m.blockEdits) != 2 {
@@ -176,17 +139,95 @@ func TestDrillInSplicesBackToParent(t *testing.T) {
 	if !m.topBE().isMapNav() {
 		t.Error("child editor should be a map navigator")
 	}
+	if got := m.topBE().yamlEditor.Value(); !strings.Contains(got, "web") || !strings.Contains(got, "host: example.com") {
+		t.Errorf("child editor did not receive existing content from canonical tree:\n%s", got)
+	}
 
-	updated, _ = m.Update(blockEditCommittedMsg{Snippet: "httproutes:\n  web:\n    host: example.com\n"})
+	// Ctrl+S commits the whole stack through the canonical tree and returns to list.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = updated.(model)
+	if len(m.blockEdits) != 0 {
+		t.Fatalf("after ctrl+s: stack depth %d, want 0 (returned to list)", len(m.blockEdits))
+	}
+
+	// The document must still hold a structurally-intact nested mapping.
+	var check rootProbe
+	if err := yaml.Unmarshal(m.doc.Raw(), &check); err != nil {
+		t.Fatalf("committed doc is not structurally valid: %v\n%s", err, m.doc.Raw())
+	}
+	if check.ContainerEngine == nil || check.ContainerEngine.HTTPRoutes["web"].Host != "example.com" {
+		t.Errorf("nested content lost or corrupted:\n%s", m.doc.Raw())
+	}
+}
+
+// TestDrillOutKeepsEdits verifies that Esc inside a nested editor navigates back
+// up one level while PRESERVING the edits made there (flushed into the canonical
+// tree), so the user can drill in, edit, return to fix a parent field, and lose
+// nothing. This is the drill-out the stack lacked.
+func TestDrillOutKeepsEdits(t *testing.T) {
+	type ceProbe struct {
+		HTTPRoutes map[string]struct {
+			Host string `yaml:"host,omitempty"`
+		} `yaml:"httproutes,omitempty"`
+	}
+	type rootProbe struct {
+		ContainerEngine *ceProbe `yaml:"containerengine,omitempty"`
+	}
+
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	if err := os.WriteFile(path, []byte("containerengine:\n  httproutes:\n    web:\n      host: old.com\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "containerengine", Existing: true}})
+	m = updated.(model)
+
+	// Drill into httproutes.
+	updated, _ = m.Update(openChildMsg{
+		key:     "httproutes",
+		defs:    []schema.FieldDef{{YAMLName: "host", Kind: schema.KindPrimitive}},
+		kind:    schema.KindDictionary,
+		relSegs: []pathSeg{segKey("httproutes")},
+	})
+	m = updated.(model)
+	if len(m.blockEdits) != 2 {
+		t.Fatalf("after drill-in: stack depth %d, want 2", len(m.blockEdits))
+	}
+
+	// Edit the child: change the route host.
+	child := *m.topBE()
+	child.yamlEditor.SetValue("httproutes:\n  web:\n    host: new.com\n")
+	child.dirty = true
+	m.setTopBE(&child)
+
+	// Esc inside the nested editor → drill out, keeping the edit.
+	updated, _ = m.Update(drillOutMsg{})
 	m = updated.(model)
 	if len(m.blockEdits) != 1 {
-		t.Fatalf("after child commit: stack depth %d, want 1 (popped)", len(m.blockEdits))
+		t.Fatalf("after drill-out: stack depth %d, want 1 (back at parent)", len(m.blockEdits))
 	}
-	parent := m.topBE().yamlEditor.Value()
-	if !strings.Contains(parent, "httproutes:") || !strings.Contains(parent, "host: example.com") {
-		t.Errorf("child commit not spliced into parent:\n%s", parent)
+	// The parent editor must reflect the child's edit (refreshed from canonical tree).
+	if got := m.topBE().yamlEditor.Value(); !strings.Contains(got, "new.com") {
+		t.Errorf("parent did not reflect the child edit after drill-out:\n%s", got)
 	}
+	// And the block must be dirty so leaving to the list still warns.
 	if !m.topBE().dirty {
-		t.Error("parent should be marked dirty after splice")
+		t.Error("block should be dirty after keeping child edits")
+	}
+
+	// Ctrl+S then persists the kept edit through the canonical tree.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = updated.(model)
+	var check rootProbe
+	if err := yaml.Unmarshal(m.doc.Raw(), &check); err != nil {
+		t.Fatalf("doc invalid after commit: %v\n%s", err, m.doc.Raw())
+	}
+	if check.ContainerEngine == nil || check.ContainerEngine.HTTPRoutes["web"].Host != "new.com" {
+		t.Errorf("kept edit not persisted:\n%s", m.doc.Raw())
 	}
 }
