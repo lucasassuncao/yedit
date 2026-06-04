@@ -1,9 +1,10 @@
 # Editing Flow
 
-Arquitetura atual após o refactor de robustez (ver `docs/architecture-refactor.md`).
-A edição não usa mais um stack de cópias de string reconciliadas por splice; usa
-uma **árvore `*yaml.Node` canônica única** (`model.editRoot`) navegada por um
-**focus path indexado** (`be.focus []pathSeg`).
+Arquitetura atual. Cada bloco aberto tem um `*yaml.Node` canônico (`be.node`)
+que é a **única fonte de verdade** para os dados; o texto do YAML pane e a
+árvore de checkmarks são projeções derivadas dele. Keystokes são *parse-gated*:
+`be.node` só avança quando o buffer parece válido — o estado anterior é mantido
+enquanto o texto está incompleto.
 
 ```mermaid
 stateDiagram-v2
@@ -106,9 +107,10 @@ stateDiagram-v2
     end note
 
     note right of CN
-        coll.allFlushed() é o único ponto
-        seguro de leitura de entries.
-        loadEntry() sempre depois de flush.
+        be.node é a fonte de verdade (seq/map node).
+        flushCurrentEntry() parseia o editor → be.node.
+        loadEntry() lê be.node → editor.
+        Sempre flush antes de loadEntry ao trocar item.
     end note
 ```
 
@@ -142,57 +144,45 @@ Blocos **sem árvore** (primitivo, enum, lista/mapa livre) deixaram de mostrar
 Hint/Example acompanha — então dá pra ver o que um bloco *AVAILABLE* espera antes
 mesmo de abri-lo.
 
-## Fonte de verdade: `editRoot` (canônica) + `focus`
+## Fonte de verdade: `be.node`
 
 | Conceito | Descrição |
 |---|---|
-| `model.editRoot` | `*yaml.Node` do bloco aberto, parseado uma vez. **Único** dono do dado. |
-| `model.editBlockKey` | Chave de topo do bloco (para serializar/escrever no doc). |
-| `be.focus []pathSeg` | Endereço deste editor em `editRoot`. `nil` no topo. |
-| `blockEdits[]` | Stack só de **estado de UI** (cursor/expansão) + `focus` por nível. |
-| `topBE()` | Último elemento — único visível e ativo. |
-| Profundidade máxima | 10 níveis. |
+| `be.node` | `*yaml.Node` do bloco aberto — **única** fonte de dados. Para structs: o mapping de valor do bloco. Para coleções: o nó seq/map que contém todas as entradas. |
+| `be.coll.current` | Índice da entrada mostrada no editor (coleções). |
+| `blockEdits[]` | Stack de `blockEditState` para drill-in em campos openable (`→`). |
+| `nodeToContent(key,node)` | Serializa `be.node` → texto do YAML pane. |
+| `valueNodeOfSnippet(s)` | Parseia texto do YAML pane → nó candidato (gate de parse). |
 
-Partes **não-focadas** ficam como nós vivos em `editRoot` — nunca passam por
-manipulação de string, então a corrupção sequência→mapping é impossível.
-
-## Navegação por nó (`yaml.go`)
+## Fluxo de commit (Ctrl+S no editor)
 
 ```
-pathSeg          ← passo do focus: chave de mapping (segKey) ou índice de seq (segIdx)
-nodeAt(root,segs)    ← navega até o nó endereçado (sem descer implicitamente)
-setNodeAt(root,segs,v) ← substitui o nó endereçado operando em nós VIVOS (seguro)
-nodeToContent(key,node) / valueNodeOfSnippet(s) ← fronteira nó ↔ texto do editor
+struct block:
+    be.yamlEditor.Value() → m.doc.Replace(be.key, snippet)
+
+collection block:
+    flushCurrentEntry()          ← parseia editor → be.node (gate de parse; erro bloqueia)
+    nodeToContent(be.key, be.node) → snippet
+    m.doc.Replace(be.key, snippet)
 ```
 
-## Fluxo de commit (`commitAll`, disparado por Ctrl+S no editor)
+Salvar no arquivo é uma ação separada: Ctrl+S na lista → confirma → `m.doc.Save()`.
+
+## Projeção de coleção: `be.node` como SOT
+
+O nó canônico (`be.node`) é a única lista de entradas. Não existe mais um slice
+`entries[]` paralelo:
 
 ```
-flushTopToRoot():
-    top.commit() → snippet (valida; erro bloqueia)
-    setNodeAt(editRoot, top.focus, valueNodeOfSnippet(snippet))   [1 escrita de nó]
-nodeToContent(editBlockKey, editRoot)                              [serializa 1x]
-    → m.doc.Replace / m.doc.Insert
-enterList()  →  "Changes committed (not saved yet) — ctrl+s to save."
+be.node              ← seq/map node — fonte de verdade de todas as entradas
+be.coll.current      ← índice da entrada exibida
+entryViewYAML(...)   ← projeta be.node[current] → texto do editor
+flushCurrentEntry()  ← parseia editor → be.node[current] (gate: rejeita inválido)
+loadEntry(idx)       ← be.coll.current = idx; editor = entryViewYAML(idx)
+collectionDeriveTree() ← re-projeta labels/checks de TODAS as entradas de be.node
 ```
 
-Como cada drill-in já fez flush do pai em `editRoot`, no commit só o editor do
-topo está "vivo": não há cadeia de splices. Salvar no arquivo é uma ação
-separada (Ctrl+S a partir da Lista → confirma → escreve no disco).
-
-## Projeção de coleção: `collectionBuffer`
-
-O nível focado, quando é uma coleção, é projetado por um `collectionBuffer`:
-
-```
-coll.entries[]            ← todos os items do nível focado (flushed)
-be.yamlEditor             ← buffer vivo do item atual
-coll.allFlushed(editor)   ← único ponto seguro de leitura (flush + retorna entries)
-coll.flush(editor)        ← sincroniza yamlEditor → entries[current]
-loadEntry(idx)            ← sincroniza entries[idx] → yamlEditor
-```
-
-**Regra:** chamar `loadEntry` sempre depois de `flush` ao trocar de item.
+**Regra:** chamar `loadEntry` sempre depois de `flushCurrentEntry` ao trocar de item.
 
 ## Transições de tela (centralizadas)
 
@@ -200,11 +190,15 @@ Os quatro métodos `enterList` / `enterPreview` / `enterBlockEdit` / `enterAlert
 são os únicos que mudam `m.mode`, setando o modo junto com seus dados. Garantem
 por construção: `alert != nil ⟺ paneAlert` e `len(blockEdits) > 0 ⟺ paneBlockEdit`.
 
-## Buffer tolerante
+## Buffer tolerante (parse gate)
 
 Digitar no YAML pane pode deixar o buffer transitoriamente inválido — nada é
-perdido nem bloqueado. Quando o conteúdo **muda**, `resyncTreeFromYAML` faz uma
-projeção **visual best-effort não-autoritativa** (só checkmarks/labels), tolerante
-a parse inválido. Teclas que não alteram o conteúdo (setas, seleção) não disparam
-resync — não há o que re-projetar. A escrita no canônico e o surfacing de erro só
-acontecem no **flush** (navegação/commit).
+perdido nem bloqueado. A cada keystroke que muda o conteúdo, `syncParsedNode`
+tenta parsear o buffer:
+
+- **Parse OK** → `be.node` avança para o novo nó; árvore é re-derivada dele.
+- **Parse falhou** → `be.node` permanece no último estado válido; árvore é mantida.
+
+Teclas que não alteram o conteúdo (setas, seleção) não disparam o gate — não há
+o que re-projetar. A escrita canônica visível ao usuário (e o surfacing de erro)
+ocorre no **flush** (navegação entre entradas / commit).

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -26,6 +28,13 @@ type Document struct {
 	history    [][]byte
 	dirty      bool
 	knownOrder []string
+
+	usedCRLF bool // file on disk used CRLF line endings; restored on Save
+
+	// diskModTime/diskSize record the on-disk file state at the last load/save so
+	// Save can detect an external modification before overwriting it.
+	diskModTime time.Time
+	diskSize    int64
 }
 
 // Load reads a YAML file from path. A non-existent file is not an error — the
@@ -40,24 +49,30 @@ func Load(path string, knownOrder []string) (*Document, error) {
 	if raw == nil {
 		raw = []byte{}
 	}
+	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}) // strip UTF-8 BOM
+	usedCRLF := bytes.Contains(raw, []byte("\r\n"))
 	raw = []byte(strings.ReplaceAll(string(raw), "\r\n", "\n"))
 
 	blocks, err := ParseBlocks(raw)
 	if err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
-	return &Document{path: path, raw: raw, loaded: copyBytes(raw), blocks: blocks, knownOrder: knownOrder}, nil
+	d := &Document{path: path, raw: raw, loaded: copyBytes(raw), blocks: blocks, knownOrder: knownOrder, usedCRLF: usedCRLF}
+	d.recordDiskState()
+	return d, nil
 }
 
 // New builds a Document from raw bytes. Intended for tests and in-memory use;
 // the resulting document has no file path.
 func New(raw []byte, knownOrder []string) (*Document, error) {
+	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}) // strip UTF-8 BOM
+	usedCRLF := bytes.Contains(raw, []byte("\r\n"))
 	raw = []byte(strings.ReplaceAll(string(raw), "\r\n", "\n"))
 	blocks, err := ParseBlocks(raw)
 	if err != nil {
 		return nil, fmt.Errorf("parsing raw: %w", err)
 	}
-	return &Document{raw: raw, loaded: copyBytes(raw), blocks: blocks, knownOrder: knownOrder}, nil
+	return &Document{raw: raw, loaded: copyBytes(raw), blocks: blocks, knownOrder: knownOrder, usedCRLF: usedCRLF}, nil
 }
 
 func copyBytes(b []byte) []byte {
@@ -217,16 +232,90 @@ func (d *Document) Undo() bool {
 	return true
 }
 
-// Save writes the current raw to disk at d.path with mode 0600 and clears dirty.
-// Returns an error if d.path is empty.
+// Save writes the current content to disk at d.path and clears dirty. The write
+// is atomic (temp file + rename) so a crash mid-write never truncates the
+// original. The file's existing mode is preserved (new files are created 0600),
+// and CRLF line endings are restored when the loaded file used them. Returns an
+// error if d.path is empty.
 func (d *Document) Save() error {
 	if d.path == "" {
 		return fmt.Errorf("document has no path; Load requires a path")
 	}
-	if err := os.WriteFile(d.path, d.raw, 0o600); err != nil {
+	out := d.raw
+	if d.usedCRLF {
+		out = bytes.ReplaceAll(out, []byte("\n"), []byte("\r\n"))
+	}
+	if err := atomicWrite(d.path, out); err != nil {
 		return err
 	}
 	d.loaded = copyBytes(d.raw)
 	d.dirty = false
+	d.recordDiskState()
 	return nil
+}
+
+// ExternallyChanged reports whether the file on disk was modified since this
+// Document last loaded or saved it — e.g. another process or a git operation
+// edited it. Returns false when there is no path or the file is absent (a save
+// would create it, clobbering nothing). Callers should confirm with the user
+// before overwriting when this returns true.
+func (d *Document) ExternallyChanged() bool {
+	if d.path == "" {
+		return false
+	}
+	info, err := os.Stat(d.path)
+	if err != nil {
+		return false
+	}
+	return info.ModTime() != d.diskModTime || info.Size() != d.diskSize
+}
+
+// recordDiskState captures the on-disk mtime/size so a later Save can detect an
+// external modification. A missing file records the zero state.
+func (d *Document) recordDiskState() {
+	if d.path == "" {
+		return
+	}
+	if info, err := os.Stat(d.path); err == nil {
+		d.diskModTime = info.ModTime()
+		d.diskSize = info.Size()
+	} else {
+		d.diskModTime = time.Time{}
+		d.diskSize = 0
+	}
+}
+
+// atomicWrite durably writes data to path: it writes a temp file in the same
+// directory, fsyncs it, then renames over path (atomic on the same filesystem,
+// and REPLACE_EXISTING on Windows). The destination's existing mode is preserved;
+// new files are created 0600. On any failure before the rename the temp file is
+// removed and path is left untouched.
+func atomicWrite(path string, data []byte) error {
+	mode := os.FileMode(0o600)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".yedit-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }() // no-op after a successful rename
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, mode); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }

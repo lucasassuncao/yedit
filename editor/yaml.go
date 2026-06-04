@@ -114,47 +114,6 @@ func labelFromContent(content string) string {
 }
 
 // seqEntriesToBase assembles the full sequence YAML from key and entries.
-// seqItemIndent returns the number of leading spaces before the first "- "
-// marker in seqBase (after the "key:\n" prefix). Returns 0 if not detectable.
-func seqItemIndent(seqBase, key string) int {
-	prefix := key + ":\n"
-	if !strings.HasPrefix(seqBase, prefix) {
-		return 0
-	}
-	for _, line := range strings.Split(strings.TrimPrefix(seqBase, prefix), "\n") {
-		trimmed := strings.TrimLeft(line, " ")
-		if strings.HasPrefix(trimmed, "- ") || trimmed == "-" {
-			return len(line) - len(trimmed)
-		}
-	}
-	return 0
-}
-
-// reindentSeqContent shifts the indentation of all lines in a sequence entry's
-// Content by (dstIndent - srcIndent) spaces. Used to normalize entries from
-// different YAML sources before concatenating into a shared seqBase.
-func reindentSeqContent(content string, srcIndent, dstIndent int) string {
-	if srcIndent == dstIndent || srcIndent == 0 {
-		return content
-	}
-	shift := dstIndent - srcIndent
-	lines := strings.Split(content, "\n")
-	result := make([]string, len(lines))
-	for i, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			result[i] = line
-			continue
-		}
-		spaces := len(line) - len(strings.TrimLeft(line, " "))
-		newSpaces := spaces + shift
-		if newSpaces < 0 {
-			newSpaces = 0
-		}
-		result[i] = strings.Repeat(" ", newSpaces) + strings.TrimLeft(line, " ")
-	}
-	return strings.Join(result, "\n")
-}
-
 func seqEntriesToBase(key string, entries []seqEntry) string {
 	var sb strings.Builder
 	sb.WriteString(key + ":\n")
@@ -319,52 +278,6 @@ func applyToggleToMapEntry(ctx toggleCtx, node treeNode, checked bool, yamlConte
 			return nil
 		}
 		return blockValue.Content[1]
-	})
-}
-
-// syncTreeCheckedFromYAML re-derives checked states for all treeNodeField leaf
-// nodes from the current YAML text (the right panel value), then re-applies
-// section grouping for KindObject trees, restoring the cursor position.
-func syncTreeCheckedFromYAML(tm treeModel, key, yamlContent string) treeModel {
-	// Save selected node's path so we can restore the cursor after reorder.
-	var selectedPath []string
-	if ni := tm.currentNodeIdx(); ni >= 0 && tm.nodes[ni].kind == treeNodeField {
-		selectedPath = tm.nodes[ni].yamlPath
-	}
-
-	tm.nodes = syncTreeCheckedStates(tm.nodes, key, yamlContent)
-
-	if !tm.isSeq {
-		tm.nodes = applySections(tm.nodes)
-		tm = tm.restoreCursorToPath(selectedPath)
-	}
-	return tm
-}
-
-// applyTreeToggle surgically adds or removes a single leaf field from the
-// current YAML of a struct block. Falls back to a simple rebuild on any error.
-func applyTreeToggle(ctx toggleCtx, node treeNode, checked bool, current string) string {
-	return withYAMLRoot(current, func(root *yaml.Node) bool {
-		mapping := root.Content[0]
-		if mapping.Kind != yaml.MappingNode || len(mapping.Content) < 2 {
-			return false
-		}
-		valueNode := mapping.Content[1]
-		if valueNode.Kind != yaml.MappingNode {
-			// Coerce null/scalar to an empty mapping so fields can be added to
-			// a block that was opened with no content yet (e.g. "database:\n").
-			valueNode.Kind = yaml.MappingNode
-			valueNode.Tag = ""
-			valueNode.Value = ""
-			valueNode.Content = nil
-		}
-		path := node.yamlPath
-		if !applyToggleAt(valueNode, path[:len(path)-1], path[len(path)-1], checked, ctx, node.depth == 0) {
-			return false
-		}
-		pruneEmptyMappings(valueNode)
-		reorderNestedMappingKeys(valueNode, ctx.childDefs)
-		return true
 	})
 }
 

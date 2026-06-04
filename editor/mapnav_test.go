@@ -168,6 +168,10 @@ func TestMapBlockAddEntrySeedsCheckedField(t *testing.T) {
 func TestMapBlockRenameUpdatesTreeLabel(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	be.yamlEditor.SetValue("portsAttributes:\n  lucas:\n    label: web\n    onAutoForward: notify\n")
+	// Simulate the parse-gated keystroke: splice the edited entry into the node.
+	if kn, vn, ok := parseEntryFromView(be.yamlEditor.Value(), be.coll.isMap); ok {
+		setEntry(be.node, be.coll.isMap, be.coll.current, kn, vn)
+	}
 	be.tree = be.resyncTreeFromYAML()
 	if labels := seqItemLabels(be); len(labels) == 0 || labels[0] != "lucas" {
 		t.Errorf("after rename, labels = %v, want first = lucas", labels)

@@ -1,6 +1,7 @@
 package document_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -277,6 +278,146 @@ func TestSave_noPath(t *testing.T) {
 	}
 }
 
+// TestSave_preservesCRLF: a file loaded with CRLF endings is written back with
+// CRLF, so editing one block on Windows does not rewrite every line to LF.
+func TestSave_preservesCRLF(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "crlf.yaml")
+	if err := os.WriteFile(path, []byte("name: web\r\nimage: alpine\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := document.Load(path, canonicalOrder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Replace("image", "image: ubuntu\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Save(); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if !bytes.Contains(data, []byte("\r\n")) {
+		t.Errorf("CRLF not preserved on save:\n%q", data)
+	}
+	// No bare LF should remain once CRLF pairs are stripped.
+	if bytes.Contains(bytes.ReplaceAll(data, []byte("\r\n"), nil), []byte("\n")) {
+		t.Errorf("found bare LF in a CRLF file:\n%q", data)
+	}
+	if !bytes.Contains(data, []byte("image: ubuntu")) {
+		t.Errorf("edit not applied:\n%q", data)
+	}
+}
+
+// TestSave_preservesFileMode: an existing file's permission bits survive a save
+// (atomic write must not reset the mode to 0600). POSIX only.
+func TestSave_preservesFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits not meaningful on Windows")
+	}
+	path := filepath.Join(t.TempDir(), "perm.yaml")
+	if err := os.WriteFile(path, []byte("name: web\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil { // defeat umask
+		t.Fatal(err)
+	}
+	doc, err := document.Load(path, canonicalOrder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Replace("name", "name: api\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Save(); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Stat(path)
+	if perm := info.Mode().Perm(); perm != 0o644 {
+		t.Errorf("file mode = %v after save, want 0644 (must be preserved)", perm)
+	}
+}
+
+// TestSave_noLeftoverTempFiles: the atomic write must not leave .tmp droppings
+// in the target directory.
+func TestSave_noLeftoverTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.yaml")
+	doc, err := document.Load(path, canonicalOrder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Insert("name: web\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Save(); err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if e.Name() != "out.yaml" {
+			t.Errorf("unexpected leftover file after atomic save: %q", e.Name())
+		}
+	}
+}
+
+// TestExternallyChanged: a file modified on disk after load is detected, and a
+// Save resets the baseline so a subsequent check is clean.
+func TestExternallyChanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ext.yaml")
+	if err := os.WriteFile(path, []byte("name: web\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := document.Load(path, canonicalOrder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.ExternallyChanged() {
+		t.Fatal("freshly loaded file should not look externally changed")
+	}
+
+	// Another process rewrites the file (different size → reliably detected).
+	if err := os.WriteFile(path, []byte("name: web\nimage: alpine\nremoteUser: root\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !doc.ExternallyChanged() {
+		t.Error("external modification not detected")
+	}
+
+	// Saving our own content re-establishes the baseline.
+	if err := doc.Insert("image: ubuntu\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if doc.ExternallyChanged() {
+		t.Error("baseline not reset after our own Save")
+	}
+}
+
+// TestReplace_preservesSurroundingComments: editing one block must not drop
+// comments and blank lines that live outside the replaced block.
+func TestReplace_preservesSurroundingComments(t *testing.T) {
+	src := "# top of file\nname: web\n\n# the image to use\nimage: alpine\n# trailing note\n"
+	path := filepath.Join(t.TempDir(), "comments.yaml")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := document.Load(path, canonicalOrder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Replace("name", "name: api\n"); err != nil {
+		t.Fatal(err)
+	}
+	got := string(doc.Raw())
+	for _, want := range []string{"# top of file", "# the image to use", "# trailing note", "name: api"} {
+		if !bytes.Contains([]byte(got), []byte(want)) {
+			t.Errorf("comment/line %q lost after editing a sibling block:\n%s", want, got)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // YAML edge cases: anchors, multi-document, tab indentation
 // ---------------------------------------------------------------------------
@@ -368,6 +509,68 @@ func containsSubstringSearch(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// TestLoad_utf8BOM verifies that files starting with a UTF-8 BOM load correctly:
+// the BOM must not appear in any block key, editing must work, and a save+reload
+// cycle must not corrupt the file.
+func TestLoad_utf8BOM(t *testing.T) {
+	raw := append([]byte{0xEF, 0xBB, 0xBF}, "name: mydev\nimage: ubuntu:22.04\n"...)
+	path := filepath.Join(t.TempDir(), "bom.yaml")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	doc, err := document.Load(path, canonicalOrder)
+	if err != nil {
+		t.Fatalf("Load with UTF-8 BOM: %v", err)
+	}
+	for _, b := range doc.Blocks() {
+		if b.Key != "name" && b.Key != "image" {
+			t.Errorf("unexpected block key %q — BOM leaking into key name?", b.Key)
+		}
+	}
+
+	// Editing must work.
+	if err := doc.Replace("name", "name: api\n"); err != nil {
+		t.Fatalf("Replace after BOM load: %v", err)
+	}
+	if err := doc.Save(); err != nil {
+		t.Fatalf("Save after BOM edit: %v", err)
+	}
+
+	// Reload must also parse correctly — no BOM duplication or corruption.
+	doc2, err := document.Load(path, canonicalOrder)
+	if err != nil {
+		t.Fatalf("reload after BOM save: %v", err)
+	}
+	for _, b := range doc2.Blocks() {
+		if b.Key != "name" && b.Key != "image" {
+			t.Errorf("after save+reload, unexpected block key %q", b.Key)
+		}
+	}
+	if got := string(doc2.Raw()); got != "name: api\nimage: ubuntu:22.04\n" {
+		t.Errorf("Raw after BOM round-trip =\n%q\nwant\n%q", got, "name: api\nimage: ubuntu:22.04\n")
+	}
+}
+
+// TestLoad_utf8BOM_strip verifies that the raw bytes returned by a BOM-prefixed
+// file do not start with the BOM sequence — stripping it prevents it from
+// leaking into block content or being re-inserted on partial edits.
+func TestLoad_utf8BOM_strip(t *testing.T) {
+	bom := []byte{0xEF, 0xBB, 0xBF}
+	raw := append([]byte{0xEF, 0xBB, 0xBF}, "name: mydev\n"...)
+	path := filepath.Join(t.TempDir(), "bom.yaml")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := document.Load(path, canonicalOrder)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if bytes.HasPrefix(doc.Raw(), bom) {
+		t.Error("Raw() still starts with UTF-8 BOM — should be stripped on load")
+	}
 }
 
 // TestRemoveBlock_staleRangeNoPanic ensures RemoveBlock clamps a block range that

@@ -107,6 +107,16 @@ func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error
 
 	lines := strings.Split(string(raw), "\n")
 	idx := insertBeforeLine - 1
+	// Land above the following block's leading comments (a contiguous run of
+	// comment lines immediately above its key), not between them and the key they
+	// document. A blank line separates comment groups and stops the walk.
+	for idx > 0 {
+		if strings.HasPrefix(strings.TrimSpace(lines[idx-1]), "#") {
+			idx--
+		} else {
+			break
+		}
+	}
 	snippetLines := strings.Split(snippet, "\n")
 	for len(snippetLines) > 0 && snippetLines[len(snippetLines)-1] == "" {
 		snippetLines = snippetLines[:len(snippetLines)-1]

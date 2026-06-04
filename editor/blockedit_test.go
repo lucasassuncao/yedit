@@ -92,13 +92,13 @@ func cursorToFieldExpanded(be blockEditState, label string) blockEditState {
 // empty — fixing the bug where openable fields always looked active.
 func TestOpenableChildReflectsContent(t *testing.T) {
 	filled := newBlockEdit(Config{}, filterSpec("filters:\n  - regex: \"x\"\n    any:\n      - regex: \"y\"\n"), 100, 40)
-	tm := filled.syncCurrentEntry()
+	tm := filled.collectionDeriveTree()
 	if n, ok := findFieldNode(tm, "any"); !ok || !n.checked {
 		t.Errorf("filled 'any' should be checked/active; got ok=%v checked=%v", ok, n.checked)
 	}
 
 	empty := newBlockEdit(Config{}, filterSpec("filters:\n  - regex: \"x\"\n"), 100, 40)
-	tm = empty.syncCurrentEntry()
+	tm = empty.collectionDeriveTree()
 	if n, ok := findFieldNode(tm, "any"); !ok || n.checked {
 		t.Errorf("empty 'any' should be unchecked/muted; got ok=%v checked=%v", ok, n.checked)
 	}
@@ -108,7 +108,7 @@ func TestOpenableChildReflectsContent(t *testing.T) {
 // field with content (opens the remove confirm), instead of being a no-op.
 func TestCtrlDOnFilledOpenableAsksRemove(t *testing.T) {
 	be := newBlockEdit(Config{}, filterSpec("filters:\n  - regex: \"x\"\n    any:\n      - regex: \"y\"\n"), 100, 40)
-	be.tree = be.syncCurrentEntry()
+	be.tree = be.collectionDeriveTree()
 	be = cursorToFieldExpanded(be, "any")
 
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
@@ -122,7 +122,7 @@ func TestCtrlDOnFilledOpenableAsksRemove(t *testing.T) {
 // (there is no content to remove) and never opens a confirm.
 func TestCtrlDOnEmptyOpenableNoop(t *testing.T) {
 	be := newBlockEdit(Config{}, filterSpec("filters:\n  - regex: \"x\"\n"), 100, 40)
-	be.tree = be.syncCurrentEntry()
+	be.tree = be.collectionDeriveTree()
 	be = cursorToFieldExpanded(be, "any")
 
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
@@ -145,7 +145,7 @@ func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
 	be = be.openPresetPicker()
 	be = be.appendPreset("extra")
 
-	base := seqEntriesToBase("categories", be.coll.entries)
+	base := nodeToContent("categories", be.node)
 	if !strings.Contains(base, "name: existing") {
 		t.Errorf("entries missing original entry:\n%s", base)
 	}
@@ -193,7 +193,7 @@ func TestAppendPreset_indentMismatch(t *testing.T) {
 	be = be.openPresetPicker()
 	be = be.appendPreset("extra")
 
-	base2 := seqEntriesToBase("categories", be.coll.entries)
+	base2 := nodeToContent("categories", be.node)
 	if !strings.Contains(base2, "name: existing") {
 		t.Errorf("entries missing original entry:\n%s", base2)
 	}
@@ -365,7 +365,7 @@ func TestUndo_structFieldAdd(t *testing.T) {
 func TestUndo_seqItemDelete(t *testing.T) {
 	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
 	be := newBlockEdit(Config{}, spec, 100, 40)
-	wantBase := seqEntriesToBase("categories", be.coll.entries)
+	wantBase := nodeToContent("categories", be.node)
 
 	// ctrl+d on the first item (alpha) now confirms before deleting.
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
@@ -379,7 +379,7 @@ func TestUndo_seqItemDelete(t *testing.T) {
 	}
 
 	be = be.restoreUndo()
-	gotBase := seqEntriesToBase("categories", be.coll.entries)
+	gotBase := nodeToContent("categories", be.node)
 	if gotBase != wantBase {
 		t.Errorf("after undo entries = %q, want %q", gotBase, wantBase)
 	}
@@ -393,7 +393,7 @@ func TestUndo_seqItemDelete(t *testing.T) {
 func TestUndo_seqItemAdd(t *testing.T) {
 	spec := seqSpec("categories:\n  - name: alpha\n")
 	be := newBlockEdit(Config{}, spec, 100, 40)
-	wantBase := seqEntriesToBase("categories", be.coll.entries)
+	wantBase := nodeToContent("categories", be.node)
 
 	// Navigate to [+ add new] and press Enter.
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -407,7 +407,7 @@ func TestUndo_seqItemAdd(t *testing.T) {
 	}
 
 	be = be.restoreUndo()
-	gotBase := seqEntriesToBase("categories", be.coll.entries)
+	gotBase := nodeToContent("categories", be.node)
 	if gotBase != wantBase {
 		t.Errorf("after undo entries = %q, want %q", gotBase, wantBase)
 	}
@@ -416,21 +416,23 @@ func TestUndo_seqItemAdd(t *testing.T) {
 	}
 }
 
-// TestCollectionNav_KeystrokeDoesNotFlushEntries verifies that typing in the
-// YAML panel does not update entries[]. Only navigation and commit do.
-func TestCollectionNav_KeystrokeDoesNotFlushEntries(t *testing.T) {
+// TestCollectionNav_RawSetValueDoesNotMutateNode verifies that replacing the
+// editor text out-of-band (without a keystroke through updateKey, which is what
+// parse-gates edits into the node) leaves the canonical node untouched until a
+// real flush. Only navigation and commit reconcile the buffer into the node.
+func TestCollectionNav_RawSetValueDoesNotMutateNode(t *testing.T) {
 	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
 	be := newBlockEdit(Config{}, spec, 100, 40)
 
-	original := be.coll.entries[0].Content
+	original := be.entryYAML(0)
 
 	be.active = blockEditPanelYAML
 	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
 	be.dirty = true
 
-	if be.coll.entries[0].Content != original {
-		t.Fatalf("entries[0] was mutated by yamlEditor change; got %q, want %q",
-			be.coll.entries[0].Content, original)
+	if be.entryYAML(0) != original {
+		t.Fatalf("canonical node was mutated by a raw SetValue; got %q, want %q",
+			be.entryYAML(0), original)
 	}
 }
 
@@ -469,10 +471,7 @@ func TestCollectionNav_DoubleCommitIdempotent(t *testing.T) {
 	snippet1 := cmd().(blockEditCommittedMsg).Snippet
 
 	// Simulate handleOverlayConfirmed re-sync (new architecture)
-	freshEntries := parseSeqEntries("categories", snippet1)
-	be.coll.entries = freshEntries
-	be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
-	be.dirty = false
+	be = be.resyncAfterCommit(snippet1)
 
 	_, cmd2 := be.commit()
 	snippet2 := cmd2().(blockEditCommittedMsg).Snippet

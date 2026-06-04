@@ -12,7 +12,7 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 
 ## Index
 
-- [func Run\(cfg Config\) error](<#Run>)
+- [func Run\(cfg Config\) \(err error\)](<#Run>)
 - [func RunAll\(validators \[\]Validator, raw \[\]byte, blocks \[\]document.Block\) \[\]string](<#RunAll>)
 - [type Config](<#Config>)
 - [type Validator](<#Validator>)
@@ -23,15 +23,15 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 
 
 <a name="Run"></a>
-## func [Run](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L11>)
+## func [Run](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L18>)
 
 ```go
-func Run(cfg Config) error
+func Run(cfg Config) (err error)
 ```
 
 Run starts the editor TUI and blocks until the user quits. The Config must have Schema and Path set; everything else is optional.
 
-Returns nil on a clean quit, or the underlying tea.Program error.
+Returns nil on a clean quit, or the underlying tea.Program error. A panic inside the editor is recovered and returned as an error instead of crashing the embedding program: Bubble Tea restores the terminal before the panic propagates here, so the host is left with a usable terminal and a normal error to handle.
 
 <a name="RunAll"></a>
 ## func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L11>)
@@ -43,7 +43,7 @@ func RunAll(validators []Validator, raw []byte, blocks []document.Block) []strin
 RunAll executes all validators against raw/blocks and collects violations.
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L57-L74>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L57-L75>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -61,22 +61,23 @@ FieldExamples provides a YAML snippet shown in the hint panel for each field \(k
 
 ```go
 type Config struct {
-    Path             string
-    Schema           any
-    Title            string
-    Presets          presets.Source
-    Validators       []Validator
-    PreCheckedFields map[string][]string
-    FieldSnippets    map[string]map[string]string
-    FieldExamples    map[string]map[string]string
-    Hidden           []string    // top-level keys to omit from the UI entirely
-    PassthroughKeys  []string    // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
-    Theme            theme.Theme // zero-value resolves to ThemeDark
-    NoDeleteConfirm  bool        // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
-    NoValidateOnSave bool        // allow saving even when validators report errors; a warning alert is shown but does not block
-    NoSaveConfirm    bool        // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
-    ReadOnly         bool        // disable all edits and saves; the title displays "(READ-ONLY MODE)"
-    SavePath         string      // write to this path instead of Path; Path is still used for loading
+    Path                 string
+    Schema               any
+    Title                string
+    Presets              presets.Source
+    Validators           []Validator
+    PreCheckedFields     map[string][]string
+    FieldSnippets        map[string]map[string]string
+    FieldExamples        map[string]map[string]string
+    Hidden               []string    // top-level keys to omit from the UI entirely
+    PassthroughKeys      []string    // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
+    Theme                theme.Theme // zero-value resolves to ThemeDark
+    NoDeleteConfirm      bool        // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
+    NoValidateOnSave     bool        // allow saving even when validators report errors; a warning alert is shown but does not block
+    NoSaveConfirm        bool        // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
+    ReadOnly             bool        // disable all edits and saves; the title displays "(READ-ONLY MODE)"
+    SavePath             string      // write to this path instead of Path; Path is still used for loading
+    SchemaRecursionDepth int         // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
 }
 ```
 

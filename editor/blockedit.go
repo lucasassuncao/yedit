@@ -44,68 +44,13 @@ const (
 	modeConfirming                         // confirm alert overlay
 )
 
-// collectionBuffer is the single source of truth for the entry list of a
-// collection-nav editor. It pairs with blockEditState.yamlEditor (the live
-// buffer for the current entry). Always use allFlushed() to read the complete
-// list — it syncs the live editor into entries[current] before returning.
+// collectionBuffer tracks which entry of a collection-nav editor is currently
+// shown in the YAML editor. The entry list itself is no longer stored here — it
+// is derived structurally from blockEditState.node, the single source of truth.
 type collectionBuffer struct {
 	key     string
 	isMap   bool
-	entries []seqEntry
 	current int // index of the entry shown in yamlEditor (-1 if empty)
-}
-
-// flush syncs editorValue into entries[current].
-// Returns the updated buffer and an error message (empty on success).
-func (cb collectionBuffer) flush(editorValue string) (collectionBuffer, string) {
-	if cb.current < 0 || cb.current >= len(cb.entries) {
-		return cb, ""
-	}
-	content := itemContentFrom(cb.key, editorValue)
-	if content == "" {
-		if strings.TrimSpace(editorValue) != "" {
-			return cb, "Missing '" + cb.key + ":' header — restore it before navigating."
-		}
-		return cb, ""
-	}
-	label := cb.deriveLabel(content)
-	if label == "" {
-		label = cb.entries[cb.current].Label
-	}
-	entries := make([]seqEntry, len(cb.entries))
-	copy(entries, cb.entries)
-	entries[cb.current] = seqEntry{Label: label, Content: content}
-	cb.entries = entries
-	return cb, ""
-}
-
-// allFlushed flushes editorValue into entries[current] and returns all entries.
-// This is the only safe way to read the complete entry list.
-func (cb collectionBuffer) allFlushed(editorValue string) (collectionBuffer, []seqEntry, string) {
-	cb, errMsg := cb.flush(editorValue)
-	return cb, cb.entries, errMsg
-}
-
-// entryYAML returns the YAML to load into the editor for the entry at idx.
-func (cb collectionBuffer) entryYAML(idx int) string {
-	if idx < 0 || idx >= len(cb.entries) {
-		return cb.key + ":\n"
-	}
-	if cb.isMap {
-		return withYAMLRoot(cb.key+":\n"+cb.entries[idx].Content, func(*yaml.Node) bool { return true })
-	}
-	return cb.key + ":\n" + cb.entries[idx].Content
-}
-
-// deriveLabel extracts the display label from entry content.
-func (cb collectionBuffer) deriveLabel(content string) string {
-	if cb.isMap {
-		if i := strings.IndexByte(content, '\n'); i >= 0 {
-			return mapEntryKey(content[:i])
-		}
-		return mapEntryKey(content)
-	}
-	return labelFromContent(content)
 }
 
 // blockEditState is the full-screen block editing mode that replaces the old
@@ -120,6 +65,13 @@ type blockEditState struct {
 	def         schema.FieldDef  // the block's own definition; drives the hint panel for tree-less blocks
 	coll        collectionBuffer // non-zero only for collection-nav editors
 	knownByPath map[string]map[string]bool
+
+	// node is the block's canonical value node — the single source of truth from
+	// which the tree (checkmarks, labels) is projected. For non-collection blocks
+	// it mirrors what the YAML editor renders; tree-driven toggles mutate it
+	// structurally and the editor is re-rendered from it. Collection blocks still
+	// carry their entry list in coll for now.
+	node *yaml.Node
 
 	yamlEditor      textarea.Model
 	previewRenderer *glamour.TermRenderer // non-nil only for KindObject blocks
@@ -156,7 +108,7 @@ type blockEditState struct {
 // blockEditUndoSnap captures the state of a blockEditState before any
 // mutating operation so it can be restored by a single ctrl+u.
 type blockEditUndoSnap struct {
-	entries         []seqEntry
+	node            *yaml.Node // deep copy of the canonical node at snapshot time
 	currentEntryIdx int
 	yamlValue       string
 	dirty           bool
@@ -196,20 +148,17 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 
 	be.tree = newTreeModel(spec, be.innerH())
 
-	// For KindList with child defs, seqBase holds the full sequence YAML so we
-	// can extract individual item previews and rebuild the snippet on commit.
+	// Structured collections ([]Struct / map[string]Struct) keep their canonical
+	// entry list in be.node; the tree and per-entry editor are projected from it.
 	structured := (spec.kind == schema.KindList || spec.kind == schema.KindDictionary) && len(spec.defs) > 0
 	if structured {
 		raw := spec.content
 		if raw == "" {
 			raw = spec.key + ":\n"
 		}
-		be.coll = collectionBuffer{
-			key:     spec.key,
-			isMap:   be.isMapNav(),
-			entries: collectionEntries(spec.key, raw, be.isMapNav()),
-			current: -1,
-		}
+		be.coll = collectionBuffer{key: spec.key, isMap: be.isMapNav(), current: -1}
+		be.node = collValueNode(raw, be.isMapNav())
+		be.tree.nodes = be.collectionTreeNodes()
 	}
 
 	// If presets are available and this is a new block, try the "base" preset.
@@ -228,6 +177,15 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	}
 
 	be.yamlEditor = be.newYAMLEditor(content)
+
+	// Non-collection blocks carry their canonical node from the start; the tree
+	// is projected from it and tree edits mutate it. (Collections set be.node
+	// above, from the full entry list.) Derive the tree once here so it reflects
+	// be.node even when content came from a preset rather than spec.content.
+	if !structured {
+		be.node = blockValueNode(content)
+		be.tree = syncTreeCheckedFromNode(be.tree, be.node)
+	}
 
 	// For new struct blocks, pre-check fields listed in cfg.PreCheckedFields.
 	newBlock := spec.content == "" || spec.content == spec.key+":\n"
@@ -457,12 +415,12 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 		return be.updateTreePanel(msg)
 	}
 
-	// YAML panel active. The buffer is allowed to be transiently invalid while the
-	// user types — we never block keystrokes or discard what they wrote. No
-	// canonical data is written here: entries[] and the model's editRoot are
-	// touched only at flush (navigation/commit). resyncTreeFromYAML below is a
-	// best-effort *visual* projection (checkmarks/labels) that tolerates unparseable
-	// buffers by leaving the last good state in place.
+	// YAML panel active. The buffer may be transiently invalid while the user
+	// types — we never block keystrokes or discard what they wrote. The canonical
+	// node is parse-gated below: it (and the tree derived from it) advances only
+	// when the buffer parses; while it is invalid the tree freezes at the last good
+	// state, so tree and node never disagree. The model's editRoot is touched only
+	// at flush (navigation/commit).
 	prevValue := be.yamlEditor.Value()
 	var cmd tea.Cmd
 	be.yamlEditor, cmd = be.yamlEditor.Update(msg)
@@ -472,110 +430,84 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	if be.yamlEditor.Value() != prevValue {
 		be.dirty = true
 		be.statusMsg = ""
-		be.tree = be.resyncTreeFromYAML()
+		be = be.syncParsedNode()
 	}
 	return be, cmd
 }
 
-// resyncTreeFromYAML re-derives the tree's checked states (and re-applies the
-// ADDED/AVAILABLE sectioning for struct blocks) from the current yamlEditor.
-// For structured sequences the editor shows a single item, so the lookup uses
-// the synthetic "x:\n<item>" form expected by syncTreeCheckedStates.
-//
-// This is a NON-AUTHORITATIVE, best-effort visual projection: it updates only
-// the tree's checkmarks/labels, never the canonical data (entries[] / editRoot),
-// and is safe to call on every keystroke. When the buffer doesn't parse it
-// leaves the previous tree state untouched rather than wiping it — both
-// syncTreeCheckedStates and syncCurrentEntry preserve state on a parse failure.
-// The canonical write (and error surfacing) happens later, at flush.
-func (be blockEditState) resyncTreeFromYAML() treeModel {
+// syncParsedNode is the parse gate called after every YAML editor keystroke. It
+// advances the canonical node (and thus the tree) only when the buffer parses
+// successfully; an invalid buffer leaves the last good state in place.
+func (be blockEditState) syncParsedNode() blockEditState {
 	if be.isCollectionNav() {
-		return be.syncCurrentEntry()
+		kn, vn, ok := parseEntryFromView(be.yamlEditor.Value(), be.coll.isMap)
+		if !ok {
+			return be
+		}
+		if cur := be.coll.current; cur >= 0 && cur < entryCount(be.node, be.coll.isMap) {
+			setEntry(be.node, be.coll.isMap, cur, kn, vn)
+		}
+		be.tree = be.collectionDeriveTree()
+		return be
 	}
-	return syncTreeCheckedFromYAML(be.tree, be.key, be.yamlEditor.Value())
+	if v := valueNodeOfSnippet(be.yamlEditor.Value()); v != nil {
+		be.node = v
+		be.tree = be.resyncTreeFromYAML()
+	}
+	return be
 }
 
-// syncCurrentEntry updates the displayed entry's label and the checked state of
-// its own field nodes from its YAML content, leaving sibling entries untouched —
-// so editing one entry never overwrites another's label or checkmarks.
-func (be blockEditState) syncCurrentEntry() treeModel {
-	tm := be.tree
-	seqIdx := be.coll.current
-	if seqIdx < 0 {
-		return tm
+// resyncTreeFromYAML re-derives the tree's checked states from the canonical
+// node — for struct blocks via syncTreeCheckedFromNode (with ADDED/AVAILABLE
+// sectioning), for collections via collectionDeriveTree (per-entry labels and
+// checks). The node is the source of truth, so the tree can never disagree with
+// it even while the text buffer is mid-edit.
+func (be blockEditState) resyncTreeFromYAML() treeModel {
+	if be.isCollectionNav() {
+		return be.collectionDeriveTree()
 	}
-	content := itemContentFrom(be.key, be.yamlEditor.Value())
-	newLabel := be.entryLabel(content)
-	fields := entryFieldValues(be.isMapNav(), content)
+	return syncTreeCheckedFromNode(be.tree, be.node)
+}
 
+// collectionDeriveTree refreshes every entry's label, yamlPath, and child
+// checkmarks from be.node, preserving the tree's structure (expansion/cursor).
+// It is the structural replacement for syncCurrentEntry — and unlike it, derives
+// all entries (not just the current one) from the single source of truth.
+func (be blockEditState) collectionDeriveTree() treeModel {
+	tm := be.tree
+	isMap := be.coll.isMap
 	nodes := make([]treeNode, len(tm.nodes))
 	copy(nodes, tm.nodes)
 	for i := 0; i < len(nodes); i++ {
-		if nodes[i].kind != treeNodeSeqItem || nodes[i].seqIdx != seqIdx {
+		if nodes[i].kind != treeNodeSeqItem {
 			continue
 		}
-		if newLabel != "" {
-			nodes[i].label = newLabel
-			nodes[i].yamlPath = []string{newLabel}
+		seqIdx := nodes[i].seqIdx
+		label := entryLabel(be.node, isMap, seqIdx)
+		if label != "" {
+			nodes[i].label = label
+			nodes[i].yamlPath = []string{label}
 		}
+		var childIdx []int
 		for j := i + 1; j < len(nodes) && nodes[j].depth > 0; j++ {
-			if nodes[j].kind != treeNodeField {
-				continue
-			}
-			if newLabel != "" && len(nodes[j].yamlPath) > 0 {
+			if label != "" && len(nodes[j].yamlPath) > 0 {
 				p := append([]string(nil), nodes[j].yamlPath...)
-				p[0] = newLabel
+				p[0] = label
 				nodes[j].yamlPath = p
 			}
-			// Leaves track key presence; openable fields track non-empty content.
-			// Inline-expandable structs are skipped (derived from descendants).
-			if !nodes[j].isLeaf && !nodes[j].openable {
-				continue
-			}
-			cur := fields
-			path := nodes[j].yamlPath
-			for k := 1; k < len(path)-1 && cur != nil; k++ {
-				cur, _ = cur[path[k]].(map[string]any)
-			}
-			if cur != nil && len(path) > 1 {
-				v, exists := cur[path[len(path)-1]]
-				if nodes[j].openable {
-					nodes[j].checked = exists && nonEmptyYAMLValue(v)
-				} else {
-					nodes[j].checked = exists
-				}
-			}
+			childIdx = append(childIdx, j)
 		}
-		break
+		sub := make([]treeNode, len(childIdx))
+		for k, ci := range childIdx {
+			sub[k] = nodes[ci]
+		}
+		sub = deriveChecked(entryValueNode(be.node, isMap, seqIdx), sub, true)
+		for k, ci := range childIdx {
+			nodes[ci] = sub[k]
+		}
 	}
 	tm.nodes = nodes
 	return tm
-}
-
-// entryFieldValues returns the field map of a single collection entry's content
-// ("  - name: x" for sequences, "  key:\n    field: x" for maps).
-func entryFieldValues(isMap bool, content string) map[string]any {
-	if content == "" {
-		return nil
-	}
-	var doc map[string]any
-	if err := yaml.Unmarshal([]byte("x:\n"+content), &doc); err != nil {
-		return nil
-	}
-	if isMap {
-		outer, _ := doc["x"].(map[string]any)
-		for _, v := range outer { // single entry: take its value
-			m, _ := v.(map[string]any)
-			return m
-		}
-		return nil
-	}
-	items, _ := doc["x"].([]any)
-	if len(items) > 0 {
-		m, _ := items[0].(map[string]any)
-		return m
-	}
-	return nil
 }
 
 // withPreCheckedFields toggles ON the fields listed in cfg.PreCheckedFields for
@@ -594,19 +526,18 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 			nodeByLabel[n.label] = n
 		}
 	}
-	content := be.yamlEditor.Value()
 	changed := false
 	for _, fieldName := range fields {
 		if n, ok := nodeByLabel[fieldName]; ok && !n.checked {
-			content = applyTreeToggle(ctx, n, true, content)
+			toggleNodeField(be.node, ctx, n, true)
 			changed = true
 		}
 	}
 	if !changed {
 		return be
 	}
-	be.yamlEditor.SetValue(content)
-	be.tree = syncTreeCheckedFromYAML(be.tree, be.key, content)
+	be.yamlEditor.SetValue(nodeToContent(be.key, be.node))
+	be.tree = syncTreeCheckedFromNode(be.tree, be.node)
 	return be
 }
 
@@ -673,15 +604,8 @@ func (be blockEditState) applyPendingRemove(nodeIdx int) blockEditState {
 
 	node := be.tree.nodes[nodeIdx]
 	ctx := toggleCtx{key: be.key, snippets: be.cfg.fieldSnippetsFor(be.key), childDefs: be.childDefs}
-	var newYAML string
-	if be.isCollectionNav() {
-		newYAML = be.applyEntryToggle(ctx, node, false, be.yamlEditor.Value())
-	} else {
-		newYAML = applyTreeToggle(ctx, node, false, be.yamlEditor.Value())
-	}
-	be.yamlEditor.SetValue(newYAML)
+	be.applyToggle(ctx, node, false)
 	be.dirty = true
-	// entries[] will be flushed on next navigation or commit; no update needed here.
 	be.tree = be.resyncTreeFromYAML()
 	return be
 }
@@ -784,16 +708,42 @@ func (be blockEditState) handleTreeToggled() (blockEditState, tea.Cmd) {
 	}
 	be.dirty = true
 	ctx := toggleCtx{key: be.key, snippets: be.cfg.fieldSnippetsFor(be.key), childDefs: be.childDefs}
-	var newYAML string
-	if be.isCollectionNav() {
-		newYAML = be.applyEntryToggle(ctx, node, node.checked, be.yamlEditor.Value())
-	} else {
-		newYAML = applyTreeToggle(ctx, node, node.checked, be.yamlEditor.Value())
-	}
-	be.yamlEditor.SetValue(newYAML)
-	// entries[] will be flushed on next navigation or commit; no update needed here.
+	be.applyToggle(ctx, node, node.checked)
 	be.tree = be.resyncTreeFromYAML()
 	return be, nil
+}
+
+// applyToggle adds or removes the field at node within the canonical node, then
+// re-renders the editor from it. For collections it targets the current entry's
+// value mapping; for struct blocks the block's own mapping. Either way the tree
+// (derived from the same node) stays in agreement.
+func (be *blockEditState) applyToggle(ctx toggleCtx, node treeNode, checked bool) {
+	if be.isCollectionNav() {
+		be.toggleEntryField(ctx, node, checked)
+		be.yamlEditor.SetValue(entryViewYAML(be.node, be.key, be.coll.isMap, be.coll.current))
+		return
+	}
+	toggleNodeField(be.node, ctx, node, checked)
+	be.yamlEditor.SetValue(nodeToContent(be.key, be.node))
+}
+
+// toggleEntryField mutates the current collection entry's value mapping. It
+// mirrors applyToggleToEntry but operates on the live node instead of re-parsed
+// text: yamlPath[0] is the entry label (skipped), the field path starts at [1].
+func (be *blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked bool) {
+	if len(node.yamlPath) < 2 {
+		return
+	}
+	entryNode := entryValueNode(be.node, be.coll.isMap, be.coll.current)
+	if entryNode == nil {
+		return
+	}
+	fieldPath := node.yamlPath[1:]
+	if !applyToggleAt(entryNode, fieldPath[:len(fieldPath)-1], fieldPath[len(fieldPath)-1], checked, ctx, false) {
+		return
+	}
+	pruneEmptyMappings(entryNode)
+	reorderNestedMappingKeys(entryNode, ctx.childDefs)
 }
 
 // handleTreeAddNew appends a fresh entry to the collection and moves the cursor
@@ -802,17 +752,20 @@ func (be blockEditState) handleTreeAddNew() blockEditState {
 	be = be.saveUndo()
 	be.dirty = true
 	be = be.flushCurrentEntry()
+	be.errMsg = "" // adding overrides an in-progress invalid entry; don't block on it
 	label := be.newEntryLabel()
 	be.tree = be.tree.WithNewSeqItem(be.childDefs, label)
-	displayLabel := label
-	if displayLabel == "" {
-		displayLabel = fmt.Sprintf("item %d", len(be.coll.entries)+1)
+	// Build the new entry node from the schema template and append it.
+	kn, vn, ok := parseEntryFromView(be.key+":\n"+be.initialEntryContent(label), be.coll.isMap)
+	if !ok {
+		vn = &yaml.Node{Kind: yaml.MappingNode}
+		kn = &yaml.Node{Kind: yaml.ScalarNode, Value: label}
 	}
-	newEntry := seqEntry{Label: displayLabel, Content: be.initialEntryContent(label)}
-	entries := make([]seqEntry, len(be.coll.entries)+1)
-	copy(entries, be.coll.entries)
-	entries[len(be.coll.entries)] = newEntry
-	be.coll.entries = entries
+	if be.coll.isMap {
+		be.node.Content = append(be.node.Content, kn, vn)
+	} else {
+		be.node.Content = append(be.node.Content, vn)
+	}
 	be = be.loadEntry(be.tree.NearestSeqItem())
 	be.tree = be.resyncTreeFromYAML()
 	return be
@@ -849,13 +802,11 @@ func (be blockEditState) performEntryDelete(seqIdx int) blockEditState {
 	be = be.saveUndo()
 	be.dirty = true
 	be.tree = be.tree.WithDeletedSeqItem(seqIdx)
-	if seqIdx >= 0 && seqIdx < len(be.coll.entries) {
-		entries := make([]seqEntry, 0, len(be.coll.entries)-1)
-		entries = append(entries, be.coll.entries[:seqIdx]...)
-		entries = append(entries, be.coll.entries[seqIdx+1:]...)
-		be.coll.entries = entries
-	}
+	removeEntry(be.node, be.coll.isMap, seqIdx)
 	be = be.loadEntry(be.tree.NearestSeqItem())
+	// Re-derive so positional ("item N") labels of unnamed entries stay in sync
+	// with their new index in the node after the surviving entries shift up.
+	be.tree = be.collectionDeriveTree()
 	return be
 }
 
@@ -893,9 +844,9 @@ func (be blockEditState) isCollectionNav() bool {
 // picking the map or sequence layout from the block kind.
 func (be blockEditState) collectionTreeNodes() []treeNode {
 	if be.isMapNav() {
-		return buildMapNodes(be.childDefs, be.coll.entries)
+		return buildMapNodesFromNode(be.childDefs, be.node)
 	}
-	return buildSeqNodes(be.childDefs, be.coll.entries)
+	return buildSeqNodesFromNode(be.childDefs, be.node)
 }
 
 // resyncAfterCommit reloads the editor from the freshly committed block so a
@@ -904,74 +855,69 @@ func (be blockEditState) collectionTreeNodes() []treeNode {
 // YAML. Clears the dirty flag either way.
 func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 	if !be.isCollectionNav() {
+		be.node = blockValueNode(fresh)
 		be.yamlEditor.SetValue(fresh)
 		be.dirty = false
 		return be
 	}
-	freshEntries := collectionEntries(be.key, fresh, be.isMapNav())
-	if len(freshEntries) != len(be.coll.entries) {
-		be.coll.entries = freshEntries
+	isMap := be.isMapNav()
+	oldCount := entryCount(be.node, isMap)
+	be.node = collValueNode(fresh, isMap)
+	if entryCount(be.node, isMap) != oldCount {
+		// Entry count changed: rebuild the tree from scratch (expansion is lost,
+		// but the structure must match the new node).
 		be.tree.nodes = be.collectionTreeNodes()
-		if be.coll.current >= len(be.coll.entries) {
-			be.coll.current = len(be.coll.entries) - 1
+		if be.coll.current >= entryCount(be.node, isMap) {
+			be.coll.current = entryCount(be.node, isMap) - 1
 		}
-	} else {
-		be.coll.entries = freshEntries
 	}
+	be.tree = be.collectionDeriveTree()
 	be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
 	be.dirty = false
 	return be
 }
 
-// collectionEntries parses raw YAML into entries using the kind-appropriate parser.
-// Used only at initialization and after external re-sync; NOT called on keystrokes.
-func collectionEntries(key, raw string, mapNav bool) []seqEntry {
-	if mapNav {
-		return parseMapEntries(key, raw)
-	}
-	return parseSeqEntries(key, raw)
-}
-
-// flushCurrentEntry saves the current yamlEditor content into the collection
-// buffer's current entry (coll.entries[coll.current]). It is a no-op when there
-// is no current entry or the editor is empty. When the editor has content but is
-// missing the expected key header (e.g. the user deleted "categories:"),
-// be.errMsg is set so callers can block navigation or commit.
+// flushCurrentEntry parses the current entry's editor text back into the
+// canonical node. It is a no-op when there is no current entry or the editor is
+// empty. When the text cannot be parsed into an entry (e.g. the user deleted the
+// "key:" header, or it is mid-edit invalid), be.errMsg is set so callers block
+// navigation or commit — the parse gate that keeps the node valid.
 func (be blockEditState) flushCurrentEntry() blockEditState {
-	newColl, errMsg := be.coll.flush(be.yamlEditor.Value())
-	if errMsg != "" {
-		be.errMsg = errMsg
+	cur := be.coll.current
+	if cur < 0 || cur >= entryCount(be.node, be.coll.isMap) {
+		be.errMsg = ""
 		return be
 	}
-	be.coll = newColl
+	view := be.yamlEditor.Value()
+	if strings.TrimSpace(view) == "" {
+		be.errMsg = ""
+		return be
+	}
+	kn, vn, ok := parseEntryFromView(view, be.coll.isMap)
+	if !ok {
+		if itemContentFrom(be.key, view) == "" {
+			be.errMsg = "Missing '" + be.key + ":' header — restore it before navigating."
+		} else {
+			be.errMsg = "Invalid YAML — fix this entry before leaving it."
+		}
+		return be
+	}
+	setEntry(be.node, be.coll.isMap, cur, kn, vn)
 	be.errMsg = ""
 	return be
 }
 
-// loadEntry sets yamlEditor to entries[idx].
+// loadEntry shows entry idx in the editor.
 // Always call flushCurrentEntry before loadEntry when switching entries.
 func (be blockEditState) loadEntry(idx int) blockEditState {
 	be.coll.current = idx
-	be.yamlEditor.SetValue(be.coll.entryYAML(idx))
+	be.yamlEditor.SetValue(be.entryYAML(idx))
 	return be
 }
 
 // entryYAML returns the single-entry editor view for index idx.
 func (be blockEditState) entryYAML(idx int) string {
-	return be.coll.entryYAML(idx)
-}
-
-// applyEntryToggle adds/removes a field within the current entry view.
-func (be blockEditState) applyEntryToggle(ctx toggleCtx, node treeNode, checked bool, content string) string {
-	if be.isMapNav() {
-		return applyToggleToMapEntry(ctx, node, checked, content)
-	}
-	return applyToggleToSeqItem(ctx, node, checked, content)
-}
-
-// entryLabel derives an entry's display label from its content.
-func (be blockEditState) entryLabel(content string) string {
-	return be.coll.deriveLabel(content)
+	return entryViewYAML(be.node, be.key, be.coll.isMap, idx)
 }
 
 // initialEntryContent returns the YAML template for a freshly added entry.
@@ -1033,12 +979,10 @@ func (be blockEditState) openPresetPicker() blockEditState {
 }
 
 func (be blockEditState) saveUndo() blockEditState {
-	entries := make([]seqEntry, len(be.coll.entries))
-	copy(entries, be.coll.entries)
 	treeNodes := make([]treeNode, len(be.tree.nodes))
 	copy(treeNodes, be.tree.nodes)
 	be.undoSnap = &blockEditUndoSnap{
-		entries:         entries,
+		node:            cloneNode(be.node),
 		currentEntryIdx: be.coll.current,
 		yamlValue:       be.yamlEditor.Value(),
 		dirty:           be.dirty,
@@ -1060,10 +1004,9 @@ func (be blockEditState) restoreUndo() blockEditState {
 	be.dirty = snap.dirty
 	be.errMsg = ""
 
+	be.node = cloneNode(snap.node)
+
 	if be.isCollectionNav() {
-		entries := make([]seqEntry, len(snap.entries))
-		copy(entries, snap.entries)
-		be.coll.entries = entries
 		be.coll.current = snap.currentEntryIdx
 		if len(snap.treeNodes) > 0 {
 			treeNodes := make([]treeNode, len(snap.treeNodes))
@@ -1077,19 +1020,14 @@ func (be blockEditState) restoreUndo() blockEditState {
 			be.tree.offset = 0
 		}
 		be = be.loadEntry(be.coll.current)
-		// loadEntry pulls the current entry from coll.entries, but in-progress edits
-		// to that entry live only in the editor until navigation/commit flushes them
-		// (toggles do not flush). snap.yamlValue captured the editor at saveUndo time,
-		// so restore from it — otherwise undo also drops unflushed edits to the entry.
+		// The node is authoritative; snap.yamlValue restores any in-progress (even
+		// unparseable) text the user had typed into the entry at snapshot time.
 		be.yamlEditor.SetValue(snap.yamlValue)
-		// Resync checked states from the restored yamlEditor content.
-		// snap.treeNodes preserves expanded/collapsed state but may have stale
-		// checked values (e.g. when the toggle happened before saveUndo ran).
 		be.tree = be.resyncTreeFromYAML()
 		return be
 	}
 	be.yamlEditor.SetValue(snap.yamlValue)
-	be.tree = syncTreeCheckedFromYAML(be.tree, be.key, snap.yamlValue)
+	be.tree = syncTreeCheckedFromNode(be.tree, be.node)
 	return be
 }
 
@@ -1108,12 +1046,8 @@ func (be blockEditState) applyPreset(name string) blockEditState {
 	be.dirty = true
 
 	if be.isCollectionNav() {
-		be.coll.entries = collectionEntries(be.key, y, be.isMapNav())
-		if be.isMapNav() {
-			be.tree.nodes = buildMapNodes(be.childDefs, be.coll.entries)
-		} else {
-			be.tree.nodes = buildSeqNodes(be.childDefs, be.coll.entries)
-		}
+		be.node = collValueNode(y, be.isMapNav())
+		be.tree.nodes = be.collectionTreeNodes()
 		be.tree.cursor = 0
 		be.tree.offset = 0
 		be = be.loadEntry(0)
@@ -1121,7 +1055,8 @@ func (be blockEditState) applyPreset(name string) blockEditState {
 	}
 
 	be.yamlEditor.SetValue(y)
-	be.tree = syncTreeCheckedFromYAML(be.tree, be.key, y)
+	be.node = blockValueNode(y)
+	be.tree = syncTreeCheckedFromNode(be.tree, be.node)
 	return be
 }
 
@@ -1136,37 +1071,21 @@ func (be blockEditState) appendPreset(name string) blockEditState {
 	}
 	be = be.saveUndo()
 
-	newEntries := collectionEntries(be.key, y, be.isMapNav())
-	if !be.isMapNav() {
-		// Normalize indentation of preset entries to match existing entries.
-		existing := seqEntriesToBase(be.key, be.coll.entries)
-		dst := seqItemIndent(existing, be.key)
-		src := seqItemIndent(y, be.key)
-		if src != dst && src > 0 && dst > 0 {
-			for i, e := range newEntries {
-				newEntries[i].Content = reindentSeqContent(e.Content, src, dst)
-			}
-		}
-	}
-	if len(newEntries) == 0 {
+	presetNode := collValueNode(y, be.isMapNav())
+	if entryCount(presetNode, be.isMapNav()) == 0 {
 		return be
 	}
 
 	be = be.flushCurrentEntry()
-	combined := make([]seqEntry, len(be.coll.entries)+len(newEntries))
-	copy(combined, be.coll.entries)
-	copy(combined[len(be.coll.entries):], newEntries)
-	be.coll.entries = combined
+	be.errMsg = "" // appending overrides an in-progress invalid entry; don't block
+	// Indentation is irrelevant now: the entries are spliced as nodes and re-encoded.
+	be.node.Content = append(be.node.Content, presetNode.Content...)
 
-	if be.isMapNav() {
-		be.tree.nodes = buildMapNodes(be.childDefs, be.coll.entries)
-	} else {
-		be.tree.nodes = buildSeqNodes(be.childDefs, be.coll.entries)
-	}
+	be.tree.nodes = be.collectionTreeNodes()
 	be.tree.offset = 0
-	be.tree.cursor = len(be.coll.entries) - 1
+	be.tree.cursor = entryCount(be.node, be.isMapNav()) - 1
 
-	be = be.loadEntry(len(be.coll.entries) - 1)
+	be = be.loadEntry(entryCount(be.node, be.isMapNav()) - 1)
 	be.currentPreset = name
 	be.errMsg = ""
 	be.dirty = true
@@ -1176,15 +1095,11 @@ func (be blockEditState) appendPreset(name string) blockEditState {
 func (be blockEditState) commit() (blockEditState, tea.Cmd) {
 	var snippet string
 	if be.isCollectionNav() {
-		var entries []seqEntry
-		var errMsg string
-		be.coll, entries, errMsg = be.coll.allFlushed(be.yamlEditor.Value())
-		if errMsg != "" {
-			be.errMsg = errMsg
+		be = be.flushCurrentEntry()
+		if be.errMsg != "" {
 			return be, nil
 		}
-		be.errMsg = ""
-		snippet = seqEntriesToBase(be.key, entries)
+		snippet = nodeToContent(be.key, be.node)
 	} else {
 		be.errMsg = ""
 		snippet = be.yamlEditor.Value()

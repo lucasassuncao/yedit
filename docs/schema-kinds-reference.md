@@ -9,6 +9,8 @@ How Go types map to yedit editor behavior, with complete code examples.
 | Go type | Kind | Editor behavior |
 |---|---|---|
 | `string`, `int`, `bool`, `float64`, `time.Duration` | `KindPrimitive` | YAML pane only (no tree) |
+| Implements `yaml.Marshaler` or `encoding.TextMarshaler` | `KindPrimitive` | YAML pane only — struct fields are NOT exposed |
+| `interface{}` / `any` | `KindAny` | YAML pane only — use `Provider` for a typed schema |
 | `type X string` + `validate:"oneof=a b"` | `KindEnum` | YAML pane + values list in hint |
 | `SomeStruct` | `KindObject` | Tree with ADDED/AVAILABLE fields |
 | `[]string`, `[]int` (scalar slice) | `KindList` (no child defs) | YAML pane only |
@@ -220,7 +222,7 @@ workers:
 - `→` expands an entry to show its fields as a toggleable tree
 - `[+ add new]` appends a new empty entry
 
-**Self-referential structs** — supported up to depth 10:
+**Self-referential structs** — cycle-detected, configurable depth (default 1 extra recursive level):
 ```go
 type Filter struct {
     Regex string   `yaml:"regex"`
@@ -405,7 +407,8 @@ timeout:
 |---|---|
 | `yaml:"name"` | YAML key used in the file and displayed in the editor |
 | `yaml:"-"` | Field excluded from discovery (never shown) |
-| `yaml:"name,omitempty"` | Treated same as `yaml:"name"` (omitempty is a marshaling hint, not a schema hint) |
+| `yaml:"name,omitempty"` | Sets `FieldDef.OmitEmpty = true`; zero value not written to disk |
+| `yaml:"name,flow"` | Sets `FieldDef.Flow = true`; serialised inline (e.g. `[a, b, c]`) |
 | `validate:"required"` | Marks field as required (`*` in hint); ctrl+l reports it missing |
 | `validate:"oneof=a b c"` | Promotes field to `KindEnum`; values listed in hint |
 | `jsonschema:"default=X"` | Default value shown in hint panel |
@@ -449,20 +452,91 @@ the type level, so no child defs can be derived — regardless of the value type
 
 ---
 
-## Depth limit
+## Depth limit and cycle detection
 
-Schema discovery recurses into nested structs up to **depth 10**. This prevents
-infinite recursion on self-referential types.
+Schema discovery uses a **visit-count cycle guard**: each type may be visited at
+most `1 + recursionLimit` times (default limit = 1). This allows one extra
+recursive level for self-referential types (e.g. `any []Filter` is navigable)
+while preventing infinite loops. The hard depth ceiling is 20.
 
 ```
 Config                depth 0
   └─ DatabaseConfig   depth 1   ← KindObject, fields discovered
        └─ PoolConfig  depth 2   ← KindObject, fields discovered
-            └─ ...    depth 3+  ← discovered up to depth 10
+            └─ ...    depth 3+  ← discovered up to depth 20
 ```
 
-Fields at depth > 10 are silently omitted from the editor UI but are preserved
-in the YAML file (the editor never deletes unknown content it can't render).
+Fields beyond the depth ceiling or the recursion limit are silently omitted from
+the editor UI but are preserved in the YAML file (the editor never deletes
+unknown content it can't render).
+
+To increase the recursion depth for a deeply self-referential type, pass
+`Config.SchemaRecursionDepth`:
+
+```go
+editor.Run(editor.Config{
+    Schema:               &MyConfig{},
+    SchemaRecursionDepth: 3, // three extra recursive levels
+})
+```
+
+---
+
+## Anonymous embeds and yaml:",inline"
+
+Exported fields promoted by anonymous embedding or `yaml:",inline"` are
+discovered as if they were declared directly on the parent struct:
+
+```go
+type BaseMeta struct {
+    CreatedBy  string `yaml:"created-by"`
+    VersionTag string `yaml:"version-tag"`
+}
+
+type InlineAnnotations struct {
+    Team    string `yaml:"team"`
+    Contact string `yaml:"contact"`
+}
+
+type Config struct {
+    BaseMeta                              // anonymous embed — fields promoted
+    InlineAnnotations `yaml:",inline"`   // yaml inline — fields promoted
+    Port int          `yaml:"port"`
+}
+// Discovers: created-by, version-tag, team, contact, port
+```
+
+Unexported anonymous embeds are also promoted (their exported fields surface at
+the parent level).
+
+---
+
+## Types that serialise as scalars (yaml.Marshaler / encoding.TextMarshaler)
+
+If a struct type implements `yaml.Marshaler` or `encoding.TextMarshaler`, yedit
+classifies it as `KindPrimitive` and **does not** expose its internal struct
+fields in the editor. The user edits the serialised form (e.g. `"#1e1e2e"` for
+a color type, `"192.168.1.1"` for an IP type):
+
+```go
+type Color struct{ R, G, B uint8 }
+
+func (c Color) MarshalYAML() (any, error) {
+    return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B), nil
+}
+
+type Config struct {
+    Background Color `yaml:"background"` // KindPrimitive — no R/G/B sub-fields
+}
+```
+
+---
+
+## interface{} / any → KindAny
+
+Fields typed `interface{}` or `any` are classified as `KindAny`. The editor
+shows the YAML pane with no tree. To provide a typed schema for a union field,
+implement `schema.Provider` on a concrete wrapper type.
 
 ---
 

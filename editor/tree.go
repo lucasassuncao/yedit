@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/schema"
 )
@@ -69,20 +68,18 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 			break
 		}
 		tm.isSeq = true
-		entries := parseSeqEntries(spec.key, spec.content)
-		tm.nodes = buildSeqNodes(spec.defs, entries)
+		tm.nodes = buildSeqNodesFromNode(spec.defs, collValueNode(spec.content, false))
 
 	case schema.KindDictionary:
 		if len(spec.defs) == 0 {
 			break // free-form map (e.g. map[string]string) — no tree; raw YAML
 		}
 		tm.isSeq = true // collection navigator, keyed by the map key
-		entries := parseMapEntries(spec.key, spec.content)
-		tm.nodes = buildMapNodes(spec.defs, entries)
+		tm.nodes = buildMapNodesFromNode(spec.defs, collValueNode(spec.content, true))
 
 	case schema.KindObject:
 		tm.nodes = flattenDefsAsTree(spec.defs, nil, 0)
-		tm.nodes = syncTreeCheckedStates(tm.nodes, spec.key, spec.content)
+		tm.nodes = deriveChecked(blockValueNode(spec.content), tm.nodes, false)
 		tm.nodes = applySections(tm.nodes)
 		// Start cursor on the first selectable node (skip opening separator).
 		vis := tm.visibleNodes()
@@ -100,109 +97,6 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 // free-form collection blocks, which have no sub-fields to navigate.
 func (tm treeModel) isEmpty() bool {
 	return len(tm.nodes) == 0
-}
-
-// buildSeqNodes creates the node list for a sequence block:
-// one treeNodeSeqItem per existing entry (collapsed), then treeNodeAddNew.
-// When entries is empty a non-selectable "(empty list)" separator is prepended.
-func buildSeqNodes(childDefs []schema.FieldDef, entries []seqEntry) []treeNode {
-	var nodes []treeNode
-	if len(entries) == 0 {
-		nodes = append(nodes, treeNode{
-			kind:   treeNodeSeparator,
-			label:  "(empty list)",
-			depth:  0,
-			isLeaf: true,
-		})
-	}
-	for i, e := range entries {
-		seqNode := treeNode{
-			kind:     treeNodeSeqItem,
-			yamlPath: []string{e.Label},
-			label:    e.Label,
-			depth:    0,
-			isLeaf:   false,
-			checked:  true,
-			expanded: false,
-			seqIdx:   i,
-		}
-		nodes = append(nodes, seqNode)
-		// Append child field nodes for this item (hidden until expanded).
-		children := flattenDefsAsTree(childDefs, []string{e.Label}, 1)
-		children = syncTreeCheckedStates(children, "", "x:\n"+e.Content)
-		nodes = append(nodes, children...)
-	}
-	nodes = append(nodes, treeNode{
-		kind:   treeNodeAddNew,
-		label:  "+ add new",
-		depth:  0,
-		isLeaf: true,
-	})
-	return nodes
-}
-
-// buildMapNodes creates the node list for a structured map block: one
-// treeNodeSeqItem per existing entry (labelled by the map key), then
-// treeNodeAddNew. Mirrors buildSeqNodes but reads each entry's struct value.
-func buildMapNodes(childDefs []schema.FieldDef, entries []seqEntry) []treeNode {
-	var nodes []treeNode
-	for i, e := range entries {
-		nodes = append(nodes, treeNode{
-			kind:     treeNodeSeqItem,
-			yamlPath: []string{e.Label},
-			label:    e.Label,
-			depth:    0,
-			isLeaf:   false,
-			checked:  true,
-			expanded: false,
-			seqIdx:   i,
-		})
-		children := flattenDefsAsTree(childDefs, []string{e.Label}, 1)
-		children = syncMapEntryChecked(children, e.Content)
-		nodes = append(nodes, children...)
-	}
-	nodes = append(nodes, treeNode{
-		kind:   treeNodeAddNew,
-		label:  "+ add new",
-		depth:  0,
-		isLeaf: true,
-	})
-	return nodes
-}
-
-// syncMapEntryChecked sets the checked flag on leaf field nodes from a single
-// map entry's content ("  <key>:\n    field: val"). It reads the entry's single
-// value mapping, so it is robust to how the key is quoted.
-func syncMapEntryChecked(nodes []treeNode, entryContent string) []treeNode {
-	if entryContent == "" {
-		return nodes
-	}
-	var doc map[string]any
-	if err := yaml.Unmarshal([]byte("x:\n"+entryContent), &doc); err != nil {
-		return nodes
-	}
-	outer, _ := doc["x"].(map[string]any)
-	var sub map[string]any
-	for _, v := range outer { // the entry has a single key; take its value
-		sub, _ = v.(map[string]any)
-		break
-	}
-	result := make([]treeNode, len(nodes))
-	copy(result, nodes)
-	for i, n := range result {
-		if n.kind != treeNodeField || !n.isLeaf {
-			continue
-		}
-		path := n.yamlPath
-		cur := sub
-		for j := 1; j < len(path)-1 && cur != nil; j++ { // skip path[0] = entry label
-			cur, _ = cur[path[j]].(map[string]any)
-		}
-		if cur != nil && len(path) > 1 {
-			_, result[i].checked = cur[path[len(path)-1]]
-		}
-	}
-	return result
 }
 
 // flattenDefsAsTree converts a []schema.FieldDef into a flat DFS list of
@@ -236,84 +130,6 @@ func flattenDefsAsTree(defs []schema.FieldDef, prefix []string, depth int) []tre
 		}
 	}
 	return out
-}
-
-// syncTreeCheckedStates updates the checked field on leaf nodes by parsing
-// yamlContent. For sequence items the key is "" and content is "x:\n<item>".
-func syncTreeCheckedStates(nodes []treeNode, key, yamlContent string) []treeNode {
-	if yamlContent == "" {
-		return nodes
-	}
-	var doc map[string]any
-	if err := yaml.Unmarshal([]byte(yamlContent), &doc); err != nil {
-		return nodes
-	}
-
-	// Navigate to the sub-map under key (or "x" for seq item content).
-	var sub map[string]any
-	if key == "" {
-		sub, _ = doc["x"].(map[string]any)
-		if sub == nil {
-			// doc["x"] might be a slice element — handle []any
-			if items, ok := doc["x"].([]any); ok && len(items) > 0 {
-				sub, _ = items[0].(map[string]any)
-			}
-		}
-	} else {
-		sub, _ = doc[key].(map[string]any)
-	}
-
-	result := make([]treeNode, len(nodes))
-	copy(result, nodes)
-	for i, n := range result {
-		// Leaves track key presence; openable fields (nested collections) track
-		// non-empty content. Inline-expandable structs are derived from their
-		// descendants instead, so they are skipped here.
-		if n.kind != treeNodeField || (!n.isLeaf && !n.openable) {
-			continue
-		}
-		// Walk the path through sub to see if the leaf key exists.
-		cur := sub
-		path := n.yamlPath
-		// For seq item children only (key==""), path[0] is the item label, not a
-		// YAML key — skip it. Regular nested struct fields must NOT skip path[0].
-		startIdx := 0
-		if key == "" && n.depth > 0 {
-			startIdx = 1
-		}
-		for j := startIdx; j < len(path)-1 && cur != nil; j++ {
-			cur, _ = cur[path[j]].(map[string]any)
-		}
-		if cur != nil && len(path) > startIdx {
-			v, exists := cur[path[len(path)-1]]
-			if n.openable {
-				result[i].checked = exists && nonEmptyYAMLValue(v)
-			} else {
-				result[i].checked = exists
-			}
-		} else {
-			result[i].checked = false
-		}
-	}
-	return result
-}
-
-// nonEmptyYAMLValue reports whether a decoded YAML value carries real content.
-// Used to decide whether an openable field (a nested collection) renders as
-// active: an absent key, null, empty string, or empty list/map counts as empty.
-func nonEmptyYAMLValue(v any) bool {
-	switch t := v.(type) {
-	case nil:
-		return false
-	case string:
-		return t != ""
-	case []any:
-		return len(t) > 0
-	case map[string]any:
-		return len(t) > 0
-	default:
-		return true
-	}
 }
 
 // visibleNodes returns the indices into tm.nodes that should be rendered,

@@ -72,7 +72,12 @@ func newModel(cfg Config) (model, error) {
 		return model{}, fmt.Errorf("editor: Config.Schema is required")
 	}
 
-	tree := schema.Discover(cfg.Schema)
+	var tree []schema.FieldDef
+	if cfg.SchemaRecursionDepth > 0 {
+		tree = schema.Discover(cfg.Schema, cfg.SchemaRecursionDepth)
+	} else {
+		tree = schema.Discover(cfg.Schema) // use schema default (1 extra recursive level)
+	}
 	tree = applyHidden(tree, cfg.Hidden)
 	known := schema.KnownChildren(tree)
 	childrenOf := buildChildrenMap(tree)
@@ -415,15 +420,22 @@ func (m model) refreshTopFromRoot(markDirty bool) model {
 		return m
 	}
 	be := *top
-	content := nodeToContent(be.key, node)
 	if be.isCollectionNav() {
-		be.coll.entries = collectionEntries(be.key, content, be.isMapNav())
-		if be.coll.current >= len(be.coll.entries) {
-			be.coll.current = len(be.coll.entries) - 1
+		isMap := be.isMapNav()
+		oldCount := entryCount(be.node, isMap)
+		be.node = node
+		// Rebuild the tree only when the entry count changed; otherwise keep it so
+		// the expanded/collapsed view and cursor survive the round-trip.
+		if entryCount(node, isMap) != oldCount {
+			be.tree.nodes = be.collectionTreeNodes()
+			if be.coll.current >= entryCount(node, isMap) {
+				be.coll.current = entryCount(node, isMap) - 1
+			}
 		}
 		be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
 	} else {
-		be.yamlEditor.SetValue(content)
+		be.node = node
+		be.yamlEditor.SetValue(nodeToContent(be.key, node))
 	}
 	be.tree = be.resyncTreeFromYAML()
 	if markDirty {
@@ -910,6 +922,12 @@ func (m model) save() (tea.Model, tea.Cmd) {
 		return m.showAlert("Cannot save — fix errors first", formatErrors(errs), alert.KindError)
 	}
 	doSave := func() tea.Msg { return doSaveMsg{} }
+	// An external edit since open is a substantive data-loss risk — always confirm
+	// before clobbering it, even under NoSaveConfirm.
+	if m.doc.ExternallyChanged() {
+		msg := fmt.Sprintf("%s changed on disk since you opened it.\nSaving overwrites those external changes.", m.doc.Path())
+		return m.showConfirmAlert("File changed on disk — overwrite?", msg, doSave)
+	}
 	if len(errs) > 0 {
 		// NoValidateOnSave: always confirm — warning is substantive, not routine.
 		msg := fmt.Sprintf("Save to %s?\n\nWarnings:\n%s", m.doc.Path(), formatErrors(errs))

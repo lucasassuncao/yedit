@@ -246,3 +246,109 @@ func TestAudit_EntryDeleteConfirms(t *testing.T) {
 		t.Errorf("entry not deleted with NoDeleteConfirm; have %d", n)
 	}
 }
+
+// nodeByPathSuffix finds a field node whose yamlPath ends with the given segments.
+func nodeByPathSuffix(be blockEditState, suffix ...string) (treeNode, bool) {
+	for _, n := range be.tree.nodes {
+		if n.kind != treeNodeField || len(n.yamlPath) < len(suffix) {
+			continue
+		}
+		ok := true
+		for i := range suffix {
+			if n.yamlPath[len(n.yamlPath)-len(suffix)+i] != suffix[i] {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return n, true
+		}
+	}
+	return treeNode{}, false
+}
+
+func confirmsOnCtrlD(content, label string) bool {
+	be := newBlockEdit(Config{}, blockSpec{key: "categories", defs: catDefs(), kind: schema.KindList, content: content}, 120, 40)
+	be = expandAll(be)
+	be = cursorToLabel(be, label)
+	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyCtrlD})
+	return be.mode == modeConfirming
+}
+
+// TestAudit_RemovalConfirmIsDepthConsistent: a filled leaf confirms before
+// removal and an empty leaf removes directly — identically at top level and when
+// nested deep under hooks.before. ("Its content will be lost" → empty has none.)
+func TestAudit_RemovalConfirmIsDepthConsistent(t *testing.T) {
+	cases := []struct {
+		name, content, label string
+		want                 bool
+	}{
+		{"filled-top", "categories:\n  - name: \"a\"\n", "name", true},
+		{"empty-top", "categories:\n  - name:\n", "name", false},
+		{"filled-nested", "categories:\n  - name: \"a\"\n    hooks:\n      before:\n        shell: bash\n", "shell", true},
+		{"empty-nested", "categories:\n  - name: \"a\"\n    hooks:\n      before:\n        shell:\n", "shell", false},
+	}
+	for _, tc := range cases {
+		if got := confirmsOnCtrlD(tc.content, tc.label); got != tc.want {
+			t.Errorf("[%s] confirm=%v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestAudit_RemoveParentResetsDescendantChecks: removing an inline parent must
+// clear the checked state of ALL its descendants (the sync used to leave stale
+// checkmarks when an ancestor vanished), while siblings keep theirs.
+func TestAudit_RemoveParentResetsDescendantChecks(t *testing.T) {
+	full := "categories:\n  - name: \"a\"\n    source:\n      path: /x\n      filter:\n        regex: foo\n" +
+		"    hooks:\n      before:\n        shell: bash\n      after:\n        shell: zsh\n"
+
+	remove := func(parent string) blockEditState {
+		be := newBlockEdit(Config{}, blockSpec{key: "categories", defs: catDefs(), kind: schema.KindList, content: full}, 120, 40)
+		be = expandAll(be)
+		be = cursorToLabel(be, parent)
+		be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyCtrlD})
+		idx := -1
+		for i, n := range be.tree.nodes {
+			if n.kind == treeNodeField && n.label == parent {
+				idx = i
+				break
+			}
+		}
+		be, _ = be.Update(pendingRemoveMsg{nodeIdx: idx})
+		return be
+	}
+	checked := func(be blockEditState, sfx ...string) bool {
+		n, _ := nodeByPathSuffix(be, sfx...)
+		return n.checked
+	}
+
+	// Remove hooks: every hooks descendant clears; source descendants survive.
+	be := remove("hooks")
+	if strings.Contains(be.yamlEditor.Value(), "hooks:") {
+		t.Error("hooks not removed from YAML")
+	}
+	if checked(be, "before", "shell") || checked(be, "after", "shell") {
+		t.Error("hooks descendants still checked after parent removal")
+	}
+	if !checked(be, "source", "path") || !checked(be, "source", "filter", "regex") {
+		t.Error("source descendants should survive removing hooks")
+	}
+
+	// Remove source: deep descendants (path, filter.regex) clear; hooks survives.
+	be = remove("source")
+	if checked(be, "source", "path") || checked(be, "source", "filter", "regex") {
+		t.Error("source descendants still checked after parent removal")
+	}
+	if !checked(be, "before", "shell") {
+		t.Error("hooks.before.shell should survive removing source")
+	}
+
+	// Remove only before: before.shell clears, after.shell stays.
+	be = remove("before")
+	if checked(be, "before", "shell") {
+		t.Error("before.shell should clear after removing before")
+	}
+	if !checked(be, "after", "shell") {
+		t.Error("after.shell should stay after removing before")
+	}
+}

@@ -129,21 +129,17 @@ func TestResyncToleratesInvalidYAML_struct(t *testing.T) {
 // and never mutates the canonical entries slice.
 func TestResyncToleratesInvalidYAML_collection(t *testing.T) {
 	be := newBlockEdit(Config{}, seqSpec("categories:\n  - name: alpha\n"), 100, 40)
-	entriesBefore := append([]seqEntry(nil), be.coll.entries...)
+	nodeBefore := nodeToContent(be.key, be.node)
 
 	be.active = blockEditPanelYAML
 	be.yamlEditor.SetValue("categories:\n  - name: [unterminated\n")
 
 	tm := be.resyncTreeFromYAML() // must not panic
 
-	// The canonical entries slice must be untouched (resync is non-authoritative).
-	if len(be.coll.entries) != len(entriesBefore) {
-		t.Fatalf("resync mutated canonical entries: %d → %d", len(entriesBefore), len(be.coll.entries))
-	}
-	for i := range entriesBefore {
-		if be.coll.entries[i].Content != entriesBefore[i].Content {
-			t.Errorf("entry %d content changed during resync: %q → %q", i, entriesBefore[i].Content, be.coll.entries[i].Content)
-		}
+	// The canonical node must be untouched: the tree is derived from it, not from
+	// the (now invalid) buffer.
+	if got := nodeToContent(be.key, be.node); got != nodeBefore {
+		t.Fatalf("resync mutated canonical node:\nbefore %q\nafter  %q", nodeBefore, got)
 	}
 	// The existing item label must survive an unparseable buffer.
 	foundAlpha := false
@@ -199,7 +195,7 @@ func TestFlushCurrentEntry_missingHeader_setsErrMsg(t *testing.T) {
 	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
 	be := newBlockEdit(Config{}, spec, 100, 40)
 
-	originalContent := be.coll.entries[0].Content
+	originalEntry := be.entryYAML(0)
 
 	// Simulate user deleting the "categories:" prefix.
 	be.active = blockEditPanelYAML
@@ -210,8 +206,8 @@ func TestFlushCurrentEntry_missingHeader_setsErrMsg(t *testing.T) {
 	if result.errMsg == "" {
 		t.Error("expected errMsg to be set when key header is missing")
 	}
-	if result.coll.entries[0].Content != originalContent {
-		t.Error("entries[0] was modified despite missing key header — silent data loss")
+	if result.entryYAML(0) != originalEntry {
+		t.Error("entry 0 was modified despite missing key header — silent data loss")
 	}
 }
 
@@ -227,8 +223,8 @@ func TestFlushCurrentEntry_validContent_clearsErrMsg(t *testing.T) {
 	if result.errMsg != "" {
 		t.Errorf("errMsg should be cleared on successful flush, got %q", result.errMsg)
 	}
-	if !strings.Contains(result.coll.entries[0].Content, "alpha_edited") {
-		t.Errorf("entry not updated: %q", result.coll.entries[0].Content)
+	if !strings.Contains(result.entryYAML(0), "alpha_edited") {
+		t.Errorf("entry not updated: %q", result.entryYAML(0))
 	}
 }
 
@@ -350,33 +346,35 @@ func TestEditorH_nonNegative(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// syncCurrentEntry — uses coll.current (not NearestSeqItem) for tree update
+// collectionDeriveTree — labels and checks of every entry are derived from the
+// canonical node, so editing one entry never contaminates another.
 // ---------------------------------------------------------------------------
 
-func TestSyncCurrentEntry_usesCollCurrent(t *testing.T) {
-	// Two-entry collection. After navigating to entry 1, editing should update
-	// entry 1's tree node, not entry 0.
+func TestCollectionDerive_perEntryLabels(t *testing.T) {
 	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
 	be := newBlockEdit(Config{}, spec, 100, 40)
 
-	// Manually set the current entry to 1 and update yamlEditor to show entry 1.
+	// Edit entry 1 through the parse gate (the real keystroke path splices the
+	// parsed entry into be.node), then re-derive the tree.
 	be.coll.current = 1
-	be.yamlEditor.SetValue("categories:\n  - name: beta_edited\n")
+	kn, vn, ok := parseEntryFromView("categories:\n  - name: beta_edited\n", false)
+	if !ok {
+		t.Fatal("parseEntryFromView failed on valid entry text")
+	}
+	setEntry(be.node, false, 1, kn, vn)
+	tm := be.collectionDeriveTree()
 
-	tm := be.syncCurrentEntry()
-
-	// Find the seq item with seqIdx=1 and check its label was updated.
-	updated := false
+	labels := map[int]string{}
 	for _, n := range tm.nodes {
-		if n.kind == treeNodeSeqItem && n.seqIdx == 1 {
-			if n.label == "beta_edited" {
-				updated = true
-			}
-			break
+		if n.kind == treeNodeSeqItem {
+			labels[n.seqIdx] = n.label
 		}
 	}
-	if !updated {
-		t.Error("syncCurrentEntry did not update the label for coll.current=1")
+	if labels[0] != "alpha" {
+		t.Errorf("entry 0 label = %q, want alpha (must not be contaminated)", labels[0])
+	}
+	if labels[1] != "beta_edited" {
+		t.Errorf("entry 1 label = %q, want beta_edited", labels[1])
 	}
 }
 

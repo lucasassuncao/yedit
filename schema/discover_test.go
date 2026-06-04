@@ -1,6 +1,7 @@
 package schema_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -197,5 +198,237 @@ func TestDiscover_scalarType(t *testing.T) {
 		if got[name] != w {
 			t.Errorf("%s.Scalar = %q, want %q", name, got[name], w)
 		}
+	}
+}
+
+// ── item 11: cycle detection ──────────────────────────────────────────────────
+
+type selfRefNode struct {
+	Name     string        `yaml:"name"`
+	Children []selfRefNode `yaml:"children"`
+}
+type selfRefRoot struct {
+	Tree selfRefNode `yaml:"tree"`
+}
+
+func TestDiscover_recursiveTypeStopsAtCycle(t *testing.T) {
+	// Default limit=1: one extra recursive level beyond the first visit.
+	// tree → selfRefNode (visit 1): has children [name, children]
+	// tree.children → selfRefNode (visit 2, shallow): has children [name, children]
+	// tree.children.children → selfRefNode (visit 3 > limit=1): nil
+	fields := schema.Discover(&selfRefRoot{})
+	if len(fields) != 1 || fields[0].YAMLName != "tree" {
+		t.Fatalf("expected single field 'tree', got %v", fields)
+	}
+	tree := fields[0]
+	if len(tree.Children) != 2 {
+		t.Fatalf("tree.Children = %d, want 2 (name + children)", len(tree.Children))
+	}
+	// The "children" field at the first level has one shallow level of children.
+	childrenField := tree.Children[1]
+	if len(childrenField.Children) != 2 {
+		t.Errorf("children at depth 1 should have 2 children (shallow level), got %d", len(childrenField.Children))
+	}
+	// The "children" field at the second level (shallow) must be nil — cycle stopped.
+	if len(childrenField.Children) >= 2 {
+		deepChildrenField := childrenField.Children[1]
+		if len(deepChildrenField.Children) != 0 {
+			t.Errorf("children at depth 2 should have no children (cycle blocked), got %d", len(deepChildrenField.Children))
+		}
+	}
+}
+
+func TestDiscover_recursiveTypeLimit0(t *testing.T) {
+	// Explicit limit=0: no recursive expansion (original strict cycle detection).
+	fields := schema.Discover(&selfRefRoot{}, 0)
+	tree := fields[0]
+	childrenField := tree.Children[1]
+	if len(childrenField.Children) != 0 {
+		t.Errorf("with limit=0, recursive children should be nil, got %d", len(childrenField.Children))
+	}
+}
+
+func TestDiscover_recursiveTypeLimit2(t *testing.T) {
+	// Explicit limit=2: two extra levels of recursion.
+	fields := schema.Discover(&selfRefRoot{}, 2)
+	tree := fields[0]
+	depth1 := tree.Children[1]   // first "children" field
+	depth2 := depth1.Children[1] // second "children" field (shallow level 1)
+	depth3 := depth2.Children[1] // third "children" field (shallow level 2)
+	if len(depth3.Children) != 0 {
+		t.Errorf("with limit=2, depth-3 children should be nil, got %d", len(depth3.Children))
+	}
+}
+
+// ── item 6: embedded / inline promotion ──────────────────────────────────────
+
+type embeddedBase struct {
+	CreatedBy  string `yaml:"created-by"`
+	VersionTag string `yaml:"version-tag"`
+}
+
+type inlineBase struct {
+	Team    string `yaml:"team"`
+	Contact string `yaml:"contact"`
+}
+
+type anonymousEmbedConfig struct {
+	embeddedBase
+	Port int `yaml:"port"`
+}
+
+type inlineEmbedConfig struct {
+	inlineBase `yaml:",inline"`
+	Port       int `yaml:"port"`
+}
+
+func TestDiscover_anonymousEmbed(t *testing.T) {
+	fields := schema.Discover(&anonymousEmbedConfig{})
+	got := schema.TopLevelOrder(fields)
+	want := []string{"created-by", "version-tag", "port"}
+	if len(got) != len(want) {
+		t.Fatalf("TopLevelOrder = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestDiscover_inlineEmbed(t *testing.T) {
+	fields := schema.Discover(&inlineEmbedConfig{})
+	got := schema.TopLevelOrder(fields)
+	want := []string{"team", "contact", "port"}
+	if len(got) != len(want) {
+		t.Fatalf("TopLevelOrder = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+// ── item 7: omitempty / flow flags ───────────────────────────────────────────
+
+type omitFlowConfig struct {
+	Replicas int      `yaml:"replicas,omitempty"`
+	Tags     []string `yaml:"tags,flow"`
+	Name     string   `yaml:"name"`
+}
+
+func TestDiscover_omitEmpty(t *testing.T) {
+	fields := schema.Discover(&omitFlowConfig{})
+	m := map[string]schema.FieldDef{}
+	for _, f := range fields {
+		m[f.YAMLName] = f
+	}
+	if !m["replicas"].OmitEmpty {
+		t.Error("replicas.OmitEmpty should be true")
+	}
+	if m["tags"].OmitEmpty {
+		t.Error("tags.OmitEmpty should be false")
+	}
+	if m["name"].OmitEmpty {
+		t.Error("name.OmitEmpty should be false")
+	}
+}
+
+func TestDiscover_flow(t *testing.T) {
+	fields := schema.Discover(&omitFlowConfig{})
+	m := map[string]schema.FieldDef{}
+	for _, f := range fields {
+		m[f.YAMLName] = f
+	}
+	if !m["tags"].Flow {
+		t.Error("tags.Flow should be true")
+	}
+	if m["replicas"].Flow {
+		t.Error("replicas.Flow should be false")
+	}
+	if m["name"].Flow {
+		t.Error("name.Flow should be false")
+	}
+}
+
+// ── item 8: map key scalar ────────────────────────────────────────────────────
+
+type intKeyConfig struct {
+	ByPort map[int]string    `yaml:"by-port"`
+	Labels map[string]string `yaml:"labels"`
+}
+
+func TestDiscover_mapKeyScalar(t *testing.T) {
+	fields := schema.Discover(&intKeyConfig{})
+	m := map[string]schema.FieldDef{}
+	for _, f := range fields {
+		m[f.YAMLName] = f
+	}
+	if m["by-port"].MapKeyScalar != "int" {
+		t.Errorf("by-port.MapKeyScalar = %q, want %q", m["by-port"].MapKeyScalar, "int")
+	}
+	if m["labels"].MapKeyScalar != "string" {
+		t.Errorf("labels.MapKeyScalar = %q, want %q", m["labels"].MapKeyScalar, "string")
+	}
+}
+
+// ── item 9: MarshalYAML / TextMarshaler → KindPrimitive ──────────────────────
+
+type colorType struct{ R, G, B uint8 }
+
+func (c colorType) MarshalYAML() (any, error) {
+	return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B), nil
+}
+
+type ipType [4]byte
+
+func (ip ipType) MarshalText() ([]byte, error) {
+	return []byte(fmt.Sprintf("%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3])), nil
+}
+
+type marshalerConfig struct {
+	Background colorType `yaml:"background"`
+	Gateway    ipType    `yaml:"gateway"`
+}
+
+func TestDiscover_marshalerIsKindPrimitive(t *testing.T) {
+	fields := schema.Discover(&marshalerConfig{})
+	m := map[string]schema.FieldDef{}
+	for _, f := range fields {
+		m[f.YAMLName] = f
+	}
+	if m["background"].Kind != schema.KindPrimitive {
+		t.Errorf("background.Kind = %v, want KindPrimitive", m["background"].Kind)
+	}
+	if len(m["background"].Children) != 0 {
+		t.Errorf("background should have no children, got %d", len(m["background"].Children))
+	}
+	if m["gateway"].Kind != schema.KindPrimitive {
+		t.Errorf("gateway.Kind = %v, want KindPrimitive", m["gateway"].Kind)
+	}
+	if len(m["gateway"].Children) != 0 {
+		t.Errorf("gateway should have no children, got %d", len(m["gateway"].Children))
+	}
+}
+
+// ── item 10: interface{}/any → KindAny ───────────────────────────────────────
+
+type anyFieldConfig struct {
+	Extras any    `yaml:"extras"`
+	Name   string `yaml:"name"`
+}
+
+func TestDiscover_anyIsKindAny(t *testing.T) {
+	fields := schema.Discover(&anyFieldConfig{})
+	m := map[string]schema.FieldDef{}
+	for _, f := range fields {
+		m[f.YAMLName] = f
+	}
+	if m["extras"].Kind != schema.KindAny {
+		t.Errorf("extras.Kind = %v, want KindAny", m["extras"].Kind)
+	}
+	if m["name"].Kind != schema.KindPrimitive {
+		t.Errorf("name.Kind = %v, want KindPrimitive", m["name"].Kind)
 	}
 }

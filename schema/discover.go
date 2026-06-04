@@ -1,8 +1,11 @@
 package schema
 
 import (
+	"encoding"
 	"reflect"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // defaultSkip lists YAML keys that the discoverer suppresses by default.
@@ -10,6 +13,11 @@ import (
 var defaultSkip = map[string]bool{
 	"$schema": true,
 }
+
+var (
+	yamlMarshalerType = reflect.TypeOf((*yaml.Marshaler)(nil)).Elem()
+	textMarshalerType = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
+)
 
 // Discover walks the type of v by reflection and returns the editable schema
 // of its exported fields. Fields without a yaml tag, with yaml:"-", or with a
@@ -31,64 +39,133 @@ var defaultSkip = map[string]bool{
 // To customise discovery for union types (a value that can be a scalar OR a
 // struct OR a map), make the wrapper type implement Provider — its
 // YeditSchema() return value is used in place of reflective traversal.
-func Discover(v any) []FieldDef {
+//
+// The optional recursionLimit controls how many extra levels a self-referential
+// type expands beyond the first: 0 (or omitted) uses the default of 1, which
+// allows one recursive level so that fields like "any []CategoryFilter" are
+// navigable. Set to 0 explicitly behaves the same as omitting.
+func Discover(v any, recursionLimit ...int) []FieldDef {
+	limit := 1 // default: one extra recursive level beyond the first visit
+	if len(recursionLimit) > 0 {
+		limit = recursionLimit[0] // caller-specified; 0 = strict (no extra levels)
+	}
 	t := reflect.TypeOf(v)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	return discoverFields(t, 0)
+	return discoverFields(t, 0, make(map[reflect.Type]int), limit)
 }
 
-func discoverFields(t reflect.Type, depth int) []FieldDef {
-	if depth > 10 || t.Kind() != reflect.Struct {
+func discoverFields(t reflect.Type, depth int, seen map[reflect.Type]int, limit int) []FieldDef {
+	if seen[t] > limit || depth > 20 || t.Kind() != reflect.Struct {
 		return nil
 	}
+	seen[t]++
+	defer func() { seen[t]-- }()
+
 	var out []FieldDef
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		if !f.IsExported() {
+			if f.Anonymous {
+				out = append(out, embedFields(f, depth, seen, limit)...)
+			}
 			continue
 		}
 		yamlTag := f.Tag.Get("yaml")
 		yamlName := strings.Split(yamlTag, ",")[0]
 		if yamlName == "" || yamlName == "-" {
+			if yamlName == "" && (f.Anonymous || strings.Contains(yamlTag, "inline")) {
+				out = append(out, embedFields(f, depth, seen, limit)...)
+			}
 			continue
 		}
 		if defaultSkip[yamlName] {
 			continue
 		}
-
-		validateTag := f.Tag.Get("validate")
-		jsTag := f.Tag.Get("jsonschema")
-
-		info := FieldDef{
-			YAMLName:    yamlName,
-			Kind:        kindOf(f.Type),
-			Scalar:      scalarLabel(f.Type),
-			Required:    containsTagOption(validateTag, "required") || containsTagOption(jsTag, "required"),
-			Default:     extractValue(jsTag, "default="),
-			Description: f.Tag.Get("jsonschema_description"),
-			OneOf:       extractList(validateTag, "oneof="),
-		}
-
-		// Custom union types take precedence over reflective descent.
-		if children := providerChildren(f.Type); children != nil {
-			info.Kind = KindVariant
-			info.Children = children
-		} else {
-			nested := unwrap(f.Type)
-			if nested.Kind() == reflect.Struct {
-				info.Children = discoverFields(nested, depth+1)
-			}
-		}
-		// A primitive field with a fixed oneof set is an enum.
+		info := buildFieldDef(f, yamlName, yamlTag)
+		fillFieldChildren(&info, f, depth, seen, limit)
 		if info.Kind == KindPrimitive && len(info.OneOf) > 0 {
 			info.Kind = KindEnum
 		}
-
 		out = append(out, info)
 	}
 	return out
+}
+
+// embedFields promotes the exported fields of an anonymous or inline struct embed.
+func embedFields(f reflect.StructField, depth int, seen map[reflect.Type]int, limit int) []FieldDef {
+	ft := f.Type
+	for ft.Kind() == reflect.Ptr {
+		ft = ft.Elem()
+	}
+	if ft.Kind() != reflect.Struct {
+		return nil
+	}
+	return discoverFields(ft, depth+1, seen, limit)
+}
+
+// buildFieldDef constructs a FieldDef from a struct field's tags.
+func buildFieldDef(f reflect.StructField, yamlName, yamlTag string) FieldDef {
+	validateTag := f.Tag.Get("validate")
+	jsTag := f.Tag.Get("jsonschema")
+	info := FieldDef{
+		YAMLName:    yamlName,
+		Kind:        kindOf(f.Type),
+		Scalar:      scalarLabel(f.Type),
+		Required:    containsTagOption(validateTag, "required") || containsTagOption(jsTag, "required"),
+		Default:     extractValue(jsTag, "default="),
+		Description: f.Tag.Get("jsonschema_description"),
+		OneOf:       extractList(validateTag, "oneof="),
+	}
+	for _, opt := range strings.Split(yamlTag, ",")[1:] {
+		switch strings.TrimSpace(opt) {
+		case "omitempty":
+			info.OmitEmpty = true
+		case "flow":
+			info.Flow = true
+		}
+	}
+	if info.Kind == KindDictionary {
+		ft := f.Type
+		for ft.Kind() == reflect.Ptr {
+			ft = ft.Elem()
+		}
+		if ft.Kind() == reflect.Map {
+			info.MapKeyScalar = scalarLabel(ft.Key())
+		}
+	}
+	return info
+}
+
+// fillFieldChildren populates info.Kind and info.Children via provider check,
+// marshaler check, or recursive struct descent.
+func fillFieldChildren(info *FieldDef, f reflect.StructField, depth int, seen map[reflect.Type]int, limit int) {
+	if children := providerChildren(f.Type); children != nil {
+		info.Kind = KindVariant
+		info.Children = children
+		return
+	}
+	if isMarshalerType(f.Type) {
+		return
+	}
+	nested := unwrap(f.Type)
+	if nested.Kind() == reflect.Struct {
+		info.Children = discoverFields(nested, depth+1, seen, limit)
+	}
+}
+
+// isMarshalerType reports whether t (or *t) implements yaml.Marshaler or
+// encoding.TextMarshaler. These types serialise as scalars; their struct
+// fields must not be exposed in the editor.
+func isMarshalerType(t reflect.Type) bool {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t.Implements(yamlMarshalerType) ||
+		reflect.PointerTo(t).Implements(yamlMarshalerType) ||
+		t.Implements(textMarshalerType) ||
+		reflect.PointerTo(t).Implements(textMarshalerType)
 }
 
 // providerChildren returns the FieldDef list declared by a type implementing
@@ -114,9 +191,16 @@ func providerChildren(t reflect.Type) []FieldDef {
 
 // kindOf classifies a Go type for the FieldDef.Kind field.
 func kindOf(t reflect.Type) Kind {
-	switch t.Kind() {
-	case reflect.Ptr:
+	if t.Kind() == reflect.Ptr {
 		return kindOf(t.Elem())
+	}
+	if t.Kind() == reflect.Interface {
+		return KindAny
+	}
+	if isMarshalerType(t) {
+		return KindPrimitive
+	}
+	switch t.Kind() {
 	case reflect.Struct:
 		return KindObject
 	case reflect.Slice, reflect.Array:

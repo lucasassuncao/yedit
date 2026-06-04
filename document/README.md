@@ -26,6 +26,7 @@ Package document provides primitives for editing YAML files structured as a flat
   - [func \(d \*Document\) Blocks\(\) \[\]Block](<#Document.Blocks>)
   - [func \(d \*Document\) CanUndo\(\) bool](<#Document.CanUndo>)
   - [func \(d \*Document\) Dirty\(\) bool](<#Document.Dirty>)
+  - [func \(d \*Document\) ExternallyChanged\(\) bool](<#Document.ExternallyChanged>)
   - [func \(d \*Document\) Insert\(snippet string\) error](<#Document.Insert>)
   - [func \(d \*Document\) Path\(\) string](<#Document.Path>)
   - [func \(d \*Document\) Raw\(\) \[\]byte](<#Document.Raw>)
@@ -73,7 +74,7 @@ func RemoveBlock(raw []byte, blocks []Block, key string) ([]byte, error)
 RemoveBlock deletes the lines belonging to key from raw YAML bytes.
 
 <a name="ValidateSnippet"></a>
-## func [ValidateSnippet](<https://github.com/lucasassuncao/yedit/blob/main/document/block.go#L57>)
+## func [ValidateSnippet](<https://github.com/lucasassuncao/yedit/blob/main/document/block.go#L72>)
 
 ```go
 func ValidateSnippet(text string) error
@@ -82,7 +83,7 @@ func ValidateSnippet(text string) error
 ValidateSnippet returns an error if the YAML text is not parseable.
 
 <a name="Block"></a>
-## type [Block](<https://github.com/lucasassuncao/yedit/blob/main/document/block.go#L14-L18>)
+## type [Block](<https://github.com/lucasassuncao/yedit/blob/main/document/block.go#L15-L19>)
 
 Block represents a top\-level YAML key with its line range \(1\-based\).
 
@@ -95,7 +96,7 @@ type Block struct {
 ```
 
 <a name="ParseBlocks"></a>
-### func [ParseBlocks](<https://github.com/lucasassuncao/yedit/blob/main/document/block.go#L21>)
+### func [ParseBlocks](<https://github.com/lucasassuncao/yedit/blob/main/document/block.go#L22>)
 
 ```go
 func ParseBlocks(raw []byte) ([]Block, error)
@@ -104,7 +105,7 @@ func ParseBlocks(raw []byte) ([]Block, error)
 ParseBlocks parses raw YAML bytes and returns top\-level blocks.
 
 <a name="Document"></a>
-## type [Document](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L21-L29>)
+## type [Document](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L23-L38>)
 
 Document owns the YAML editing state. All mutations are atomic and snapshot for undo automatically. Single\-threaded — no concurrent use.
 
@@ -117,7 +118,7 @@ type Document struct {
 ```
 
 <a name="Load"></a>
-### func [Load](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L35>)
+### func [Load](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L44>)
 
 ```go
 func Load(path string, knownOrder []string) (*Document, error)
@@ -128,7 +129,7 @@ Load reads a YAML file from path. A non\-existent file is not an error — the r
 knownOrder is the canonical key order for ordered Insert/Replace.
 
 <a name="New"></a>
-### func [New](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L54>)
+### func [New](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L67>)
 
 ```go
 func New(raw []byte, knownOrder []string) (*Document, error)
@@ -137,7 +138,7 @@ func New(raw []byte, knownOrder []string) (*Document, error)
 New builds a Document from raw bytes. Intended for tests and in\-memory use; the resulting document has no file path.
 
 <a name="Document.BlockContent"></a>
-### func \(\*Document\) [BlockContent](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L80>)
+### func \(\*Document\) [BlockContent](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L95>)
 
 ```go
 func (d *Document) BlockContent(key string) (string, error)
@@ -146,7 +147,7 @@ func (d *Document) BlockContent(key string) (string, error)
 BlockContent returns the raw lines for a given block key.
 
 <a name="Document.Blocks"></a>
-### func \(\*Document\) [Blocks](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L70>)
+### func \(\*Document\) [Blocks](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L85>)
 
 ```go
 func (d *Document) Blocks() []Block
@@ -155,7 +156,7 @@ func (d *Document) Blocks() []Block
 
 
 <a name="Document.CanUndo"></a>
-### func \(\*Document\) [CanUndo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L73>)
+### func \(\*Document\) [CanUndo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L88>)
 
 ```go
 func (d *Document) CanUndo() bool
@@ -164,7 +165,7 @@ func (d *Document) CanUndo() bool
 
 
 <a name="Document.Dirty"></a>
-### func \(\*Document\) [Dirty](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L72>)
+### func \(\*Document\) [Dirty](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L87>)
 
 ```go
 func (d *Document) Dirty() bool
@@ -172,8 +173,17 @@ func (d *Document) Dirty() bool
 
 
 
+<a name="Document.ExternallyChanged"></a>
+### func \(\*Document\) [ExternallyChanged](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L262>)
+
+```go
+func (d *Document) ExternallyChanged() bool
+```
+
+ExternallyChanged reports whether the file on disk was modified since this Document last loaded or saved it — e.g. another process or a git operation edited it. Returns false when there is no path or the file is absent \(a save would create it, clobbering nothing\). Callers should confirm with the user before overwriting when this returns true.
+
 <a name="Document.Insert"></a>
-### func \(\*Document\) [Insert](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L98>)
+### func \(\*Document\) [Insert](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L113>)
 
 ```go
 func (d *Document) Insert(snippet string) error
@@ -182,7 +192,7 @@ func (d *Document) Insert(snippet string) error
 Insert adds snippet to the document, positioned by the canonical key order. Snapshots history and sets dirty on success. Returns an error \(and rolls back\) if a post\-write round\-trip check detects that the stored block diverges from the submitted snippet.
 
 <a name="Document.Path"></a>
-### func \(\*Document\) [Path](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L71>)
+### func \(\*Document\) [Path](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L86>)
 
 ```go
 func (d *Document) Path() string
@@ -191,7 +201,7 @@ func (d *Document) Path() string
 
 
 <a name="Document.Raw"></a>
-### func \(\*Document\) [Raw](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L69>)
+### func \(\*Document\) [Raw](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L84>)
 
 ```go
 func (d *Document) Raw() []byte
@@ -200,7 +210,7 @@ func (d *Document) Raw() []byte
 
 
 <a name="Document.Remove"></a>
-### func \(\*Document\) [Remove](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L126>)
+### func \(\*Document\) [Remove](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L141>)
 
 ```go
 func (d *Document) Remove(key string) error
@@ -209,7 +219,7 @@ func (d *Document) Remove(key string) error
 Remove deletes the block with the given key. Returns an error if the key is not present.
 
 <a name="Document.Replace"></a>
-### func \(\*Document\) [Replace](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L146>)
+### func \(\*Document\) [Replace](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L161>)
 
 ```go
 func (d *Document) Replace(key, snippet string) error
@@ -218,7 +228,7 @@ func (d *Document) Replace(key, snippet string) error
 Replace removes the block at key and inserts snippet in its schema\-ordered position. Records a single history snapshot for the combined operation. Returns an error \(and rolls back\) if a post\-write round\-trip check detects that the stored block diverges from the submitted snippet.
 
 <a name="Document.ReplaceRaw"></a>
-### func \(\*Document\) [ReplaceRaw](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L191>)
+### func \(\*Document\) [ReplaceRaw](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L206>)
 
 ```go
 func (d *Document) ReplaceRaw(raw []byte) error
@@ -227,16 +237,16 @@ func (d *Document) ReplaceRaw(raw []byte) error
 ReplaceRaw replaces the document content with raw, normalising CRLF. If raw fails to parse, the document is left untouched and the error is returned. Does NOT snapshot — direct YAML editing is not tracked in the undo history; only committed block operations \(Insert, Replace, Remove\) are undoable.
 
 <a name="Document.Save"></a>
-### func \(\*Document\) [Save](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L222>)
+### func \(\*Document\) [Save](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L240>)
 
 ```go
 func (d *Document) Save() error
 ```
 
-Save writes the current raw to disk at d.path with mode 0600 and clears dirty. Returns an error if d.path is empty.
+Save writes the current content to disk at d.path and clears dirty. The write is atomic \(temp file \+ rename\) so a crash mid\-write never truncates the original. The file's existing mode is preserved \(new files are created 0600\), and CRLF line endings are restored when the loaded file used them. Returns an error if d.path is empty.
 
 <a name="Document.SetPath"></a>
-### func \(\*Document\) [SetPath](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L77>)
+### func \(\*Document\) [SetPath](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L92>)
 
 ```go
 func (d *Document) SetPath(path string)
@@ -245,7 +255,7 @@ func (d *Document) SetPath(path string)
 SetPath overrides the path used by Save. Call after Load when the save destination differs from the source \(e.g. writing a template to a new file\).
 
 <a name="Document.Undo"></a>
-### func \(\*Document\) [Undo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L206>)
+### func \(\*Document\) [Undo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L221>)
 
 ```go
 func (d *Document) Undo() bool

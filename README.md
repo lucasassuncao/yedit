@@ -123,15 +123,18 @@ Only the `yaml` tag is **required**. The rest are optional enrichments:
 |-----|--------|
 | `yaml:"name"` | Required. The YAML key name. |
 | `yaml:"-"` | Hide field from the editor. |
+| `yaml:"name,omitempty"` | Sets `FieldDef.OmitEmpty = true` (zero value not written to disk). |
+| `yaml:"name,flow"` | Sets `FieldDef.Flow = true` (serialised inline, e.g. `[a, b]`). |
 | `validate:"required"` | Marks field as required (stored in `FieldDef.Required`). |
 | `validate:"oneof=a b c"` | Restricts accepted values (stored in `FieldDef.OneOf`). |
 | `jsonschema:"required"` | Alternative way to mark required. |
 | `jsonschema:"default=X"` | Default value (stored in `FieldDef.Default`). |
 | `jsonschema_description:"..."` | Description text (stored in `FieldDef.Description`). |
 
-> `Required`, `Default`, `OneOf`, and `Description` are surfaced in the editor's
-> Hint/Example panel, and are also available to external tooling (doc generators,
-> custom renderers) via `schema.FieldDef`.
+> `Required`, `Default`, `OneOf`, `Description`, `OmitEmpty`, and `Flow` are
+> surfaced in `schema.FieldDef` and available to external tooling (doc generators,
+> custom renderers). `Required`, `Default`, `OneOf`, and `Description` are also
+> shown in the editor's Hint/Example panel.
 
 ## Full Config
 
@@ -168,6 +171,9 @@ editor.Run(editor.Config{
 
     // Top-level keys to hide (e.g. legacy aliases)
     Hidden: []string{"dockerFile"},
+
+    // Extra recursive levels for self-referential types (default 1)
+    SchemaRecursionDepth: 2,
 })
 ```
 
@@ -237,8 +243,10 @@ Minimum terminal size: **80 × 20**. Below that the editor shows a resize prompt
 ## Examples
 
 See [`examples/test`](examples/test/main.go) for a self-contained program
-that exercises all four schema patterns, `KindVariant`, nested slices, deep
-nesting, `oneof`, `MutuallyExclusive`, and unknown-key validation.
+that exercises all five schema patterns, `KindVariant`, nested slices, deep
+nesting, `oneof`, `MutuallyExclusive`, unknown-key validation, and schema
+edge cases (anonymous embeds, `yaml.Marshaler`, `interface{}`, non-string
+map keys, `omitempty`/`flow` flags).
 
 ## Status
 

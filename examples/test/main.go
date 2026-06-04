@@ -30,10 +30,19 @@
 //	Pattern 3 — KindList with child defs ([N] sequence navigator)
 //	  workers   : []Worker  (name required, concurrency, queue, tags []string)
 //	  routes    : []Route   (path, method oneof, handler, auth bool)
-//	  filters   : []Filter  (self-referential up to depth 10: any []Filter, all []Filter)
+//	  filters   : []Filter  (self-referential, cycle-detected: any []Filter, all []Filter)
 //
 //	Pattern 4 — KindDictionary with child defs (map[key]struct navigator)
 //	  port-attrs: map[string]PortAttr (label string, on-auto-forward oneof)
+//
+//	Pattern 5 — Schema edge cases (items 6–10 from robustness audit)
+//	  embed     : embeddedMeta anonymous embed → created-by, version-tag promoted to root
+//	  inline    : inlineAnnotations yaml:",inline" → team, contact promoted to root
+//	  omitempty : replicas (int,omitempty) — FieldDef.OmitEmpty = true
+//	  flow      : ips ([]string,flow) — FieldDef.Flow = true
+//	  int key   : firewall-rules map[int]PortRule — FieldDef.MapKeyScalar = "int"
+//	  marshaler : background (Color via MarshalYAML) — KindPrimitive, no R/G/B sub-fields
+//	  any       : extras (interface{}) — KindAny
 //
 //	Config options exercised
 //	  PassthroughKeys  : "import" is preserved as-is, hidden from all sections
@@ -54,8 +63,13 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/schema"
@@ -158,6 +172,65 @@ type PortAttr struct {
 	Protocol      string `yaml:"protocol"        validate:"oneof=http https tcp udp"`
 }
 
+// ── Pattern 5: Schema edge cases ─────────────────────────────────────────────
+
+// embeddedMeta: promoted via anonymous embed (item 6a).
+type embeddedMeta struct {
+	CreatedBy  string `yaml:"created-by"`
+	VersionTag string `yaml:"version-tag"`
+}
+
+// inlineAnnotations: promoted via yaml:",inline" (item 6b).
+type inlineAnnotations struct {
+	Team    string `yaml:"team"`
+	Contact string `yaml:"contact"`
+}
+
+// Color implements yaml.Marshaler — Discover classifies it as KindPrimitive (item 9).
+// The editor shows it as a text scalar ("#rrggbb"), not as R/G/B sub-fields.
+type Color struct{ R, G, B uint8 }
+
+func (c Color) MarshalYAML() (any, error) { //nolint:unparam
+	return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B), nil
+}
+
+func (c *Color) UnmarshalYAML(value *yaml.Node) error {
+	var s string
+	if err := value.Decode(&s); err != nil {
+		return err
+	}
+	s = strings.TrimPrefix(s, "#")
+	if len(s) != 6 {
+		return fmt.Errorf("invalid color %q: want #rrggbb", "#"+s)
+	}
+	r, _ := strconv.ParseUint(s[0:2], 16, 8)
+	g, _ := strconv.ParseUint(s[2:4], 16, 8)
+	b, _ := strconv.ParseUint(s[4:6], 16, 8)
+	c.R, c.G, c.B = uint8(r), uint8(g), uint8(b)
+	return nil
+}
+
+// PortRule: value type for map[int]PortRule — demonstrates non-string map key (item 8).
+type PortRule struct {
+	Proto   string `yaml:"proto"   validate:"oneof=tcp udp"`
+	Allowed bool   `yaml:"allowed"`
+}
+
+// SchemaEdgeCases exercises items 6, 7, 8, 9, 10 in a single block.
+type SchemaEdgeCases struct {
+	embeddedMeta                       // item 6a: anonymous embed → created-by, version-tag promoted
+	inlineAnnotations `yaml:",inline"` // item 6b: yaml:",inline" → team, contact promoted
+
+	Replicas int      `yaml:"replicas,omitempty"` // item 7: OmitEmpty=true
+	IPs      []string `yaml:"ips,flow"`           // item 7: Flow=true
+
+	FirewallRules map[int]PortRule `yaml:"firewall-rules"` // item 8: MapKeyScalar="int"
+
+	Background Color `yaml:"background"` // item 9: MarshalYAML → KindPrimitive, no sub-fields
+
+	Extras any `yaml:"extras"` // item 10: interface{} → KindAny
+}
+
 // ── Root config ───────────────────────────────────────────────────────────────
 
 type TestConfig struct {
@@ -196,6 +269,9 @@ type TestConfig struct {
 
 	// Pattern 4 — KindDictionary with child defs
 	PortAttrs map[string]PortAttr `yaml:"port-attrs"`
+
+	// Pattern 5 — Schema edge cases
+	EdgeCases SchemaEdgeCases `yaml:"edge-cases"`
 }
 
 // ── Seed YAML ─────────────────────────────────────────────────────────────────
@@ -256,6 +332,22 @@ filters:
   - regex: ".*_test\\.go$"
     ignore:
       - vendor
+edge-cases:
+  created-by: "alice"
+  version-tag: "v1.0"
+  team: "platform"
+  contact: "platform@example.com"
+  replicas: 3
+  ips: [10.0.0.1, 10.0.0.2]
+  firewall-rules:
+    8080:
+      proto: tcp
+      allowed: true
+    443:
+      proto: tcp
+      allowed: true
+  background: "#1e1e2e"
+  extras: "free-form string"
 unknown-key: "flagged by ctrl+l validate"
 `
 

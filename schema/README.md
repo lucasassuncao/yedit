@@ -16,7 +16,7 @@ Package schema discovers the editable shape of a Go struct via reflection over y
 - [func TopLevelOrder\(fields \[\]FieldDef\) \[\]string](<#TopLevelOrder>)
 - [func UnknownKeys\(raw \[\]byte, known map\[string\]map\[string\]bool\) \[\]string](<#UnknownKeys>)
 - [type FieldDef](<#FieldDef>)
-  - [func Discover\(v any\) \[\]FieldDef](<#Discover>)
+  - [func Discover\(v any, recursionLimit ...int\) \[\]FieldDef](<#Discover>)
 - [type Kind](<#Kind>)
 - [type Provider](<#Provider>)
 
@@ -33,7 +33,7 @@ KnownChildren collapses a FieldDef tree into a map of dotted paths to the set of
 A nil value at a path means "free\-form" — children at that path are not validated \(e.g. customizations.vscode.settings has no fixed schema\).
 
 <a name="TopLevelOrder"></a>
-## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L173>)
+## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L257>)
 
 ```go
 func TopLevelOrder(fields []FieldDef) []string
@@ -51,7 +51,7 @@ func UnknownKeys(raw []byte, known map[string]map[string]bool) []string
 UnknownKeys returns the dotted paths of any YAML keys not present in the schema described by known. Free\-form sub\-trees \(paths missing from known\) are not validated.
 
 <a name="FieldDef"></a>
-## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L28-L37>)
+## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L29-L41>)
 
 FieldDef describes a single editable field discovered from a Go struct.
 
@@ -61,22 +61,25 @@ Required, Default, Description, and OneOf are populated by Discover but are not 
 
 ```go
 type FieldDef struct {
-    YAMLName    string
-    Kind        Kind
-    Scalar      string   // concrete scalar type for primitives/enums ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
-    Required    bool     // from validate:"required" or jsonschema:"required"
-    Default     string   // from jsonschema:"default=X"
-    Description string   // from jsonschema_description
-    OneOf       []string // from validate:"oneof=a b c"
-    Children    []FieldDef
+    YAMLName     string
+    Kind         Kind
+    Scalar       string   // concrete scalar type for primitives/enums ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
+    Required     bool     // from validate:"required" or jsonschema:"required"
+    Default      string   // from jsonschema:"default=X"
+    Description  string   // from jsonschema_description
+    OneOf        []string // from validate:"oneof=a b c"
+    Children     []FieldDef
+    OmitEmpty    bool   // yaml:",omitempty" — zero value is not written to disk
+    Flow         bool   // yaml:",flow" — serialised inline rather than block style
+    MapKeyScalar string // KindDictionary only: scalar type of the map key ("int", "string", …); "" means string
 }
 ```
 
 <a name="Discover"></a>
-### func [Discover](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L34>)
+### func [Discover](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L47>)
 
 ```go
-func Discover(v any) []FieldDef
+func Discover(v any, recursionLimit ...int) []FieldDef
 ```
 
 Discover walks the type of v by reflection and returns the editable schema of its exported fields. Fields without a yaml tag, with yaml:"\-", or with a name in defaultSkip are omitted. Nested struct fields recurse one level deeper.
@@ -92,6 +95,8 @@ Only the yaml tag is required. validate and jsonschema\_description are optional
 A struct annotated only with yaml tags discovers cleanly; fields just have zero\-valued Required/Default/Description/OneOf.
 
 To customise discovery for union types \(a value that can be a scalar OR a struct OR a map\), make the wrapper type implement Provider — its YeditSchema\(\) return value is used in place of reflective traversal.
+
+The optional recursionLimit controls how many extra levels a self\-referential type expands beyond the first: 0 \(or omitted\) uses the default of 1, which allows one recursive level so that fields like "any \[\]CategoryFilter" are navigable. Set to 0 explicitly behaves the same as omitting.
 
 <a name="Kind"></a>
 ## type [Kind](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L7>)
@@ -112,11 +117,12 @@ const (
     KindDictionary             // map[K]V
     KindVariant                // union type via the Provider interface
     KindEnum                   // scalar with a fixed oneof set (validate:"oneof=…")
+    KindAny                    // interface{}/any — use Provider or raw YAML editing
 )
 ```
 
 <a name="Provider"></a>
-## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L43-L45>)
+## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L47-L49>)
 
 Provider is an opt\-in interface for types that reflection cannot introspect correctly — typically union types \(e.g. a value that can be a string OR a struct OR a map\). Implementations return the FieldDef tree they want the editor to see in place of the wrapper type's own fields.
 

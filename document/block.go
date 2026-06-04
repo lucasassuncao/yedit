@@ -6,6 +6,7 @@ package document
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -32,6 +33,7 @@ func ParseBlocks(raw []byte) ([]Block, error) {
 	}
 
 	totalLines := bytes.Count(raw, []byte("\n")) + 1
+	lines := strings.Split(string(raw), "\n")
 	blocks := make([]Block, 0, len(mapping.Content)/2)
 
 	for i := 0; i < len(mapping.Content)-1; i += 2 {
@@ -43,11 +45,24 @@ func ParseBlocks(raw []byte) ([]Block, error) {
 	}
 
 	for i := range blocks {
-		if i+1 < len(blocks) {
-			blocks[i].EndLine = blocks[i+1].Line - 1
-		} else {
+		if i+1 >= len(blocks) {
 			blocks[i].EndLine = totalLines
+			continue
 		}
+		// Stop this block's range before the blank lines and comments that precede
+		// the next key — by convention those belong to the next block (a comment
+		// directly above a key documents that key). Otherwise removing or replacing
+		// a block would silently delete the next block's leading comments.
+		end := blocks[i+1].Line - 1
+		for end > blocks[i].Line {
+			trimmed := strings.TrimSpace(lines[end-1]) // end is 1-based
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				end--
+			} else {
+				break
+			}
+		}
+		blocks[i].EndLine = end
 	}
 
 	return blocks, nil

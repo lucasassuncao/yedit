@@ -46,7 +46,8 @@ feature at once. Each block is chosen to drive a specific code path:
 | `logging`      | `KindObject` struct with a `KindEnum` (`level`) and a bool |
 | `workers`      | `KindList` with child defs; `extensions: ["go","yaml"]` exercises flow-style leaves |
 | `port-attrs`   | `KindDictionary` with child defs (`map[key]struct` navigator) |
-| `filters`      | `KindList` with child defs; `Filter` is self-referential  |
+| `filters`      | `KindList` with child defs; `Filter` is self-referential (cycle-detected) |
+| `edge-cases`   | `KindObject` exercising anonymous embed, `yaml:",inline"`, `omitempty`, `flow`, `map[int]Struct`, `yaml.Marshaler` → `KindPrimitive`, `interface{}` → `KindAny` |
 | `unknown-key`  | Not in the schema → shows in the UNKNOWN section and is flagged by `ctrl+l` |
 
 Schema fields that are **not** in the seed (`labels`, `ports`, `timeout`,
