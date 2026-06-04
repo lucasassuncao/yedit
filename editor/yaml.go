@@ -582,7 +582,17 @@ func findOrCreateMappingChild(mapping *yaml.Node, key string) *yaml.Node {
 	}
 	for i := 0; i < len(mapping.Content)-1; i += 2 {
 		if mapping.Content[i].Value == key {
-			return mapping.Content[i+1]
+			child := mapping.Content[i+1]
+			// An existing key with a null/empty value (e.g. "source:\n") parses as
+			// a scalar node, not a mapping. Coerce it so children can be added —
+			// without this, appendLeafToMapping silently no-ops on the scalar.
+			if child.Kind != yaml.MappingNode && child.Value == "" {
+				child.Kind = yaml.MappingNode
+				child.Tag = ""
+				child.Value = ""
+				child.Content = nil
+			}
+			return child
 		}
 	}
 	// Create the key with an empty mapping value.

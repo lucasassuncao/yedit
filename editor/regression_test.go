@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/lucasassuncao/yedit/schema"
 )
 
 // ---------------------------------------------------------------------------
@@ -374,5 +376,36 @@ func TestSyncCurrentEntry_usesCollCurrent(t *testing.T) {
 	}
 	if !updated {
 		t.Error("syncCurrentEntry did not update the label for coll.current=1")
+	}
+}
+
+// TestToggleChildUnderEmptyParent reproduces the movelooper bug: a sequence item
+// has an existing-but-empty nested struct key ("source:" with a null value).
+// Toggling a child of that empty parent (source.path) must add it to the YAML.
+// Before the fix, findOrCreateMappingChild returned the null scalar as-is and
+// appendLeafToMapping silently no-op'd, so the toggle did nothing.
+func TestToggleChildUnderEmptyParent(t *testing.T) {
+	content := "categories:\n  - name: \"lucas\"\n    source:\n"
+
+	ctx := toggleCtx{
+		key: "categories",
+		childDefs: []schema.FieldDef{
+			{YAMLName: "name", Kind: schema.KindPrimitive},
+			{YAMLName: "source", Kind: schema.KindObject, Children: []schema.FieldDef{
+				{YAMLName: "path", Kind: schema.KindPrimitive},
+			}},
+		},
+	}
+	node := treeNode{
+		kind:     treeNodeField,
+		yamlPath: []string{"lucas", "source", "path"},
+		label:    "path",
+		depth:    2,
+		def:      schema.FieldDef{YAMLName: "path", Kind: schema.KindPrimitive},
+	}
+
+	got := applyToggleToSeqItem(ctx, node, true, content)
+	if !strings.Contains(got, "path:") {
+		t.Errorf("toggling source.path did not add the field:\n%s", got)
 	}
 }
