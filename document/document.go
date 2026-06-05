@@ -194,7 +194,7 @@ func blockSemanticEqual(a, b string) bool {
 		return true
 	}
 	if err := yaml.Unmarshal([]byte(b), &vb); err != nil {
-		return true
+		return false
 	}
 	return reflect.DeepEqual(va, vb)
 }

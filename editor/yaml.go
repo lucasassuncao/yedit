@@ -406,7 +406,7 @@ func nodeAt(node *yaml.Node, segs []pathSeg) *yaml.Node {
 // into a mapping the way string splicing could.
 func setNodeAt(root *yaml.Node, segs []pathSeg, newVal *yaml.Node) bool {
 	if len(segs) == 0 {
-		*root = *newVal
+		*root = *cloneNode(newVal)
 		return true
 	}
 	parent := root
@@ -628,17 +628,28 @@ func appendLeafToMapping(mapping *yaml.Node, key, snippet string) {
 	}
 	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: key}
 	valNode := &yaml.Node{Kind: yaml.ScalarNode, Value: ""}
-	if snippet != "" {
-		// snippet is a "key: value" line (possibly indented). Parse it directly
-		// and lift the value — prepending key+":\n" would nest it under itself.
-		var tmp map[string]any
-		if err := yaml.Unmarshal([]byte(snippet), &tmp); err == nil {
-			if v, ok := tmp[key]; ok {
-				valNode.Value = fmt.Sprintf("%v", v)
-			}
-		}
+	if v := snippetValueNode(snippet, key); v != nil {
+		valNode = v
 	}
 	mapping.Content = append(mapping.Content, keyNode, valNode)
+}
+
+// snippetValueNode parses snippet as YAML and returns the value node for key,
+// preserving its type tag (!!bool, !!int, etc.). Returns nil when the snippet
+// is empty, unparseable, or does not contain key.
+func snippetValueNode(snippet, key string) *yaml.Node {
+	if snippet == "" {
+		return nil
+	}
+	var tmp yaml.Node
+	if err := yaml.Unmarshal([]byte(snippet), &tmp); err != nil || len(tmp.Content) == 0 {
+		return nil
+	}
+	m := tmp.Content[0]
+	if m.Kind != yaml.MappingNode {
+		return nil
+	}
+	return childByKey(m, key)
 }
 
 // appendFieldFromSnippet parses snippet under parentKey, extracts all child

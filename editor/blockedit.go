@@ -101,8 +101,9 @@ type blockEditState struct {
 	previewFocus  bool // preset browser: right panel has keyboard focus
 	previewScroll int  // preset browser: line scroll offset in preview panel
 
-	undoSnap *blockEditUndoSnap // one-level undo for preset apply/append
-	theme    resolvedTheme
+	undoSnap         *blockEditUndoSnap // one-level undo for preset apply/append
+	basePresetFields map[string]string  // field name → example from "base" preset; populated once in newBlockEdit
+	theme            resolvedTheme
 }
 
 // blockEditUndoSnap captures the state of a blockEditState before any
@@ -133,16 +134,17 @@ func blockOwnDef(spec blockSpec) schema.FieldDef {
 // newBlockEdit creates the full-screen block editing state.
 func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	be := blockEditState{
-		cfg:           cfg,
-		key:           spec.key,
-		childDefs:     spec.defs,
-		kind:          spec.kind,
-		def:           blockOwnDef(spec),
-		knownByPath:   spec.knownByPath,
-		currentPreset: "custom",
-		width:         w,
-		height:        h,
-		theme:         resolveTheme(cfg.Theme),
+		cfg:              cfg,
+		key:              spec.key,
+		childDefs:        spec.defs,
+		kind:             spec.kind,
+		def:              blockOwnDef(spec),
+		knownByPath:      spec.knownByPath,
+		currentPreset:    "custom",
+		width:            w,
+		height:           h,
+		theme:            resolveTheme(cfg.Theme),
+		basePresetFields: loadBasePresetFields(cfg, spec.key),
 	}
 	be.relayout()
 
@@ -934,13 +936,20 @@ func (be blockEditState) newEntryLabel() string {
 	if !be.isMapNav() {
 		return ""
 	}
-	n := 1
+	existing := make(map[string]bool)
 	for _, node := range be.tree.nodes {
 		if node.kind == treeNodeSeqItem {
-			n++
+			existing[node.label] = true
 		}
 	}
-	return fmt.Sprintf("key%d", n)
+	// Start at count+1 for predictable positional labels, but increment past
+	// any key that already exists so we never produce a duplicate map key.
+	for n := len(existing) + 1; ; n++ {
+		label := fmt.Sprintf("key%d", n)
+		if !existing[label] {
+			return label
+		}
+	}
 }
 
 func (be blockEditState) switchPanel() blockEditState {
@@ -1422,28 +1431,39 @@ func generateFallbackExample(def schema.FieldDef) string {
 	}
 }
 
-// extractFromBasePreset parses the "base" preset for be.key and returns the
-// YAML representation of the top-level child fieldName, or "" if unavailable.
+// extractFromBasePreset returns the YAML snippet for fieldName from the
+// pre-parsed base preset cache. It is a map lookup — the actual parsing
+// happens once in newBlockEdit via loadBasePresetFields.
 func (be blockEditState) extractFromBasePreset(fieldName string) string {
-	if be.cfg.Presets == nil {
-		return ""
+	return be.basePresetFields[fieldName]
+}
+
+// loadBasePresetFields parses the "base" preset for blockKey and returns a map
+// of field name → YAML snippet for every top-level child field. Called once
+// during newBlockEdit so the per-frame render path does no I/O or parsing.
+func loadBasePresetFields(cfg Config, blockKey string) map[string]string {
+	if cfg.Presets == nil {
+		return nil
 	}
-	presetYAML, err := be.cfg.Presets.PresetYAML(be.key, "base")
+	presetYAML, err := cfg.Presets.PresetYAML(blockKey, "base")
 	if err != nil {
-		return ""
+		return nil
 	}
 	var doc map[string]any
 	if err := yaml.Unmarshal([]byte(presetYAML), &doc); err != nil {
-		return ""
+		return nil
 	}
-	root, _ := doc[be.key].(map[string]any)
-	val, ok := root[fieldName]
-	if !ok {
-		return ""
+	root, _ := doc[blockKey].(map[string]any)
+	if root == nil {
+		return nil
 	}
-	out, err := yaml.Marshal(map[string]any{fieldName: val})
-	if err != nil {
-		return ""
+	fields := make(map[string]string, len(root))
+	for k, v := range root {
+		out, err := yaml.Marshal(map[string]any{k: v})
+		if err != nil {
+			continue
+		}
+		fields[k] = strings.TrimRight(string(out), "\n")
 	}
-	return strings.TrimRight(string(out), "\n")
+	return fields
 }

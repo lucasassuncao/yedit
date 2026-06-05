@@ -21,9 +21,11 @@ func TestBlockSemanticEqual_roundtripComparison(t *testing.T) {
 		t.Error("divergent blocks must compare NOT equal — the check must be able to fail")
 	}
 
-	// Documents why the key prefix was removed: the old form builds a duplicate
-	// key, fails to parse, and fail-opens to true — masking the divergence above.
-	if !blockSemanticEqual(snippet, "image:\n"+diverged) {
-		t.Error("regression: the old key-prefixed form should fail-open to true")
+	// When b is a malformed duplicate-key document (e.g. the old code produced
+	// key+":\n"+recovered, creating two "image" keys), it fails to parse and
+	// blockSemanticEqual must return false so the round-trip check triggers a
+	// rollback rather than silently accepting corrupted content.
+	if blockSemanticEqual(snippet, "image:\n"+diverged) {
+		t.Error("malformed b must fail-closed (false) so corruption triggers rollback")
 	}
 }
