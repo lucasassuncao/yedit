@@ -168,7 +168,9 @@ func assertCollTreeMatchesNode(t *testing.T, be blockEditState) {
 func TestSOT_CollectionToggleWhileBufferInvalid(t *testing.T) {
 	be := newBlockEdit(Config{}, blockSpec{
 		key: "categories", defs: catDefs(), kind: schema.KindList,
-		content: "categories:\n  - name: a\n",
+		content: `categories:
+  - name: a
+`,
 	}, 120, 40)
 	be = expandAll(be)
 
@@ -197,7 +199,10 @@ func TestSOT_CollectionToggleWhileBufferInvalid(t *testing.T) {
 func TestSOT_CollectionAddDeleteConsistency(t *testing.T) {
 	be := newBlockEdit(Config{NoDeleteConfirm: true}, blockSpec{
 		key: "categories", defs: catDefs(), kind: schema.KindList,
-		content: "categories:\n  - name: a\n  - name: b\n",
+		content: `categories:
+  - name: a
+  - name: b
+`,
 	}, 120, 40)
 
 	if got := entryCount(be.node, false); got != 2 {
@@ -230,7 +235,12 @@ func TestSOT_CollectionAddDeleteConsistency(t *testing.T) {
 // used to swallow leading comments when ParseBlocks ran on the snippet).
 func TestSOT_CommitPreservesLeadingComments(t *testing.T) {
 	// The snippet has a comment above "log-file" that must survive an edit to "output".
-	content := "cfg:\n  output: stdout\n\n  # log destination\n  log-file: /var/log/app.log\n"
+	content := `cfg:
+  output: stdout
+
+  # log destination
+  log-file: /var/log/app.log
+`
 	be := newBlockEdit(Config{}, blockSpec{
 		key: "cfg", defs: cfgStructDefs(), kind: schema.KindObject, content: content,
 	}, 120, 40)

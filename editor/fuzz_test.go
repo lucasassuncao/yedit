@@ -35,10 +35,13 @@ func FuzzCollectionInvariants(f *testing.F) {
 	f.Add([]byte{3, 3, 2, 0, 2, 1, 2})
 	f.Fuzz(func(t *testing.T, actions []byte) {
 		be := newBlockEdit(Config{NoDeleteConfirm: true}, blockSpec{
-			key:     "categories",
-			defs:    catDefs(),
-			kind:    schema.KindList,
-			content: "categories:\n  - name: a\n  - name: b\n",
+			key:  "categories",
+			defs: catDefs(),
+			kind: schema.KindList,
+			content: `categories:
+  - name: a
+  - name: b
+`,
 		}, 120, 40)
 		be = expandAll(be)
 		for _, a := range actions {

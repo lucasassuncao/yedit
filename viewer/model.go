@@ -114,11 +114,10 @@ func (m *Model) relayout() {
 	}
 	m.list.SetSize(m.listW-2, innerH)
 
-	r, err := glamour.NewTermRenderer(
+	if r, err := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
 		glamour.WithWordWrap(m.vpW-2),
-	)
-	if err == nil {
+	); err == nil {
 		m.renderer = r
 	}
 	m.renderedPane = ""

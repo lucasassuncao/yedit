@@ -26,8 +26,12 @@ func ceStructSpec() blockSpec {
 				{YAMLName: "port", Kind: schema.KindPrimitive},
 			}},
 		},
-		kind:    schema.KindObject,
-		content: "containerengine:\n  httproutes:\n    web:\n      host: example.com\n",
+		kind: schema.KindObject,
+		content: `containerengine:
+  httproutes:
+    web:
+      host: example.com
+`,
 	}
 }
 
@@ -109,7 +113,11 @@ func TestDrillInCommitsThroughCanonicalTree(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "w.yaml")
-	if err := os.WriteFile(path, []byte("containerengine:\n  httproutes:\n    web:\n      host: example.com\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`containerengine:
+  httproutes:
+    web:
+      host: example.com
+`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
@@ -175,7 +183,11 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "w.yaml")
-	if err := os.WriteFile(path, []byte("containerengine:\n  httproutes:\n    web:\n      host: old.com\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`containerengine:
+  httproutes:
+    web:
+      host: old.com
+`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
@@ -201,7 +213,10 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 
 	// Edit the child: change the route host.
 	child := *m.topBE()
-	child.yamlEditor.SetValue("httproutes:\n  web:\n    host: new.com\n")
+	child.yamlEditor.SetValue(`httproutes:
+  web:
+    host: new.com
+`)
 	child.dirty = true
 	m.setTopBE(&child)
 

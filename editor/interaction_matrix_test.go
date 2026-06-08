@@ -193,8 +193,13 @@ func TestMatrix_ToggleConsequenceAcrossContexts(t *testing.T) {
 		leaf string
 	}{
 		{"struct", blockSpec{key: "cfg", defs: structDefs, kind: schema.KindObject, content: "cfg:\n  name: x\n"}, "path"},
-		{"seq", blockSpec{key: "categories", defs: catDefs(), kind: schema.KindList, content: "categories:\n  - name: \"a\"\n"}, "path"},
-		{"map", blockSpec{key: "items", defs: catDefs(), kind: schema.KindDictionary, content: "items:\n  k1:\n    name: \"a\"\n"}, "path"},
+		{"seq", blockSpec{key: "categories", defs: catDefs(), kind: schema.KindList, content: `categories:
+  - name: "a"
+`}, "path"},
+		{"map", blockSpec{key: "items", defs: catDefs(), kind: schema.KindDictionary, content: `items:
+  k1:
+    name: "a"
+`}, "path"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

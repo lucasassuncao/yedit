@@ -1,6 +1,10 @@
 package schema
 
-import "gopkg.in/yaml.v3"
+import (
+	"sort"
+
+	"gopkg.in/yaml.v3"
+)
 
 // KnownChildren collapses a FieldDef tree into a map of dotted paths to the
 // set of allowed direct children. Used by UnknownKeys to detect typos.
@@ -47,6 +51,7 @@ func UnknownKeys(raw []byte, known map[string]map[string]bool) []string {
 	}
 	var unknown []string
 	walkKnown(doc, "", known, &unknown)
+	sort.Strings(unknown)
 	return unknown
 }
 

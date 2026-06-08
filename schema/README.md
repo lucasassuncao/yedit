@@ -22,7 +22,7 @@ Package schema discovers the editable shape of a Go struct via reflection over y
 
 
 <a name="KnownChildren"></a>
-## func [KnownChildren](<https://github.com/lucasassuncao/yedit/blob/main/schema/validate.go#L10>)
+## func [KnownChildren](<https://github.com/lucasassuncao/yedit/blob/main/schema/validate.go#L14>)
 
 ```go
 func KnownChildren(fields []FieldDef) map[string]map[string]bool
@@ -42,7 +42,7 @@ func TopLevelOrder(fields []FieldDef) []string
 TopLevelOrder returns the discovered top\-level yaml names in declaration order. Use it as the knownOrder argument when constructing a document.Document.
 
 <a name="UnknownKeys"></a>
-## func [UnknownKeys](<https://github.com/lucasassuncao/yedit/blob/main/schema/validate.go#L43>)
+## func [UnknownKeys](<https://github.com/lucasassuncao/yedit/blob/main/schema/validate.go#L47>)
 
 ```go
 func UnknownKeys(raw []byte, known map[string]map[string]bool) []string

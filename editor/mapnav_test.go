@@ -10,7 +10,13 @@ import (
 )
 
 func TestParseMapEntries(t *testing.T) {
-	base := "portsAttributes:\n  \"3000\":\n    label: web\n    onAutoForward: notify\n  \"8080\":\n    label: api\n"
+	base := `portsAttributes:
+  "3000":
+    label: web
+    onAutoForward: notify
+  "8080":
+    label: api
+`
 	entries := parseMapEntries("portsAttributes", base)
 	if len(entries) != 2 {
 		t.Fatalf("got %d entries, want 2", len(entries))
@@ -18,7 +24,10 @@ func TestParseMapEntries(t *testing.T) {
 	if entries[0].Label != "3000" || entries[1].Label != "8080" {
 		t.Errorf("labels = [%q %q], want [3000 8080]", entries[0].Label, entries[1].Label)
 	}
-	if entries[0].Content != "  \"3000\":\n    label: web\n    onAutoForward: notify\n" {
+	if entries[0].Content != `  "3000":
+    label: web
+    onAutoForward: notify
+` {
 		t.Errorf("entry[0].Content = %q", entries[0].Content)
 	}
 	// Round-trip back to the full block.
@@ -28,35 +37,54 @@ func TestParseMapEntries(t *testing.T) {
 }
 
 func TestParseMapEntries_notMap(t *testing.T) {
-	if entries := parseMapEntries("x", "y:\n  a: 1\n"); entries != nil {
+	if entries := parseMapEntries("x", `y:
+  a: 1
+`); entries != nil {
 		t.Errorf("wrong prefix should yield nil, got %v", entries)
 	}
 }
 
 func TestApplyToggleToMapEntry_remove(t *testing.T) {
-	view := "portsAttributes:\n  \"3000\":\n    label: web\n    onAutoForward: notify\n"
+	view := `portsAttributes:
+  "3000":
+    label: web
+    onAutoForward: notify
+`
 	node := treeNode{yamlPath: []string{"3000", "onAutoForward"}}
 	got := applyToggleToMapEntry(toggleCtx{key: "portsAttributes"}, node, false, view)
-	want := "portsAttributes:\n  \"3000\":\n    label: web\n"
+	want := `portsAttributes:
+  "3000":
+    label: web
+`
 	if got != want {
 		t.Errorf("after removing onAutoForward:\n got %q\nwant %q", got, want)
 	}
 }
 
 func TestApplyToggleToMapEntry_add(t *testing.T) {
-	view := "portsAttributes:\n  \"3000\":\n    label: web\n"
+	view := `portsAttributes:
+  "3000":
+    label: web
+`
 	node := treeNode{yamlPath: []string{"3000", "onAutoForward"}}
 	got := applyToggleToMapEntry(toggleCtx{key: "portsAttributes"}, node, true, view)
 	// An empty field renders as a null value ("onAutoForward:"), same as the
 	// sequence navigator's appendLeafToMapping.
-	want := "portsAttributes:\n  \"3000\":\n    label: web\n    onAutoForward:\n"
+	want := `portsAttributes:
+  "3000":
+    label: web
+    onAutoForward:
+`
 	if got != want {
 		t.Errorf("after adding onAutoForward:\n got %q\nwant %q", got, want)
 	}
 }
 
 func TestApplyToggleToMapEntry_addWithSnippet(t *testing.T) {
-	view := "portsAttributes:\n  \"3000\":\n    label: web\n"
+	view := `portsAttributes:
+  "3000":
+    label: web
+`
 	node := treeNode{yamlPath: []string{"3000", "onAutoForward"}}
 	ctx := toggleCtx{
 		key:      "portsAttributes",
@@ -64,7 +92,11 @@ func TestApplyToggleToMapEntry_addWithSnippet(t *testing.T) {
 	}
 	got := applyToggleToMapEntry(ctx, node, true, view)
 	// The snippet's value must be lifted, not nested as map[onAutoForward:notify].
-	want := "portsAttributes:\n  \"3000\":\n    label: web\n    onAutoForward: notify\n"
+	want := `portsAttributes:
+  "3000":
+    label: web
+    onAutoForward: notify
+`
 	if got != want {
 		t.Errorf("snippet value not lifted:\n got %q\nwant %q", got, want)
 	}
@@ -91,8 +123,14 @@ func mapSpec() blockSpec {
 			{YAMLName: "label", Kind: schema.KindPrimitive},
 			{YAMLName: "onAutoForward", Kind: schema.KindPrimitive},
 		},
-		kind:    schema.KindDictionary,
-		content: "portsAttributes:\n  \"3000\":\n    label: web\n    onAutoForward: notify\n  \"8080\":\n    label: api\n",
+		kind: schema.KindDictionary,
+		content: `portsAttributes:
+  "3000":
+    label: web
+    onAutoForward: notify
+  "8080":
+    label: api
+`,
 	}
 }
 
@@ -117,7 +155,11 @@ func TestMapBlockOpensAsNavigator(t *testing.T) {
 	if labels := seqItemLabels(be); len(labels) != 2 || labels[0] != "3000" || labels[1] != "8080" {
 		t.Errorf("entry labels = %v, want [3000 8080]", labels)
 	}
-	want := "portsAttributes:\n  \"3000\":\n    label: web\n    onAutoForward: notify\n"
+	want := `portsAttributes:
+  "3000":
+    label: web
+    onAutoForward: notify
+`
 	if be.yamlEditor.Value() != want {
 		t.Errorf("editor shows %q, want %q", be.yamlEditor.Value(), want)
 	}
@@ -167,7 +209,11 @@ func TestMapBlockAddEntrySeedsCheckedField(t *testing.T) {
 // the YAML pane updates its label in the left panel.
 func TestMapBlockRenameUpdatesTreeLabel(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
-	be.yamlEditor.SetValue("portsAttributes:\n  lucas:\n    label: web\n    onAutoForward: notify\n")
+	be.yamlEditor.SetValue(`portsAttributes:
+  lucas:
+    label: web
+    onAutoForward: notify
+`)
 	// Simulate the parse-gated keystroke: splice the edited entry into the node.
 	if kn, vn, ok := parseEntryFromView(be.yamlEditor.Value(), be.coll.isMap); ok {
 		setEntry(be.node, be.coll.isMap, be.coll.current, kn, vn)
@@ -220,8 +266,12 @@ func TestSeqBlockStillNavigates(t *testing.T) {
 			{YAMLName: "name", Kind: schema.KindPrimitive},
 			{YAMLName: "queue", Kind: schema.KindPrimitive},
 		},
-		kind:    schema.KindList,
-		content: "workers:\n  - name: a\n    queue: q1\n  - name: b\n",
+		kind: schema.KindList,
+		content: `workers:
+  - name: a
+    queue: q1
+  - name: b
+`,
 	}
 	be := newBlockEdit(Config{}, spec, 100, 40)
 	if !be.isSeqNav() {
@@ -244,8 +294,12 @@ func TestSeqBlockResyncNoContamination(t *testing.T) {
 			{YAMLName: "name", Kind: schema.KindPrimitive},
 			{YAMLName: "queue", Kind: schema.KindPrimitive},
 		},
-		kind:    schema.KindList,
-		content: "workers:\n  - name: a\n    queue: q1\n  - name: b\n",
+		kind: schema.KindList,
+		content: `workers:
+  - name: a
+    queue: q1
+  - name: b
+`,
 	}
 	be := newBlockEdit(Config{}, spec, 100, 40)
 	be.tree = be.resyncTreeFromYAML()
@@ -279,7 +333,12 @@ func TestParseSeqEntries_anchorInEntry_doesNotPanic(t *testing.T) {
 
 func TestParseMapEntries_colonInKey(t *testing.T) {
 	// Map keys that contain colons (e.g. devcontainer feature keys) must round-trip.
-	mapBase := "portsAttributes:\n  \"3000:80\":\n    label: web\n  \"8080\":\n    label: api\n"
+	mapBase := `portsAttributes:
+  "3000:80":
+    label: web
+  "8080":
+    label: api
+`
 	entries := parseMapEntries("portsAttributes", mapBase)
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 map entries, got %d", len(entries))

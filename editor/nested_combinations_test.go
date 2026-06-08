@@ -44,7 +44,10 @@ func seqCtx() toggleCtx { return toggleCtx{key: "categories", childDefs: catDefs
 // (source.filter.regex) into an item that has only an empty "source:". Both
 // source and filter must be created/coerced.
 func TestAudit_DeepNestToggleUnderEmptyAncestors(t *testing.T) {
-	content := "categories:\n  - name: \"a\"\n    source:\n"
+	content := `categories:
+  - name: "a"
+    source:
+`
 	node := seqNode("a", "source", "filter", "regex")
 	got := applyToggleToSeqItem(seqCtx(), node, true, content)
 	if !strings.Contains(got, "filter:") || !strings.Contains(got, "regex:") {
@@ -55,7 +58,11 @@ func TestAudit_DeepNestToggleUnderEmptyAncestors(t *testing.T) {
 // TestAudit_ToggleOffPrunesEmptyAncestors toggles the only leaf off; the now-empty
 // source mapping should be pruned so we don't leave a dangling "source:".
 func TestAudit_ToggleOffPrunesEmptyAncestors(t *testing.T) {
-	content := "categories:\n  - name: \"a\"\n    source:\n      path: /x\n"
+	content := `categories:
+  - name: "a"
+    source:
+      path: /x
+`
 	node := seqNode("a", "source", "path")
 	got := applyToggleToSeqItem(seqCtx(), node, false, content)
 	if strings.Contains(got, "path:") {
@@ -68,7 +75,9 @@ func TestAudit_ToggleOffPrunesEmptyAncestors(t *testing.T) {
 
 // TestAudit_ToggleRoundTrip ON then OFF should return to the original.
 func TestAudit_ToggleRoundTrip(t *testing.T) {
-	content := "categories:\n  - name: \"a\"\n"
+	content := `categories:
+  - name: "a"
+`
 	node := seqNode("a", "source", "filter", "regex")
 	on := applyToggleToSeqItem(seqCtx(), node, true, content)
 	off := applyToggleToSeqItem(seqCtx(), node, false, on)
@@ -81,7 +90,10 @@ func TestAudit_ToggleRoundTrip(t *testing.T) {
 // navigator: a map entry with an empty nested struct must accept a deep child.
 func TestAudit_MapEntryDeepNestSymmetry(t *testing.T) {
 	ctx := toggleCtx{key: "items", childDefs: catDefs()}
-	content := "items:\n  k1:\n    source:\n"
+	content := `items:
+  k1:
+    source:
+`
 	node := seqNode("k1", "source", "filter", "regex")
 	got := applyToggleToMapEntry(ctx, node, true, content)
 	if !strings.Contains(got, "filter:") || !strings.Contains(got, "regex:") {
@@ -92,7 +104,10 @@ func TestAudit_MapEntryDeepNestSymmetry(t *testing.T) {
 // TestAudit_ToggleSecondSiblingKeepsFirst adds path then extensions; both must
 // survive (no clobber of the freshly-created parent).
 func TestAudit_ToggleSecondSiblingKeepsFirst(t *testing.T) {
-	content := "categories:\n  - name: \"a\"\n    source:\n"
+	content := `categories:
+  - name: "a"
+    source:
+`
 	c1 := applyToggleToSeqItem(seqCtx(), seqNode("a", "source", "path"), true, content)
 	c2 := applyToggleToSeqItem(seqCtx(), seqNode("a", "source", "extensions"), true, c1)
 	if !strings.Contains(c2, "path:") || !strings.Contains(c2, "extensions:") {
@@ -103,7 +118,9 @@ func TestAudit_ToggleSecondSiblingKeepsFirst(t *testing.T) {
 // TestAudit_ToggleParentStructOnAddsKey toggling an inline struct parent (hooks)
 // ON via the apply layer should add the key (asStruct=false path) without panic.
 func TestAudit_ToggleParentStructOnThenChild(t *testing.T) {
-	content := "categories:\n  - name: \"a\"\n"
+	content := `categories:
+  - name: "a"
+`
 	// toggle hooks.before.shell directly into an item that has no hooks at all.
 	node := seqNode("a", "hooks", "before", "shell")
 	got := applyToggleToSeqItem(seqCtx(), node, true, content)
@@ -126,7 +143,9 @@ func expandSeqItems(be blockEditState) blockEditState {
 // TestAudit_EnterThenCtrlDOnInlineParent probes the Enter/ctrl+d symmetry on an
 // inline struct parent. Whatever Enter creates, ctrl+d must be able to remove.
 func TestAudit_EnterThenCtrlDOnInlineParent(t *testing.T) {
-	content := "categories:\n  - name: \"a\"\n"
+	content := `categories:
+  - name: "a"
+`
 	be := newBlockEdit(Config{}, blockSpec{key: "categories", defs: catDefs(), kind: schema.KindList, content: content}, 120, 40)
 	be = expandSeqItems(be)
 	be = cursorToLabel(be, "source")
@@ -153,7 +172,10 @@ func expandAll(be blockEditState) blockEditState {
 // ctrl+u must undo only the second, keeping the first. If coll.entries is stale and
 // restoreUndo reloads from it, both edits are lost.
 func TestAudit_UndoAfterTwoTogglesKeepsFirst(t *testing.T) {
-	content := "categories:\n  - name: \"a\"\n    source:\n"
+	content := `categories:
+  - name: "a"
+    source:
+`
 	be := newBlockEdit(Config{}, blockSpec{key: "categories", defs: catDefs(), kind: schema.KindList, content: content}, 120, 40)
 	be = expandAll(be)
 
@@ -220,7 +242,10 @@ func TestAudit_OpenableListHasNoInlineChildren(t *testing.T) {
 // NoDeleteConfirm is set.
 func TestAudit_EntryDeleteConfirms(t *testing.T) {
 	spec := blockSpec{key: "categories", defs: catDefs(), kind: schema.KindList,
-		content: "categories:\n  - name: \"a\"\n  - name: \"b\"\n"}
+		content: `categories:
+  - name: "a"
+  - name: "b"
+`}
 
 	// Default: confirm, then delete on confirm.
 	be := newBlockEdit(Config{}, spec, 120, 40)
@@ -283,10 +308,22 @@ func TestAudit_RemovalConfirmIsDepthConsistent(t *testing.T) {
 		name, content, label string
 		want                 bool
 	}{
-		{"filled-top", "categories:\n  - name: \"a\"\n", "name", true},
+		{"filled-top", `categories:
+  - name: "a"
+`, "name", true},
 		{"empty-top", "categories:\n  - name:\n", "name", false},
-		{"filled-nested", "categories:\n  - name: \"a\"\n    hooks:\n      before:\n        shell: bash\n", "shell", true},
-		{"empty-nested", "categories:\n  - name: \"a\"\n    hooks:\n      before:\n        shell:\n", "shell", false},
+		{"filled-nested", `categories:
+  - name: "a"
+    hooks:
+      before:
+        shell: bash
+`, "shell", true},
+		{"empty-nested", `categories:
+  - name: "a"
+    hooks:
+      before:
+        shell:
+`, "shell", false},
 	}
 	for _, tc := range cases {
 		if got := confirmsOnCtrlD(tc.content, tc.label); got != tc.want {
@@ -299,8 +336,18 @@ func TestAudit_RemovalConfirmIsDepthConsistent(t *testing.T) {
 // clear the checked state of ALL its descendants (the sync used to leave stale
 // checkmarks when an ancestor vanished), while siblings keep theirs.
 func TestAudit_RemoveParentResetsDescendantChecks(t *testing.T) {
-	full := "categories:\n  - name: \"a\"\n    source:\n      path: /x\n      filter:\n        regex: foo\n" +
-		"    hooks:\n      before:\n        shell: bash\n      after:\n        shell: zsh\n"
+	full := `categories:
+  - name: "a"
+    source:
+      path: /x
+      filter:
+        regex: foo
+    hooks:
+      before:
+        shell: bash
+      after:
+        shell: zsh
+`
 
 	remove := func(parent string) blockEditState {
 		be := newBlockEdit(Config{}, blockSpec{key: "categories", defs: catDefs(), kind: schema.KindList, content: full}, 120, 40)

@@ -128,7 +128,9 @@ func TestResyncToleratesInvalidYAML_struct(t *testing.T) {
 // collection navigator: an unparseable current entry preserves the entry's label
 // and never mutates the canonical entries slice.
 func TestResyncToleratesInvalidYAML_collection(t *testing.T) {
-	be := newBlockEdit(Config{}, seqSpec("categories:\n  - name: alpha\n"), 100, 40)
+	be := newBlockEdit(Config{}, seqSpec(`categories:
+  - name: alpha
+`), 100, 40)
 	nodeBefore := nodeToContent(be.key, be.node)
 
 	be.active = blockEditPanelYAML
@@ -162,7 +164,9 @@ func TestAppendFieldFromSnippet_multipleFields(t *testing.T) {
 	snippet := "  path: /foo\n  recursive: true\n"
 
 	var root yaml.Node
-	if err := yaml.Unmarshal([]byte("parent:\n  existing: ok\n"), &root); err != nil {
+	if err := yaml.Unmarshal([]byte(`parent:
+  existing: ok
+`), &root); err != nil {
 		t.Fatal(err)
 	}
 	valueNode := root.Content[0].Content[1] // the mapping under "parent"
@@ -192,7 +196,10 @@ func TestAppendFieldFromSnippet_multipleFields(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFlushCurrentEntry_missingHeader_setsErrMsg(t *testing.T) {
-	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
+	spec := seqSpec(`categories:
+  - name: alpha
+  - name: beta
+`)
 	be := newBlockEdit(Config{}, spec, 100, 40)
 
 	originalEntry := be.entryYAML(0)
@@ -233,7 +240,10 @@ func TestFlushCurrentEntry_validContent_clearsErrMsg(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestForceBlockStyle_preservesFlowSequence(t *testing.T) {
-	input := "config:\n  extensions: [\"pdf\", \"txt\"]\n  name: test\n"
+	input := `config:
+  extensions: ["pdf", "txt"]
+  name: test
+`
 
 	// withYAMLRoot is the main consumer of forceBlockStyle.
 	result := withYAMLRoot(input, func(root *yaml.Node) bool {
@@ -336,7 +346,9 @@ func TestApplyToggleAt_complexSnippetArray(t *testing.T) {
 
 func TestEditorH_nonNegative(t *testing.T) {
 	heights := []int{1, 2, 3, 5, 7, 10, 20}
-	spec := seqSpec("categories:\n  - name: a\n")
+	spec := seqSpec(`categories:
+  - name: a
+`)
 	for _, h := range heights {
 		be := newBlockEdit(Config{}, spec, 100, h)
 		if got := be.editorH(); got < 0 {
@@ -351,7 +363,10 @@ func TestEditorH_nonNegative(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCollectionDerive_perEntryLabels(t *testing.T) {
-	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
+	spec := seqSpec(`categories:
+  - name: alpha
+  - name: beta
+`)
 	be := newBlockEdit(Config{}, spec, 100, 40)
 
 	// Edit entry 1 through the parse gate (the real keystroke path splices the
@@ -384,7 +399,10 @@ func TestCollectionDerive_perEntryLabels(t *testing.T) {
 // Before the fix, findOrCreateMappingChild returned the null scalar as-is and
 // appendLeafToMapping silently no-op'd, so the toggle did nothing.
 func TestToggleChildUnderEmptyParent(t *testing.T) {
-	content := "categories:\n  - name: \"lucas\"\n    source:\n"
+	content := `categories:
+  - name: "lucas"
+    source:
+`
 
 	ctx := toggleCtx{
 		key: "categories",
@@ -426,7 +444,15 @@ func TestCtrlDRemovesNestedParentBlock(t *testing.T) {
 			}},
 		}},
 	}
-	content := "categories:\n  - name: \"lucas\"\n    hooks:\n      before:\n        shell: bash\n        run: echo hi\n      after:\n        shell: bash\n"
+	content := `categories:
+  - name: "lucas"
+    hooks:
+      before:
+        shell: bash
+        run: echo hi
+      after:
+        shell: bash
+`
 	be := newBlockEdit(Config{}, blockSpec{key: "categories", defs: defs, kind: schema.KindList, content: content}, 120, 40)
 
 	// Expand every node so "before" is visible, then place the cursor on it.

@@ -91,13 +91,19 @@ func cursorToFieldExpanded(be blockEditState, label string) blockEditState {
 // is "checked" (rendered active) only when it holds content, and muted when
 // empty — fixing the bug where openable fields always looked active.
 func TestOpenableChildReflectsContent(t *testing.T) {
-	filled := newBlockEdit(Config{}, filterSpec("filters:\n  - regex: \"x\"\n    any:\n      - regex: \"y\"\n"), 100, 40)
+	filled := newBlockEdit(Config{}, filterSpec(`filters:
+  - regex: "x"
+    any:
+      - regex: "y"
+`), 100, 40)
 	tm := filled.collectionDeriveTree()
 	if n, ok := findFieldNode(tm, "any"); !ok || !n.checked {
 		t.Errorf("filled 'any' should be checked/active; got ok=%v checked=%v", ok, n.checked)
 	}
 
-	empty := newBlockEdit(Config{}, filterSpec("filters:\n  - regex: \"x\"\n"), 100, 40)
+	empty := newBlockEdit(Config{}, filterSpec(`filters:
+  - regex: "x"
+`), 100, 40)
 	tm = empty.collectionDeriveTree()
 	if n, ok := findFieldNode(tm, "any"); !ok || n.checked {
 		t.Errorf("empty 'any' should be unchecked/muted; got ok=%v checked=%v", ok, n.checked)
@@ -107,7 +113,11 @@ func TestOpenableChildReflectsContent(t *testing.T) {
 // TestCtrlDOnFilledOpenableAsksRemove verifies ctrl+d now acts on an openable
 // field with content (opens the remove confirm), instead of being a no-op.
 func TestCtrlDOnFilledOpenableAsksRemove(t *testing.T) {
-	be := newBlockEdit(Config{}, filterSpec("filters:\n  - regex: \"x\"\n    any:\n      - regex: \"y\"\n"), 100, 40)
+	be := newBlockEdit(Config{}, filterSpec(`filters:
+  - regex: "x"
+    any:
+      - regex: "y"
+`), 100, 40)
 	be.tree = be.collectionDeriveTree()
 	be = cursorToFieldExpanded(be, "any")
 
@@ -121,7 +131,9 @@ func TestCtrlDOnFilledOpenableAsksRemove(t *testing.T) {
 // TestCtrlDOnEmptyOpenableNoop verifies ctrl+d on an empty openable does nothing
 // (there is no content to remove) and never opens a confirm.
 func TestCtrlDOnEmptyOpenableNoop(t *testing.T) {
-	be := newBlockEdit(Config{}, filterSpec("filters:\n  - regex: \"x\"\n"), 100, 40)
+	be := newBlockEdit(Config{}, filterSpec(`filters:
+  - regex: "x"
+`), 100, 40)
 	be.tree = be.collectionDeriveTree()
 	be = cursorToFieldExpanded(be, "any")
 
@@ -137,9 +149,13 @@ func TestCtrlDOnEmptyOpenableNoop(t *testing.T) {
 // cursor on the last entry.
 func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
 	stub := stubPresets{data: map[string]string{
-		"categories/extra": "categories:\n  - name: appended\n",
+		"categories/extra": `categories:
+  - name: appended
+`,
 	}}
-	spec := seqSpec("categories:\n  - name: existing\n")
+	spec := seqSpec(`categories:
+  - name: existing
+`)
 	be := newBlockEdit(Config{Presets: stub}, spec, 100, 40)
 
 	be = be.openPresetPicker()
@@ -181,13 +197,19 @@ func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
 func TestAppendPreset_indentMismatch(t *testing.T) {
 	// existing uses 4-space, preset uses 2-space
 	stub := stubPresets{data: map[string]string{
-		"categories/extra": "categories:\n  - name: appended\n    enabled: null\n",
+		"categories/extra": `categories:
+  - name: appended
+    enabled: null
+`,
 	}}
 	spec := blockSpec{
-		key:     "categories",
-		kind:    schema.KindList,
-		defs:    []schema.FieldDef{{YAMLName: "name", Kind: schema.KindPrimitive}},
-		content: "categories:\n    - name: existing\n      enabled: true\n",
+		key:  "categories",
+		kind: schema.KindList,
+		defs: []schema.FieldDef{{YAMLName: "name", Kind: schema.KindPrimitive}},
+		content: `categories:
+    - name: existing
+      enabled: true
+`,
 	}
 	be := newBlockEdit(Config{Presets: stub}, spec, 100, 40)
 	be = be.openPresetPicker()
@@ -209,9 +231,14 @@ func TestAppendPreset_indentMismatch(t *testing.T) {
 // entries adds all of them.
 func TestAppendPreset_multiEntryPreset(t *testing.T) {
 	stub := stubPresets{data: map[string]string{
-		"categories/multi": "categories:\n  - name: alpha\n  - name: beta\n",
+		"categories/multi": `categories:
+  - name: alpha
+  - name: beta
+`,
 	}}
-	spec := seqSpec("categories:\n  - name: existing\n")
+	spec := seqSpec(`categories:
+  - name: existing
+`)
 	be := newBlockEdit(Config{Presets: stub}, spec, 100, 40)
 	be = be.openPresetPicker()
 	be = be.appendPreset("multi")
@@ -239,7 +266,10 @@ func structSpec() blockSpec {
 			{YAMLName: "output", Kind: schema.KindPrimitive},
 			{YAMLName: "log-level", Kind: schema.KindPrimitive},
 		},
-		content: "configuration:\n  output: both\n  log-level: info\n",
+		content: `configuration:
+  output: both
+  log-level: info
+`,
 	}
 }
 
@@ -264,7 +294,10 @@ func TestUndo_structFieldRemove(t *testing.T) {
 			{YAMLName: "log-level", Kind: schema.KindPrimitive},
 		},
 		// output has an empty value so ctrl+d removes it directly (no confirm).
-		content: "configuration:\n  output: \"\"\n  log-level: info\n",
+		content: `configuration:
+  output: ""
+  log-level: info
+`,
 	}
 	be := newBlockEdit(Config{}, spec, 100, 40)
 	want := be.yamlEditor.Value()
@@ -338,7 +371,9 @@ func TestUndo_structFieldAdd(t *testing.T) {
 			{YAMLName: "output", Kind: schema.KindPrimitive},
 			{YAMLName: "log-level", Kind: schema.KindPrimitive},
 		},
-		content: "configuration:\n  log-level: info\n",
+		content: `configuration:
+  log-level: info
+`,
 	}
 	be := newBlockEdit(Config{}, spec, 100, 40)
 	want := be.yamlEditor.Value()
@@ -363,7 +398,10 @@ func TestUndo_structFieldAdd(t *testing.T) {
 // TestUndo_seqItemDelete verifies that deleting a seq item saves an undo snap
 // and that restoreUndo restores the original entries.
 func TestUndo_seqItemDelete(t *testing.T) {
-	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
+	spec := seqSpec(`categories:
+  - name: alpha
+  - name: beta
+`)
 	be := newBlockEdit(Config{}, spec, 100, 40)
 	wantBase := nodeToContent("categories", be.node)
 
@@ -391,7 +429,9 @@ func TestUndo_seqItemDelete(t *testing.T) {
 // TestUndo_seqItemAdd verifies that adding a seq item saves an undo snap and
 // that restoreUndo removes the added item.
 func TestUndo_seqItemAdd(t *testing.T) {
-	spec := seqSpec("categories:\n  - name: alpha\n")
+	spec := seqSpec(`categories:
+  - name: alpha
+`)
 	be := newBlockEdit(Config{}, spec, 100, 40)
 	wantBase := nodeToContent("categories", be.node)
 
@@ -421,7 +461,10 @@ func TestUndo_seqItemAdd(t *testing.T) {
 // parse-gates edits into the node) leaves the canonical node untouched until a
 // real flush. Only navigation and commit reconcile the buffer into the node.
 func TestCollectionNav_RawSetValueDoesNotMutateNode(t *testing.T) {
-	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
+	spec := seqSpec(`categories:
+  - name: alpha
+  - name: beta
+`)
 	be := newBlockEdit(Config{}, spec, 100, 40)
 
 	original := be.entryYAML(0)
@@ -439,7 +482,10 @@ func TestCollectionNav_RawSetValueDoesNotMutateNode(t *testing.T) {
 // TestCollectionNav_CommitFlushesAndSerializesAll verifies that commit() flushes
 // the current buffer into entries and includes all entries in the snippet.
 func TestCollectionNav_CommitFlushesAndSerializesAll(t *testing.T) {
-	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
+	spec := seqSpec(`categories:
+  - name: alpha
+  - name: beta
+`)
 	be := newBlockEdit(Config{}, spec, 100, 40)
 
 	be.active = blockEditPanelYAML
@@ -460,7 +506,10 @@ func TestCollectionNav_CommitFlushesAndSerializesAll(t *testing.T) {
 // TestCollectionNav_DoubleCommitIdempotent is a regression test for the
 // duplication bug: committing twice must produce identical snippets.
 func TestCollectionNav_DoubleCommitIdempotent(t *testing.T) {
-	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
+	spec := seqSpec(`categories:
+  - name: alpha
+  - name: beta
+`)
 	be := newBlockEdit(Config{}, spec, 100, 40)
 
 	be.active = blockEditPanelYAML

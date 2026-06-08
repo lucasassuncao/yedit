@@ -102,7 +102,11 @@ func (d *Document) snapshot() {
 	copy(snap, d.raw)
 	d.history = append(d.history, snap)
 	if len(d.history) > HistoryLimit {
-		d.history = d.history[len(d.history)-HistoryLimit:]
+		drop := len(d.history) - HistoryLimit
+		for i := range drop {
+			d.history[i] = nil
+		}
+		d.history = d.history[drop:]
 	}
 }
 
@@ -222,8 +226,10 @@ func (d *Document) Undo() bool {
 	if len(d.history) == 0 {
 		return false
 	}
-	prev := d.history[len(d.history)-1]
-	d.history = d.history[:len(d.history)-1]
+	last := len(d.history) - 1
+	prev := d.history[last]
+	d.history[last] = nil
+	d.history = d.history[:last]
 	d.raw = prev
 	if blocks, err := ParseBlocks(prev); err == nil {
 		d.blocks = blocks

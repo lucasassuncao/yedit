@@ -21,7 +21,7 @@ Package viewer is a read\-only TUI that browses the presets exposed by a presets
 
 
 <a name="Run"></a>
-## func [Run](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L171>)
+## func [Run](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L170>)
 
 ```go
 func Run(src presets.Source) error
@@ -68,7 +68,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
 
 
 <a name="Model.View"></a>
-### func \(Model\) [View](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L140>)
+### func \(Model\) [View](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L139>)
 
 ```go
 func (m Model) View() string

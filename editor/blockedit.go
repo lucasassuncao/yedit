@@ -1008,7 +1008,11 @@ func (be blockEditState) saveUndo() blockEditState {
 	}
 	be.undoStack = append(be.undoStack, snap)
 	if len(be.undoStack) > maxUndoDepth {
-		be.undoStack = be.undoStack[len(be.undoStack)-maxUndoDepth:]
+		drop := len(be.undoStack) - maxUndoDepth
+		for i := range drop {
+			be.undoStack[i] = nil
+		}
+		be.undoStack = be.undoStack[drop:]
 	}
 	return be
 }
@@ -1017,8 +1021,10 @@ func (be blockEditState) restoreUndo() blockEditState {
 	if len(be.undoStack) == 0 {
 		return be
 	}
-	snap := be.undoStack[len(be.undoStack)-1]
-	be.undoStack = be.undoStack[:len(be.undoStack)-1]
+	last := len(be.undoStack) - 1
+	snap := be.undoStack[last]
+	be.undoStack[last] = nil
+	be.undoStack = be.undoStack[:last]
 	be.currentPreset = snap.preset
 	be.dirty = snap.dirty
 	be.errMsg = ""

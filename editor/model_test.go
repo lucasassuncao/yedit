@@ -75,7 +75,9 @@ func TestPreviewIsReadOnly(t *testing.T) {
 	// Seed some content, then enter the preview pane via Tab.
 	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "server"}})
 	m = updated.(model)
-	updated, _ = m.Update(blockEditCommittedMsg{Snippet: "server:\n  host: localhost\n"})
+	updated, _ = m.Update(blockEditCommittedMsg{Snippet: `server:
+  host: localhost
+`})
 	m = updated.(model)
 	updated, _ = m.Update(blockEditDiscardedMsg{})
 	m = updated.(model)
@@ -110,7 +112,9 @@ func TestPreviewIsReadOnly(t *testing.T) {
 // leaving it showing stale content.
 func TestCtrlU_blockEditorNoSnapDoesNotTouchDocument(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cfg.yaml")
-	if err := os.WriteFile(path, []byte("server:\n  host: localhost\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`server:
+  host: localhost
+`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}})
@@ -200,7 +204,13 @@ type followCfg struct {
 // scrolls the read-only preview to the selected block's line.
 func TestPreviewFollowsSelectedBlock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "f.yaml")
-	if err := os.WriteFile(path, []byte("a: 1\nb: 2\nc: 3\nd: 4\ne: 5\nf: 6\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`a: 1
+b: 2
+c: 3
+d: 4
+e: 5
+f: 6
+`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	m, err := newModel(Config{Path: path, Schema: &followCfg{}})
@@ -247,7 +257,9 @@ func checkScreenInvariant(t *testing.T, m model, where string) {
 // that forgets to clear a sibling field.
 func TestScreenInvariantAcrossTransitions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "inv.yaml")
-	if err := os.WriteFile(path, []byte("server:\n  host: localhost\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`server:
+  host: localhost
+`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}})

@@ -44,13 +44,17 @@ func TestLoad_crlf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if string(doc.Raw()) != "name: mydev\nimage: ubuntu:22.04\n" {
+	if string(doc.Raw()) != `name: mydev
+image: ubuntu:22.04
+` {
 		t.Errorf("CRLF not normalised: %q", doc.Raw())
 	}
 }
 
 func TestDocument_BlockContent(t *testing.T) {
-	doc, err := document.New([]byte("name: mydev\nimage: ubuntu:22.04\n"), canonicalOrder)
+	doc, err := document.New([]byte(`name: mydev
+image: ubuntu:22.04
+`), canonicalOrder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +68,10 @@ func TestDocument_BlockContent(t *testing.T) {
 }
 
 func TestDocument_InsertOrdered(t *testing.T) {
-	doc, err := document.New([]byte("name: mydev\nforwardPorts:\n  - 3000\n"), canonicalOrder)
+	doc, err := document.New([]byte(`name: mydev
+forwardPorts:
+  - 3000
+`), canonicalOrder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +79,11 @@ func TestDocument_InsertOrdered(t *testing.T) {
 		t.Fatalf("Insert: %v", err)
 	}
 	got := string(doc.Raw())
-	want := "name: mydev\nimage: ubuntu:22.04\nforwardPorts:\n  - 3000\n"
+	want := `name: mydev
+image: ubuntu:22.04
+forwardPorts:
+  - 3000
+`
 	if got != want {
 		t.Errorf("Raw() after Insert =\n%q\nwant\n%q", got, want)
 	}
@@ -93,7 +104,9 @@ func TestDocument_RemoveNotFound(t *testing.T) {
 }
 
 func TestDocument_ReplaceRawInvalid(t *testing.T) {
-	original := []byte("name: mydev\nimage: ubuntu:22.04\n")
+	original := []byte(`name: mydev
+image: ubuntu:22.04
+`)
 	doc, err := document.New(original, canonicalOrder)
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +201,9 @@ func TestDocument_HistoryCapsAt50(t *testing.T) {
 }
 
 func TestDocument_ReplaceAtomic(t *testing.T) {
-	doc, err := document.New([]byte("name: mydev\nimage: ubuntu:22.04\n"), canonicalOrder)
+	doc, err := document.New([]byte(`name: mydev
+image: ubuntu:22.04
+`), canonicalOrder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +217,9 @@ func TestDocument_ReplaceAtomic(t *testing.T) {
 	if !doc.Undo() {
 		t.Fatal("expected Undo to succeed")
 	}
-	if string(doc.Raw()) != "name: mydev\nimage: ubuntu:22.04\n" {
+	if string(doc.Raw()) != `name: mydev
+image: ubuntu:22.04
+` {
 		t.Errorf("after one Undo, Raw =\n%q", doc.Raw())
 	}
 	// No further undo (single snapshot was recorded by Replace).
@@ -398,7 +415,13 @@ func TestExternallyChanged(t *testing.T) {
 // TestReplace_preservesSurroundingComments: editing one block must not drop
 // comments and blank lines that live outside the replaced block.
 func TestReplace_preservesSurroundingComments(t *testing.T) {
-	src := "# top of file\nname: web\n\n# the image to use\nimage: alpine\n# trailing note\n"
+	src := `# top of file
+name: web
+
+# the image to use
+image: alpine
+# trailing note
+`
 	path := filepath.Join(t.TempDir(), "comments.yaml")
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
@@ -424,7 +447,11 @@ func TestReplace_preservesSurroundingComments(t *testing.T) {
 
 func TestParseBlocks_withAnchors(t *testing.T) {
 	// Anchors must not crash ParseBlocks; the resolved content is what matters.
-	raw := "base: &anchor\n  value: x\nderived:\n  <<: *anchor\n"
+	raw := `base: &anchor
+  value: x
+derived:
+  <<: *anchor
+`
 	blocks, err := document.ParseBlocks([]byte(raw))
 	if err != nil {
 		t.Fatalf("ParseBlocks with anchors: unexpected error: %v", err)
@@ -439,7 +466,10 @@ func TestParseBlocks_withAnchors(t *testing.T) {
 
 func TestParseBlocks_multiDocument(t *testing.T) {
 	// Only the first YAML document should be returned; no panic.
-	raw := "key1: val1\n---\nkey2: val2\n"
+	raw := `key1: val1
+---
+key2: val2
+`
 	blocks, err := document.ParseBlocks([]byte(raw))
 	if err != nil {
 		t.Fatalf("ParseBlocks with multi-document: unexpected error: %v", err)
@@ -463,7 +493,9 @@ func TestParseBlocks_tabIndented(t *testing.T) {
 
 func TestDocument_ReplaceRoundTrip(t *testing.T) {
 	// After Replace, the stored block must be semantically equal to the snippet.
-	raw := []byte("name: mydev\nimage: ubuntu:22.04\n")
+	raw := []byte(`name: mydev
+image: ubuntu:22.04
+`)
 	doc, err := document.New(raw, []string{"name", "image"})
 	if err != nil {
 		t.Fatal(err)
@@ -549,8 +581,11 @@ func TestLoad_utf8BOM(t *testing.T) {
 			t.Errorf("after save+reload, unexpected block key %q", b.Key)
 		}
 	}
-	if got := string(doc2.Raw()); got != "name: api\nimage: ubuntu:22.04\n" {
-		t.Errorf("Raw after BOM round-trip =\n%q\nwant\n%q", got, "name: api\nimage: ubuntu:22.04\n")
+	want2 := `name: api
+image: ubuntu:22.04
+`
+	if got := string(doc2.Raw()); got != want2 {
+		t.Errorf("Raw after BOM round-trip =\n%q\nwant\n%q", got, want2)
 	}
 }
 

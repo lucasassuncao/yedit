@@ -30,8 +30,8 @@ type Source interface {
 	PresetYAML(field, name string) (string, error)
 }
 
-// FromFS returns a Source backed by an fs.FS rooted at root (use "." for the
-// whole filesystem).
+// FromFS returns an FSSource backed by an fs.FS rooted at root (use "." for
+// the whole filesystem).
 //
 // Layout convention:
 //
@@ -41,16 +41,17 @@ type Source interface {
 // the .yaml files within each field directory (stripping the extension).
 //
 // FromFS is convenient for clients that ship presets as a Go embed.FS.
-func FromFS(fsys fs.FS, root string) Source {
-	return &fsSource{fsys: fsys, root: root}
+func FromFS(fsys fs.FS, root string) *FSSource {
+	return &FSSource{fsys: fsys, root: root}
 }
 
-type fsSource struct {
+// FSSource is a filesystem-backed Source. Use FromFS to construct one.
+type FSSource struct {
 	fsys fs.FS
 	root string
 }
 
-func (s *fsSource) ListFields() []string {
+func (s *FSSource) ListFields() []string {
 	entries, err := fs.ReadDir(s.fsys, s.root)
 	if err != nil {
 		return nil
@@ -65,7 +66,7 @@ func (s *fsSource) ListFields() []string {
 	return fields
 }
 
-func (s *fsSource) ListPresets(field string) []string {
+func (s *FSSource) ListPresets(field string) []string {
 	dir := path.Join(s.root, field)
 	entries, err := fs.ReadDir(s.fsys, dir)
 	if err != nil {
@@ -87,7 +88,7 @@ func (s *fsSource) ListPresets(field string) []string {
 	return presets
 }
 
-func (s *fsSource) PresetYAML(field, name string) (string, error) {
+func (s *FSSource) PresetYAML(field, name string) (string, error) {
 	for _, ext := range []string{".yaml", ".yml"} {
 		p := path.Join(s.root, field, name+ext)
 		data, err := fs.ReadFile(s.fsys, p)
