@@ -191,7 +191,7 @@ func (d *Document) Replace(key, snippet string) error {
 func blockSemanticEqual(a, b string) bool {
 	var va, vb any
 	if err := yaml.Unmarshal([]byte(a), &va); err != nil {
-		return true
+		return false
 	}
 	if err := yaml.Unmarshal([]byte(b), &vb); err != nil {
 		return false

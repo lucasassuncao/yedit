@@ -17,6 +17,7 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 - [type Config](<#Config>)
 - [type Validator](<#Validator>)
   - [func MutuallyExclusive\(keys ...string\) Validator](<#MutuallyExclusive>)
+  - [func MutuallyExclusiveNested\(scopedPath string, keys ...string\) Validator](<#MutuallyExclusiveNested>)
   - [func RequiredWith\(key, parent string\) Validator](<#RequiredWith>)
 - [type ValidatorFunc](<#ValidatorFunc>)
   - [func \(f ValidatorFunc\) Validate\(raw \[\]byte, blocks \[\]document.Block\) \[\]string](<#ValidatorFunc.Validate>)
@@ -34,7 +35,7 @@ Run starts the editor TUI and blocks until the user quits. The Config must have 
 Returns nil on a clean quit, or the underlying tea.Program error. A panic inside the editor is recovered and returned as an error instead of crashing the embedding program: Bubble Tea restores the terminal before the panic propagates here, so the host is left with a usable terminal and a normal error to handle.
 
 <a name="RunAll"></a>
-## func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L11>)
+## func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L13>)
 
 ```go
 func RunAll(validators []Validator, raw []byte, blocks []document.Block) []string
@@ -93,16 +94,60 @@ type Validator interface {
 ```
 
 <a name="MutuallyExclusive"></a>
-### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L24>)
+### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L45>)
 
 ```go
 func MutuallyExclusive(keys ...string) Validator
 ```
 
-MutuallyExclusive reports a violation when more than one of the listed keys is present in the document.
+MutuallyExclusive reports a violation when more than one of the listed keys is present at the same time.
+
+Two forms are supported:
+
+Top\-level keys \(no dots\) — checks the document's root\-level blocks:
+
+```
+editor.MutuallyExclusive("image", "build", "dockerComposeFile")
+```
+
+Dotted paths — all paths must share the same parent prefix. The validator navigates to that parent in the YAML tree, automatically expanding sequences \(all items are checked\) and dict\-style mappings \(all values are checked\). Use this for constraints that live at a specific location in the document:
+
+```
+editor.MutuallyExclusive(
+    "categories.installers.source.filter.any",
+    "categories.installers.source.filter.all",
+)
+```
+
+For constraints that must hold at every occurrence of a key regardless of depth \(e.g. recursive schemas\), use MutuallyExclusiveNested instead.
+
+<a name="MutuallyExclusiveNested"></a>
+### func [MutuallyExclusiveNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L220>)
+
+```go
+func MutuallyExclusiveNested(scopedPath string, keys ...string) Validator
+```
+
+MutuallyExclusiveNested walks the YAML tree and fires at every mapping whose direct parent key is the last segment of scopedPath, checking that at most one of keys is present.
+
+Two forms:
+
+Single key — searches the entire document \(backward\-compatible\):
+
+```
+editor.MutuallyExclusiveNested("filter", "any", "all")
+```
+
+Dotted path — navigates to the scoped root first, then recurses only within that subtree. The last segment is the key name used for recursive matching. Sequences and dict\-style mappings along the path are expanded automatically:
+
+```
+editor.MutuallyExclusiveNested("categories.installers.source.filter", "any", "all")
+```
+
+The scoped form is preferred when the constraint applies to a specific filter type and not to every mapping named "filter" in the document.
 
 <a name="RequiredWith"></a>
-### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L48>)
+### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L186>)
 
 ```go
 func RequiredWith(key, parent string) Validator

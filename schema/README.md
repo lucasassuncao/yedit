@@ -33,7 +33,7 @@ KnownChildren collapses a FieldDef tree into a map of dotted paths to the set of
 A nil value at a path means "free\-form" — children at that path are not validated \(e.g. customizations.vscode.settings has no fixed schema\).
 
 <a name="TopLevelOrder"></a>
-## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L257>)
+## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L260>)
 
 ```go
 func TopLevelOrder(fields []FieldDef) []string

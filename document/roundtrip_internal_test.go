@@ -28,4 +28,10 @@ func TestBlockSemanticEqual_roundtripComparison(t *testing.T) {
 	if blockSemanticEqual(snippet, "image:\n"+diverged) {
 		t.Error("malformed b must fail-closed (false) so corruption triggers rollback")
 	}
+
+	// When a (the original snippet) fails to parse, the function must also
+	// fail-closed — it must not silently accept an unverifiable round-trip.
+	if blockSemanticEqual("image:\n"+snippet, snippet) {
+		t.Error("malformed a must fail-closed (false) — symmetric with malformed b")
+	}
 }

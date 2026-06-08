@@ -477,7 +477,7 @@ func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Commit all stacked editors at once, then save the file.
 			return m.saveAll()
 		case "ctrl+u":
-			if top.undoSnap != nil {
+			if len(top.undoStack) > 0 {
 				be := top.restoreUndo()
 				be.statusMsg = "Undone."
 				m.setTopBE(&be)

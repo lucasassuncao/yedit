@@ -50,6 +50,9 @@ func Discover(v any, recursionLimit ...int) []FieldDef {
 		limit = recursionLimit[0] // caller-specified; 0 = strict (no extra levels)
 	}
 	t := reflect.TypeOf(v)
+	if t == nil {
+		return nil
+	}
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}

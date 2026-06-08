@@ -104,10 +104,10 @@ func TestPreviewIsReadOnly(t *testing.T) {
 }
 
 // TestCtrlU_blockEditorNoSnapDoesNotTouchDocument verifies that pressing ctrl+u
-// inside a block editor when there is no undoSnap is a no-op: the document and
-// the editor mode must be unchanged. Without this guard the fallback m.doc.Undo()
-// would revert the document while the editor is still open, leaving it showing
-// stale content.
+// inside a block editor when the undo stack is empty is a no-op: the document
+// and the editor mode must be unchanged. Without this guard the fallback
+// m.doc.Undo() would revert the document while the editor is still open,
+// leaving it showing stale content.
 func TestCtrlU_blockEditorNoSnapDoesNotTouchDocument(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cfg.yaml")
 	if err := os.WriteFile(path, []byte("server:\n  host: localhost\n"), 0o600); err != nil {
@@ -126,14 +126,14 @@ func TestCtrlU_blockEditorNoSnapDoesNotTouchDocument(t *testing.T) {
 	if m.mode != paneBlockEdit {
 		t.Fatalf("expected paneBlockEdit, got %d", m.mode)
 	}
-	if m.topBE().undoSnap != nil {
-		t.Fatal("undoSnap should be nil on a freshly opened editor")
+	if len(m.topBE().undoStack) != 0 {
+		t.Fatal("undo stack should be empty on a freshly opened editor")
 	}
 
 	rawBefore := string(m.doc.Raw())
 	canUndoBefore := m.doc.CanUndo()
 
-	// ctrl+u with no undoSnap must be a no-op.
+	// ctrl+u with an empty undo stack must be a no-op.
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
 	m = updated.(model)
 

@@ -101,13 +101,13 @@ type blockEditState struct {
 	previewFocus  bool // preset browser: right panel has keyboard focus
 	previewScroll int  // preset browser: line scroll offset in preview panel
 
-	undoSnap         *blockEditUndoSnap // one-level undo for preset apply/append
-	basePresetFields map[string]string  // field name → example from "base" preset; populated once in newBlockEdit
+	undoStack        []*blockEditUndoSnap // undo history; each mutating op pushes a snapshot
+	basePresetFields map[string]string    // field name → example from "base" preset; populated once in newBlockEdit
 	theme            resolvedTheme
 }
 
-// blockEditUndoSnap captures the state of a blockEditState before any
-// mutating operation so it can be restored by a single ctrl+u.
+// blockEditUndoSnap captures the state of a blockEditState before a
+// mutating operation so it can be restored by ctrl+u.
 type blockEditUndoSnap struct {
 	node            *yaml.Node // deep copy of the canonical node at snapshot time
 	currentEntryIdx int
@@ -691,7 +691,7 @@ func (be blockEditState) handleTreeToggled() (blockEditState, tea.Cmd) {
 	}
 	node := be.tree.nodes[idx]
 	be = be.saveUndo()
-	if !node.checked && be.fieldHasContent(node) {
+	if !node.checked && be.fieldHasContent(node) && !be.cfg.NoDeleteConfirm {
 		// Revert the toggle in the tree while waiting for the user to confirm.
 		nodes := make([]treeNode, len(be.tree.nodes))
 		copy(nodes, be.tree.nodes)
@@ -895,6 +895,10 @@ func (be blockEditState) flushCurrentEntry() blockEditState {
 		be.errMsg = ""
 		return be
 	}
+	if !be.coll.isMap && viewHasMultipleSeqItems(view) {
+		be.errMsg = "One entry per editor — use [+ add new] to create additional entries."
+		return be
+	}
 	kn, vn, ok := parseEntryFromView(view, be.coll.isMap)
 	if !ok {
 		if itemContentFrom(be.key, view) == "" {
@@ -987,10 +991,12 @@ func (be blockEditState) openPresetPicker() blockEditState {
 	return be
 }
 
+const maxUndoDepth = 50
+
 func (be blockEditState) saveUndo() blockEditState {
 	treeNodes := make([]treeNode, len(be.tree.nodes))
 	copy(treeNodes, be.tree.nodes)
-	be.undoSnap = &blockEditUndoSnap{
+	snap := &blockEditUndoSnap{
 		node:            cloneNode(be.node),
 		currentEntryIdx: be.coll.current,
 		yamlValue:       be.yamlEditor.Value(),
@@ -1000,15 +1006,19 @@ func (be blockEditState) saveUndo() blockEditState {
 		treeCursor:      be.tree.cursor,
 		treeOffset:      be.tree.offset,
 	}
+	be.undoStack = append(be.undoStack, snap)
+	if len(be.undoStack) > maxUndoDepth {
+		be.undoStack = be.undoStack[len(be.undoStack)-maxUndoDepth:]
+	}
 	return be
 }
 
 func (be blockEditState) restoreUndo() blockEditState {
-	snap := be.undoSnap
-	if snap == nil {
+	if len(be.undoStack) == 0 {
 		return be
 	}
-	be.undoSnap = nil
+	snap := be.undoStack[len(be.undoStack)-1]
+	be.undoStack = be.undoStack[:len(be.undoStack)-1]
 	be.currentPreset = snap.preset
 	be.dirty = snap.dirty
 	be.errMsg = ""

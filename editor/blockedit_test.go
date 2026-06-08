@@ -271,8 +271,8 @@ func TestUndo_structFieldRemove(t *testing.T) {
 
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
 
-	if be.undoSnap == nil {
-		t.Fatal("undoSnap must be set after field remove")
+	if len(be.undoStack) == 0 {
+		t.Fatal("undoStack must be non-empty after field remove")
 	}
 	if strings.Contains(be.yamlEditor.Value(), "output:") {
 		t.Errorf("output still present after remove: %q", be.yamlEditor.Value())
@@ -294,8 +294,8 @@ func TestUndo_structFieldRemoveWithContent(t *testing.T) {
 	// ctrl+d on output (value "both") → shows confirm dialog.
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
 
-	if be.undoSnap == nil {
-		t.Fatal("undoSnap must be set when confirm dialog is shown")
+	if len(be.undoStack) == 0 {
+		t.Fatal("undoStack must be non-empty when confirm dialog is shown")
 	}
 	if be.mode != modeConfirming {
 		t.Fatal("expected modeConfirming after ctrl+d on field with content")
@@ -347,8 +347,8 @@ func TestUndo_structFieldAdd(t *testing.T) {
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyDown})
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	if be.undoSnap == nil {
-		t.Fatal("undoSnap must be set after field add")
+	if len(be.undoStack) == 0 {
+		t.Fatal("undoStack must be non-empty after field add")
 	}
 	if !strings.Contains(be.yamlEditor.Value(), "output:") {
 		t.Errorf("output missing after add: %q", be.yamlEditor.Value())
@@ -374,8 +374,8 @@ func TestUndo_seqItemDelete(t *testing.T) {
 	}
 	be, _ = be.Update(pendingEntryDeleteMsg{seqIdx: 0})
 
-	if be.undoSnap == nil {
-		t.Fatal("undoSnap must be set after seq item delete")
+	if len(be.undoStack) == 0 {
+		t.Fatal("undoStack must be non-empty after seq item delete")
 	}
 
 	be = be.restoreUndo()
@@ -399,8 +399,8 @@ func TestUndo_seqItemAdd(t *testing.T) {
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyDown})
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	if be.undoSnap == nil {
-		t.Fatal("undoSnap must be set after seq item add")
+	if len(be.undoStack) == 0 {
+		t.Fatal("undoStack must be non-empty after seq item add")
 	}
 	if got := seqItemCount(be); got != 2 {
 		t.Errorf("after add got %d seq items, want 2", got)
@@ -517,16 +517,15 @@ func TestPrimitiveBlock_showsFieldItemAndHint(t *testing.T) {
 	}
 }
 
-// TestRestoreUndo_nilSnapIsNoOp guards restoreUndo against a nil snapshot: the
-// production caller checks undoSnap != nil, but the function must not panic if
-// called without a snapshot.
-func TestRestoreUndo_nilSnapIsNoOp(t *testing.T) {
+// TestRestoreUndo_emptyStackIsNoOp guards restoreUndo against an empty stack:
+// the function must not panic and must return the state unchanged.
+func TestRestoreUndo_emptyStackIsNoOp(t *testing.T) {
 	be := newBlockEdit(Config{}, blockSpec{key: "debug", kind: schema.KindPrimitive}, 100, 40)
-	if be.undoSnap != nil {
-		t.Fatal("a freshly opened editor must have no undoSnap")
+	if len(be.undoStack) != 0 {
+		t.Fatal("a freshly opened editor must have an empty undo stack")
 	}
-	got := be.restoreUndo() // must not panic with a nil snapshot
-	if got.undoSnap != nil {
-		t.Error("restoreUndo with a nil snapshot should leave it nil")
+	got := be.restoreUndo() // must not panic with an empty stack
+	if len(got.undoStack) != 0 {
+		t.Error("restoreUndo on an empty stack should leave it empty")
 	}
 }

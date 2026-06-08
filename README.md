@@ -177,6 +177,115 @@ editor.Run(editor.Config{
 })
 ```
 
+## Validators
+
+Validators run before every save and when the user presses `Ctrl+L`. Each
+returns a list of human-readable error strings shown in a blocking alert.
+Pass them via `editor.Config.Validators`.
+
+### MutuallyExclusive
+
+Reports a violation when more than one of the listed keys is present at the
+same time.
+
+**Top-level keys** — compared against the document's root-level blocks:
+
+```go
+editor.Run(editor.Config{
+    // ...
+    Validators: []editor.Validator{
+        editor.MutuallyExclusive("image", "build", "dockerComposeFile"),
+    },
+})
+```
+
+**Dotted paths** — all paths must share the same parent prefix. The validator
+navigates to that parent in the YAML tree and checks the leaf keys there.
+Sequences (`- item`) and dict-style mappings (`key: {…}`) are expanded
+automatically, so every entry in a list or every value in a map is checked:
+
+```go
+editor.Run(editor.Config{
+    // ...
+    Validators: []editor.Validator{
+        // "any" and "all" must not appear together under every
+        // categories › <name> › installers › [n] › source › filter.
+        editor.MutuallyExclusive(
+            "categories.installers.source.filter.any",
+            "categories.installers.source.filter.all",
+        ),
+    },
+})
+```
+
+### MutuallyExclusiveNested
+
+Like `MutuallyExclusive` for dotted paths, but designed for **recursive
+schemas** where the same constraint must hold at every nesting level (e.g. a
+`filter` struct whose `any`/`all` lists can themselves contain `filter`
+structs).
+
+**Single key** — searches the entire document for every mapping whose direct
+parent key equals the given name, regardless of depth:
+
+```go
+editor.Run(editor.Config{
+    // ...
+    Validators: []editor.Validator{
+        editor.MutuallyExclusiveNested("filter", "any", "all"),
+    },
+})
+```
+
+**Scoped dotted path** — navigates to the prefix first, then recurses only
+within that subtree. Use this when multiple unrelated objects in the document
+share the same key name and the rule should only apply to one of them. The
+last segment of the path is the recursive key name:
+
+```go
+editor.Run(editor.Config{
+    // ...
+    Validators: []editor.Validator{
+        // Only recurse through filters that live under
+        // categories › <name> › installers › [n] › source.
+        // A "filter" key elsewhere in the document is ignored.
+        editor.MutuallyExclusiveNested(
+            "categories.installers.source.filter",
+            "any", "all",
+        ),
+    },
+})
+```
+
+### RequiredWith
+
+Reports a violation when `key` is present but `parent` is not:
+
+```go
+editor.Run(editor.Config{
+    // ...
+    Validators: []editor.Validator{
+        editor.RequiredWith("service", "dockerComposeFile"),
+    },
+})
+```
+
+### Combining validators
+
+```go
+editor.Run(editor.Config{
+    // ...
+    Validators: []editor.Validator{
+        editor.MutuallyExclusive("image", "build", "dockerComposeFile"),
+        editor.RequiredWith("service", "dockerComposeFile"),
+        editor.MutuallyExclusiveNested(
+            "categories.installers.source.filter",
+            "any", "all",
+        ),
+    },
+})
+```
+
 ## Union types
 
 Reflection cannot infer the shape of types that wrap a union (scalar /

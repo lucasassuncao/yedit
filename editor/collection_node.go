@@ -91,6 +91,15 @@ func entryViewYAML(node *yaml.Node, key string, isMap bool, i int) string {
 	return nodeToContent(key, wrap)
 }
 
+// viewHasMultipleSeqItems reports whether the YAML text contains more than one
+// sequence item under the collection key. Used to catch the case where a user
+// manually adds a second "- …" block to the single-entry editor — that extra
+// entry would be silently dropped by parseEntryFromView, so we reject it early.
+func viewHasMultipleSeqItems(view string) bool {
+	blockVal := valueNodeOfSnippet(view)
+	return blockVal != nil && blockVal.Kind == yaml.SequenceNode && len(blockVal.Content) > 1
+}
+
 // parseEntryFromView parses single-entry editor text back into the entry's key
 // node (maps only) and value mapping. ok is false on a parse error or a shape
 // that does not match the collection kind — the parse gate that keeps invalid
