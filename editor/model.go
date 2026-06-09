@@ -188,8 +188,8 @@ func applyHidden(fields []schema.FieldDef, hidden []string) []schema.FieldDef {
 	if len(hidden) == 0 {
 		return fields
 	}
-	topHide := make(map[string]bool)
-	nestedHide := make(map[string][]string)
+	topHide := make(map[string]bool, len(hidden))
+	nestedHide := make(map[string][]string, len(hidden))
 	for _, h := range hidden {
 		if i := strings.IndexByte(h, '.'); i >= 0 {
 			parent := h[:i]

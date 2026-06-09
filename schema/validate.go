@@ -12,7 +12,7 @@ import (
 // A nil value at a path means "free-form" — children at that path are not
 // validated (e.g. customizations.vscode.settings has no fixed schema).
 func KnownChildren(fields []FieldDef) map[string]map[string]bool {
-	out := make(map[string]map[string]bool)
+	out := make(map[string]map[string]bool, len(fields))
 	walkChildren(out, "", fields)
 	return out
 }

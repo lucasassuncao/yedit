@@ -73,11 +73,3 @@ type Config struct {
 	SavePath             string      // write to this path instead of Path; Path is still used for loading
 	SchemaRecursionDepth int         // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
 }
-
-// fieldSnippetsFor returns the snippet map for parent (may be nil).
-func (c Config) fieldSnippetsFor(parent string) map[string]string {
-	if c.FieldSnippets == nil {
-		return nil
-	}
-	return c.FieldSnippets[parent]
-}

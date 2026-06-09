@@ -54,7 +54,7 @@ func newListModel(fields []string, presetsByField map[string][]string) listModel
 // Selected returns the (field, preset) pair for the right-panel preview.
 // In modeFields the first preset of the hovered field is used as a preview.
 // In modePresets the actually-highlighted preset is returned.
-func (l *listModel) Selected() (string, string) {
+func (l *listModel) Selected() (field, preset string) {
 	if l.mode == modeFields {
 		if l.fieldCursor < 0 || l.fieldCursor >= len(l.fields) {
 			return "", ""

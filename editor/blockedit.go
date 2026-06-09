@@ -521,7 +521,7 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 	if len(fields) == 0 {
 		return be
 	}
-	ctx := toggleCtx{key: be.key, snippets: be.cfg.fieldSnippetsFor(be.key), childDefs: be.childDefs}
+	ctx := toggleCtx{key: be.key, snippets: be.cfg.FieldSnippets[be.key], childDefs: be.childDefs}
 	nodeByLabel := make(map[string]treeNode, len(be.tree.nodes))
 	for _, n := range be.tree.nodes {
 		if n.kind == treeNodeField && n.depth == 0 {
@@ -605,7 +605,7 @@ func (be blockEditState) applyPendingRemove(nodeIdx int) blockEditState {
 	be.tree.nodes = nodes
 
 	node := be.tree.nodes[nodeIdx]
-	ctx := toggleCtx{key: be.key, snippets: be.cfg.fieldSnippetsFor(be.key), childDefs: be.childDefs}
+	ctx := toggleCtx{key: be.key, snippets: be.cfg.FieldSnippets[be.key], childDefs: be.childDefs}
 	be.applyToggle(ctx, node, false)
 	be.dirty = true
 	be.tree = be.resyncTreeFromYAML()
@@ -709,7 +709,7 @@ func (be blockEditState) handleTreeToggled() (blockEditState, tea.Cmd) {
 		return be, nil
 	}
 	be.dirty = true
-	ctx := toggleCtx{key: be.key, snippets: be.cfg.fieldSnippetsFor(be.key), childDefs: be.childDefs}
+	ctx := toggleCtx{key: be.key, snippets: be.cfg.FieldSnippets[be.key], childDefs: be.childDefs}
 	be.applyToggle(ctx, node, node.checked)
 	be.tree = be.resyncTreeFromYAML()
 	return be, nil

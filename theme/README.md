@@ -176,7 +176,7 @@ func All() map[string]Theme
 All returns all built\-in theme presets keyed by their CLI name. Useful for \-\-theme flag validation and \-\-list\-themes output in host CLIs.
 
 <a name="CenterBox"></a>
-## func [CenterBox](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L175>)
+## func [CenterBox](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L133>)
 
 ```go
 func CenterBox(box string, term Size) string
@@ -185,7 +185,7 @@ func CenterBox(box string, term Size) string
 CenterBox positions box at the centre of the given terminal Size by adding padding. Used by floating overlay/alert/picker views.
 
 <a name="RenderHeader"></a>
-## func [RenderHeader](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L30>)
+## func [RenderHeader](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L25>)
 
 ```go
 func RenderHeader(title, subtitle, right string, width int) string
@@ -194,7 +194,7 @@ func RenderHeader(title, subtitle, right string, width int) string
 RenderHeader returns a single\-line header. title is rendered bold on the left, subtitle \(if non\-empty\) follows after a separator, right \(if non\-empty\) is right\-aligned for context such as filenames.
 
 <a name="RenderHeaderWith"></a>
-## func [RenderHeaderWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L154>)
+## func [RenderHeaderWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L112>)
 
 ```go
 func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string
@@ -203,7 +203,7 @@ func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string
 RenderHeaderWith is like RenderHeader but derives title and info colors from c instead of the package\-level palette vars.
 
 <a name="RenderTitledPanel"></a>
-## func [RenderTitledPanel](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L74>)
+## func [RenderTitledPanel](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L60>)
 
 ```go
 func RenderTitledPanel(title string, size Size, active bool, content string) string
@@ -212,7 +212,7 @@ func RenderTitledPanel(title string, size Size, active bool, content string) str
 RenderTitledPanel renders a rounded\-border panel with the title embedded in the top edge: ╭─ Title ──────╮. size holds the OUTER dimensions \(including the border rows/cols\).
 
 <a name="RenderTitledPanelWith"></a>
-## func [RenderTitledPanelWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L113>)
+## func [RenderTitledPanelWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L71>)
 
 ```go
 func RenderTitledPanelWith(title string, size Size, active bool, content string, c Colors) string
@@ -221,7 +221,7 @@ func RenderTitledPanelWith(title string, size Size, active bool, content string,
 RenderTitledPanelWith is like RenderTitledPanel but derives border and title colors from c instead of the package\-level palette vars.
 
 <a name="RenderTwoColumnView"></a>
-## func [RenderTwoColumnView](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L66>)
+## func [RenderTwoColumnView](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L52>)
 
 ```go
 func RenderTwoColumnView(layout TwoColumnLayout) string
@@ -230,7 +230,7 @@ func RenderTwoColumnView(layout TwoColumnLayout) string
 RenderTwoColumnView assembles the standard two\-panel screen: header, panels side by side, a feedback line, and a hint line.
 
 <a name="TwoColumnWidths"></a>
-## func [TwoColumnWidths](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L49>)
+## func [TwoColumnWidths](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L35>)
 
 ```go
 func TwoColumnWidths(totalWidth int) (listW, rightW int)
@@ -255,7 +255,7 @@ type Colors struct {
 ```
 
 <a name="Size"></a>
-## type [Size](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L16>)
+## type [Size](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L11>)
 
 Size holds a width/height pair. Used wherever a terminal or panel dimension is passed as a unit \(alert, picker, RenderTitledPanel, CenterBox\).
 
@@ -297,7 +297,7 @@ type Theme struct {
 ```
 
 <a name="TwoColumnLayout"></a>
-## type [TwoColumnLayout](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L19-L25>)
+## type [TwoColumnLayout](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L14-L20>)
 
 TwoColumnLayout carries the five sections of the standard two\-panel screen.
 

@@ -109,77 +109,19 @@ func (v *pathMutuallyExclusiveValidator) Validate(raw []byte, _ []document.Block
 		return nil
 	}
 	var errs []string
-	v.navigate(doc.Content[0], v.parentSegs, "", &errs)
+	navigateYAML(doc.Content[0], v.parentSegs, "", &errs, v.check)
 	return errs
 }
 
-// navigate walks node following segs. On arrival (len(segs)==0) it checks the
-// mutual-exclusivity constraint. Sequences are expanded (all items checked);
-// dict-style mappings whose direct key does not match the next segment are
-// also expanded (all values checked), covering map[string]Struct fields.
-func (v *pathMutuallyExclusiveValidator) navigate(node *yaml.Node, segs []string, path string, errs *[]string) {
-	if node.Kind == yaml.SequenceNode {
-		for i, item := range node.Content {
-			v.navigate(item, segs, fmt.Sprintf("%s[%d]", path, i), errs)
-		}
-		return
-	}
-
-	if len(segs) == 0 {
-		v.check(node, path, errs)
-		return
-	}
-
-	if node.Kind != yaml.MappingNode {
-		return
-	}
-
-	next, rest := segs[0], segs[1:]
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		if node.Content[i].Value == next {
-			childPath := next
-			if path != "" {
-				childPath = path + "." + next
-			}
-			v.navigate(node.Content[i+1], rest, childPath, errs)
-			return
-		}
-	}
-	// Key not found at this level — treat as a dict-of-structs: check all values.
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		dictKey := node.Content[i].Value
-		childPath := dictKey
-		if path != "" {
-			childPath = path + "." + dictKey
-		}
-		v.navigate(node.Content[i+1], segs, childPath, errs)
-	}
-}
-
-// check verifies mutual exclusivity of v.keys within a MappingNode.
 func (v *pathMutuallyExclusiveValidator) check(node *yaml.Node, path string, errs *[]string) {
 	if node.Kind != yaml.MappingNode {
 		return
 	}
-	var present []string
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		k := node.Content[i].Value
-		for _, want := range v.keys {
-			if k == want {
-				present = append(present, k)
-			}
-		}
+	where := path
+	if where == "" {
+		where = strings.Join(v.parentSegs, ".")
 	}
-	if len(present) > 1 {
-		where := path
-		if where == "" {
-			where = strings.Join(v.parentSegs, ".")
-		}
-		*errs = append(*errs, fmt.Sprintf(
-			"%s: mutually exclusive — use only one of: %s",
-			where, joinQuoted(present),
-		))
-	}
+	checkMutualExclusion(node, v.keys, where, errs)
 }
 
 // RequiredWith reports a violation when key is present but parent is not.
@@ -238,47 +180,10 @@ func (v *mutuallyExclusiveNestedValidator) Validate(raw []byte, _ []document.Blo
 		return nil
 	}
 	var errs []string
-	v.navigateThenWalk(doc.Content[0], v.navSegs, "", &errs)
+	navigateYAML(doc.Content[0], v.navSegs, "", &errs, func(n *yaml.Node, p string, e *[]string) {
+		v.walk(n, "", p, e)
+	})
 	return errs
-}
-
-// navigateThenWalk follows navSegs to reach the scoped subtree root, expanding
-// sequences and dict-style mappings along the way, then hands off to walk.
-// When navSegs is empty it calls walk immediately (whole-document search).
-func (v *mutuallyExclusiveNestedValidator) navigateThenWalk(node *yaml.Node, segs []string, path string, errs *[]string) {
-	if node.Kind == yaml.SequenceNode {
-		for i, item := range node.Content {
-			v.navigateThenWalk(item, segs, fmt.Sprintf("%s[%d]", path, i), errs)
-		}
-		return
-	}
-	if len(segs) == 0 {
-		v.walk(node, "", path, errs)
-		return
-	}
-	if node.Kind != yaml.MappingNode {
-		return
-	}
-	next, rest := segs[0], segs[1:]
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		if node.Content[i].Value == next {
-			childPath := next
-			if path != "" {
-				childPath = path + "." + next
-			}
-			v.navigateThenWalk(node.Content[i+1], rest, childPath, errs)
-			return
-		}
-	}
-	// Key not found — treat as a dict-of-structs and expand all values.
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		k := node.Content[i].Value
-		childPath := k
-		if path != "" {
-			childPath = path + "." + k
-		}
-		v.navigateThenWalk(node.Content[i+1], segs, childPath, errs)
-	}
 }
 
 // walk visits node recursively. parentKey is the mapping key whose value is
@@ -287,25 +192,11 @@ func (v *mutuallyExclusiveNestedValidator) walk(node *yaml.Node, parentKey, path
 	switch node.Kind {
 	case yaml.MappingNode:
 		if parentKey == v.parentKey {
-			var present []string
-			for i := 0; i+1 < len(node.Content); i += 2 {
-				k := node.Content[i].Value
-				for _, want := range v.keys {
-					if k == want {
-						present = append(present, k)
-					}
-				}
+			where := path
+			if where == "" {
+				where = v.parentKey
 			}
-			if len(present) > 1 {
-				where := path
-				if where == "" {
-					where = v.parentKey
-				}
-				*errs = append(*errs, fmt.Sprintf(
-					"%s: mutually exclusive — use only one of: %s",
-					where, joinQuoted(present),
-				))
-			}
+			checkMutualExclusion(node, v.keys, where, errs)
 		}
 		for i := 0; i+1 < len(node.Content); i += 2 {
 			key := node.Content[i].Value
@@ -319,6 +210,67 @@ func (v *mutuallyExclusiveNestedValidator) walk(node *yaml.Node, parentKey, path
 		for i, child := range node.Content {
 			v.walk(child, parentKey, fmt.Sprintf("%s[%d]", path, i), errs)
 		}
+	}
+}
+
+// navigateYAML traverses node following segs, expanding sequences and
+// dict-of-structs automatically. onArrival is called when segs is exhausted.
+func navigateYAML(node *yaml.Node, segs []string, path string, errs *[]string,
+	onArrival func(*yaml.Node, string, *[]string)) {
+	if node.Kind == yaml.SequenceNode {
+		for i, item := range node.Content {
+			navigateYAML(item, segs, fmt.Sprintf("%s[%d]", path, i), errs, onArrival)
+		}
+		return
+	}
+	if len(segs) == 0 {
+		onArrival(node, path, errs)
+		return
+	}
+	if node.Kind != yaml.MappingNode {
+		return
+	}
+	next, rest := segs[0], segs[1:]
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == next {
+			childPath := next
+			if path != "" {
+				childPath = path + "." + next
+			}
+			navigateYAML(node.Content[i+1], rest, childPath, errs, onArrival)
+			return
+		}
+	}
+	// Key not found at this level — treat as a dict-of-structs: check all values.
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		dictKey := node.Content[i].Value
+		childPath := dictKey
+		if path != "" {
+			childPath = path + "." + dictKey
+		}
+		navigateYAML(node.Content[i+1], segs, childPath, errs, onArrival)
+	}
+}
+
+// checkMutualExclusion appends to errs when more than one of keys appears as a
+// direct child key of node (which must be a MappingNode). where is the
+// dot-separated path used in the error message.
+func checkMutualExclusion(node *yaml.Node, keys []string, where string, errs *[]string) {
+	var present []string
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		k := node.Content[i].Value
+		for _, want := range keys {
+			if k == want {
+				present = append(present, k)
+				break
+			}
+		}
+	}
+	if len(present) > 1 {
+		*errs = append(*errs, fmt.Sprintf(
+			"%s: mutually exclusive — use only one of: %s",
+			where, joinQuoted(present),
+		))
 	}
 }
 

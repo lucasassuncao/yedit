@@ -122,7 +122,7 @@ editor.MutuallyExclusive(
 For constraints that must hold at every occurrence of a key regardless of depth \(e.g. recursive schemas\), use MutuallyExclusiveNested instead.
 
 <a name="MutuallyExclusiveNested"></a>
-### func [MutuallyExclusiveNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L220>)
+### func [MutuallyExclusiveNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L162>)
 
 ```go
 func MutuallyExclusiveNested(scopedPath string, keys ...string) Validator
@@ -147,7 +147,7 @@ editor.MutuallyExclusiveNested("categories.installers.source.filter", "any", "al
 The scoped form is preferred when the constraint applies to a specific filter type and not to every mapping named "filter" in the document.
 
 <a name="RequiredWith"></a>
-### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L186>)
+### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L128>)
 
 ```go
 func RequiredWith(key, parent string) Validator
