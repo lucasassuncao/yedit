@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/theme"
 )
 
 // stubPresets implements presets.Source for tests.
@@ -543,7 +544,15 @@ func TestPrimitiveBlock_showsFieldItemAndHint(t *testing.T) {
 		def:     schema.FieldDef{YAMLName: "debug", Kind: schema.KindPrimitive, Scalar: "bool", Default: "false"},
 		content: "debug: false\n",
 	}
-	be := newBlockEdit(Config{}, spec, 100, 40)
+	cfg := Config{
+		Hints: HintFunc(func(block, fieldPath string) FieldMeta {
+			if block == "debug" {
+				return FieldMeta{Type: "bool", Default: "false"}
+			}
+			return FieldMeta{}
+		}),
+	}
+	be := newBlockEdit(cfg, spec, 100, 40)
 
 	if !be.tree.isEmpty() {
 		t.Fatal("expected an empty tree for a primitive block")
@@ -555,7 +564,7 @@ func TestPrimitiveBlock_showsFieldItemAndHint(t *testing.T) {
 	}
 
 	hint := be.hintContent()
-	for _, want := range []string{"type", "bool", "default", "false"} {
+	for _, want := range []string{"Type:", "bool", "Default:", "false"} {
 		if !strings.Contains(hint, want) {
 			t.Errorf("hint panel missing %q; got %q", want, hint)
 		}
@@ -564,6 +573,40 @@ func TestPrimitiveBlock_showsFieldItemAndHint(t *testing.T) {
 	if view := be.View(nil); strings.Contains(view, "(no fields)") {
 		t.Error("full view should no longer show the (no fields) placeholder")
 	}
+}
+
+// TestRenderFieldHint_typeAndRequiredBehavior verifies that Type is shown only
+// when set and Required is shown only when true.
+func TestRenderFieldHint_typeAndRequiredBehavior(t *testing.T) {
+	th := resolveTheme(theme.Theme{})
+
+	t.Run("type shown when set", func(t *testing.T) {
+		out := renderFieldHint(th, FieldMeta{Type: "string"}, "")
+		if !strings.Contains(out, "Type:") || !strings.Contains(out, "string") {
+			t.Errorf("expected Type: string in output; got %q", out)
+		}
+	})
+
+	t.Run("type omitted when empty", func(t *testing.T) {
+		out := renderFieldHint(th, FieldMeta{Description: "desc"}, "")
+		if strings.Contains(out, "Type:") {
+			t.Errorf("expected no Type line when Type is empty; got %q", out)
+		}
+	})
+
+	t.Run("required shown only when true", func(t *testing.T) {
+		out := renderFieldHint(th, FieldMeta{Required: true}, "")
+		if !strings.Contains(out, "Required:") || !strings.Contains(out, "yes") {
+			t.Errorf("expected Required: yes; got %q", out)
+		}
+	})
+
+	t.Run("required omitted when false", func(t *testing.T) {
+		out := renderFieldHint(th, FieldMeta{Description: "desc"}, "")
+		if strings.Contains(out, "Required:") {
+			t.Errorf("expected no Required line when false; got %q", out)
+		}
+	})
 }
 
 // TestRestoreUndo_emptyStackIsNoOp guards restoreUndo against an empty stack:

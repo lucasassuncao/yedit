@@ -325,6 +325,12 @@ func TestRootHintPanelToggle(t *testing.T) {
 	m, err := newModel(Config{
 		Path:   filepath.Join(t.TempDir(), "hint.yaml"),
 		Schema: &sizeProbeConfig{},
+		Hints: HintFunc(func(block, fieldPath string) FieldMeta {
+			if block == "server" && fieldPath == "" {
+				return FieldMeta{Type: "object"}
+			}
+			return FieldMeta{}
+		}),
 	})
 	if err != nil {
 		t.Fatalf("newModel: %v", err)

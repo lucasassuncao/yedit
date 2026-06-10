@@ -49,7 +49,8 @@
 //	  Hidden           : "internal-id" is never shown in the UI
 //	  PreCheckedFields : opening a new "server" block pre-checks host and port
 //	  FieldSnippets    : toggling a struct field inserts a real default value
-//	  FieldExamples    : hint panel shows realistic examples per field
+//	  Presets          : struct-backed presets for "server" and "logging" (testPresetSource)
+//	  Hints            : hierarchical hint tree for "server" and "logging" (buildHintSource)
 //	  Validators       : MutuallyExclusive(server, proxy), RequiredWith(routes, server)
 //	  NoDeleteConfirm  : controlled by --no-delete-confirm flag
 //	  NoSaveConfirm    : controlled by --no-save-confirm flag
@@ -65,6 +66,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -274,83 +276,6 @@ type TestConfig struct {
 	EdgeCases SchemaEdgeCases `yaml:"edge-cases"`
 }
 
-// ── Seed YAML ─────────────────────────────────────────────────────────────────
-
-const seedYAML = `import: shared.yaml
-
-app-name: "my-app"
-debug: false
-version: "0.1.0"
-port: 8080
-ratio: 1.5
-build-timeout: 30s
-tags:
-  - go
-  - tui
-settings:
-  cache: true
-  max-upload: 10mb
-server:
-  host: localhost
-  port: 8080
-  tls: false
-  allowed-ips:
-    - 127.0.0.1
-    - 10.0.0.0/8
-  headers:
-    X-Request-ID: ""
-    X-Service-Name: "my-app"
-logging:
-  level: info
-  show-caller: false
-workers:
-  - name: "default"
-    concurrency: 2
-    queue: "main"
-    extensions: ["go", "yaml"]
-    tags:
-      - critical
-  - name: "background"
-    concurrency: 1
-    queue: "low"
-    tags: []
-  - name: "heavy"
-    concurrency: 4
-    queue: "batch"
-port-attrs:
-  "3000":
-    label: "frontend"
-    on-auto-forward: openBrowser
-    protocol: http
-  "8080":
-    label: "api"
-    on-auto-forward: notify
-    protocol: http
-filters:
-  - glob: "*.go"
-    case-sensitive: true
-  - regex: ".*_test\\.go$"
-    ignore:
-      - vendor
-edge-cases:
-  created-by: "alice"
-  version-tag: "v1.0"
-  team: "platform"
-  contact: "platform@example.com"
-  replicas: 3
-  ips: [10.0.0.1, 10.0.0.2]
-  firewall-rules:
-    8080:
-      proto: tcp
-      allowed: true
-    443:
-      proto: tcp
-      allowed: true
-  background: "#1e1e2e"
-  extras: "free-form string"
-unknown-key: "flagged by ctrl+l validate"
-`
-
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 func appTheme(name string) theme.Theme {
@@ -359,6 +284,101 @@ func appTheme(name string) theme.Theme {
 		return theme.Theme{Base: &t}
 	}
 	return theme.Theme{} // default dark
+}
+
+// ── Presets ───────────────────────────────────────────────────────────────────
+
+// testPresetSource demonstrates struct-backed presets: implement presets.Source
+// inline without embed.FS. Presets are Go structs marshaled to YAML.
+type testPresetSource struct{}
+
+var serverPresets = map[string]ServerConfig{
+	"minimal":    {Host: "localhost", Port: 8080},
+	"production": {Host: "0.0.0.0", Port: 443, TLS: true, AllowedIPs: []string{"10.0.0.0/8", "172.16.0.0/12"}},
+}
+
+var loggingPresets = map[string]LoggingConfig{
+	"development": {Level: "debug", ShowCaller: true},
+	"production":  {Level: "warn", File: "/var/log/app.log"},
+}
+
+func (testPresetSource) ListFields() []string { return []string{"logging", "server"} }
+
+func (testPresetSource) ListPresets(field string) []string {
+	var names []string
+	switch field {
+	case "server":
+		for name := range serverPresets {
+			names = append(names, name)
+		}
+	case "logging":
+		for name := range loggingPresets {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (testPresetSource) PresetYAML(field, name string) (string, error) {
+	var val any
+	switch field {
+	case "server":
+		p, ok := serverPresets[name]
+		if !ok {
+			return "", fmt.Errorf("server preset %q not found", name)
+		}
+		val = p
+	case "logging":
+		p, ok := loggingPresets[name]
+		if !ok {
+			return "", fmt.Errorf("logging preset %q not found", name)
+		}
+		val = p
+	default:
+		return "", fmt.Errorf("no presets for field %q", field)
+	}
+	out, err := yaml.Marshal(map[string]any{field: val})
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// ── Hints ─────────────────────────────────────────────────────────────────────
+
+// hintNode is a local HintNode-style type for building a hierarchical hint
+// tree. Embed FieldMeta for Description, Type, Required, Default, OneOf, Example.
+// Use Children to nest fields; shared pointers handle recursive types.
+type hintNode struct {
+	editor.FieldMeta
+	Children map[string]*hintNode
+}
+
+// buildHintSource wraps a hintNode tree as an editor.HintSource. The block key
+// maps to top-level nodes; field paths are dot-separated child lookups.
+func buildHintSource(tree map[string]*hintNode) editor.HintSource {
+	return editor.HintFunc(func(block, fieldPath string) editor.FieldMeta {
+		node, ok := tree[block]
+		if !ok {
+			return editor.FieldMeta{}
+		}
+		if fieldPath == "" {
+			return node.FieldMeta
+		}
+		cur := node
+		for _, seg := range strings.Split(fieldPath, ".") {
+			if cur.Children == nil {
+				return editor.FieldMeta{}
+			}
+			next, ok := cur.Children[seg]
+			if !ok {
+				return editor.FieldMeta{}
+			}
+			cur = next
+		}
+		return cur.FieldMeta
+	})
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -399,58 +419,18 @@ func main() {
 
 		// Config.PreCheckedFields: fields toggled ON automatically when opening a
 		// new (not yet existing) block. Opening an existing block is unaffected.
-		PreCheckedFields: map[string][]string{
-			"server":  {"host", "port"},
-			"logging": {"level"},
-			"deploy":  {"strategy", "replicas"},
-		},
+		PreCheckedFields: testPreCheckedFields,
 
 		// Config.FieldSnippets: YAML inserted when a struct field is toggled ON.
-		FieldSnippets: map[string]map[string]string{
-			"server": {
-				"host":        "  host: localhost\n",
-				"port":        "  port: 8080\n",
-				"tls":         "  tls: false\n",
-				"allowed-ips": "  allowed-ips:\n    - 127.0.0.1\n",
-				"headers":     "  headers:\n    X-Request-ID: \"\"\n",
-			},
-			"database": {
-				"driver":    "  driver: postgres\n",
-				"dsn":       "  dsn: \"postgres://localhost/mydb\"\n",
-				"max-conns": "  max-conns: 10\n",
-				"pool":      "  pool:\n    min-size: 2\n    max-size: 10\n    timeout: 30\n",
-			},
-			"logging": {
-				"level":       "  level: info\n",
-				"file":        "  file: \"/var/log/app.log\"\n",
-				"show-caller": "  show-caller: false\n",
-			},
-			"deploy": {
-				"strategy": "  strategy: rolling\n",
-				"replicas": "  replicas: 1\n",
-				"enabled":  "  enabled: true\n",
-			},
-		},
+		FieldSnippets: testFieldSnippets,
 
-		// Config.FieldExamples: shown in the hint panel when a field is selected.
-		FieldExamples: map[string]map[string]string{
-			"server": {
-				"allowed-ips": "allowed-ips:\n  - 127.0.0.1\n  - 192.168.0.0/24\n  - 10.0.0.0/8\n",
-				"headers":     "headers:\n  X-Request-ID: \"\"\n  X-Forwarded-For: \"\"\n",
-			},
-			"database": {
-				// #nosec G101 -- example DSN for the demo hint panel; not a real credential
-				"dsn":    "dsn: \"postgres://user:pass@localhost:5432/mydb?sslmode=disable\"\n",
-				"driver": "driver: postgres\n",
-			},
-			"deploy": {
-				"enabled": "enabled: true\n",
-			},
-			"workers": {
-				"extensions": "extensions: [\"go\", \"yaml\", \"json\"]\n",
-				"tags":       "tags:\n  - critical\n  - high-priority\n",
-			},
-		},
+		// Config.Presets: struct-backed presets marshaled to YAML on demand.
+		// See testPresetSource above for the canonical inline implementation pattern.
+		Presets: testPresets,
+
+		// Config.Hints: hierarchical hint tree; paths are dot-separated field names.
+		// See hintNode / buildHintSource above for the canonical implementation pattern.
+		Hints: testHints,
 
 		Validators: []editor.Validator{
 			// MutuallyExclusive: server and proxy cannot coexist.

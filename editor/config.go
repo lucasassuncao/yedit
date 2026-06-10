@@ -33,6 +33,42 @@ func (f ValidatorFunc) Validate(raw []byte, blocks []document.Block) []string {
 	return f(raw, blocks)
 }
 
+// FieldMeta carries display metadata for a single field in the Hint/Example
+// panel. Fields at their zero value are omitted from the rendered output.
+// HintSource is the sole authority: YEDIT never auto-populates any FieldMeta
+// field from struct tags. If no HintSource is configured, the hint panel
+// shows only a generated example.
+type FieldMeta struct {
+	Description string
+	Type        string // human-readable Go type: "string", "bool", "int", "[]string", "duration", "object", etc.
+	Required    bool
+	Default     string
+	OneOf       []string
+	Example     string // YAML snippet shown verbatim in the Example section
+}
+
+// HintSource provides per-field display metadata for the Hint/Example panel.
+// It is called once per field render with the top-level block key and the
+// field's dot-joined path from the block root (e.g. "source", "source.path").
+// For top-level block entries in the root list, fieldPath is empty ("").
+// Returning a zero FieldMeta means "no override".
+type HintSource interface {
+	FieldHint(blockKey, fieldPath string) FieldMeta
+}
+
+// HintFunc adapts a plain function to the HintSource interface:
+//
+//	editor.Run(editor.Config{
+//	    Hints: editor.HintFunc(func(block, fieldPath string) editor.FieldMeta {
+//	        // return metadata for (block, fieldPath) ...
+//	        return editor.FieldMeta{}
+//	    }),
+//	})
+type HintFunc func(blockKey, fieldPath string) FieldMeta
+
+// FieldHint calls f.
+func (f HintFunc) FieldHint(blockKey, fieldPath string) FieldMeta { return f(blockKey, fieldPath) }
+
 // Config bundles everything the editor needs from the embedding application.
 //
 // Schema must be a pointer to the Go type describing the YAML document's top
@@ -44,25 +80,26 @@ func (f ValidatorFunc) Validate(raw []byte, blocks []document.Block) []string {
 // Validators run before every save and on the explicit "validate" shortcut.
 // Use editor.MutuallyExclusive and editor.RequiredWith for the common cases.
 //
+// Hints is optional — when set, each field's Hint/Example panel is populated
+// from the returned FieldMeta. All FieldMeta fields are used as-is; YEDIT
+// does not fall back to struct tag values. When Hints is nil, the panel shows
+// only a generated example.
+//
 // PreCheckedFields lists which sub-fields of a parent key start checked when
 // the overlay opens. Keyed by top-level yaml name (e.g. "build" → ["dockerfile","context"]).
 //
 // FieldSnippets provides the indented YAML chunk inserted when the user
 // toggles a sub-field on (keyed by parent key → child yaml name → snippet).
 // When a snippet is missing, the editor falls back to "<child>: \n".
-//
-// FieldExamples provides a YAML snippet shown in the hint panel for each
-// field (keyed by block yaml name → field yaml name → snippet). When absent
-// the editor falls back to the "base" preset for that block, if one exists.
 type Config struct {
 	Path                 string
 	Schema               any
 	Title                string
 	Presets              presets.Source
+	Hints                HintSource
 	Validators           []Validator
 	PreCheckedFields     map[string][]string
 	FieldSnippets        map[string]map[string]string
-	FieldExamples        map[string]map[string]string
 	Hidden               []string    // top-level keys to omit from the UI entirely
 	PassthroughKeys      []string    // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
 	Theme                theme.Theme // zero-value resolves to ThemeDark

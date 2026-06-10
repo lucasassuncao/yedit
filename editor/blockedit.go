@@ -101,9 +101,8 @@ type blockEditState struct {
 	previewFocus  bool // preset browser: right panel has keyboard focus
 	previewScroll int  // preset browser: line scroll offset in preview panel
 
-	undoStack        []*blockEditUndoSnap // undo history; each mutating op pushes a snapshot
-	basePresetFields map[string]string    // field name → example from "base" preset; populated once in newBlockEdit
-	theme            resolvedTheme
+	undoStack []*blockEditUndoSnap // undo history; each mutating op pushes a snapshot
+	theme     resolvedTheme
 }
 
 // blockEditUndoSnap captures the state of a blockEditState before a
@@ -134,17 +133,16 @@ func blockOwnDef(spec blockSpec) schema.FieldDef {
 // newBlockEdit creates the full-screen block editing state.
 func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	be := blockEditState{
-		cfg:              cfg,
-		key:              spec.key,
-		childDefs:        spec.defs,
-		kind:             spec.kind,
-		def:              blockOwnDef(spec),
-		knownByPath:      spec.knownByPath,
-		currentPreset:    "custom",
-		width:            w,
-		height:           h,
-		theme:            resolveTheme(cfg.Theme),
-		basePresetFields: loadBasePresetFields(cfg, spec.key),
+		cfg:           cfg,
+		key:           spec.key,
+		childDefs:     spec.defs,
+		kind:          spec.kind,
+		def:           blockOwnDef(spec),
+		knownByPath:   spec.knownByPath,
+		currentPreset: "custom",
+		width:         w,
+		height:        h,
+		theme:         resolveTheme(cfg.Theme),
 	}
 	be.relayout()
 
@@ -1300,35 +1298,6 @@ func validateSnippetText(text string) error {
 
 // --- Hint panel ----------------------------------------------------------
 
-// typeLabel returns the human type shown in the hint panel. For primitive fields
-// it prefers the concrete scalar type ("string", "int", "bool", …); for
-// everything else it falls back to the kind ("object", "list", "enum", …).
-func typeLabel(def schema.FieldDef) string {
-	if def.Kind == schema.KindPrimitive && def.Scalar != "" {
-		return def.Scalar
-	}
-	return kindHumanLabel(def.Kind)
-}
-
-func kindHumanLabel(k schema.Kind) string {
-	switch k {
-	case schema.KindPrimitive:
-		return "primitive"
-	case schema.KindObject:
-		return "object"
-	case schema.KindList:
-		return "list"
-	case schema.KindDictionary:
-		return "dictionary"
-	case schema.KindVariant:
-		return "variant"
-	case schema.KindEnum:
-		return "enum"
-	default:
-		return "unknown"
-	}
-}
-
 // fieldItemView renders the left panel for a tree-less block (primitive, enum,
 // or free-form collection): a single non-toggleable row naming the field being
 // edited. There are no sub-fields to navigate, so the row is just an anchor —
@@ -1342,7 +1311,7 @@ func (be blockEditState) hintContent() string {
 	// Tree-less blocks (primitive/enum/free-form collection) have no field nodes;
 	// show the block's own metadata instead of the "select a field" placeholder.
 	if be.tree.isEmpty() {
-		return be.fieldHintFor(be.def)
+		return be.fieldHintFor(be.def, be.def.YAMLName)
 	}
 	idx := be.tree.currentNodeIdx()
 	if idx < 0 {
@@ -1352,41 +1321,77 @@ func (be blockEditState) hintContent() string {
 	if node.kind != treeNodeField {
 		return be.theme.hintDim.Render("  select a field to see hints")
 	}
-	return be.fieldHintFor(node.def)
+	fieldPath := strings.Join(node.yamlPath, ".")
+	if be.isCollectionNav() && len(node.yamlPath) > 0 {
+		fieldPath = strings.Join(node.yamlPath[1:], ".")
+	}
+	return be.fieldHintFor(node.def, fieldPath)
 }
 
 // fieldHintFor builds the hint text for a single field definition.
-func (be blockEditState) fieldHintFor(def schema.FieldDef) string {
-	return renderFieldHint(be.theme, def, be.fieldExample(def))
+// fieldPath is the dot-joined path from the block root (e.g. "source.path").
+// def is used only for fallback example generation and the implicit-required
+// check; all display data comes from HintSource.
+func (be blockEditState) fieldHintFor(def schema.FieldDef, fieldPath string) string {
+	var meta FieldMeta
+	if be.cfg.Hints != nil {
+		meta = be.cfg.Hints.FieldHint(be.key, fieldPath)
+	}
+	// An object whose children include required fields is itself implicitly required.
+	if !meta.Required && def.Kind == schema.KindObject && anyChildRequired(def.Children) {
+		meta.Required = true
+	}
+	example := meta.Example
+	if example == "" {
+		example = generateFallbackExample(def)
+	}
+	return renderFieldHint(be.theme, meta, example)
 }
 
-// renderFieldHint formats a field's metadata into the Hint/Example panel body:
-// type, required, default, allowed values, description, and example. The example
-// is resolved by the caller so both the block editor and the root view can reuse
-// this with their own example source.
-func renderFieldHint(th resolvedTheme, def schema.FieldDef, example string) string {
+// anyChildRequired reports whether any direct child field is marked required.
+func anyChildRequired(children []schema.FieldDef) bool {
+	for _, c := range children {
+		if c.Required {
+			return true
+		}
+	}
+	return false
+}
+
+// renderFieldHint formats a FieldMeta into the Hint/Example panel body.
+// Order: description, type, required, default, allowed values, example.
+// example is passed separately because the caller may substitute a generated
+// fallback when meta.Example is empty.
+func renderFieldHint(th resolvedTheme, meta FieldMeta, example string) string {
 	var sb strings.Builder
 
-	sb.WriteString(th.hintKey.Render("type") + "  " + typeLabel(def) + "\n")
+	label := func(s string) string { return th.hintKey.Render(s) }
 
-	if def.Required {
-		sb.WriteString(th.hintKey.Render("required") + "\n")
+	if meta.Description != "" {
+		sb.WriteString(label("Description:") + " " + meta.Description + "\n")
 	}
-	if def.Default != "" {
-		sb.WriteString(th.hintKey.Render("default") + "  " + def.Default + "\n")
+
+	if meta.Type != "" {
+		sb.WriteString(label("Type:") + " " + meta.Type + "\n")
 	}
-	if len(def.OneOf) > 0 {
-		sb.WriteString("\n" + th.hintKey.Render("values") + "\n")
-		for _, v := range def.OneOf {
+
+	if meta.Required {
+		sb.WriteString(label("Required:") + " yes\n")
+	}
+
+	if meta.Default != "" {
+		sb.WriteString(label("Default:") + " " + meta.Default + "\n")
+	}
+
+	if len(meta.OneOf) > 0 {
+		sb.WriteString(label("Allowed Values:") + "\n")
+		for _, v := range meta.OneOf {
 			sb.WriteString("  • " + v + "\n")
 		}
 	}
-	if def.Description != "" {
-		sb.WriteString("\n" + def.Description + "\n")
-	}
 
 	if example != "" {
-		sb.WriteString("\n" + th.hintKey.Render("Example") + "\n")
+		sb.WriteString(label("Example:") + "\n")
 		for _, line := range strings.Split(strings.TrimRight(example, "\n"), "\n") {
 			sb.WriteString("  " + line + "\n")
 		}
@@ -1395,23 +1400,8 @@ func renderFieldHint(th resolvedTheme, def schema.FieldDef, example string) stri
 	return sb.String()
 }
 
-// fieldExample returns a YAML snippet for the field: Config.FieldExamples takes
-// precedence, then the "base" preset, then a structural fallback is generated
-// from the FieldDef so there is always something useful to show.
-func (be blockEditState) fieldExample(def schema.FieldDef) string {
-	if be.cfg.FieldExamples != nil {
-		if ex := be.cfg.FieldExamples[be.key][def.YAMLName]; ex != "" {
-			return ex
-		}
-	}
-	if ex := be.extractFromBasePreset(def.YAMLName); ex != "" {
-		return ex
-	}
-	return generateFallbackExample(def)
-}
-
 // generateFallbackExample produces a minimal valid YAML snippet for def when no
-// explicit example or preset value is available.
+// HintSource example is available.
 func generateFallbackExample(def schema.FieldDef) string {
 	switch def.Kind {
 	case schema.KindEnum:
@@ -1445,41 +1435,4 @@ func generateFallbackExample(def schema.FieldDef) string {
 		}
 		return def.YAMLName + ": \"\""
 	}
-}
-
-// extractFromBasePreset returns the YAML snippet for fieldName from the
-// pre-parsed base preset cache. It is a map lookup — the actual parsing
-// happens once in newBlockEdit via loadBasePresetFields.
-func (be blockEditState) extractFromBasePreset(fieldName string) string {
-	return be.basePresetFields[fieldName]
-}
-
-// loadBasePresetFields parses the "base" preset for blockKey and returns a map
-// of field name → YAML snippet for every top-level child field. Called once
-// during newBlockEdit so the per-frame render path does no I/O or parsing.
-func loadBasePresetFields(cfg Config, blockKey string) map[string]string {
-	if cfg.Presets == nil {
-		return nil
-	}
-	presetYAML, err := cfg.Presets.PresetYAML(blockKey, "base")
-	if err != nil {
-		return nil
-	}
-	var doc map[string]any
-	if err := yaml.Unmarshal([]byte(presetYAML), &doc); err != nil {
-		return nil
-	}
-	root, _ := doc[blockKey].(map[string]any)
-	if root == nil {
-		return nil
-	}
-	fields := make(map[string]string, len(root))
-	for k, v := range root {
-		out, err := yaml.Marshal(map[string]any{k: v})
-		if err != nil {
-			continue
-		}
-		fields[k] = strings.TrimRight(string(out), "\n")
-	}
-	return fields
 }

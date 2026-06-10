@@ -672,7 +672,8 @@ func (m *model) refreshPreview() {
 }
 
 // selectedHint renders the Hint/Example panel body for the currently selected
-// list item, using its schema metadata.
+// list item. All display data comes from HintSource; the "base" preset is used
+// as a fallback example when meta.Example is empty.
 func (m model) selectedHint() string {
 	it := m.list.SelectedItem()
 	if it == nil || it.Separator {
@@ -685,10 +686,19 @@ func (m model) selectedHint() string {
 	if def.YAMLName == "" {
 		def.YAMLName = it.Key
 	}
-	return renderFieldHint(m.theme, def, m.hintExample(it.Key, def))
+
+	var meta FieldMeta
+	if m.cfg.Hints != nil {
+		meta = m.cfg.Hints.FieldHint(it.Key, "")
+	}
+	example := meta.Example
+	if example == "" {
+		example = m.hintExample(it.Key, def)
+	}
+	return renderFieldHint(m.theme, meta, example)
 }
 
-// hintExample resolves the Example snippet for a top-level field: its "base"
+// hintExample resolves the Example snippet for a top-level block: the "base"
 // preset when one exists, otherwise a structural fallback from the schema.
 func (m model) hintExample(key string, def schema.FieldDef) string {
 	if m.cfg.Presets != nil {
