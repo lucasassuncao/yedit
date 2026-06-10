@@ -86,9 +86,10 @@ func TestApplyToggleToMapEntry_addWithSnippet(t *testing.T) {
     label: web
 `
 	node := treeNode{yamlPath: []string{"3000", "onAutoForward"}}
+	m := map[string]string{"onAutoForward": "    onAutoForward: notify\n"}
 	ctx := toggleCtx{
 		key:      "portsAttributes",
-		snippets: map[string]string{"onAutoForward": "    onAutoForward: notify\n"},
+		snippets: func(s string) string { return m[s] },
 	}
 	got := applyToggleToMapEntry(ctx, node, true, view)
 	// The snippet's value must be lifted, not nested as map[onAutoForward:notify].
@@ -106,7 +107,7 @@ func TestApplyToggleToMapEntry_normalizesFlowToBlock(t *testing.T) {
 	// The entry arrived in flow style (e.g. an emptied {} that regained fields).
 	view := "portsAttributes:\n  lucas: {label: '', onAutoForward: notify}\n"
 	node := treeNode{yamlPath: []string{"lucas", "protocol"}}
-	ctx := toggleCtx{key: "portsAttributes", snippets: map[string]string{"protocol": "    protocol: http\n"}}
+	ctx := toggleCtx{key: "portsAttributes", snippets: func(s string) string { return map[string]string{"protocol": "    protocol: http\n"}[s] }}
 	got := applyToggleToMapEntry(ctx, node, true, view)
 	if strings.Contains(got, "{") {
 		t.Errorf("entry should be block style, got flow: %q", got)
@@ -348,5 +349,108 @@ func TestParseMapEntries_colonInKey(t *testing.T) {
 	}
 	if entries[1].Label != "8080" {
 		t.Errorf("entry[1].Label = %q, want %q", entries[1].Label, "8080")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// mapEntryKey — keys containing colons are preserved
+// ---------------------------------------------------------------------------
+
+func TestMapEntryKey_withColon(t *testing.T) {
+	cases := []struct {
+		line string
+		want string
+	}{
+		{`  "ghcr.io/features/git:1":`, "ghcr.io/features/git:1"},
+		{`  "host:8080": {}`, "host:8080"},
+		{`  "3000":`, "3000"},
+		{`  plain:`, "plain"},
+		{`  key: value`, "key"},
+	}
+	for _, c := range cases {
+		got := mapEntryKey(c.line)
+		if got != c.want {
+			t.Errorf("mapEntryKey(%q) = %q, want %q", c.line, got, c.want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// flushCurrentEntry — missing key header sets errMsg, does not update entries
+// ---------------------------------------------------------------------------
+
+func TestFlushCurrentEntry_missingHeader_setsErrMsg(t *testing.T) {
+	spec := seqSpec(`categories:
+  - name: alpha
+  - name: beta
+`)
+	be := newBlockEdit(Config{}, spec, 100, 40)
+
+	originalEntry := be.entryYAML(0)
+
+	// Simulate user deleting the "categories:" prefix.
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("  - name: alpha_edited\n") // no "categories:" header
+
+	result := be.flushCurrentEntry()
+
+	if result.errMsg == "" {
+		t.Error("expected errMsg to be set when key header is missing")
+	}
+	if result.entryYAML(0) != originalEntry {
+		t.Error("entry 0 was modified despite missing key header — silent data loss")
+	}
+}
+
+func TestFlushCurrentEntry_validContent_clearsErrMsg(t *testing.T) {
+	spec := seqSpec("categories:\n  - name: alpha\n")
+	be := newBlockEdit(Config{}, spec, 100, 40)
+	be.errMsg = "stale error from before"
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
+
+	result := be.flushCurrentEntry()
+
+	if result.errMsg != "" {
+		t.Errorf("errMsg should be cleared on successful flush, got %q", result.errMsg)
+	}
+	if !strings.Contains(result.entryYAML(0), "alpha_edited") {
+		t.Errorf("entry not updated: %q", result.entryYAML(0))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// collectionDeriveTree — labels and checks of every entry are derived from the
+// canonical node, so editing one entry never contaminates another.
+// ---------------------------------------------------------------------------
+
+func TestCollectionDerive_perEntryLabels(t *testing.T) {
+	spec := seqSpec(`categories:
+  - name: alpha
+  - name: beta
+`)
+	be := newBlockEdit(Config{}, spec, 100, 40)
+
+	// Edit entry 1 through the parse gate (the real keystroke path splices the
+	// parsed entry into be.node), then re-derive the tree.
+	be.coll.current = 1
+	kn, vn, ok := parseEntryFromView("categories:\n  - name: beta_edited\n", false)
+	if !ok {
+		t.Fatal("parseEntryFromView failed on valid entry text")
+	}
+	setEntry(be.node, false, 1, kn, vn)
+	tm := be.collectionDeriveTree()
+
+	labels := map[int]string{}
+	for _, n := range tm.nodes {
+		if n.kind == treeNodeSeqItem {
+			labels[n.seqIdx] = n.label
+		}
+	}
+	if labels[0] != "alpha" {
+		t.Errorf("entry 0 label = %q, want alpha (must not be contaminated)", labels[0])
+	}
+	if labels[1] != "beta_edited" {
+		t.Errorf("entry 1 label = %q, want beta_edited", labels[1])
 	}
 }

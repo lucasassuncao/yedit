@@ -134,7 +134,7 @@ database:
 **FieldSnippets** — YAML inserted when a field is toggled ON:
 ```go
 editor.Config{
-    FieldSnippets: map[string]map[string]string{
+    FieldSnippets: editor.FieldSnippetMap{
         "database": {
             "driver":    "  driver: postgres\n",
             "dsn":       "  dsn: \"postgres://localhost/mydb\"\n",
@@ -148,7 +148,7 @@ editor.Config{
 **PreCheckedFields** — fields toggled ON automatically when opening a **new** block:
 ```go
 editor.Config{
-    PreCheckedFields: map[string][]string{
+    PreCheckedFields: editor.CheckedFieldMap{
         "database": {"driver", "dsn"},
     },
 }

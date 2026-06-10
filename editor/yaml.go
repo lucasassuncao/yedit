@@ -13,7 +13,7 @@ import (
 // toggleCtx bundles the immutable context shared by all YAML toggle helpers.
 type toggleCtx struct {
 	key       string
-	snippets  map[string]string
+	snippets  func(string) string
 	childDefs []schema.FieldDef
 }
 
@@ -293,7 +293,10 @@ func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked 
 			return false
 		}
 	}
-	snippet := ctx.snippets[leafName]
+	var snippet string
+	if ctx.snippets != nil {
+		snippet = ctx.snippets(leafName)
+	}
 	switch {
 	case !checked:
 		removeMappingKey(cur, leafName)

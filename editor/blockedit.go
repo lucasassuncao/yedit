@@ -237,8 +237,12 @@ func (be blockEditState) innerH() int {
 }
 
 // hintH returns the content height of the hint panel (bottom-right).
-// The hint takes ~1/3 of the right column, floored at 5 lines.
+// Returns 0 when no HintSource is configured (panel is not rendered).
+// Otherwise the hint takes ~1/3 of the right column, floored at 5 lines.
 func (be blockEditState) hintH() int {
+	if be.cfg.Hints == nil {
+		return 0
+	}
 	total := be.innerH() - 2 // subtract 2 for the extra border row from stacking
 	h := total / 3
 	if h < 5 {
@@ -510,16 +514,30 @@ func (be blockEditState) collectionDeriveTree() treeModel {
 	return tm
 }
 
+// snippetsFn returns a lookup function for FieldSnippets scoped to be.key, or
+// nil when no FieldSnippets source is configured.
+func (be blockEditState) snippetsFn() func(string) string {
+	if be.cfg.FieldSnippets == nil {
+		return nil
+	}
+	return func(fieldName string) string {
+		return be.cfg.FieldSnippets.FieldSnippet(be.key, fieldName)
+	}
+}
+
 // withPreCheckedFields toggles ON the fields listed in cfg.PreCheckedFields for
 // this block, inserting their snippets into the YAML editor. Only called for
 // new (not yet existing) struct blocks so opening an existing block never
 // modifies content.
 func (be blockEditState) withPreCheckedFields() blockEditState {
-	fields := be.cfg.PreCheckedFields[be.key]
+	var fields []string
+	if be.cfg.PreCheckedFields != nil {
+		fields = be.cfg.PreCheckedFields.CheckedFields(be.key)
+	}
 	if len(fields) == 0 {
 		return be
 	}
-	ctx := toggleCtx{key: be.key, snippets: be.cfg.FieldSnippets[be.key], childDefs: be.childDefs}
+	ctx := toggleCtx{key: be.key, snippets: be.snippetsFn(), childDefs: be.childDefs}
 	nodeByLabel := make(map[string]treeNode, len(be.tree.nodes))
 	for _, n := range be.tree.nodes {
 		if n.kind == treeNodeField && n.depth == 0 {
@@ -603,7 +621,7 @@ func (be blockEditState) applyPendingRemove(nodeIdx int) blockEditState {
 	be.tree.nodes = nodes
 
 	node := be.tree.nodes[nodeIdx]
-	ctx := toggleCtx{key: be.key, snippets: be.cfg.FieldSnippets[be.key], childDefs: be.childDefs}
+	ctx := toggleCtx{key: be.key, snippets: be.snippetsFn(), childDefs: be.childDefs}
 	be.applyToggle(ctx, node, false)
 	be.dirty = true
 	be.tree = be.resyncTreeFromYAML()
@@ -707,7 +725,7 @@ func (be blockEditState) handleTreeToggled() (blockEditState, tea.Cmd) {
 		return be, nil
 	}
 	be.dirty = true
-	ctx := toggleCtx{key: be.key, snippets: be.cfg.FieldSnippets[be.key], childDefs: be.childDefs}
+	ctx := toggleCtx{key: be.key, snippets: be.snippetsFn(), childDefs: be.childDefs}
 	be.applyToggle(ctx, node, node.checked)
 	be.tree = be.resyncTreeFromYAML()
 	return be, nil
@@ -1177,8 +1195,11 @@ func (be blockEditState) View(parentSegs []string) string {
 	}
 	topPanel := theme.RenderTitledPanelWith(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, clampLines(topContent, be.editorH()), be.theme.colors)
 
-	hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, false, clampLines(be.hintContent(), be.hintH()), be.theme.colors)
-	rightPanel := lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)
+	rightPanel := topPanel
+	if be.cfg.Hints != nil {
+		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, false, clampLines(be.hintContent(), be.hintH()), be.theme.colors)
+		rightPanel = lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)
+	}
 
 	hintText := be.currentHint()
 

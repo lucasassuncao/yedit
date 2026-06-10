@@ -10,7 +10,7 @@ import (
 	"github.com/lucasassuncao/yedit/theme"
 )
 
-// stubPresets implements presets.Source for tests.
+// stubPresets implements PresetSource for tests.
 type stubPresets struct {
 	data map[string]string // key: "field/name" → YAML snippet
 }
@@ -619,5 +619,157 @@ func TestRestoreUndo_emptyStackIsNoOp(t *testing.T) {
 	got := be.restoreUndo() // must not panic with an empty stack
 	if len(got.undoStack) != 0 {
 		t.Error("restoreUndo on an empty stack should leave it empty")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// resyncTreeFromYAML — tolerant, non-authoritative visual projection
+// ---------------------------------------------------------------------------
+
+// TestResyncToleratesInvalidYAML_struct verifies that a transiently unparseable
+// buffer (mid-typing) neither panics nor wipes the tree's checked state: the
+// per-keystroke resync leaves the last good visual state in place.
+func TestResyncToleratesInvalidYAML_struct(t *testing.T) {
+	be := newBlockEdit(Config{}, structSpec(), 100, 40)
+
+	before := map[string]bool{}
+	for _, n := range be.tree.nodes {
+		if n.kind == treeNodeField {
+			before[n.label] = n.checked
+		}
+	}
+
+	// Unterminated flow sequence — definitely invalid YAML.
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("configuration:\n  output: [unterminated\n")
+
+	tm := be.resyncTreeFromYAML() // must not panic
+
+	after := map[string]bool{}
+	for _, n := range tm.nodes {
+		if n.kind == treeNodeField {
+			after[n.label] = n.checked
+		}
+	}
+	if len(after) != len(before) {
+		t.Fatalf("tree fields changed on invalid YAML: before %d, after %d", len(before), len(after))
+	}
+	for k, v := range before {
+		if after[k] != v {
+			t.Errorf("checked state for %q changed on invalid YAML: %v → %v (state should be preserved)", k, v, after[k])
+		}
+	}
+}
+
+// TestResyncToleratesInvalidYAML_collection verifies the same tolerance for a
+// collection navigator: an unparseable current entry preserves the entry's label
+// and never mutates the canonical entries slice.
+func TestResyncToleratesInvalidYAML_collection(t *testing.T) {
+	be := newBlockEdit(Config{}, seqSpec(`categories:
+  - name: alpha
+`), 100, 40)
+	nodeBefore := nodeToContent(be.key, be.node)
+
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("categories:\n  - name: [unterminated\n")
+
+	tm := be.resyncTreeFromYAML() // must not panic
+
+	// The canonical node must be untouched: the tree is derived from it, not from
+	// the (now invalid) buffer.
+	if got := nodeToContent(be.key, be.node); got != nodeBefore {
+		t.Fatalf("resync mutated canonical node:\nbefore %q\nafter  %q", nodeBefore, got)
+	}
+	// The existing item label must survive an unparseable buffer.
+	foundAlpha := false
+	for _, n := range tm.nodes {
+		if n.kind == treeNodeSeqItem && n.label == "alpha" {
+			foundAlpha = true
+		}
+	}
+	if !foundAlpha {
+		t.Error("seq item label \"alpha\" was lost on invalid YAML")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// editorH — must never return a negative value
+// ---------------------------------------------------------------------------
+
+func TestEditorH_nonNegative(t *testing.T) {
+	heights := []int{1, 2, 3, 5, 7, 10, 20}
+	spec := seqSpec(`categories:
+  - name: a
+`)
+	for _, h := range heights {
+		be := newBlockEdit(Config{}, spec, 100, h)
+		if got := be.editorH(); got < 0 {
+			t.Errorf("editorH() = %d at terminal height %d — must be >= 0", got, h)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ctrl+d on nested struct parent — must offer removal, not silently no-op
+// ---------------------------------------------------------------------------
+
+// TestCtrlDRemovesNestedParentBlock reproduces the movelooper bug: ctrl+d on a
+// nested struct parent (hooks.before) carries no checkbox of its own, so the old
+// handleRemove returned treeNoAction and nothing happened. ctrl+d must now offer
+// removal and delete the whole subtree, leaving sibling blocks (after) intact.
+func TestCtrlDRemovesNestedParentBlock(t *testing.T) {
+	defs := []schema.FieldDef{
+		{YAMLName: "name", Kind: schema.KindPrimitive},
+		{YAMLName: "hooks", Kind: schema.KindObject, Children: []schema.FieldDef{
+			{YAMLName: "before", Kind: schema.KindObject, Children: []schema.FieldDef{
+				{YAMLName: "shell", Kind: schema.KindPrimitive},
+				{YAMLName: "run", Kind: schema.KindPrimitive},
+			}},
+			{YAMLName: "after", Kind: schema.KindObject, Children: []schema.FieldDef{
+				{YAMLName: "shell", Kind: schema.KindPrimitive},
+			}},
+		}},
+	}
+	content := `categories:
+  - name: "lucas"
+    hooks:
+      before:
+        shell: bash
+        run: echo hi
+      after:
+        shell: bash
+`
+	be := newBlockEdit(Config{}, blockSpec{key: "categories", defs: defs, kind: schema.KindList, content: content}, 120, 40)
+
+	// Expand every node so "before" is visible, then place the cursor on it.
+	for i := range be.tree.nodes {
+		be.tree.nodes[i].expanded = true
+	}
+	be = cursorToLabel(be, "before")
+
+	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyCtrlD})
+	if be.mode != modeConfirming {
+		t.Fatalf("ctrl+d on nested parent did not offer removal (mode=%d, want modeConfirming)", be.mode)
+	}
+
+	// Locate the captured "before" node index and confirm the removal.
+	beforeIdx := -1
+	for i, n := range be.tree.nodes {
+		if n.kind == treeNodeField && n.label == "before" {
+			beforeIdx = i
+			break
+		}
+	}
+	if beforeIdx < 0 {
+		t.Fatal("before node not found")
+	}
+	be, _ = be.Update(pendingRemoveMsg{nodeIdx: beforeIdx})
+
+	got := be.yamlEditor.Value()
+	if strings.Contains(got, "before:") {
+		t.Errorf("before block was not removed:\n%s", got)
+	}
+	if !strings.Contains(got, "after:") {
+		t.Errorf("after block should remain:\n%s", got)
 	}
 }

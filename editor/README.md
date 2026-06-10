@@ -14,15 +14,36 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 
 - [func Run\(cfg Config\) \(err error\)](<#Run>)
 - [func RunAll\(validators \[\]Validator, raw \[\]byte, blocks \[\]document.Block\) \[\]string](<#RunAll>)
+- [type CheckedFieldFunc](<#CheckedFieldFunc>)
+  - [func \(f CheckedFieldFunc\) CheckedFields\(blockKey string\) \[\]string](<#CheckedFieldFunc.CheckedFields>)
+- [type CheckedFieldMap](<#CheckedFieldMap>)
+  - [func \(m CheckedFieldMap\) CheckedFields\(blockKey string\) \[\]string](<#CheckedFieldMap.CheckedFields>)
+- [type CheckedFieldSource](<#CheckedFieldSource>)
 - [type Config](<#Config>)
 - [type FieldMeta](<#FieldMeta>)
+- [type FieldSnippetFunc](<#FieldSnippetFunc>)
+  - [func \(f FieldSnippetFunc\) FieldSnippet\(blockKey, fieldName string\) string](<#FieldSnippetFunc.FieldSnippet>)
+- [type FieldSnippetMap](<#FieldSnippetMap>)
+  - [func \(m FieldSnippetMap\) FieldSnippet\(blockKey, fieldName string\) string](<#FieldSnippetMap.FieldSnippet>)
+- [type FieldSnippetSource](<#FieldSnippetSource>)
 - [type HintFunc](<#HintFunc>)
   - [func \(f HintFunc\) FieldHint\(blockKey, fieldPath string\) FieldMeta](<#HintFunc.FieldHint>)
 - [type HintSource](<#HintSource>)
+- [type PresetFunc](<#PresetFunc>)
+  - [func \(f PresetFunc\) ListFields\(\) \[\]string](<#PresetFunc.ListFields>)
+  - [func \(f PresetFunc\) ListPresets\(\_ string\) \[\]string](<#PresetFunc.ListPresets>)
+  - [func \(f PresetFunc\) PresetYAML\(field, name string\) \(string, error\)](<#PresetFunc.PresetYAML>)
+- [type PresetSource](<#PresetSource>)
 - [type Validator](<#Validator>)
+  - [func AtLeastOneOf\(keys ...string\) Validator](<#AtLeastOneOf>)
+  - [func CrossFieldOrdered\(smallerPath, largerPath string\) Validator](<#CrossFieldOrdered>)
+  - [func ExactlyOneOf\(keys ...string\) Validator](<#ExactlyOneOf>)
   - [func MutuallyExclusive\(keys ...string\) Validator](<#MutuallyExclusive>)
   - [func MutuallyExclusiveNested\(scopedPath string, keys ...string\) Validator](<#MutuallyExclusiveNested>)
+  - [func NoDuplicates\(seqPath, field string\) Validator](<#NoDuplicates>)
+  - [func RequiredIf\(key, condPath, condValue string\) Validator](<#RequiredIf>)
   - [func RequiredWith\(key, parent string\) Validator](<#RequiredWith>)
+  - [func ValueOneOf\(path string, allowed ...string\) Validator](<#ValueOneOf>)
 - [type ValidatorFunc](<#ValidatorFunc>)
   - [func \(f ValidatorFunc\) Validate\(raw \[\]byte, blocks \[\]document.Block\) \[\]string](<#ValidatorFunc.Validate>)
 
@@ -39,7 +60,7 @@ Run starts the editor TUI and blocks until the user quits. The Config must have 
 Returns nil on a clean quit, or the underlying tea.Program error. A panic inside the editor is recovered and returned as an error instead of crashing the embedding program: Bubble Tea restores the terminal before the panic propagates here, so the host is left with a usable terminal and a normal error to handle.
 
 <a name="RunAll"></a>
-## func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L13>)
+## func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L14>)
 
 ```go
 func RunAll(validators []Validator, raw []byte, blocks []document.Block) []string
@@ -47,8 +68,71 @@ func RunAll(validators []Validator, raw []byte, blocks []document.Block) []strin
 
 RunAll executes all validators against raw/blocks and collects violations.
 
+<a name="CheckedFieldFunc"></a>
+## type [CheckedFieldFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L101>)
+
+CheckedFieldFunc adapts a plain function to the CheckedFieldSource interface:
+
+```
+editor.Run(editor.Config{
+    PreCheckedFields: editor.CheckedFieldFunc(func(blockKey string) []string {
+        return []string{"name", "enabled"}
+    }),
+})
+```
+
+```go
+type CheckedFieldFunc func(blockKey string) []string
+```
+
+<a name="CheckedFieldFunc.CheckedFields"></a>
+### func \(CheckedFieldFunc\) [CheckedFields](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L104>)
+
+```go
+func (f CheckedFieldFunc) CheckedFields(blockKey string) []string
+```
+
+CheckedFields calls f.
+
+<a name="CheckedFieldMap"></a>
+## type [CheckedFieldMap](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L114>)
+
+CheckedFieldMap is a map\-backed CheckedFieldSource. Use it as a drop\-in replacement for map\[string\]\[\]string:
+
+```
+editor.Run(editor.Config{
+    PreCheckedFields: editor.CheckedFieldMap{
+        "categories": {"name", "source", "destination"},
+    },
+})
+```
+
+```go
+type CheckedFieldMap map[string][]string
+```
+
+<a name="CheckedFieldMap.CheckedFields"></a>
+### func \(CheckedFieldMap\) [CheckedFields](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L117>)
+
+```go
+func (m CheckedFieldMap) CheckedFields(blockKey string) []string
+```
+
+CheckedFields returns the pre\-checked field names for blockKey.
+
+<a name="CheckedFieldSource"></a>
+## type [CheckedFieldSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L90-L92>)
+
+CheckedFieldSource returns the sub\-field names that start checked when a block overlay opens for the given block key. Returning nil or an empty slice means "none pre\-checked".
+
+```go
+type CheckedFieldSource interface {
+    CheckedFields(blockKey string) []string
+}
+```
+
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L94-L112>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L209-L227>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -60,34 +144,34 @@ Validators run before every save and on the explicit "validate" shortcut. Use ed
 
 Hints is optional — when set, each field's Hint/Example panel is populated from the returned FieldMeta. All FieldMeta fields are used as\-is; YEDIT does not fall back to struct tag values. When Hints is nil, the panel shows only a generated example.
 
-PreCheckedFields lists which sub\-fields of a parent key start checked when the overlay opens. Keyed by top\-level yaml name \(e.g. "build" → \["dockerfile","context"\]\).
+PreCheckedFields lists which sub\-fields of a parent key start checked when the overlay opens \(e.g. "build" → \["dockerfile","context"\]\). Use CheckedFieldMap as a zero\-boilerplate adapter when a static map is enough.
 
-FieldSnippets provides the indented YAML chunk inserted when the user toggles a sub\-field on \(keyed by parent key → child yaml name → snippet\). When a snippet is missing, the editor falls back to "\<child\>: \\n".
+FieldSnippets provides the indented YAML chunk inserted when the user toggles a sub\-field on. Use FieldSnippetMap as a zero\-boilerplate adapter when a static map is enough. When a snippet is missing, the editor falls back to "\<child\>: \\n".
 
 ```go
 type Config struct {
-    Path                 string
-    Schema               any
-    Title                string
-    Presets              presets.Source
-    Hints                HintSource
-    Validators           []Validator
-    PreCheckedFields     map[string][]string
-    FieldSnippets        map[string]map[string]string
-    Hidden               []string    // top-level keys to omit from the UI entirely
-    PassthroughKeys      []string    // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
-    Theme                theme.Theme // zero-value resolves to ThemeDark
-    NoDeleteConfirm      bool        // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
-    NoValidateOnSave     bool        // allow saving even when validators report errors; a warning alert is shown but does not block
-    NoSaveConfirm        bool        // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
-    ReadOnly             bool        // disable all edits and saves; the title displays "(READ-ONLY MODE)"
-    SavePath             string      // write to this path instead of Path; Path is still used for loading
-    SchemaRecursionDepth int         // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
+    Path                 string             // YAML file to load; also the default save target when SavePath is empty
+    Schema               any                // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
+    Title                string             // label shown in the TUI header
+    Presets              PresetSource       // optional; nil disables the preset picker
+    Hints                HintSource         // optional; nil hides the Hint/Example panel entirely
+    Validators           []Validator        // rules evaluated before every save and on the validate shortcut
+    PreCheckedFields     CheckedFieldSource // sub-fields that start checked when a block overlay opens; keyed by top-level yaml name
+    FieldSnippets        FieldSnippetSource // YAML inserted when a sub-field is toggled on; keyed by parent key → child yaml name
+    Hidden               []string           // top-level keys to omit from the UI entirely
+    PassthroughKeys      []string           // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
+    Theme                theme.Theme        // zero-value resolves to ThemeDark
+    NoDeleteConfirm      bool               // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
+    NoValidateOnSave     bool               // allow saving even when validators report errors; a warning alert is shown but does not block
+    NoSaveConfirm        bool               // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
+    ReadOnly             bool               // disable all edits and saves; the title displays "(READ-ONLY MODE)"
+    SavePath             string             // write to this path instead of Path; Path is still used for loading
+    SchemaRecursionDepth int                // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
 }
 ```
 
 <a name="FieldMeta"></a>
-## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L41-L48>)
+## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L54-L61>)
 
 FieldMeta carries display metadata for a single field in the Hint/Example panel. Fields at their zero value are omitted from the rendered output. HintSource is the sole authority: YEDIT never auto\-populates any FieldMeta field from struct tags. If no HintSource is configured, the hint panel shows only a generated example.
 
@@ -102,8 +186,71 @@ type FieldMeta struct {
 }
 ```
 
+<a name="FieldSnippetFunc"></a>
+## type [FieldSnippetFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L134>)
+
+FieldSnippetFunc adapts a plain function to the FieldSnippetSource interface:
+
+```
+editor.Run(editor.Config{
+    FieldSnippets: editor.FieldSnippetFunc(func(blockKey, fieldName string) string {
+        return ""
+    }),
+})
+```
+
+```go
+type FieldSnippetFunc func(blockKey, fieldName string) string
+```
+
+<a name="FieldSnippetFunc.FieldSnippet"></a>
+### func \(FieldSnippetFunc\) [FieldSnippet](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L137>)
+
+```go
+func (f FieldSnippetFunc) FieldSnippet(blockKey, fieldName string) string
+```
+
+FieldSnippet calls f.
+
+<a name="FieldSnippetMap"></a>
+## type [FieldSnippetMap](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L149>)
+
+FieldSnippetMap is a map\-backed FieldSnippetSource. Use it as a drop\-in replacement for map\[string\]map\[string\]string:
+
+```
+editor.Run(editor.Config{
+    FieldSnippets: editor.FieldSnippetMap{
+        "categories": {"source": "source:\n  path: \"\"\n"},
+    },
+})
+```
+
+```go
+type FieldSnippetMap map[string]map[string]string
+```
+
+<a name="FieldSnippetMap.FieldSnippet"></a>
+### func \(FieldSnippetMap\) [FieldSnippet](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L152>)
+
+```go
+func (m FieldSnippetMap) FieldSnippet(blockKey, fieldName string) string
+```
+
+FieldSnippet returns the YAML snippet for \(blockKey, fieldName\).
+
+<a name="FieldSnippetSource"></a>
+## type [FieldSnippetSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L123-L125>)
+
+FieldSnippetSource returns the YAML snippet to insert when a sub\-field is toggled on. Returning an empty string falls back to "\<fieldName\>: \\n".
+
+```go
+type FieldSnippetSource interface {
+    FieldSnippet(blockKey, fieldName string) string
+}
+```
+
 <a name="HintFunc"></a>
-## type [HintFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L67>)
+## type [HintFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L80>)
 
 HintFunc adapts a plain function to the HintSource interface:
 
@@ -121,7 +268,7 @@ type HintFunc func(blockKey, fieldPath string) FieldMeta
 ```
 
 <a name="HintFunc.FieldHint"></a>
-### func \(HintFunc\) [FieldHint](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L70>)
+### func \(HintFunc\) [FieldHint](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L83>)
 
 ```go
 func (f HintFunc) FieldHint(blockKey, fieldPath string) FieldMeta
@@ -130,7 +277,7 @@ func (f HintFunc) FieldHint(blockKey, fieldPath string) FieldMeta
 FieldHint calls f.
 
 <a name="HintSource"></a>
-## type [HintSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L55-L57>)
+## type [HintSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L68-L70>)
 
 HintSource provides per\-field display metadata for the Hint/Example panel. It is called once per field render with the top\-level block key and the field's dot\-joined path from the block root \(e.g. "source", "source.path"\). For top\-level block entries in the root list, fieldPath is empty \(""\). Returning a zero FieldMeta means "no override".
 
@@ -140,8 +287,75 @@ type HintSource interface {
 }
 ```
 
+<a name="PresetFunc"></a>
+## type [PresetFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L41>)
+
+PresetFunc adapts a plain function to the PresetSource interface when only a single preset per field is needed and a full struct would be boilerplate:
+
+```
+editor.Run(editor.Config{
+    Presets: editor.PresetFunc(func(field, name string) (string, error) {
+        // return the YAML snippet for (field, name) ...
+        return "", nil
+    }),
+})
+```
+
+ListFields and ListPresets return nil; the picker will not appear. Use a struct implementing PresetSource directly when the picker is needed.
+
+```go
+type PresetFunc func(field, name string) (string, error)
+```
+
+<a name="PresetFunc.ListFields"></a>
+### func \(PresetFunc\) [ListFields](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L43>)
+
+```go
+func (f PresetFunc) ListFields() []string
+```
+
+
+
+<a name="PresetFunc.ListPresets"></a>
+### func \(PresetFunc\) [ListPresets](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L44>)
+
+```go
+func (f PresetFunc) ListPresets(_ string) []string
+```
+
+
+
+<a name="PresetFunc.PresetYAML"></a>
+### func \(PresetFunc\) [PresetYAML](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L45>)
+
+```go
+func (f PresetFunc) PresetYAML(field, name string) (string, error)
+```
+
+
+
+<a name="PresetSource"></a>
+## type [PresetSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L16-L27>)
+
+PresetSource supplies YAML preset snippets keyed by \(field, preset name\). The editor uses it to populate the preset picker and to seed the YAML editor when a block is opened. Returning an empty slice from ListFields disables the preset picker for that session.
+
+```go
+type PresetSource interface {
+    // ListFields returns the field names that have at least one preset.
+    ListFields() []string
+
+    // ListPresets returns the preset names available for the given field,
+    // or an empty slice if the field has no presets.
+    ListPresets(field string) []string
+
+    // PresetYAML returns the YAML snippet for (field, name) or an error if
+    // either is unknown.
+    PresetYAML(field, name string) (string, error)
+}
+```
+
 <a name="Validator"></a>
-## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L14-L16>)
+## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L161-L163>)
 
 Validator is a pluggable rule executed at validate/save time. It returns human\-readable messages for every violation it finds. Returning an empty slice \(or nil\) means "all good".
 
@@ -151,8 +365,35 @@ type Validator interface {
 }
 ```
 
+<a name="AtLeastOneOf"></a>
+### func [AtLeastOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L279>)
+
+```go
+func AtLeastOneOf(keys ...string) Validator
+```
+
+AtLeastOneOf reports a violation when none of the listed keys is present.
+
+<a name="CrossFieldOrdered"></a>
+### func [CrossFieldOrdered](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L378>)
+
+```go
+func CrossFieldOrdered(smallerPath, largerPath string) Validator
+```
+
+CrossFieldOrdered reports a violation when both paths are present but the value at smallerPath is not strictly less than the value at largerPath. Values are compared as time.Duration strings \(e.g. "24h"\) or size strings \(e.g. "10MB"\).
+
+<a name="ExactlyOneOf"></a>
+### func [ExactlyOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L296>)
+
+```go
+func ExactlyOneOf(keys ...string) Validator
+```
+
+ExactlyOneOf reports a violation when none or more than one of the listed keys is present.
+
 <a name="MutuallyExclusive"></a>
-### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L45>)
+### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L46>)
 
 ```go
 func MutuallyExclusive(keys ...string) Validator
@@ -180,7 +421,7 @@ editor.MutuallyExclusive(
 For constraints that must hold at every occurrence of a key regardless of depth \(e.g. recursive schemas\), use MutuallyExclusiveNested instead.
 
 <a name="MutuallyExclusiveNested"></a>
-### func [MutuallyExclusiveNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L162>)
+### func [MutuallyExclusiveNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L163>)
 
 ```go
 func MutuallyExclusiveNested(scopedPath string, keys ...string) Validator
@@ -204,8 +445,26 @@ editor.MutuallyExclusiveNested("categories.installers.source.filter", "any", "al
 
 The scoped form is preferred when the constraint applies to a specific filter type and not to every mapping named "filter" in the document.
 
+<a name="NoDuplicates"></a>
+### func [NoDuplicates](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L410>)
+
+```go
+func NoDuplicates(seqPath, field string) Validator
+```
+
+NoDuplicates reports a violation when two or more items in the sequence at seqPath share the same value for field.
+
+<a name="RequiredIf"></a>
+### func [RequiredIf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L324>)
+
+```go
+func RequiredIf(key, condPath, condValue string) Validator
+```
+
+RequiredIf reports a violation when key is absent but condPath equals condValue.
+
 <a name="RequiredWith"></a>
-### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L128>)
+### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L129>)
 
 ```go
 func RequiredWith(key, parent string) Validator
@@ -213,8 +472,17 @@ func RequiredWith(key, parent string) Validator
 
 RequiredWith reports a violation when key is present but parent is not.
 
+<a name="ValueOneOf"></a>
+### func [ValueOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L346>)
+
+```go
+func ValueOneOf(path string, allowed ...string) Validator
+```
+
+ValueOneOf reports a violation when the field at path exists but its value is not in allowed.
+
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L29>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L176>)
 
 ValidatorFunc adapts a plain function to the Validator interface, letting callers register inline validators without defining a named type:
 
@@ -234,7 +502,7 @@ type ValidatorFunc func(raw []byte, blocks []document.Block) []string
 ```
 
 <a name="ValidatorFunc.Validate"></a>
-### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L32>)
+### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L179>)
 
 ```go
 func (f ValidatorFunc) Validate(raw []byte, blocks []document.Block) []string

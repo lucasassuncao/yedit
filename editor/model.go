@@ -520,9 +520,11 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "tab":
 			return m.togglePreviewPane()
 		case "h":
-			m.showHint = !m.showHint
-			m.relayout()
-			m.scrollPreviewToSelected()
+			if m.cfg.Hints != nil {
+				m.showHint = !m.showHint
+				m.relayout()
+				m.scrollPreviewToSelected()
+			}
 			return m, nil
 		case "ctrl+u":
 			return m.undo(), nil
@@ -1072,7 +1074,7 @@ func (m model) View() string {
 	} else {
 		hintText = hintModelNew
 	}
-	if !previewFocused && !m.list.IsFiltering() {
+	if !previewFocused && !m.list.IsFiltering() && m.cfg.Hints != nil {
 		if m.showHint {
 			hintText += hintSep + keyHintHide
 		} else {

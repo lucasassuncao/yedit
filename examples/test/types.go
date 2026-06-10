@@ -70,7 +70,7 @@ var testHints = buildHintSource(map[string]*hintNode{
 	},
 })
 
-var testFieldSnippets = map[string]map[string]string{
+var testFieldSnippets = editor.FieldSnippetMap{
 	"server": {
 		"host":        "  host: localhost\n",
 		"port":        "  port: 8080\n",
@@ -96,7 +96,7 @@ var testFieldSnippets = map[string]map[string]string{
 	},
 }
 
-var testPreCheckedFields = map[string][]string{
+var testPreCheckedFields = editor.CheckedFieldMap{
 	"server":  {"host", "port"},
 	"logging": {"level"},
 	"deploy":  {"strategy", "replicas"},

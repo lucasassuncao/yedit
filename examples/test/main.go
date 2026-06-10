@@ -288,7 +288,7 @@ func appTheme(name string) theme.Theme {
 
 // ── Presets ───────────────────────────────────────────────────────────────────
 
-// testPresetSource demonstrates struct-backed presets: implement presets.Source
+// testPresetSource demonstrates struct-backed presets: implement editor.PresetSource
 // inline without embed.FS. Presets are Go structs marshaled to YAML.
 type testPresetSource struct{}
 

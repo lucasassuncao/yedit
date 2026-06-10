@@ -3,6 +3,7 @@ package editor
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -272,6 +273,253 @@ func checkMutualExclusion(node *yaml.Node, keys []string, where string, errs *[]
 			where, joinQuoted(present),
 		))
 	}
+}
+
+// AtLeastOneOf reports a violation when none of the listed keys is present.
+func AtLeastOneOf(keys ...string) Validator {
+	return &atLeastOneOfValidator{keys: keys}
+}
+
+type atLeastOneOfValidator struct{ keys []string }
+
+func (v *atLeastOneOfValidator) Validate(_ []byte, blocks []document.Block) []string {
+	present := keysPresent(blocks)
+	for _, k := range v.keys {
+		if present[k] {
+			return nil
+		}
+	}
+	return []string{fmt.Sprintf("at least one of %s is required", joinQuoted(v.keys))}
+}
+
+// ExactlyOneOf reports a violation when none or more than one of the listed keys is present.
+func ExactlyOneOf(keys ...string) Validator {
+	return &exactlyOneOfValidator{keys: keys}
+}
+
+type exactlyOneOfValidator struct{ keys []string }
+
+func (v *exactlyOneOfValidator) Validate(_ []byte, blocks []document.Block) []string {
+	present := keysPresent(blocks)
+	var found []string
+	for _, k := range v.keys {
+		if present[k] {
+			found = append(found, k)
+		}
+	}
+	switch len(found) {
+	case 1:
+		return nil
+	case 0:
+		return []string{fmt.Sprintf("exactly one of %s is required", joinQuoted(v.keys))}
+	default:
+		return []string{fmt.Sprintf(
+			"exactly one of %s must be set — found: %s",
+			joinQuoted(v.keys), joinQuoted(found),
+		)}
+	}
+}
+
+// RequiredIf reports a violation when key is absent but condPath equals condValue.
+func RequiredIf(key, condPath, condValue string) Validator {
+	return &requiredIfValidator{key: key, condPath: condPath, condValue: condValue}
+}
+
+type requiredIfValidator struct{ key, condPath, condValue string }
+
+func (v *requiredIfValidator) Validate(raw []byte, _ []document.Block) []string {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil || len(doc.Content) == 0 {
+		return nil
+	}
+	root := doc.Content[0]
+	if scalarAt(root, strings.Split(v.condPath, ".")) != v.condValue {
+		return nil
+	}
+	if scalarAt(root, strings.Split(v.key, ".")) == "" {
+		return []string{fmt.Sprintf("%q is required when %q is %q", v.key, v.condPath, v.condValue)}
+	}
+	return nil
+}
+
+// ValueOneOf reports a violation when the field at path exists but its value is not in allowed.
+func ValueOneOf(path string, allowed ...string) Validator {
+	return &valueOneOfValidator{path: path, allowed: allowed}
+}
+
+type valueOneOfValidator struct {
+	path    string
+	allowed []string
+}
+
+func (v *valueOneOfValidator) Validate(raw []byte, _ []document.Block) []string {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil || len(doc.Content) == 0 {
+		return nil
+	}
+	val := scalarAt(doc.Content[0], strings.Split(v.path, "."))
+	if val == "" {
+		return nil
+	}
+	for _, a := range v.allowed {
+		if val == a {
+			return nil
+		}
+	}
+	return []string{fmt.Sprintf(
+		"%q: value %q is not allowed — use one of: %s",
+		v.path, val, joinQuoted(v.allowed),
+	)}
+}
+
+// CrossFieldOrdered reports a violation when both paths are present but the value
+// at smallerPath is not strictly less than the value at largerPath.
+// Values are compared as time.Duration strings (e.g. "24h") or size strings (e.g. "10MB").
+func CrossFieldOrdered(smallerPath, largerPath string) Validator {
+	return &crossFieldOrderedValidator{smallerPath: smallerPath, largerPath: largerPath}
+}
+
+type crossFieldOrderedValidator struct{ smallerPath, largerPath string }
+
+func (v *crossFieldOrderedValidator) Validate(raw []byte, _ []document.Block) []string {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil || len(doc.Content) == 0 {
+		return nil
+	}
+	root := doc.Content[0]
+	aStr := scalarAt(root, strings.Split(v.smallerPath, "."))
+	bStr := scalarAt(root, strings.Split(v.largerPath, "."))
+	if aStr == "" || bStr == "" {
+		return nil
+	}
+	a, b, ok := parseOrderedPair(aStr, bStr)
+	if !ok {
+		return nil
+	}
+	if a >= b {
+		return []string{fmt.Sprintf(
+			"%q (%s) must be less than %q (%s)",
+			v.smallerPath, aStr, v.largerPath, bStr,
+		)}
+	}
+	return nil
+}
+
+// NoDuplicates reports a violation when two or more items in the sequence at seqPath
+// share the same value for field.
+func NoDuplicates(seqPath, field string) Validator {
+	return &noDuplicatesValidator{seqPath: seqPath, field: field}
+}
+
+type noDuplicatesValidator struct{ seqPath, field string }
+
+func (v *noDuplicatesValidator) Validate(raw []byte, _ []document.Block) []string {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil || len(doc.Content) == 0 {
+		return nil
+	}
+	seqNode := nodeAtStr(doc.Content[0], strings.Split(v.seqPath, "."))
+	if seqNode == nil || seqNode.Kind != yaml.SequenceNode {
+		return nil
+	}
+	seen := make(map[string]int)
+	var errs []string
+	for i, item := range seqNode.Content {
+		val := scalarAt(item, []string{v.field})
+		if val == "" {
+			continue
+		}
+		if firstIdx, dup := seen[val]; dup {
+			errs = append(errs, fmt.Sprintf(
+				"%s[%d].%s: duplicate value %q (first seen at %s[%d])",
+				v.seqPath, i, v.field, val, v.seqPath, firstIdx,
+			))
+		} else {
+			seen[val] = i
+		}
+	}
+	return errs
+}
+
+// scalarAt navigates node following segs and returns the scalar value at the terminal node.
+// Returns "" when the path does not exist or the terminal node is not a scalar.
+func scalarAt(node *yaml.Node, segs []string) string {
+	if len(segs) == 0 {
+		if node.Kind == yaml.ScalarNode {
+			return node.Value
+		}
+		return ""
+	}
+	if node.Kind != yaml.MappingNode {
+		return ""
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == segs[0] {
+			return scalarAt(node.Content[i+1], segs[1:])
+		}
+	}
+	return ""
+}
+
+// nodeAtStr navigates node following string segs and returns the terminal yaml.Node.
+// Returns nil when the path does not exist.
+func nodeAtStr(node *yaml.Node, segs []string) *yaml.Node {
+	if len(segs) == 0 {
+		return node
+	}
+	if node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == segs[0] {
+			return nodeAtStr(node.Content[i+1], segs[1:])
+		}
+	}
+	return nil
+}
+
+// parseOrderedPair tries to parse a and b as comparable int64 values.
+// It tries time.Duration first, then size strings (B/KB/MB/GB/TB).
+func parseOrderedPair(a, b string) (int64, int64, bool) {
+	da, errA := time.ParseDuration(a)
+	db, errB := time.ParseDuration(b)
+	if errA == nil && errB == nil {
+		return int64(da), int64(db), true
+	}
+	sa, okA := parseSize(a)
+	sb, okB := parseSize(b)
+	if okA && okB {
+		return sa, sb, true
+	}
+	return 0, 0, false
+}
+
+// sizeUnits maps suffix → byte multiplier, ordered longest-suffix-first to
+// avoid "B" matching before "MB" or "GB".
+var sizeUnits = []struct {
+	suffix string
+	mult   int64
+}{
+	{"TB", 1024 * 1024 * 1024 * 1024},
+	{"GB", 1024 * 1024 * 1024},
+	{"MB", 1024 * 1024},
+	{"KB", 1024},
+	{"B", 1},
+}
+
+// parseSize parses strings like "10MB", "500KB", "1.5GB".
+func parseSize(s string) (int64, bool) {
+	upper := strings.TrimSpace(strings.ToUpper(s))
+	for _, u := range sizeUnits {
+		if strings.HasSuffix(upper, u.suffix) {
+			numStr := strings.TrimSpace(strings.TrimSuffix(upper, u.suffix))
+			var n float64
+			if _, err := fmt.Sscanf(numStr, "%f", &n); err == nil && n >= 0 {
+				return int64(n * float64(u.mult)), true
+			}
+		}
+	}
+	return 0, false
 }
 
 func keysPresent(blocks []document.Block) map[string]bool {

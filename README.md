@@ -77,8 +77,8 @@ Hint/Example panel shows its type, constraints, and an example.
 
 A **Hint/Example** panel (bottom-right) shows the focused field's concrete type
 (`string`, `int`, `bool`, …), whether it is required, its default, allowed
-values, and an example. It is always visible in the block editor and toggled
-with `h` in the main list.
+values, and an example. It is only shown when `Config.Hints` is set; toggled
+with `h` in the main list and always visible inside the block editor.
 
 ## Keyboard reference
 
@@ -157,12 +157,12 @@ editor.Run(editor.Config{
     },
 
     // Sub-fields to pre-check when a new block is opened for the first time
-    PreCheckedFields: map[string][]string{
+    PreCheckedFields: editor.CheckedFieldMap{
         "build": {"dockerfile", "context"},
     },
 
     // Default YAML snippets inserted when a sub-field is toggled on
-    FieldSnippets: map[string]map[string]string{
+    FieldSnippets: editor.FieldSnippetMap{
         "build": {
             "dockerfile": "  dockerfile: Dockerfile\n",
             "context":    "  context: .\n",
@@ -270,6 +270,56 @@ editor.Run(editor.Config{
 })
 ```
 
+### AtLeastOneOf
+
+Reports a violation when **none** of the listed keys is present:
+
+```go
+editor.AtLeastOneOf("image", "build", "dockerComposeFile")
+```
+
+### ExactlyOneOf
+
+Reports a violation when **none or more than one** of the listed keys is present:
+
+```go
+editor.ExactlyOneOf("image", "build", "dockerComposeFile")
+```
+
+### RequiredIf
+
+Reports a violation when `key` is absent but `condPath` equals `condValue`:
+
+```go
+// "tls-cert" is required when "protocol" is "https"
+editor.RequiredIf("tls-cert", "server.protocol", "https")
+```
+
+### ValueOneOf
+
+Reports a violation when the field at `path` exists but its value is not in the allowed set:
+
+```go
+editor.ValueOneOf("server.protocol", "http", "https", "grpc")
+```
+
+### CrossFieldOrdered
+
+Reports a violation when both paths are present but the value at `smallerPath` is not strictly less than `largerPath`. Supports `time.Duration` strings (e.g. `"24h"`) and size strings (e.g. `"10MB"`):
+
+```go
+editor.CrossFieldOrdered("source.filter.min-age", "source.filter.max-age")
+editor.CrossFieldOrdered("source.filter.min-size", "source.filter.max-size")
+```
+
+### NoDuplicates
+
+Reports a violation when two or more items in the sequence at `seqPath` share the same value for `field`:
+
+```go
+editor.NoDuplicates("categories", "name")
+```
+
 ### Combining validators
 
 ```go
@@ -315,7 +365,7 @@ func (TimeoutValue) YeditSchema() []schema.FieldDef {
 
 ## Presets
 
-Each field can have named presets. Implement `presets.Source` or use
+Each field can have named presets. Implement `editor.PresetSource` or use
 `presets.FromFS` with a directory tree:
 
 ```

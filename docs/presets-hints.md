@@ -11,7 +11,7 @@ Presets populate the preset picker with ready-made YAML snippets for a block. Wh
 ### Interface
 
 ```go
-type Source interface {
+type PresetSource interface {
     ListFields()              []string
     ListPresets(field string) []string
     PresetYAML(field, name string) (string, error)
@@ -107,7 +107,9 @@ server:
 
 ## Hints
 
-Hints populate the hint panel shown when the user presses `h` or selects a field in the block editor. Each hint carries a description, type label, required flag, default value, allowed values, and an example snippet.
+Hints populate the Hint/Example panel shown when the user presses `h` in the main list or when a field is selected in the block editor. Each hint carries a description, type label, required flag, default value, allowed values, and an example snippet.
+
+When `Config.Hints` is `nil`, the panel is **hidden entirely** — the `h` key has no effect and no panel space is allocated. Set `Hints` to any `HintSource` to enable the panel.
 
 ### Interface
 
