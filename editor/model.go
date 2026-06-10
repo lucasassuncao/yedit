@@ -61,6 +61,7 @@ type model struct {
 
 	mode                         pane
 	showHint                     bool // root view: split the right column to show the Hint/Example panel
+	saved                        bool // at least one save succeeded this session; reported via Result
 	statusMsg                    string
 	width, height, listW, innerH int
 }
@@ -79,6 +80,13 @@ func newModel(cfg Config) (model, error) {
 		tree = schema.Discover(cfg.Schema) // use schema default (1 extra recursive level)
 	}
 	tree = applyHidden(tree, cfg.Hidden)
+	// RequiredFromSchema validators cannot see the schema at construction time;
+	// wire the discovered (and Hidden-filtered) tree into them here.
+	for _, v := range cfg.Validators {
+		if rfs, ok := v.(*requiredFromSchemaValidator); ok {
+			rfs.defs = tree
+		}
+	}
 	known := schema.KnownChildren(tree)
 	childrenOf := buildChildrenMap(tree)
 	knownOrder := schema.TopLevelOrder(tree)
@@ -528,6 +536,8 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "ctrl+u":
 			return m.undo(), nil
+		case "ctrl+y":
+			return m.redo(), nil
 		case "esc", "ctrl+c":
 			if m.doc.Dirty() {
 				return m.showConfirmAlert("Quit without saving?",
@@ -856,8 +866,18 @@ func (m model) undo() tea.Model {
 	return m
 }
 
-func (m model) collectErrors() []string {
-	var errs []string
+func (m model) redo() tea.Model {
+	if !m.doc.Redo() {
+		m.statusMsg = "Nothing to redo."
+		return m
+	}
+	m.syncView()
+	m.statusMsg = "Redone."
+	return m
+}
+
+func (m model) collectErrors() []Violation {
+	var errs []Violation
 	if u := schema.UnknownKeys(m.doc.Raw(), m.knownByPath); len(u) > 0 {
 		var filtered []string
 		for _, k := range u {
@@ -866,21 +886,21 @@ func (m model) collectErrors() []string {
 			}
 		}
 		if len(filtered) > 0 {
-			errs = append(errs, "Unknown key(s): "+strings.Join(filtered, ", "))
+			errs = append(errs, Violation{Message: "Unknown key(s): " + strings.Join(filtered, ", ")})
 		}
 	}
 	errs = append(errs, RunAll(m.cfg.Validators, m.doc.Raw(), m.doc.Blocks())...)
 	return errs
 }
 
-func formatErrors(errs []string) string {
+func formatErrors(errs []Violation) string {
 	var sb strings.Builder
 	for i, e := range errs {
 		if i > 0 {
 			sb.WriteString("\n\n")
 		}
 		sb.WriteString("• ")
-		sb.WriteString(e)
+		sb.WriteString(e.String())
 	}
 	return sb.String()
 }
@@ -957,6 +977,7 @@ func (m model) execSave() (tea.Model, tea.Cmd) {
 	if err := m.doc.Save(); err != nil {
 		return m.showAlert("Save failed", err.Error(), alert.KindError)
 	}
+	m.saved = true
 	return m.showAlert("Saved", fmt.Sprintf("Saved to %s.", m.doc.Path()), alert.KindSuccess)
 }
 

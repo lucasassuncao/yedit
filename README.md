@@ -41,18 +41,26 @@ type Config struct {
 }
 
 func main() {
-    if err := editor.Run(editor.Config{
+    res, err := editor.Run(editor.Config{
         Path:   "config.yaml",
         Schema: &Config{},
         Title:  "my editor",
-    }); err != nil {
+    })
+    if err != nil {
         log.Fatal(err)
+    }
+    if res.Saved {
+        // at least one save succeeded — reload config.yaml, apply it, etc.
     }
 }
 ```
 
 A non-existent `Path` is not an error — the editor starts with an empty
 document and saves to that path on `Ctrl+S`.
+
+`editor.Run` returns a `Result` whose `Saved` field reports whether the user
+saved at least once during the session. Use `editor.RunContext(ctx, cfg)` when
+the editor should shut down on context cancellation.
 
 ## UI layout
 
@@ -93,6 +101,7 @@ with `h` in the main list and always visible inside the block editor.
 | `Enter` | Open or add block |
 | `Ctrl+D` | Delete block (with confirmation) |
 | `Ctrl+U` | Undo last change |
+| `Ctrl+Y` | Redo last undone change |
 | `Tab` | Focus the read-only preview pane |
 | `Ctrl+S` | Save changes |
 | `Ctrl+L` | Validate document |
@@ -106,6 +115,7 @@ with `h` in the main list and always visible inside the block editor.
 | `→`, `←` | Expand / collapse node (on an openable `→` field, drills into a nested editor) |
 | `Enter` | Add field / item, or drill into an openable field |
 | `Ctrl+D` | Remove field / sequence item |
+| `Ctrl+U` | Undo last change in this editor |
 | `p` | Open preset picker |
 | `Tab` | Switch to YAML editor |
 | `Ctrl+S` | Commit changes |
@@ -180,8 +190,16 @@ editor.Run(editor.Config{
 ## Validators
 
 Validators run before every save and when the user presses `Ctrl+L`. Each
-returns a list of human-readable error strings shown in a blocking alert.
-Pass them via `editor.Config.Validators`.
+returns a list of `editor.Violation` values — a `Path` locating the offending
+node (empty for document-wide rules) plus a human-readable `Message` — shown
+in a blocking alert. Pass them via `editor.Config.Validators`; use
+`editor.ValidatorFunc` for inline custom rules.
+
+Dotted paths expand sequences and dict-style mappings automatically in every
+path-based validator: a rule on `categories.installers.source.type` is checked
+inside every installer of every category, whether `categories` is a list or a
+map. Cross-field validators (`RequiredIf`, `CrossFieldOrdered`) apply this
+per-entry when both paths share the same parent prefix.
 
 ### MutuallyExclusive
 
@@ -305,7 +323,7 @@ editor.ValueOneOf("server.protocol", "http", "https", "grpc")
 
 ### CrossFieldOrdered
 
-Reports a violation when both paths are present but the value at `smallerPath` is not strictly less than `largerPath`. Supports `time.Duration` strings (e.g. `"24h"`) and size strings (e.g. `"10MB"`):
+Reports a violation when both paths are present but the value at `smallerPath` is not strictly less than `largerPath`. Supports plain numbers (`"1"`, `"0.5"`), `time.Duration` strings (e.g. `"24h"`), and size strings — `KB`/`MB`/`GB`/`TB` are decimal (powers of 1000), `KiB`/`MiB`/`GiB`/`TiB` are binary (powers of 1024). Both sides must be of the same kind:
 
 ```go
 editor.CrossFieldOrdered("source.filter.min-age", "source.filter.max-age")
@@ -318,6 +336,90 @@ Reports a violation when two or more items in the sequence at `seqPath` share th
 
 ```go
 editor.NoDuplicates("categories", "name")
+```
+
+### Required
+
+Reports a violation when a path is absent or holds an empty/null scalar. A path
+with no dots is required unconditionally; a dotted path is conditional — the
+leaf is only required where its parent exists, and sequences / dict-style
+mappings along the path are expanded automatically:
+
+```go
+editor.Required("version")          // top-level, unconditional
+editor.Required("categories.name")  // every category entry needs "name"
+```
+
+### RequiredFromSchema
+
+Enforces the schema's `validate:"required"` / `jsonschema:"required"` tags at
+validate/save time (without it the marker is display-only). Required fields
+inside an optional block are only enforced while the block is present; sequence
+and dictionary entries are checked individually. The editor wires the
+discovered schema in automatically:
+
+```go
+editor.RequiredFromSchema()
+```
+
+### AllOrNone
+
+Reports a violation when only some of the listed keys are present — they must
+appear together or not at all (e.g. a TLS cert/key pair). Supports top-level
+keys and dotted paths with a shared parent, like `MutuallyExclusive`:
+
+```go
+editor.AllOrNone("tls-cert", "tls-key")
+editor.AllOrNone("server.tls-cert", "server.tls-key")
+```
+
+### ValueInRange
+
+Reports a violation when the scalar at `path` is present but outside the
+inclusive `[min, max]` range. Bounds and value may be plain numbers,
+`time.Duration` strings, or size strings (same kinds as `CrossFieldOrdered`):
+
+```go
+editor.ValueInRange("server.port", "1", "65535")
+editor.ValueInRange("filter.max-age", "1h", "8760h")
+```
+
+### ValueMatches
+
+Reports a violation when the scalar at `path` is present but does not match the
+regular expression. Combine with `Required` when the field is mandatory:
+
+```go
+editor.ValueMatches("version", `^\d+\.\d+\.\d+$`)
+```
+
+### CountRange
+
+Reports a violation when the collection at `path` has fewer than `min` or more
+than `max` entries (`max < 0` means no upper bound). Sequences count items,
+mappings count keys:
+
+```go
+editor.CountRange("workers", 1, 10)
+editor.CountRange("categories", 1, -1) // at least one
+```
+
+### UniqueValues
+
+Reports a violation when two or more scalar items in the sequence at `seqPath`
+share the same value (the struct-entry variant is `NoDuplicates`):
+
+```go
+editor.UniqueValues("tags")
+```
+
+### Deprecated
+
+Reports a violation whenever `path` is present, carrying a migration hint.
+Combine with `Config.NoValidateOnSave` to make it a non-blocking warning:
+
+```go
+editor.Deprecated("dockerFile", "use build.dockerfile instead")
 ```
 
 ### Combining validators

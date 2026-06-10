@@ -145,6 +145,72 @@ func TestCtrlDOnEmptyOpenableNoop(t *testing.T) {
 	}
 }
 
+// TestPresetBrowser_updateAndSelection exercises the preset-picker sub-model:
+// construction, cursor navigation, focus toggling, and the apply/append/dismiss
+// actions it reports back to the block editor.
+func TestPresetBrowser_updateAndSelection(t *testing.T) {
+	src := stubPresets{data: map[string]string{
+		"workers/alpha": "workers:\n  - name: a\n",
+		"workers/beta":  "workers:\n  - name: b\n",
+	}}
+
+	if pb := newPresetBrowser(nil, "workers", ""); pb != nil {
+		t.Error("nil source should not open a browser")
+	}
+	if pb := newPresetBrowser(src, "nothing", ""); pb != nil {
+		t.Error("field without presets should not open a browser")
+	}
+
+	pb := newPresetBrowser(src, "workers", "beta")
+	if pb == nil {
+		t.Fatal("expected a browser for workers")
+	}
+	if pb.names[pb.cursor] != "beta" {
+		t.Errorf("cursor should pre-select the current preset, got %q", pb.names[pb.cursor])
+	}
+
+	keyOf := func(s string) tea.KeyMsg {
+		switch s {
+		case "enter":
+			return tea.KeyMsg{Type: tea.KeyEnter}
+		case "esc":
+			return tea.KeyMsg{Type: tea.KeyEsc}
+		case "tab":
+			return tea.KeyMsg{Type: tea.KeyTab}
+		default:
+			return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+		}
+	}
+
+	if action, _ := pb.Update(keyOf("k"), false); action != presetNone || pb.cursor != 0 {
+		t.Errorf("up should move cursor to 0, got action=%v cursor=%d", action, pb.cursor)
+	}
+	if action, name := pb.Update(keyOf("enter"), false); action != presetApplied || name != pb.names[0] {
+		t.Errorf("enter should apply %q, got action=%v name=%q", pb.names[0], action, name)
+	}
+	if action, name := pb.Update(keyOf("a"), true); action != presetAppended || name != pb.names[0] {
+		t.Errorf("a with allowAppend should append, got action=%v name=%q", action, name)
+	}
+	if action, _ := pb.Update(keyOf("a"), false); action != presetNone {
+		t.Errorf("a without allowAppend should be a no-op, got %v", action)
+	}
+
+	// Tab moves focus to the preview; esc first returns focus, then dismisses.
+	pb.Update(keyOf("tab"), false)
+	if !pb.previewFocus {
+		t.Fatal("tab should focus the preview")
+	}
+	if action, _ := pb.Update(keyOf("enter"), false); action != presetNone {
+		t.Errorf("enter with preview focused should be a no-op, got %v", action)
+	}
+	if action, _ := pb.Update(keyOf("esc"), false); action != presetNone || pb.previewFocus {
+		t.Error("first esc should only return focus to the list")
+	}
+	if action, _ := pb.Update(keyOf("esc"), false); action != presetDismissed {
+		t.Errorf("second esc should dismiss, got %v", action)
+	}
+}
+
 // TestAppendPreset_addsEntriesToExisting verifies that appendPreset appends
 // all entries from the preset after the existing entries and positions the
 // cursor on the last entry.

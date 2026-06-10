@@ -174,6 +174,68 @@ func TestDocument_UndoStaysDirtyMidStack(t *testing.T) {
 	}
 }
 
+func TestDocument_RedoEmpty(t *testing.T) {
+	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
+	if doc.Redo() {
+		t.Error("Redo with nothing undone should return false")
+	}
+	if doc.CanRedo() {
+		t.Error("CanRedo should be false with nothing undone")
+	}
+}
+
+func TestDocument_RedoReappliesUndoneChange(t *testing.T) {
+	doc, err := document.New([]byte("name: mydev\n"), canonicalOrder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Insert("image: ubuntu:22.04\n"); err != nil {
+		t.Fatal(err)
+	}
+	withImage := string(doc.Raw())
+
+	if !doc.Undo() {
+		t.Fatal("undo failed")
+	}
+	if !doc.CanRedo() {
+		t.Fatal("CanRedo should be true after Undo")
+	}
+	if !doc.Redo() {
+		t.Fatal("redo failed")
+	}
+	if string(doc.Raw()) != withImage {
+		t.Errorf("after redo, Raw = %q, want %q", doc.Raw(), withImage)
+	}
+	if !doc.Dirty() {
+		t.Error("dirty should be true after redo (raw differs from loaded)")
+	}
+	// The redo itself must be undoable.
+	if !doc.Undo() {
+		t.Fatal("undo after redo failed")
+	}
+	if string(doc.Raw()) != "name: mydev\n" {
+		t.Errorf("after undoing the redo, Raw = %q, want %q", doc.Raw(), "name: mydev\n")
+	}
+}
+
+func TestDocument_RedoClearedByNewMutation(t *testing.T) {
+	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
+	_ = doc.Insert("image: ubuntu:22.04\n")
+	if !doc.Undo() {
+		t.Fatal("undo failed")
+	}
+	// A new mutation forks away from the undone state.
+	if err := doc.Insert("remoteUser: vscode\n"); err != nil {
+		t.Fatal(err)
+	}
+	if doc.CanRedo() {
+		t.Error("redo stack should be cleared by a new mutation")
+	}
+	if doc.Redo() {
+		t.Error("Redo after a new mutation should return false")
+	}
+}
+
 func TestDocument_HistoryCapsAt50(t *testing.T) {
 	doc, err := document.New([]byte("name: mydev\n"), canonicalOrder)
 	if err != nil {

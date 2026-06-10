@@ -94,12 +94,8 @@ type blockEditState struct {
 	currentPreset string
 
 	mode         blockEditMode
-	presetCursor int
-	presetNames  []string
-	confirmAlert *alert.Model // alert data when mode == modeConfirming
-
-	previewFocus  bool // preset browser: right panel has keyboard focus
-	previewScroll int  // preset browser: line scroll offset in preview panel
+	preset       *presetBrowser // preset-picker overlay state when mode == modePresetBrowser
+	confirmAlert *alert.Model   // alert data when mode == modeConfirming
 
 	undoStack []*blockEditUndoSnap // undo history; each mutating op pushes a snapshot
 	theme     resolvedTheme
@@ -324,48 +320,18 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 	if !ok {
 		return be, nil
 	}
-	switch key.String() {
-	case "esc":
-		if be.previewFocus {
-			be.previewFocus = false
-		} else {
-			be.mode = modeEditing
-		}
-	case "tab":
-		be.previewFocus = !be.previewFocus
-	case "enter":
-		if !be.previewFocus {
-			if be.presetCursor >= 0 && be.presetCursor < len(be.presetNames) {
-				be = be.applyPreset(be.presetNames[be.presetCursor])
-			}
-			be.mode = modeEditing
-		}
-	case "a":
-		if !be.previewFocus && be.isCollectionNav() {
-			if be.presetCursor >= 0 && be.presetCursor < len(be.presetNames) {
-				be = be.appendPreset(be.presetNames[be.presetCursor])
-			}
-			be.mode = modeEditing
-		}
-	case "up", "k":
-		if be.previewFocus {
-			if be.previewScroll > 0 {
-				be.previewScroll--
-			}
-		} else {
-			if be.presetCursor > 0 {
-				be.presetCursor--
-				be.previewScroll = 0
-			}
-		}
-	case "down", "j":
-		if be.previewFocus {
-			be.previewScroll++
-		} else if be.presetCursor < len(be.presetNames)-1 {
-			be.presetCursor++
-			be.previewScroll = 0
-		}
+	action, name := be.preset.Update(key, be.isCollectionNav())
+	switch action {
+	case presetApplied:
+		be = be.applyPreset(name)
+	case presetAppended:
+		be = be.appendPreset(name)
+	case presetNone:
+		return be, nil
 	}
+	// presetDismissed, presetApplied, presetAppended all close the browser.
+	be.mode = modeEditing
+	be.preset = nil
 	return be, nil
 }
 
@@ -986,24 +952,12 @@ func (be blockEditState) switchPanel() blockEditState {
 // openPresetPicker enters preset-browser mode if there are any presets for
 // this block. It's a no-op when Presets is nil or the field has none.
 func (be blockEditState) openPresetPicker() blockEditState {
-	if be.cfg.Presets == nil {
+	pb := newPresetBrowser(be.cfg.Presets, be.key, be.currentPreset)
+	if pb == nil {
 		return be
 	}
-	names := be.cfg.Presets.ListPresets(be.key)
-	if len(names) == 0 {
-		return be
-	}
+	be.preset = pb
 	be.mode = modePresetBrowser
-	be.presetNames = names
-	be.presetCursor = 0
-	be.previewFocus = false
-	be.previewScroll = 0
-	for i, n := range names {
-		if n == be.currentPreset {
-			be.presetCursor = i
-			break
-		}
-	}
 	return be
 }
 
@@ -1242,11 +1196,11 @@ func (be blockEditState) presetView(parentSegs []string) string {
 	segs := append(append(parentSegs, be.key), be.tree.BreadcrumbSegments()...)
 	header := theme.RenderHeaderWith(be.cfg.Title, strings.Join(segs, " › "), "", be.width, be.theme.colors)
 
-	leftPanel := theme.RenderTitledPanelWith("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, !be.previewFocus, be.renderPresetList(), be.theme.colors)
-	rightPanel := theme.RenderTitledPanelWith("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, be.previewFocus, be.scrolledPreview(), be.theme.colors)
+	leftPanel := theme.RenderTitledPanelWith("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, !be.preset.previewFocus, be.preset.listView(be.theme), be.theme.colors)
+	rightPanel := theme.RenderTitledPanelWith("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, be.preset.previewFocus, be.preset.previewView(be.innerH()), be.theme.colors)
 
 	hintStr := hintPresetListScalar
-	if be.previewFocus {
+	if be.preset.previewFocus {
 		hintStr = hintPresetPreviewFocused
 	} else if be.isCollectionNav() {
 		hintStr = hintPresetListCollection
@@ -1254,61 +1208,6 @@ func (be blockEditState) presetView(parentSegs []string) string {
 	hint := lipgloss.NewStyle().Width(be.width).Render(be.theme.status.Render(hintStr))
 
 	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Hint: hint})
-}
-
-func (be blockEditState) scrolledPreview() string {
-	full := be.presetPreviewYAML()
-	if full == "" {
-		return ""
-	}
-	lines := strings.Split(full, "\n")
-	visibleH := be.innerH()
-	if visibleH < 1 {
-		visibleH = 1
-	}
-	total := len(lines)
-	maxScroll := total - visibleH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	scroll := be.previewScroll
-	if scroll > maxScroll {
-		scroll = maxScroll
-	}
-	end := scroll + visibleH
-	if end > total {
-		end = total
-	}
-	return strings.Join(lines[scroll:end], "\n")
-}
-
-func (be blockEditState) renderPresetList() string {
-	var sb strings.Builder
-	for i, name := range be.presetNames {
-		if i > 0 {
-			sb.WriteByte('\n')
-		}
-		if i == be.presetCursor {
-			sb.WriteString(be.theme.selectedItem.Render("▶  " + name))
-		} else {
-			sb.WriteString(be.theme.availableItem.Render("   " + name))
-		}
-	}
-	return sb.String()
-}
-
-func (be blockEditState) presetPreviewYAML() string {
-	if be.cfg.Presets == nil || len(be.presetNames) == 0 {
-		return ""
-	}
-	if be.presetCursor < 0 || be.presetCursor >= len(be.presetNames) {
-		return ""
-	}
-	y, err := be.cfg.Presets.PresetYAML(be.key, be.presetNames[be.presetCursor])
-	if err != nil {
-		return fmt.Sprintf("# error: %v", err)
-	}
-	return y
 }
 
 // validateSnippetText checks that text is valid YAML.

@@ -12,8 +12,6 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 
 ## Index
 
-- [func Run\(cfg Config\) \(err error\)](<#Run>)
-- [func RunAll\(validators \[\]Validator, raw \[\]byte, blocks \[\]document.Block\) \[\]string](<#RunAll>)
 - [type CheckedFieldFunc](<#CheckedFieldFunc>)
   - [func \(f CheckedFieldFunc\) CheckedFields\(blockKey string\) \[\]string](<#CheckedFieldFunc.CheckedFields>)
 - [type CheckedFieldMap](<#CheckedFieldMap>)
@@ -34,39 +32,33 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
   - [func \(f PresetFunc\) ListPresets\(\_ string\) \[\]string](<#PresetFunc.ListPresets>)
   - [func \(f PresetFunc\) PresetYAML\(field, name string\) \(string, error\)](<#PresetFunc.PresetYAML>)
 - [type PresetSource](<#PresetSource>)
+- [type Result](<#Result>)
+  - [func Run\(cfg Config\) \(Result, error\)](<#Run>)
+  - [func RunContext\(ctx context.Context, cfg Config\) \(res Result, err error\)](<#RunContext>)
 - [type Validator](<#Validator>)
+  - [func AllOrNone\(keys ...string\) Validator](<#AllOrNone>)
   - [func AtLeastOneOf\(keys ...string\) Validator](<#AtLeastOneOf>)
+  - [func CountRange\(path string, minCount, maxCount int\) Validator](<#CountRange>)
   - [func CrossFieldOrdered\(smallerPath, largerPath string\) Validator](<#CrossFieldOrdered>)
+  - [func Deprecated\(path, message string\) Validator](<#Deprecated>)
   - [func ExactlyOneOf\(keys ...string\) Validator](<#ExactlyOneOf>)
   - [func MutuallyExclusive\(keys ...string\) Validator](<#MutuallyExclusive>)
   - [func MutuallyExclusiveNested\(scopedPath string, keys ...string\) Validator](<#MutuallyExclusiveNested>)
   - [func NoDuplicates\(seqPath, field string\) Validator](<#NoDuplicates>)
+  - [func Required\(paths ...string\) Validator](<#Required>)
+  - [func RequiredFromSchema\(\) Validator](<#RequiredFromSchema>)
   - [func RequiredIf\(key, condPath, condValue string\) Validator](<#RequiredIf>)
   - [func RequiredWith\(key, parent string\) Validator](<#RequiredWith>)
+  - [func UniqueValues\(seqPath string\) Validator](<#UniqueValues>)
+  - [func ValueInRange\(path, minVal, maxVal string\) Validator](<#ValueInRange>)
+  - [func ValueMatches\(path, pattern string\) Validator](<#ValueMatches>)
   - [func ValueOneOf\(path string, allowed ...string\) Validator](<#ValueOneOf>)
 - [type ValidatorFunc](<#ValidatorFunc>)
-  - [func \(f ValidatorFunc\) Validate\(raw \[\]byte, blocks \[\]document.Block\) \[\]string](<#ValidatorFunc.Validate>)
+  - [func \(f ValidatorFunc\) Validate\(raw \[\]byte, blocks \[\]document.Block\) \[\]Violation](<#ValidatorFunc.Validate>)
+- [type Violation](<#Violation>)
+  - [func RunAll\(validators \[\]Validator, raw \[\]byte, blocks \[\]document.Block\) \[\]Violation](<#RunAll>)
+  - [func \(v Violation\) String\(\) string](<#Violation.String>)
 
-
-<a name="Run"></a>
-## func [Run](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L18>)
-
-```go
-func Run(cfg Config) (err error)
-```
-
-Run starts the editor TUI and blocks until the user quits. The Config must have Schema and Path set; everything else is optional.
-
-Returns nil on a clean quit, or the underlying tea.Program error. A panic inside the editor is recovered and returned as an error instead of crashing the embedding program: Bubble Tea restores the terminal before the panic propagates here, so the host is left with a usable terminal and a normal error to handle.
-
-<a name="RunAll"></a>
-## func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L14>)
-
-```go
-func RunAll(validators []Validator, raw []byte, blocks []document.Block) []string
-```
-
-RunAll executes all validators against raw/blocks and collects violations.
 
 <a name="CheckedFieldFunc"></a>
 ## type [CheckedFieldFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L101>)
@@ -132,7 +124,7 @@ type CheckedFieldSource interface {
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L209-L227>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L223-L241>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -354,19 +346,69 @@ type PresetSource interface {
 }
 ```
 
-<a name="Validator"></a>
-## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L161-L163>)
+<a name="Result"></a>
+## type [Result](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L12-L17>)
 
-Validator is a pluggable rule executed at validate/save time. It returns human\-readable messages for every violation it finds. Returning an empty slice \(or nil\) means "all good".
+Result reports the outcome of an editor session.
 
 ```go
-type Validator interface {
-    Validate(raw []byte, blocks []document.Block) []string
+type Result struct {
+    // Saved is true when at least one save to disk succeeded during the
+    // session. It stays true even if the user keeps editing afterwards and
+    // quits with unsaved changes.
+    Saved bool
 }
 ```
 
+<a name="Run"></a>
+### func [Run](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L27>)
+
+```go
+func Run(cfg Config) (Result, error)
+```
+
+Run starts the editor TUI and blocks until the user quits. The Config must have Schema and Path set; everything else is optional.
+
+Returns the session Result on a clean quit, or the underlying tea.Program error. A panic inside the editor is recovered and returned as an error instead of crashing the embedding program: Bubble Tea restores the terminal before the panic propagates here, so the host is left with a usable terminal and a normal error to handle.
+
+<a name="RunContext"></a>
+### func [RunContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L35>)
+
+```go
+func RunContext(ctx context.Context, cfg Config) (res Result, err error)
+```
+
+RunContext is Run with a context: cancelling ctx shuts the editor down and makes RunContext return the context's error. Unsaved changes are discarded on cancellation, but Result.Saved still reports any save that completed before it.
+
+<a name="Validator"></a>
+## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L175-L177>)
+
+Validator is a pluggable rule executed at validate/save time. It returns one Violation per problem it finds. Returning an empty slice \(or nil\) means "all good".
+
+```go
+type Validator interface {
+    Validate(raw []byte, blocks []document.Block) []Violation
+}
+```
+
+<a name="AllOrNone"></a>
+### func [AllOrNone](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L753>)
+
+```go
+func AllOrNone(keys ...string) Validator
+```
+
+AllOrNone reports a violation when only some of the listed keys are present: they must appear together or not at all \(e.g. a TLS cert/key pair\).
+
+Like MutuallyExclusive it supports two forms: plain keys are checked against the document's top\-level blocks, and dotted paths — all sharing the same parent prefix — are checked inside every mapping reached by that parent, with sequences and dict\-style mappings expanded automatically:
+
+```
+editor.AllOrNone("tls-cert", "tls-key")
+editor.AllOrNone("server.tls-cert", "server.tls-key")
+```
+
 <a name="AtLeastOneOf"></a>
-### func [AtLeastOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L279>)
+### func [AtLeastOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L295>)
 
 ```go
 func AtLeastOneOf(keys ...string) Validator
@@ -374,17 +416,46 @@ func AtLeastOneOf(keys ...string) Validator
 
 AtLeastOneOf reports a violation when none of the listed keys is present.
 
+<a name="CountRange"></a>
+### func [CountRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L836>)
+
+```go
+func CountRange(path string, minCount, maxCount int) Validator
+```
+
+CountRange reports a violation when the collection at path has fewer than minCount or more than maxCount entries. maxCount \< 0 means no upper bound. Sequences count items; mappings count keys. An absent path reports nothing — combine with Required when the collection itself is mandatory.
+
+```
+editor.CountRange("workers", 1, 10)
+editor.CountRange("categories", 1, -1) // at least one, no upper bound
+```
+
 <a name="CrossFieldOrdered"></a>
-### func [CrossFieldOrdered](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L378>)
+### func [CrossFieldOrdered](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L448>)
 
 ```go
 func CrossFieldOrdered(smallerPath, largerPath string) Validator
 ```
 
-CrossFieldOrdered reports a violation when both paths are present but the value at smallerPath is not strictly less than the value at largerPath. Values are compared as time.Duration strings \(e.g. "24h"\) or size strings \(e.g. "10MB"\).
+CrossFieldOrdered reports a violation when both paths are present but the value at smallerPath is not strictly less than the value at largerPath. Values are compared as plain numbers \("1", "0.5"\), time.Duration strings \(e.g. "24h"\), or size strings; both sides must be of the same kind. Size suffixes follow their standard meaning: KB/MB/GB/TB are decimal \(powers of 1000\) and KiB/MiB/GiB/TiB are binary \(powers of 1024\).
+
+When the two paths share the same parent prefix, the pair is compared inside every mapping reached by that parent — sequences and dict\-style mappings are expanded automatically, so each entry's own min/max pair is checked. Paths with unrelated parents are both resolved from the document root.
+
+<a name="Deprecated"></a>
+### func [Deprecated](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L920>)
+
+```go
+func Deprecated(path, message string) Validator
+```
+
+Deprecated reports a violation whenever path is present, carrying a migration hint for the user. Combine with Config.NoValidateOnSave to make it a non\-blocking warning instead of a save blocker.
+
+```
+editor.Deprecated("dockerFile", "use build.dockerfile instead")
+```
 
 <a name="ExactlyOneOf"></a>
-### func [ExactlyOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L296>)
+### func [ExactlyOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L312>)
 
 ```go
 func ExactlyOneOf(keys ...string) Validator
@@ -393,7 +464,7 @@ func ExactlyOneOf(keys ...string) Validator
 ExactlyOneOf reports a violation when none or more than one of the listed keys is present.
 
 <a name="MutuallyExclusive"></a>
-### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L46>)
+### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L49>)
 
 ```go
 func MutuallyExclusive(keys ...string) Validator
@@ -421,7 +492,7 @@ editor.MutuallyExclusive(
 For constraints that must hold at every occurrence of a key regardless of depth \(e.g. recursive schemas\), use MutuallyExclusiveNested instead.
 
 <a name="MutuallyExclusiveNested"></a>
-### func [MutuallyExclusiveNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L163>)
+### func [MutuallyExclusiveNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L176>)
 
 ```go
 func MutuallyExclusiveNested(scopedPath string, keys ...string) Validator
@@ -446,7 +517,7 @@ editor.MutuallyExclusiveNested("categories.installers.source.filter", "any", "al
 The scoped form is preferred when the constraint applies to a specific filter type and not to every mapping named "filter" in the document.
 
 <a name="NoDuplicates"></a>
-### func [NoDuplicates](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L410>)
+### func [NoDuplicates](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L498>)
 
 ```go
 func NoDuplicates(seqPath, field string) Validator
@@ -454,8 +525,39 @@ func NoDuplicates(seqPath, field string) Validator
 
 NoDuplicates reports a violation when two or more items in the sequence at seqPath share the same value for field.
 
+<a name="Required"></a>
+### func [Required](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L547>)
+
+```go
+func Required(paths ...string) Validator
+```
+
+Required reports a violation when any of the given paths is absent or holds an empty/null scalar. A non\-scalar value \(mapping or sequence\) counts as present.
+
+A path with no dots is required unconditionally at the document root. A dotted path is conditional: the validator navigates to the leaf's parent — expanding sequences and dict\-style mappings like MutuallyExclusive — and only requires the leaf where that parent exists, so a required field inside an optional block is not reported while the block is absent.
+
+```
+editor.Required("version")          // top-level, unconditional
+editor.Required("categories.name")  // every category entry needs "name"
+```
+
+To enforce the schema's validate:"required" tags without listing paths by hand, use RequiredFromSchema.
+
+<a name="RequiredFromSchema"></a>
+### func [RequiredFromSchema](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L589>)
+
+```go
+func RequiredFromSchema() Validator
+```
+
+RequiredFromSchema enforces the schema's required markers \(validate:"required" / jsonschema:"required"\) at validate/save time. Without it the marker is display\-only: the "\*" in the tree and the "Required: yes" hint line do not block saving.
+
+A required field is only enforced where its parent exists — a required field inside an optional block is not reported while the whole block is absent. Top\-level required fields are always enforced. Sequence and dictionary entries are checked individually.
+
+The editor wires the discovered schema into this validator when the session starts; outside editor.Run it reports nothing.
+
 <a name="RequiredIf"></a>
-### func [RequiredIf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L324>)
+### func [RequiredIf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L350>)
 
 ```go
 func RequiredIf(key, condPath, condValue string) Validator
@@ -463,8 +565,17 @@ func RequiredIf(key, condPath, condValue string) Validator
 
 RequiredIf reports a violation when key is absent but condPath equals condValue.
 
+When key and condPath share the same parent prefix, the rule is evaluated inside every mapping reached by that parent — sequences and dict\-style mappings are expanded automatically, so each entry is checked against its own condition value:
+
+```
+// every servers[n] with protocol https needs its own tls-cert
+editor.RequiredIf("servers.tls-cert", "servers.protocol", "https")
+```
+
+Paths with unrelated parents are both resolved from the document root.
+
 <a name="RequiredWith"></a>
-### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L129>)
+### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L142>)
 
 ```go
 func RequiredWith(key, parent string) Validator
@@ -472,24 +583,64 @@ func RequiredWith(key, parent string) Validator
 
 RequiredWith reports a violation when key is present but parent is not.
 
+<a name="UniqueValues"></a>
+### func [UniqueValues](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L881>)
+
+```go
+func UniqueValues(seqPath string) Validator
+```
+
+UniqueValues reports a violation when two or more scalar items in the sequence at seqPath share the same value. Non\-scalar items are skipped — use NoDuplicates to deduplicate struct entries by one of their fields.
+
+```
+editor.UniqueValues("tags")
+```
+
+<a name="ValueInRange"></a>
+### func [ValueInRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L651>)
+
+```go
+func ValueInRange(path, minVal, maxVal string) Validator
+```
+
+ValueInRange reports a violation when the scalar at path is present but outside the inclusive \[min, max\] range. Bounds and value may be plain numbers \("1", "0.5"\), time.Duration strings \("24h"\), or size strings \("10MB", "256MiB" — KB/MB/GB/TB decimal, KiB/MiB/GiB/TiB binary\); all three must be of the same kind. An absent or empty value reports nothing — combine with Required when the field is mandatory.
+
+```
+editor.ValueInRange("server.port", "1", "65535")
+editor.ValueInRange("filter.max-age", "1h", "8760h")
+```
+
+<a name="ValueMatches"></a>
+### func [ValueMatches](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L704>)
+
+```go
+func ValueMatches(path, pattern string) Validator
+```
+
+ValueMatches reports a violation when the scalar at path is present but does not match the regular expression pattern. An absent or empty value reports nothing — combine with Required when the field is mandatory. An invalid pattern is itself reported as a violation so the misconfiguration surfaces on the first validate.
+
+```
+editor.ValueMatches("version", `^\d+\.\d+\.\d+$`)
+```
+
 <a name="ValueOneOf"></a>
-### func [ValueOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L346>)
+### func [ValueOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L396>)
 
 ```go
 func ValueOneOf(path string, allowed ...string) Validator
 ```
 
-ValueOneOf reports a violation when the field at path exists but its value is not in allowed.
+ValueOneOf reports a violation when the field at path exists but its value is not in allowed. Sequences and dict\-style mappings along the path are expanded automatically, so every entry in a list or every value in a map is checked.
 
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L176>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L190>)
 
 ValidatorFunc adapts a plain function to the Validator interface, letting callers register inline validators without defining a named type:
 
 ```
 editor.Run(editor.Config{
     Validators: []editor.Validator{
-        editor.ValidatorFunc(func(raw []byte, blocks []document.Block) []string {
+        editor.ValidatorFunc(func(raw []byte, blocks []document.Block) []editor.Violation {
             // custom rule ...
             return nil
         }),
@@ -498,17 +649,47 @@ editor.Run(editor.Config{
 ```
 
 ```go
-type ValidatorFunc func(raw []byte, blocks []document.Block) []string
+type ValidatorFunc func(raw []byte, blocks []document.Block) []Violation
 ```
 
 <a name="ValidatorFunc.Validate"></a>
-### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L179>)
+### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L193>)
 
 ```go
-func (f ValidatorFunc) Validate(raw []byte, blocks []document.Block) []string
+func (f ValidatorFunc) Validate(raw []byte, blocks []document.Block) []Violation
 ```
 
 Validate calls f.
+
+<a name="Violation"></a>
+## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L159-L162>)
+
+Violation is a single rule violation reported by a Validator.
+
+```go
+type Violation struct {
+    Path    string // dot-separated YAML path to the offending node; empty for document-wide rules
+    Message string // human-readable description, without the path prefix
+}
+```
+
+<a name="RunAll"></a>
+### func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L17>)
+
+```go
+func RunAll(validators []Validator, raw []byte, blocks []document.Block) []Violation
+```
+
+RunAll executes all validators against raw/blocks and collects violations.
+
+<a name="Violation.String"></a>
+### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L165>)
+
+```go
+func (v Violation) String() string
+```
+
+String renders "\<path\>: \<message\>", or just the message when Path is empty.
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)
 

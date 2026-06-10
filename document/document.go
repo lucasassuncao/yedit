@@ -26,6 +26,7 @@ type Document struct {
 	loaded     []byte // raw at last load/save, used to clear dirty on Undo-to-original
 	blocks     []Block
 	history    [][]byte
+	future     [][]byte // redo stack; populated by Undo, discarded on new mutations
 	dirty      bool
 	knownOrder []string
 
@@ -86,6 +87,7 @@ func (d *Document) Blocks() []Block { return d.blocks }
 func (d *Document) Path() string    { return d.path }
 func (d *Document) Dirty() bool     { return d.dirty }
 func (d *Document) CanUndo() bool   { return len(d.history) > 0 }
+func (d *Document) CanRedo() bool   { return len(d.future) > 0 }
 
 // SetPath overrides the path used by Save. Call after Load when the save
 // destination differs from the source (e.g. writing a template to a new file).
@@ -96,18 +98,26 @@ func (d *Document) BlockContent(key string) (string, error) {
 	return BlockContent(d.raw, d.blocks, key)
 }
 
-// snapshot pushes the current raw onto the history stack, capping at HistoryLimit.
+// snapshot pushes the current raw onto the history stack, capping at
+// HistoryLimit. Any redo entries are discarded — a new mutation forks away
+// from the undone states.
 func (d *Document) snapshot() {
-	snap := make([]byte, len(d.raw))
-	copy(snap, d.raw)
-	d.history = append(d.history, snap)
-	if len(d.history) > HistoryLimit {
-		drop := len(d.history) - HistoryLimit
+	d.history = appendCapped(d.history, copyBytes(d.raw))
+	d.future = nil
+}
+
+// appendCapped appends snap to stack, dropping (and nil-ing, so the backing
+// array does not pin evicted snapshots) the oldest entries beyond HistoryLimit.
+func appendCapped(stack [][]byte, snap []byte) [][]byte {
+	stack = append(stack, snap)
+	if len(stack) > HistoryLimit {
+		drop := len(stack) - HistoryLimit
 		for i := range drop {
-			d.history[i] = nil
+			stack[i] = nil
 		}
-		d.history = d.history[drop:]
+		stack = stack[drop:]
 	}
+	return stack
 }
 
 // Insert adds snippet to the document, positioned by the canonical key order.
@@ -132,7 +142,7 @@ func (d *Document) Insert(snippet string) error {
 		key := sBlocks[0].Key
 		if recovered, err2 := BlockContent(d.raw, d.blocks, key); err2 == nil {
 			if !blockSemanticEqual(snippet, recovered) {
-				d.Undo()
+				d.rollback()
 				return fmt.Errorf("round-trip verification failed after insert of %q", key)
 			}
 		}
@@ -182,7 +192,7 @@ func (d *Document) Replace(key, snippet string) error {
 
 	if recovered, err2 := BlockContent(d.raw, d.blocks, key); err2 == nil {
 		if !blockSemanticEqual(snippet, recovered) {
-			d.Undo()
+			d.rollback()
 			return fmt.Errorf("round-trip verification failed after replace of %q", key)
 		}
 	}
@@ -191,7 +201,9 @@ func (d *Document) Replace(key, snippet string) error {
 
 // blockSemanticEqual reports whether two YAML strings are semantically equivalent —
 // same structure and values regardless of formatting, key order, or quoting style.
-// Returns true on any parse error so callers always fall through to the happy path.
+// Fails closed: any parse error returns false, so an unverifiable round-trip
+// triggers a rollback instead of silently accepting possibly corrupted content
+// (see TestBlockSemanticEqual_roundtripComparison for the bug this prevents).
 func blockSemanticEqual(a, b string) bool {
 	var va, vb any
 	if err := yaml.Unmarshal([]byte(a), &va); err != nil {
@@ -219,23 +231,52 @@ func (d *Document) ReplaceRaw(raw []byte) error {
 	return nil
 }
 
-// Undo restores the previous raw from history. Returns false if history is empty.
-// Does not push a new snapshot; dirty is set based on whether the restored raw
-// matches the last-loaded/saved content.
+// Undo restores the previous raw from history and pushes the undone state onto
+// the redo stack. Returns false if history is empty. dirty is set based on
+// whether the restored raw matches the last-loaded/saved content.
 func (d *Document) Undo() bool {
 	if len(d.history) == 0 {
 		return false
 	}
-	last := len(d.history) - 1
-	prev := d.history[last]
-	d.history[last] = nil
-	d.history = d.history[:last]
+	d.future = appendCapped(d.future, copyBytes(d.raw))
+	d.restoreFrom(&d.history)
+	return true
+}
+
+// Redo re-applies the most recently undone change. Returns false if there is
+// nothing to redo. The current state is pushed onto the undo history so the
+// redo itself can be undone.
+func (d *Document) Redo() bool {
+	if len(d.future) == 0 {
+		return false
+	}
+	d.history = appendCapped(d.history, copyBytes(d.raw))
+	d.restoreFrom(&d.future)
+	return true
+}
+
+// restoreFrom pops the top snapshot of stack into the live document.
+func (d *Document) restoreFrom(stack *[][]byte) {
+	s := *stack
+	last := len(s) - 1
+	prev := s[last]
+	s[last] = nil
+	*stack = s[:last]
 	d.raw = prev
 	if blocks, err := ParseBlocks(prev); err == nil {
 		d.blocks = blocks
 	}
 	d.dirty = !bytes.Equal(d.raw, d.loaded)
-	return true
+}
+
+// rollback undoes the last snapshot without recording a redo entry. Used when
+// a mutation fails its round-trip check: the rejected state must not be
+// reachable via Redo.
+func (d *Document) rollback() {
+	if len(d.history) == 0 {
+		return
+	}
+	d.restoreFrom(&d.history)
 }
 
 // Save writes the current content to disk at d.path and clears dirty. The write

@@ -20,6 +20,7 @@ const (
 	keyCtrlDDelete   = "[ctrl+d] delete"
 	keyCtrlDRemove   = "[ctrl+d] remove"
 	keyCtrlUUndo     = "[ctrl+u] undo"
+	keyCtrlYRedo     = "[ctrl+y] redo"
 	keyCtrlLValidate = "[ctrl+l] validate"
 
 	keyEscBack   = "[Esc] back"
@@ -52,8 +53,8 @@ const (
 
 	hintModelPreviewFocused = keyScroll + hintSep + keyTabEscList
 	hintModelFiltering      = keyTypeFilter + hintSep + keyNavigate + hintSep + keyEnterSelect + hintSep + keyEscClear
-	hintModelExisting       = keyNav + hintSep + keyFilter + hintSep + keyEnterOpen + hintSep + keyCtrlDDelete + hintSep + keyCtrlUUndo + hintSep + keyCtrlSSave + hintSep + keyCtrlLValidate
-	hintModelNew            = keyNav + hintSep + keyFilter + hintSep + keyEnterAdd + hintSep + keyCtrlUUndo + hintSep + keyCtrlSSave + hintSep + keyCtrlLValidate
+	hintModelExisting       = keyNav + hintSep + keyFilter + hintSep + keyEnterOpen + hintSep + keyCtrlDDelete + hintSep + keyCtrlUUndo + hintSep + keyCtrlYRedo + hintSep + keyCtrlSSave + hintSep + keyCtrlLValidate
+	hintModelNew            = keyNav + hintSep + keyFilter + hintSep + keyEnterAdd + hintSep + keyCtrlUUndo + hintSep + keyCtrlYRedo + hintSep + keyCtrlSSave + hintSep + keyCtrlLValidate
 
 	msgUncommittedChanges = "Uncommitted changes — ctrl+s to commit"
 )

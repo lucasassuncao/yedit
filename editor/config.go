@@ -155,11 +155,25 @@ func (m FieldSnippetMap) FieldSnippet(blockKey, fieldName string) string {
 
 // ─── Validators ──────────────────────────────────────────────────────────────
 
+// Violation is a single rule violation reported by a Validator.
+type Violation struct {
+	Path    string // dot-separated YAML path to the offending node; empty for document-wide rules
+	Message string // human-readable description, without the path prefix
+}
+
+// String renders "<path>: <message>", or just the message when Path is empty.
+func (v Violation) String() string {
+	if v.Path == "" {
+		return v.Message
+	}
+	return v.Path + ": " + v.Message
+}
+
 // Validator is a pluggable rule executed at validate/save time. It returns
-// human-readable messages for every violation it finds. Returning an empty
-// slice (or nil) means "all good".
+// one Violation per problem it finds. Returning an empty slice (or nil)
+// means "all good".
 type Validator interface {
-	Validate(raw []byte, blocks []document.Block) []string
+	Validate(raw []byte, blocks []document.Block) []Violation
 }
 
 // ValidatorFunc adapts a plain function to the Validator interface, letting
@@ -167,16 +181,16 @@ type Validator interface {
 //
 //	editor.Run(editor.Config{
 //	    Validators: []editor.Validator{
-//	        editor.ValidatorFunc(func(raw []byte, blocks []document.Block) []string {
+//	        editor.ValidatorFunc(func(raw []byte, blocks []document.Block) []editor.Violation {
 //	            // custom rule ...
 //	            return nil
 //	        }),
 //	    },
 //	})
-type ValidatorFunc func(raw []byte, blocks []document.Block) []string
+type ValidatorFunc func(raw []byte, blocks []document.Block) []Violation
 
 // Validate calls f.
-func (f ValidatorFunc) Validate(raw []byte, blocks []document.Block) []string {
+func (f ValidatorFunc) Validate(raw []byte, blocks []document.Block) []Violation {
 	return f(raw, blocks)
 }
 

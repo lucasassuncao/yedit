@@ -398,7 +398,7 @@ func main() {
 		}
 	}
 
-	if err := editor.Run(editor.Config{
+	res, err := editor.Run(editor.Config{
 		Theme:  appTheme(*themeName),
 		Path:   path,
 		Schema: &TestConfig{},
@@ -439,7 +439,11 @@ func main() {
 			// RequiredWith: routes require server to be present.
 			editor.RequiredWith("routes", "server"),
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		panic(err)
+	}
+	if res.Saved {
+		fmt.Println("changes saved to", path)
 	}
 }
