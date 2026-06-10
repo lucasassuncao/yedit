@@ -124,7 +124,7 @@ type CheckedFieldSource interface {
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L223-L241>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L223-L240>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -156,7 +156,6 @@ type Config struct {
     NoDeleteConfirm      bool               // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
     NoValidateOnSave     bool               // allow saving even when validators report errors; a warning alert is shown but does not block
     NoSaveConfirm        bool               // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
-    ReadOnly             bool               // disable all edits and saves; the title displays "(READ-ONLY MODE)"
     SavePath             string             // write to this path instead of Path; Path is still used for loading
     SchemaRecursionDepth int                // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
 }
@@ -392,7 +391,7 @@ type Validator interface {
 ```
 
 <a name="AllOrNone"></a>
-### func [AllOrNone](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L753>)
+### func [AllOrNone](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L698>)
 
 ```go
 func AllOrNone(keys ...string) Validator
@@ -408,7 +407,7 @@ editor.AllOrNone("server.tls-cert", "server.tls-key")
 ```
 
 <a name="AtLeastOneOf"></a>
-### func [AtLeastOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L295>)
+### func [AtLeastOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L250>)
 
 ```go
 func AtLeastOneOf(keys ...string) Validator
@@ -417,7 +416,7 @@ func AtLeastOneOf(keys ...string) Validator
 AtLeastOneOf reports a violation when none of the listed keys is present.
 
 <a name="CountRange"></a>
-### func [CountRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L836>)
+### func [CountRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L777>)
 
 ```go
 func CountRange(path string, minCount, maxCount int) Validator
@@ -431,7 +430,7 @@ editor.CountRange("categories", 1, -1) // at least one, no upper bound
 ```
 
 <a name="CrossFieldOrdered"></a>
-### func [CrossFieldOrdered](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L448>)
+### func [CrossFieldOrdered](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L403>)
 
 ```go
 func CrossFieldOrdered(smallerPath, largerPath string) Validator
@@ -442,7 +441,7 @@ CrossFieldOrdered reports a violation when both paths are present but the value 
 When the two paths share the same parent prefix, the pair is compared inside every mapping reached by that parent — sequences and dict\-style mappings are expanded automatically, so each entry's own min/max pair is checked. Paths with unrelated parents are both resolved from the document root.
 
 <a name="Deprecated"></a>
-### func [Deprecated](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L920>)
+### func [Deprecated](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L873>)
 
 ```go
 func Deprecated(path, message string) Validator
@@ -455,7 +454,7 @@ editor.Deprecated("dockerFile", "use build.dockerfile instead")
 ```
 
 <a name="ExactlyOneOf"></a>
-### func [ExactlyOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L312>)
+### func [ExactlyOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L267>)
 
 ```go
 func ExactlyOneOf(keys ...string) Validator
@@ -464,7 +463,7 @@ func ExactlyOneOf(keys ...string) Validator
 ExactlyOneOf reports a violation when none or more than one of the listed keys is present.
 
 <a name="MutuallyExclusive"></a>
-### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L49>)
+### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L50>)
 
 ```go
 func MutuallyExclusive(keys ...string) Validator
@@ -492,7 +491,7 @@ editor.MutuallyExclusive(
 For constraints that must hold at every occurrence of a key regardless of depth \(e.g. recursive schemas\), use MutuallyExclusiveNested instead.
 
 <a name="MutuallyExclusiveNested"></a>
-### func [MutuallyExclusiveNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L176>)
+### func [MutuallyExclusiveNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L165>)
 
 ```go
 func MutuallyExclusiveNested(scopedPath string, keys ...string) Validator
@@ -517,7 +516,7 @@ editor.MutuallyExclusiveNested("categories.installers.source.filter", "any", "al
 The scoped form is preferred when the constraint applies to a specific filter type and not to every mapping named "filter" in the document.
 
 <a name="NoDuplicates"></a>
-### func [NoDuplicates](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L498>)
+### func [NoDuplicates](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L453>)
 
 ```go
 func NoDuplicates(seqPath, field string) Validator
@@ -526,7 +525,7 @@ func NoDuplicates(seqPath, field string) Validator
 NoDuplicates reports a violation when two or more items in the sequence at seqPath share the same value for field.
 
 <a name="Required"></a>
-### func [Required](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L547>)
+### func [Required](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L492>)
 
 ```go
 func Required(paths ...string) Validator
@@ -544,7 +543,7 @@ editor.Required("categories.name")  // every category entry needs "name"
 To enforce the schema's validate:"required" tags without listing paths by hand, use RequiredFromSchema.
 
 <a name="RequiredFromSchema"></a>
-### func [RequiredFromSchema](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L589>)
+### func [RequiredFromSchema](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L534>)
 
 ```go
 func RequiredFromSchema() Validator
@@ -557,7 +556,7 @@ A required field is only enforced where its parent exists — a required field i
 The editor wires the discovered schema into this validator when the session starts; outside editor.Run it reports nothing.
 
 <a name="RequiredIf"></a>
-### func [RequiredIf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L350>)
+### func [RequiredIf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L305>)
 
 ```go
 func RequiredIf(key, condPath, condValue string) Validator
@@ -575,7 +574,7 @@ editor.RequiredIf("servers.tls-cert", "servers.protocol", "https")
 Paths with unrelated parents are both resolved from the document root.
 
 <a name="RequiredWith"></a>
-### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L142>)
+### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L131>)
 
 ```go
 func RequiredWith(key, parent string) Validator
@@ -584,7 +583,7 @@ func RequiredWith(key, parent string) Validator
 RequiredWith reports a violation when key is present but parent is not.
 
 <a name="UniqueValues"></a>
-### func [UniqueValues](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L881>)
+### func [UniqueValues](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L822>)
 
 ```go
 func UniqueValues(seqPath string) Validator
@@ -597,7 +596,7 @@ editor.UniqueValues("tags")
 ```
 
 <a name="ValueInRange"></a>
-### func [ValueInRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L651>)
+### func [ValueInRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L596>)
 
 ```go
 func ValueInRange(path, minVal, maxVal string) Validator
@@ -611,7 +610,7 @@ editor.ValueInRange("filter.max-age", "1h", "8760h")
 ```
 
 <a name="ValueMatches"></a>
-### func [ValueMatches](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L704>)
+### func [ValueMatches](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L649>)
 
 ```go
 func ValueMatches(path, pattern string) Validator
@@ -624,7 +623,7 @@ editor.ValueMatches("version", `^\d+\.\d+\.\d+$`)
 ```
 
 <a name="ValueOneOf"></a>
-### func [ValueOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L396>)
+### func [ValueOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L351>)
 
 ```go
 func ValueOneOf(path string, allowed ...string) Validator
@@ -674,7 +673,7 @@ type Violation struct {
 ```
 
 <a name="RunAll"></a>
-### func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L17>)
+### func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L18>)
 
 ```go
 func RunAll(validators []Validator, raw []byte, blocks []document.Block) []Violation
@@ -692,39 +691,6 @@ func (v Violation) String() string
 String renders "\<path\>: \<message\>", or just the message when Path is empty.
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)
-
-
-<!-- gomarkdoc:embed:end -->
-
-> The block editor's tree interaction model (the full cursor-target × key
-> matrix) is documented in [INTERACTION.md](INTERACTION.md).
-
-## Known Limitations
-
-These are accepted trade-offs, not planned fixes:
-
-**YAML formatting**
-- Blank lines between collection entries are normalised away on edit.
-- Trailing content after the last top-level block (e.g. a trailing comment) is
-  lost when that block is deleted.
-- Unknown top-level keys are repositioned to the end of the file after editing,
-  because they have no position in the schema's canonical order.
-
-**YAML features**
-- Tab-indented YAML is not supported (tabs are invalid in YAML 1.1/1.2 anyway).
-- Multi-document YAML files (`---` separator) are not supported; only the first
-  document is read.
-- YAML anchors (`&ref`) and aliases (`*ref`) are resolved on load; the anchor
-  syntax is not preserved through edits.
-- Flow-style sequences on leaf values (`extensions: ["pdf", "txt"]`) are
-  preserved during field-level edits. Flow-style at the collection root
-  (`categories: [{...}]`) is automatically converted to block style on open.
-
-**Schema discovery**
-- Self-referential or deeply nested schemas are discovered up to 10 levels deep.
-  Fields beyond that limit are silently omitted from the UI.
-- The `KindDictionary` (map) field type skips unknown-key validation on its
-  sub-keys because map keys are user-defined and not part of the schema.
 
 
 <!-- gomarkdoc:embed:end -->

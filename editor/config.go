@@ -235,7 +235,6 @@ type Config struct {
 	NoDeleteConfirm      bool               // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
 	NoValidateOnSave     bool               // allow saving even when validators report errors; a warning alert is shown but does not block
 	NoSaveConfirm        bool               // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
-	ReadOnly             bool               // disable all edits and saves; the title displays "(READ-ONLY MODE)"
 	SavePath             string             // write to this path instead of Path; Path is still used for loading
 	SchemaRecursionDepth int                // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
 }

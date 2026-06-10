@@ -144,3 +144,76 @@ func (pb *presetBrowser) previewYAML() string {
 	}
 	return y
 }
+
+// openPresetPicker enters preset-browser mode if there are any presets for
+// this block. It's a no-op when Presets is nil or the field has none.
+func (be blockEditState) openPresetPicker() blockEditState {
+	pb := newPresetBrowser(be.cfg.Presets, be.key, be.currentPreset)
+	if pb == nil {
+		return be
+	}
+	be.preset = pb
+	be.mode = modePresetBrowser
+	return be
+}
+
+func (be blockEditState) applyPreset(name string) blockEditState {
+	if be.cfg.Presets == nil {
+		return be
+	}
+	y, err := be.cfg.Presets.PresetYAML(be.key, name)
+	if err != nil {
+		be.errMsg = fmt.Sprintf("preset error: %v", err)
+		return be
+	}
+	be = be.saveUndo()
+	be.currentPreset = name
+	be.errMsg = ""
+	be.dirty = true
+
+	if be.isCollectionNav() {
+		be.node = collValueNode(y, be.isMapNav())
+		be.tree.nodes = be.collectionTreeNodes()
+		be.tree.cursor = 0
+		be.tree.offset = 0
+		be = be.loadEntry(0)
+		return be
+	}
+
+	be.yamlEditor.SetValue(y)
+	be.node = blockValueNode(y)
+	be.tree = syncTreeCheckedFromNode(be.tree, be.node)
+	return be
+}
+
+func (be blockEditState) appendPreset(name string) blockEditState {
+	if be.cfg.Presets == nil || !be.isCollectionNav() {
+		return be
+	}
+	y, err := be.cfg.Presets.PresetYAML(be.key, name)
+	if err != nil {
+		be.errMsg = fmt.Sprintf("preset error: %v", err)
+		return be
+	}
+	be = be.saveUndo()
+
+	presetNode := collValueNode(y, be.isMapNav())
+	if entryCount(presetNode, be.isMapNav()) == 0 {
+		return be
+	}
+
+	be = be.flushCurrentEntry()
+	be.errMsg = "" // appending overrides an in-progress invalid entry; don't block
+	// Indentation is irrelevant now: the entries are spliced as nodes and re-encoded.
+	be.node.Content = append(be.node.Content, presetNode.Content...)
+
+	be.tree.nodes = be.collectionTreeNodes()
+	be.tree.offset = 0
+	be.tree.cursor = entryCount(be.node, be.isMapNav()) - 1
+
+	be = be.loadEntry(entryCount(be.node, be.isMapNav()) - 1)
+	be.currentPreset = name
+	be.errMsg = ""
+	be.dirty = true
+	return be
+}

@@ -1,15 +1,16 @@
-package editor_test
+package editor
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/lucasassuncao/yedit/document"
-	"github.com/lucasassuncao/yedit/editor"
+	"github.com/lucasassuncao/yedit/schema"
 )
 
 func TestMutuallyExclusive(t *testing.T) {
-	v := editor.MutuallyExclusive("image", "build", "dockerComposeFile")
+	v := MutuallyExclusive("image", "build", "dockerComposeFile")
 
 	tests := []struct {
 		name          string
@@ -54,7 +55,7 @@ func TestMutuallyExclusive(t *testing.T) {
 }
 
 func TestMutuallyExclusive_dottedPath(t *testing.T) {
-	v := editor.MutuallyExclusive(
+	v := MutuallyExclusive(
 		"categories.installers.source.filter.any",
 		"categories.installers.source.filter.all",
 	)
@@ -137,14 +138,14 @@ categories:
 
 func TestMutuallyExclusive_topLevel_unchanged(t *testing.T) {
 	blocks := []document.Block{{Key: "image"}, {Key: "build"}}
-	v := editor.MutuallyExclusive("image", "build")
+	v := MutuallyExclusive("image", "build")
 	if errs := v.Validate(nil, blocks); len(errs) != 1 {
 		t.Errorf("top-level behavior should be unchanged, got %v", errs)
 	}
 }
 
 func TestRequiredWith(t *testing.T) {
-	v := editor.RequiredWith("service", "dockerComposeFile")
+	v := RequiredWith("service", "dockerComposeFile")
 
 	tests := []struct {
 		name          string
@@ -189,7 +190,7 @@ func TestRequiredWith(t *testing.T) {
 }
 
 func TestAtLeastOneOf(t *testing.T) {
-	v := editor.AtLeastOneOf("image", "build", "dockerComposeFile")
+	v := AtLeastOneOf("image", "build", "dockerComposeFile")
 
 	tests := []struct {
 		name          string
@@ -239,7 +240,7 @@ func TestAtLeastOneOf(t *testing.T) {
 }
 
 func TestExactlyOneOf(t *testing.T) {
-	v := editor.ExactlyOneOf("image", "build", "dockerComposeFile")
+	v := ExactlyOneOf("image", "build", "dockerComposeFile")
 
 	tests := []struct {
 		name          string
@@ -290,7 +291,7 @@ func TestExactlyOneOf(t *testing.T) {
 }
 
 func TestRequiredIf(t *testing.T) {
-	v := editor.RequiredIf("tls.cert", "tls.enabled", "true")
+	v := RequiredIf("tls.cert", "tls.enabled", "true")
 
 	tests := []struct {
 		name          string
@@ -374,7 +375,7 @@ tls:
 }
 
 func TestValueOneOf(t *testing.T) {
-	v := editor.ValueOneOf("configuration.log-level", "trace", "debug", "info", "warn", "error", "fatal")
+	v := ValueOneOf("configuration.log-level", "trace", "debug", "info", "warn", "error", "fatal")
 
 	tests := []struct {
 		name          string
@@ -450,14 +451,14 @@ configuration:
 func TestCrossFieldOrdered(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     editor.Validator
+		validator     Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
 	}{
 		{
 			name:      "duration: smaller < larger — ok",
-			validator: editor.CrossFieldOrdered("filter.min-age", "filter.max-age"),
+			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
 			raw: `
 filter:
   min-age: 24h
@@ -467,7 +468,7 @@ filter:
 		},
 		{
 			name:      "duration: smaller > larger — violation",
-			validator: editor.CrossFieldOrdered("filter.min-age", "filter.max-age"),
+			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
 			raw: `
 filter:
   min-age: 720h
@@ -478,7 +479,7 @@ filter:
 		},
 		{
 			name:      "duration: equal values — violation",
-			validator: editor.CrossFieldOrdered("filter.min-age", "filter.max-age"),
+			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
 			raw: `
 filter:
   min-age: 24h
@@ -488,7 +489,7 @@ filter:
 		},
 		{
 			name:      "size: smaller < larger — ok",
-			validator: editor.CrossFieldOrdered("filter.min-size", "filter.max-size"),
+			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
 			raw: `
 filter:
   min-size: 1MB
@@ -498,7 +499,7 @@ filter:
 		},
 		{
 			name:      "size: smaller > larger — violation",
-			validator: editor.CrossFieldOrdered("filter.min-size", "filter.max-size"),
+			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
 			raw: `
 filter:
   min-size: 500MB
@@ -509,7 +510,7 @@ filter:
 		},
 		{
 			name:      "size: SI suffixes are decimal (999KB < 1MB) — ok",
-			validator: editor.CrossFieldOrdered("filter.min-size", "filter.max-size"),
+			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
 			raw: `
 filter:
   min-size: 999KB
@@ -519,7 +520,7 @@ filter:
 		},
 		{
 			name:      "size: IEC suffixes are binary (1023KiB < 1MiB) — ok",
-			validator: editor.CrossFieldOrdered("filter.min-size", "filter.max-size"),
+			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
 			raw: `
 filter:
   min-size: 1023KiB
@@ -529,7 +530,7 @@ filter:
 		},
 		{
 			name:      "size: 1024KiB equals 1MiB — violation",
-			validator: editor.CrossFieldOrdered("filter.min-size", "filter.max-size"),
+			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
 			raw: `
 filter:
   min-size: 1024KiB
@@ -539,7 +540,7 @@ filter:
 		},
 		{
 			name:      "one field absent — ok",
-			validator: editor.CrossFieldOrdered("filter.min-age", "filter.max-age"),
+			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
 			raw: `
 filter:
   min-age: 24h
@@ -548,7 +549,7 @@ filter:
 		},
 		{
 			name:      "both absent — ok",
-			validator: editor.CrossFieldOrdered("filter.min-age", "filter.max-age"),
+			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
 			raw: `
 filter:
   regex: "^foo"
@@ -557,7 +558,7 @@ filter:
 		},
 		{
 			name:      "incomparable types (mixed duration and size) — ok",
-			validator: editor.CrossFieldOrdered("filter.min-age", "filter.max-size"),
+			validator: CrossFieldOrdered("filter.min-age", "filter.max-size"),
 			raw: `
 filter:
   min-age: 24h
@@ -586,7 +587,7 @@ filter:
 }
 
 func TestNoDuplicates(t *testing.T) {
-	v := editor.NoDuplicates("categories", "name")
+	v := NoDuplicates("categories", "name")
 
 	tests := []struct {
 		name         string
@@ -676,7 +677,7 @@ categories:
 
 // runValidator collects the rendered violations so tests can assert on the
 // user-visible strings.
-func runValidator(t *testing.T, v editor.Validator, raw string, blocks []document.Block) []string {
+func runValidator(t *testing.T, v Validator, raw string, blocks []document.Block) []string {
 	t.Helper()
 	var out []string
 	for _, viol := range v.Validate([]byte(raw), blocks) {
@@ -688,46 +689,46 @@ func runValidator(t *testing.T, v editor.Validator, raw string, blocks []documen
 func TestRequired(t *testing.T) {
 	tests := []struct {
 		name      string
-		validator editor.Validator
+		validator Validator
 		raw       string
 		want      []string // exact violation strings, in order
 	}{
 		{
 			name:      "top-level present — ok",
-			validator: editor.Required("version"),
+			validator: Required("version"),
 			raw:       "version: 1.0.0\n",
 		},
 		{
 			name:      "top-level absent — violation",
-			validator: editor.Required("version"),
+			validator: Required("version"),
 			raw:       "name: myapp\n",
 			want:      []string{"version: required"},
 		},
 		{
 			name:      "empty document — top-level still required",
-			validator: editor.Required("version"),
+			validator: Required("version"),
 			raw:       "",
 			want:      []string{"version: required"},
 		},
 		{
 			name:      "null scalar counts as missing",
-			validator: editor.Required("version"),
+			validator: Required("version"),
 			raw:       "version:\n",
 			want:      []string{"version: required"},
 		},
 		{
 			name:      "non-scalar counts as present",
-			validator: editor.Required("build"),
+			validator: Required("build"),
 			raw:       "build:\n  context: .\n",
 		},
 		{
 			name:      "dotted path — parent absent is ok",
-			validator: editor.Required("categories.name"),
+			validator: Required("categories.name"),
 			raw:       "version: 1.0.0\n",
 		},
 		{
 			name:      "dotted path — every sequence entry checked",
-			validator: editor.Required("categories.name"),
+			validator: Required("categories.name"),
 			raw: `
 categories:
   - name: images
@@ -755,66 +756,66 @@ categories:
 func TestValueInRange(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     editor.Validator
+		validator     Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
 	}{
 		{
 			name:      "number within range — ok",
-			validator: editor.ValueInRange("server.port", "1", "65535"),
+			validator: ValueInRange("server.port", "1", "65535"),
 			raw:       "server:\n  port: 8080\n",
 		},
 		{
 			name:          "number out of range — violation",
-			validator:     editor.ValueInRange("server.port", "1", "65535"),
+			validator:     ValueInRange("server.port", "1", "65535"),
 			raw:           "server:\n  port: 70000\n",
 			wantViolation: true,
 			wantContains:  []string{"server.port", "70000", "out of range"},
 		},
 		{
 			name:      "duration within range — ok",
-			validator: editor.ValueInRange("filter.max-age", "1h", "8760h"),
+			validator: ValueInRange("filter.max-age", "1h", "8760h"),
 			raw:       "filter:\n  max-age: 24h\n",
 		},
 		{
 			name:          "duration below range — violation",
-			validator:     editor.ValueInRange("filter.max-age", "1h", "8760h"),
+			validator:     ValueInRange("filter.max-age", "1h", "8760h"),
 			raw:           "filter:\n  max-age: 30m\n",
 			wantViolation: true,
 		},
 		{
 			name:      "size within range — ok",
-			validator: editor.ValueInRange("filter.max-size", "1MB", "1GB"),
+			validator: ValueInRange("filter.max-size", "1MB", "1GB"),
 			raw:       "filter:\n  max-size: 100MB\n",
 		},
 		{
 			name:      "absent path — ok",
-			validator: editor.ValueInRange("server.port", "1", "65535"),
+			validator: ValueInRange("server.port", "1", "65535"),
 			raw:       "name: myapp\n",
 		},
 		{
 			name:      "empty value — ok",
-			validator: editor.ValueInRange("server.port", "1", "65535"),
+			validator: ValueInRange("server.port", "1", "65535"),
 			raw:       "server:\n  port:\n",
 		},
 		{
 			name:          "non-scalar value — violation",
-			validator:     editor.ValueInRange("server.port", "1", "65535"),
+			validator:     ValueInRange("server.port", "1", "65535"),
 			raw:           "server:\n  port:\n    internal: 8080\n",
 			wantViolation: true,
 			wantContains:  []string{"scalar"},
 		},
 		{
 			name:          "value not comparable with range — violation",
-			validator:     editor.ValueInRange("server.port", "1", "65535"),
+			validator:     ValueInRange("server.port", "1", "65535"),
 			raw:           "server:\n  port: eighty\n",
 			wantViolation: true,
 			wantContains:  []string{"not comparable"},
 		},
 		{
 			name:          "mixed-kind bounds — misconfiguration reported",
-			validator:     editor.ValueInRange("server.port", "1h", "65535"),
+			validator:     ValueInRange("server.port", "1h", "65535"),
 			raw:           "server:\n  port: 8080\n",
 			wantViolation: true,
 			wantContains:  []string{"invalid range"},
@@ -842,43 +843,43 @@ func TestValueInRange(t *testing.T) {
 func TestValueMatches(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     editor.Validator
+		validator     Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
 	}{
 		{
 			name:      "match — ok",
-			validator: editor.ValueMatches("version", `^\d+\.\d+\.\d+$`),
+			validator: ValueMatches("version", `^\d+\.\d+\.\d+$`),
 			raw:       "version: 1.2.3\n",
 		},
 		{
 			name:          "mismatch — violation",
-			validator:     editor.ValueMatches("version", `^\d+\.\d+\.\d+$`),
+			validator:     ValueMatches("version", `^\d+\.\d+\.\d+$`),
 			raw:           "version: latest\n",
 			wantViolation: true,
 			wantContains:  []string{"version", "latest", "does not match"},
 		},
 		{
 			name:      "absent path — ok",
-			validator: editor.ValueMatches("version", `^\d+$`),
+			validator: ValueMatches("version", `^\d+$`),
 			raw:       "name: myapp\n",
 		},
 		{
 			name:      "empty value — ok",
-			validator: editor.ValueMatches("version", `^\d+$`),
+			validator: ValueMatches("version", `^\d+$`),
 			raw:       "version:\n",
 		},
 		{
 			name:          "non-scalar value — violation",
-			validator:     editor.ValueMatches("version", `^\d+$`),
+			validator:     ValueMatches("version", `^\d+$`),
 			raw:           "version:\n  major: 1\n",
 			wantViolation: true,
 			wantContains:  []string{"scalar"},
 		},
 		{
 			name:          "invalid pattern — misconfiguration reported",
-			validator:     editor.ValueMatches("version", `^(\d+$`),
+			validator:     ValueMatches("version", `^(\d+$`),
 			raw:           "version: 1\n",
 			wantViolation: true,
 			wantContains:  []string{"invalid pattern"},
@@ -904,7 +905,7 @@ func TestValueMatches(t *testing.T) {
 }
 
 func TestAllOrNone_topLevel(t *testing.T) {
-	v := editor.AllOrNone("tls-cert", "tls-key")
+	v := AllOrNone("tls-cert", "tls-key")
 
 	tests := []struct {
 		name          string
@@ -947,7 +948,7 @@ func TestAllOrNone_topLevel(t *testing.T) {
 }
 
 func TestAllOrNone_dottedPath(t *testing.T) {
-	v := editor.AllOrNone("server.tls-cert", "server.tls-key")
+	v := AllOrNone("server.tls-cert", "server.tls-key")
 
 	tests := []struct {
 		name          string
@@ -999,54 +1000,54 @@ server:
 func TestCountRange(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     editor.Validator
+		validator     Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
 	}{
 		{
 			name:      "within range — ok",
-			validator: editor.CountRange("workers", 1, 10),
+			validator: CountRange("workers", 1, 10),
 			raw:       "workers:\n  - name: a\n  - name: b\n",
 		},
 		{
 			name:          "below min — violation",
-			validator:     editor.CountRange("workers", 1, 10),
+			validator:     CountRange("workers", 1, 10),
 			raw:           "workers: []\n",
 			wantViolation: true,
 			wantContains:  []string{"workers", "0 entries", "between 1 and 10"},
 		},
 		{
 			name:          "above max — violation",
-			validator:     editor.CountRange("workers", 0, 1),
+			validator:     CountRange("workers", 0, 1),
 			raw:           "workers:\n  - name: a\n  - name: b\n",
 			wantViolation: true,
 		},
 		{
 			name:      "no upper bound — ok",
-			validator: editor.CountRange("workers", 1, -1),
+			validator: CountRange("workers", 1, -1),
 			raw:       "workers:\n  - name: a\n  - name: b\n  - name: c\n",
 		},
 		{
 			name:          "no upper bound, below min — violation",
-			validator:     editor.CountRange("workers", 2, -1),
+			validator:     CountRange("workers", 2, -1),
 			raw:           "workers:\n  - name: a\n",
 			wantViolation: true,
 			wantContains:  []string{"at least 2"},
 		},
 		{
 			name:      "mapping counts keys — ok",
-			validator: editor.CountRange("port-attrs", 1, 2),
+			validator: CountRange("port-attrs", 1, 2),
 			raw:       "port-attrs:\n  \"8080\":\n    label: web\n",
 		},
 		{
 			name:      "absent path — ok",
-			validator: editor.CountRange("workers", 1, 10),
+			validator: CountRange("workers", 1, 10),
 			raw:       "name: myapp\n",
 		},
 		{
 			name:          "scalar at path — violation",
-			validator:     editor.CountRange("workers", 1, 10),
+			validator:     CountRange("workers", 1, 10),
 			raw:           "workers: many\n",
 			wantViolation: true,
 			wantContains:  []string{"list or mapping"},
@@ -1072,7 +1073,7 @@ func TestCountRange(t *testing.T) {
 }
 
 func TestUniqueValues(t *testing.T) {
-	v := editor.UniqueValues("tags")
+	v := UniqueValues("tags")
 
 	tests := []struct {
 		name         string
@@ -1126,32 +1127,32 @@ func TestUniqueValues(t *testing.T) {
 func TestDeprecated(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     editor.Validator
+		validator     Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
 	}{
 		{
 			name:          "present — violation with hint",
-			validator:     editor.Deprecated("dockerFile", "use build.dockerfile instead"),
+			validator:     Deprecated("dockerFile", "use build.dockerfile instead"),
 			raw:           "dockerFile: Dockerfile\n",
 			wantViolation: true,
 			wantContains:  []string{"dockerFile", "deprecated", "use build.dockerfile instead"},
 		},
 		{
 			name:      "absent — ok",
-			validator: editor.Deprecated("dockerFile", "use build.dockerfile instead"),
+			validator: Deprecated("dockerFile", "use build.dockerfile instead"),
 			raw:       "build:\n  dockerfile: Dockerfile\n",
 		},
 		{
 			name:          "present with null value — still deprecated",
-			validator:     editor.Deprecated("dockerFile", "use build.dockerfile instead"),
+			validator:     Deprecated("dockerFile", "use build.dockerfile instead"),
 			raw:           "dockerFile:\n",
 			wantViolation: true,
 		},
 		{
 			name:          "nested path",
-			validator:     editor.Deprecated("server.insecure", "use server.tls instead"),
+			validator:     Deprecated("server.insecure", "use server.tls instead"),
 			raw:           "server:\n  insecure: true\n",
 			wantViolation: true,
 			wantContains:  []string{"server.insecure"},
@@ -1201,27 +1202,27 @@ categories:
 
 	tests := []struct {
 		name         string
-		validator    editor.Validator
+		validator    Validator
 		raw          string
 		wantCount    int
 		wantContains []string // checked against the first violation
 	}{
 		{
 			name:         "ValueOneOf finds the bad entry through dict and list",
-			validator:    editor.ValueOneOf("categories.installers.source.type", "winget", "scoop"),
+			validator:    ValueOneOf("categories.installers.source.type", "winget", "scoop"),
 			raw:          nested,
 			wantCount:    1,
 			wantContains: []string{"categories.media.installers[1].source.type", "floppy"},
 		},
 		{
 			name:      "ValueOneOf — all entries valid",
-			validator: editor.ValueOneOf("categories.installers.source.type", "winget", "scoop", "floppy"),
+			validator: ValueOneOf("categories.installers.source.type", "winget", "scoop", "floppy"),
 			raw:       nested,
 			wantCount: 0,
 		},
 		{
 			name:      "ValueMatches checks every entry",
-			validator: editor.ValueMatches("workers.name", `^[a-z]+$`),
+			validator: ValueMatches("workers.name", `^[a-z]+$`),
 			raw: `
 workers:
   - name: alpha
@@ -1232,7 +1233,7 @@ workers:
 		},
 		{
 			name:      "ValueInRange checks every entry",
-			validator: editor.ValueInRange("workers.concurrency", "1", "8"),
+			validator: ValueInRange("workers.concurrency", "1", "8"),
 			raw: `
 workers:
   - concurrency: 4
@@ -1243,7 +1244,7 @@ workers:
 		},
 		{
 			name:      "CrossFieldOrdered compares each entry's own pair",
-			validator: editor.CrossFieldOrdered("categories.installers.source.filter.min-age", "categories.installers.source.filter.max-age"),
+			validator: CrossFieldOrdered("categories.installers.source.filter.min-age", "categories.installers.source.filter.max-age"),
 			raw: `
 categories:
   media:
@@ -1262,7 +1263,7 @@ categories:
 		},
 		{
 			name:      "RequiredIf with shared parent checks each entry's condition",
-			validator: editor.RequiredIf("servers.tls-cert", "servers.protocol", "https"),
+			validator: RequiredIf("servers.tls-cert", "servers.protocol", "https"),
 			raw: `
 servers:
   - protocol: http
@@ -1275,28 +1276,28 @@ servers:
 		},
 		{
 			name:         "Required reaches leaves through dicts and lists",
-			validator:    editor.Required("categories.installers.name"),
+			validator:    Required("categories.installers.name"),
 			raw:          "categories:\n  media:\n    installers:\n      - source: {}\n",
 			wantCount:    1,
 			wantContains: []string{"categories.media.installers[0].name: required"},
 		},
 		{
 			name:         "UniqueValues checks each entry's own sequence",
-			validator:    editor.UniqueValues("workers.tags"),
+			validator:    UniqueValues("workers.tags"),
 			raw:          "workers:\n  - tags: [a, b]\n  - tags: [c, c]\n",
 			wantCount:    1,
 			wantContains: []string{"workers[1].tags[1]", `"c"`},
 		},
 		{
 			name:         "CountRange checks each dict value",
-			validator:    editor.CountRange("categories.installers", 1, -1),
+			validator:    CountRange("categories.installers", 1, -1),
 			raw:          "categories:\n  media:\n    installers:\n      - name: x\n  tools:\n    installers: []\n",
 			wantCount:    1,
 			wantContains: []string{"categories.tools.installers", "at least 1"},
 		},
 		{
 			name:         "Deprecated flags every occurrence",
-			validator:    editor.Deprecated("servers.insecure", "use tls instead"),
+			validator:    Deprecated("servers.insecure", "use tls instead"),
 			raw:          "servers:\n  - insecure: true\n  - host: x\n  - insecure: false\n",
 			wantCount:    2,
 			wantContains: []string{"servers[0].insecure", "deprecated"},
@@ -1319,14 +1320,14 @@ servers:
 }
 
 func TestViolation_PathAndString(t *testing.T) {
-	if got := (editor.Violation{Message: "msg"}).String(); got != "msg" {
+	if got := (Violation{Message: "msg"}).String(); got != "msg" {
 		t.Errorf("String without Path = %q, want %q", got, "msg")
 	}
-	if got := (editor.Violation{Path: "a.b", Message: "msg"}).String(); got != "a.b: msg" {
+	if got := (Violation{Path: "a.b", Message: "msg"}).String(); got != "a.b: msg" {
 		t.Errorf("String with Path = %q, want %q", got, "a.b: msg")
 	}
 
-	v := editor.ValueOneOf("configuration.log-level", "info")
+	v := ValueOneOf("configuration.log-level", "info")
 	errs := v.Validate([]byte("configuration:\n  log-level: verbose\n"), nil)
 	if len(errs) != 1 {
 		t.Fatalf("expected 1 violation, got %v", errs)
@@ -1339,14 +1340,14 @@ func TestViolation_PathAndString(t *testing.T) {
 func TestMutuallyExclusiveNested(t *testing.T) {
 	tests := []struct {
 		name      string
-		validator editor.Validator
+		validator Validator
 		raw       string
 		wantCount int
 		wantInErr []string
 	}{
 		{
 			name:      "top-level filter violation",
-			validator: editor.MutuallyExclusiveNested("filter", "any", "all"),
+			validator: MutuallyExclusiveNested("filter", "any", "all"),
 			raw: `
 filter:
   any:
@@ -1359,7 +1360,7 @@ filter:
 		},
 		{
 			name:      "single key — ok",
-			validator: editor.MutuallyExclusiveNested("filter", "any", "all"),
+			validator: MutuallyExclusiveNested("filter", "any", "all"),
 			raw: `
 filter:
   any:
@@ -1369,7 +1370,7 @@ filter:
 		},
 		{
 			name:      "nested filter violation",
-			validator: editor.MutuallyExclusiveNested("filter", "any", "all"),
+			validator: MutuallyExclusiveNested("filter", "any", "all"),
 			raw: `
 filter:
   any:
@@ -1384,7 +1385,7 @@ filter:
 		},
 		{
 			name:      "both top-level and nested — two violations",
-			validator: editor.MutuallyExclusiveNested("filter", "any", "all"),
+			validator: MutuallyExclusiveNested("filter", "any", "all"),
 			raw: `
 filter:
   any:
@@ -1400,7 +1401,7 @@ filter:
 		},
 		{
 			name:      "deeply nested path without scope",
-			validator: editor.MutuallyExclusiveNested("filter", "any", "all"),
+			validator: MutuallyExclusiveNested("filter", "any", "all"),
 			raw: `
 categories:
   foo:
@@ -1418,7 +1419,7 @@ categories:
 		},
 		{
 			name:      "scoped path — catches violation inside scope",
-			validator: editor.MutuallyExclusiveNested("categories.installers.source.filter", "any", "all"),
+			validator: MutuallyExclusiveNested("categories.installers.source.filter", "any", "all"),
 			raw: `
 categories:
   foo:
@@ -1436,7 +1437,7 @@ categories:
 		},
 		{
 			name:      "scoped path — ignores filters outside scope",
-			validator: editor.MutuallyExclusiveNested("categories.installers.source.filter", "any", "all"),
+			validator: MutuallyExclusiveNested("categories.installers.source.filter", "any", "all"),
 			raw: `
 categories:
   foo:
@@ -1471,5 +1472,142 @@ some:
 				}
 			}
 		})
+	}
+}
+
+// rfsConfig exercises RequiredFromSchema across the structural kinds: a
+// top-level required scalar, a required field inside an optional object, a
+// required field per sequence entry, and one per dictionary value.
+type rfsConfig struct {
+	Version string `yaml:"version" validate:"required"`
+	Server  *struct {
+		Host string `yaml:"host" validate:"required"`
+		Port int    `yaml:"port"`
+	} `yaml:"server"`
+	Workers []struct {
+		Name string `yaml:"name" validate:"required"`
+	} `yaml:"workers"`
+	PortAttrs map[string]struct {
+		Label string `yaml:"label" validate:"required"`
+	} `yaml:"port-attrs"`
+}
+
+func wiredRequiredFromSchema(t *testing.T) Validator {
+	t.Helper()
+	v := RequiredFromSchema()
+	v.(*requiredFromSchemaValidator).defs = schema.Discover(&rfsConfig{})
+	return v
+}
+
+func TestRequiredFromSchema(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want []string // exact violation strings, in order
+	}{
+		{
+			name: "unwired validator reports nothing",
+			raw:  "",
+			want: nil, // overridden below: uses the bare validator
+		},
+		{
+			name: "empty document — only top-level required reported",
+			raw:  "",
+			want: []string{"version: required"},
+		},
+		{
+			name: "all satisfied — ok",
+			raw: `
+version: 1.0.0
+server:
+  host: localhost
+`,
+			want: nil,
+		},
+		{
+			name: "optional block absent — its required children not reported",
+			raw:  "version: 1.0.0\n",
+			want: nil,
+		},
+		{
+			name: "optional block present without required child",
+			raw: `
+version: 1.0.0
+server:
+  port: 8080
+`,
+			want: []string{"server.host: required"},
+		},
+		{
+			name: "sequence entries checked individually",
+			raw: `
+version: 1.0.0
+workers:
+  - name: a
+  - queue: fast
+`,
+			want: []string{"workers[1].name: required"},
+		},
+		{
+			name: "dictionary values checked individually",
+			raw: `
+version: 1.0.0
+port-attrs:
+  "8080":
+    label: web
+  "9090": {}
+`,
+			want: []string{`port-attrs.9090.label: required`},
+		},
+		{
+			name: "empty scalar counts as missing",
+			raw:  "version:\n",
+			want: []string{"version: required"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v := wiredRequiredFromSchema(t)
+			if tc.name == "unwired validator reports nothing" {
+				v = RequiredFromSchema()
+			}
+			var got []string
+			for _, viol := range v.Validate([]byte(tc.raw), nil) {
+				got = append(got, viol.String())
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("violations = %v, want %v", got, tc.want)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Errorf("violation[%d] = %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestRequiredFromSchema_wiredByNewModel verifies that newModel injects the
+// discovered schema into RequiredFromSchema validators, so a plain
+// editor.RequiredFromSchema() in Config.Validators enforces the tags.
+func TestRequiredFromSchema_wiredByNewModel(t *testing.T) {
+	m, err := newModel(Config{
+		Path:       filepath.Join(t.TempDir(), "missing.yaml"), // empty document
+		Schema:     &rfsConfig{},
+		Validators: []Validator{RequiredFromSchema()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	errs := m.collectErrors()
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e.String(), "version: required") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("collectErrors should report the schema-required field; got %v", errs)
 	}
 }

@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"github.com/lucasassuncao/yedit/internal/yamlnode"
 	"strings"
 	"testing"
 
@@ -30,12 +31,12 @@ func cfgStructDefs() []schema.FieldDef {
 func keyExistsInNode(valueNode *yaml.Node, path []string) bool {
 	cur := valueNode
 	for i := 0; i < len(path)-1 && cur != nil; i++ {
-		cur = childByKey(cur, path[i])
+		cur = yamlnode.ChildByKey(cur, path[i])
 	}
 	if cur == nil || len(path) == 0 {
 		return false
 	}
-	return childByKey(cur, path[len(path)-1]) != nil
+	return yamlnode.ChildByKey(cur, path[len(path)-1]) != nil
 }
 
 // assertTreeMatchesNode is the core invariant: for every leaf field node, its

@@ -1,6 +1,10 @@
 package editor
 
-import "gopkg.in/yaml.v3"
+import (
+	"gopkg.in/yaml.v3"
+
+	"github.com/lucasassuncao/yedit/internal/yamlnode"
+)
 
 // This file holds the structural (node-based) counterparts of the text-parsing
 // sync helpers. They read/derive tree state directly from a *yaml.Node — the
@@ -36,13 +40,13 @@ func deriveChecked(valueNode *yaml.Node, nodes []treeNode, skipFirstSeg bool) []
 		}
 		cur := valueNode
 		for j := start; j < len(path)-1 && cur != nil; j++ {
-			cur = childByKey(cur, path[j])
+			cur = yamlnode.ChildByKey(cur, path[j])
 		}
 		if cur == nil {
 			out[i].checked = false
 			continue
 		}
-		child := childByKey(cur, path[len(path)-1])
+		child := yamlnode.ChildByKey(cur, path[len(path)-1])
 		if n.openable {
 			out[i].checked = child != nil && nodeHasContent(child)
 		} else {
@@ -108,25 +112,6 @@ func nodeHasContent(n *yaml.Node) bool {
 	default:
 		return false
 	}
-}
-
-// cloneNode returns a deep copy of n so a snapshot can be mutated independently
-// of the live tree (used by saveUndo). Returns nil for a nil input.
-func cloneNode(n *yaml.Node) *yaml.Node {
-	if n == nil {
-		return nil
-	}
-	cp := *n
-	if n.Content != nil {
-		cp.Content = make([]*yaml.Node, len(n.Content))
-		for i, c := range n.Content {
-			cp.Content[i] = cloneNode(c)
-		}
-	}
-	if n.Alias != nil {
-		cp.Alias = cloneNode(n.Alias)
-	}
-	return &cp
 }
 
 // blockValueNode parses content of the form "<key>:\n  ..." and returns the

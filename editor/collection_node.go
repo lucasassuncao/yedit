@@ -2,6 +2,7 @@ package editor
 
 import (
 	"fmt"
+	"github.com/lucasassuncao/yedit/internal/yamlnode"
 
 	"gopkg.in/yaml.v3"
 
@@ -67,7 +68,7 @@ func entryLabel(node *yaml.Node, isMap bool, i int) string {
 		return ""
 	}
 	if item := entryValueNode(node, false, i); item != nil {
-		if n := childByKey(item, "name"); n != nil && n.Value != "" {
+		if n := yamlnode.ChildByKey(item, "name"); n != nil && n.Value != "" {
 			return n.Value
 		}
 	}
@@ -83,11 +84,11 @@ func entryViewYAML(node *yaml.Node, key string, isMap bool, i int) string {
 	}
 	if isMap {
 		wrap := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
-			cloneNode(node.Content[2*i]), cloneNode(node.Content[2*i+1]),
+			yamlnode.CloneNode(node.Content[2*i]), yamlnode.CloneNode(node.Content[2*i+1]),
 		}}
 		return nodeToContent(key, wrap)
 	}
-	wrap := &yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{cloneNode(node.Content[i])}}
+	wrap := &yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{yamlnode.CloneNode(node.Content[i])}}
 	return nodeToContent(key, wrap)
 }
 

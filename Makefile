@@ -60,7 +60,7 @@ docs: ## Generate documentation with gomarkdoc
 		./presets/... \
 		./viewer/... \
 		./theme/... \
-		./components/...
+		./internal/...
 
 tag: ## Create and push an annotated git tag (usage: make tag VERSION=v1.2.3)
 ifndef VERSION

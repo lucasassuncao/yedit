@@ -5,7 +5,6 @@
 //
 //	go run ./examples/test
 //	go run ./examples/test --theme dracula
-//	go run ./examples/test --read-only
 //	go run ./examples/test --no-save-confirm
 //	go run ./examples/test --no-delete-confirm
 //
@@ -54,7 +53,6 @@
 //	  Validators       : MutuallyExclusive(server, proxy), RequiredWith(routes, server)
 //	  NoDeleteConfirm  : controlled by --no-delete-confirm flag
 //	  NoSaveConfirm    : controlled by --no-save-confirm flag
-//	  ReadOnly         : controlled by --read-only flag
 //
 //	Edge cases in seed YAML
 //	  unknown-key      : present in file, not in schema → UNKNOWN section + ctrl+l
@@ -385,7 +383,6 @@ func buildHintSource(tree map[string]*hintNode) editor.HintSource {
 
 func main() {
 	themeName := flag.String("theme", "dark", "theme preset (run --list-themes for options)")
-	readOnly := flag.Bool("read-only", false, "open in read-only mode")
 	noSaveConfirm := flag.Bool("no-save-confirm", false, "skip save confirmation dialog")
 	noDeleteConfirm := flag.Bool("no-delete-confirm", false, "skip delete confirmation dialog")
 	noValidate := flag.Bool("no-validate", false, "allow saving with validation errors")
@@ -411,8 +408,7 @@ func main() {
 		// excluded from unknown-key validation (ctrl+l).
 		PassthroughKeys: []string{"import"},
 
-		// Config.ReadOnly / NoSaveConfirm / NoDeleteConfirm / NoValidateOnSave.
-		ReadOnly:         *readOnly,
+		// Config.NoSaveConfirm / NoDeleteConfirm / NoValidateOnSave.
 		NoSaveConfirm:    *noSaveConfirm,
 		NoDeleteConfirm:  *noDeleteConfirm,
 		NoValidateOnSave: *noValidate,

@@ -2,6 +2,7 @@ package editor
 
 import (
 	"fmt"
+	"github.com/lucasassuncao/yedit/internal/yamlnode"
 	"regexp"
 	"strconv"
 	"strings"
@@ -59,19 +60,7 @@ type mutuallyExclusiveValidator struct{ keys []string }
 
 func (v *mutuallyExclusiveValidator) Validate(_ []byte, blocks []document.Block) []Violation {
 	present := keysPresent(blocks)
-	var found []string
-	for _, k := range v.keys {
-		if present[k] {
-			found = append(found, k)
-		}
-	}
-	if len(found) > 1 {
-		return []Violation{{Message: fmt.Sprintf(
-			"mutually exclusive — use only one of: %s",
-			joinQuoted(found),
-		)}}
-	}
-	return nil
+	return mutualExclusionViolation(v.keys, func(k string) bool { return present[k] }, "")
 }
 
 // newPathMutuallyExclusiveValidator builds the path-aware variant. All keys
@@ -118,12 +107,12 @@ type pathMutuallyExclusiveValidator struct {
 }
 
 func (v *pathMutuallyExclusiveValidator) Validate(raw []byte, _ []document.Block) []Violation {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(raw, &doc); err != nil || len(doc.Content) == 0 {
+	root, ok := yamlnode.RootMapping(raw)
+	if !ok {
 		return nil
 	}
 	var errs []Violation
-	navigateYAML(doc.Content[0], v.parentSegs, "", &errs, v.check)
+	yamlnode.Navigate(root, v.parentSegs, "", func(n *yaml.Node, p string) { v.check(n, p, &errs) })
 	return errs
 }
 
@@ -189,13 +178,13 @@ type mutuallyExclusiveNestedValidator struct {
 }
 
 func (v *mutuallyExclusiveNestedValidator) Validate(raw []byte, _ []document.Block) []Violation {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(raw, &doc); err != nil || len(doc.Content) == 0 {
+	root, ok := yamlnode.RootMapping(raw)
+	if !ok {
 		return nil
 	}
 	var errs []Violation
-	navigateYAML(doc.Content[0], v.navSegs, "", &errs, func(n *yaml.Node, p string, e *[]Violation) {
-		v.walk(n, "", p, e)
+	yamlnode.Navigate(root, v.navSegs, "", func(n *yaml.Node, p string) {
+		v.walk(n, "", p, &errs)
 	})
 	return errs
 }
@@ -227,68 +216,34 @@ func (v *mutuallyExclusiveNestedValidator) walk(node *yaml.Node, parentKey, path
 	}
 }
 
-// navigateYAML traverses node following segs, expanding sequences and
-// dict-of-structs automatically. onArrival is called when segs is exhausted.
-func navigateYAML(node *yaml.Node, segs []string, path string, errs *[]Violation,
-	onArrival func(*yaml.Node, string, *[]Violation)) {
-	if node.Kind == yaml.SequenceNode {
-		for i, item := range node.Content {
-			navigateYAML(item, segs, fmt.Sprintf("%s[%d]", path, i), errs, onArrival)
-		}
-		return
-	}
-	if len(segs) == 0 {
-		onArrival(node, path, errs)
-		return
-	}
-	if node.Kind != yaml.MappingNode {
-		return
-	}
-	next, rest := segs[0], segs[1:]
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		if node.Content[i].Value == next {
-			childPath := next
-			if path != "" {
-				childPath = path + "." + next
-			}
-			navigateYAML(node.Content[i+1], rest, childPath, errs, onArrival)
-			return
-		}
-	}
-	// Key not found at this level — treat as a dict-of-structs: check all values.
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		dictKey := node.Content[i].Value
-		childPath := dictKey
-		if path != "" {
-			childPath = path + "." + dictKey
-		}
-		navigateYAML(node.Content[i+1], segs, childPath, errs, onArrival)
-	}
-}
-
 // checkMutualExclusion appends to errs when more than one of keys appears as a
 // direct child key of node (which must be a MappingNode). where is the
 // dot-separated path reported in the violation.
 func checkMutualExclusion(node *yaml.Node, keys []string, where string, errs *[]Violation) {
-	var present []string
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		k := node.Content[i].Value
-		for _, want := range keys {
-			if k == want {
-				present = append(present, k)
-				break
-			}
+	*errs = append(*errs, mutualExclusionViolation(keys, func(k string) bool {
+		return yamlnode.ChildByKey(node, k) != nil
+	}, where)...)
+}
+
+// mutualExclusionViolation returns a violation when more than one of keys is
+// present according to has. where is the violation path (may be empty).
+func mutualExclusionViolation(keys []string, has func(string) bool, where string) []Violation {
+	var found []string
+	for _, k := range keys {
+		if has(k) {
+			found = append(found, k)
 		}
 	}
-	if len(present) > 1 {
-		*errs = append(*errs, Violation{
-			Path: where,
-			Message: fmt.Sprintf(
-				"mutually exclusive — use only one of: %s",
-				joinQuoted(present),
-			),
-		})
+	if len(found) <= 1 {
+		return nil
 	}
+	return []Violation{{
+		Path: where,
+		Message: fmt.Sprintf(
+			"mutually exclusive — use only one of: %s",
+			joinQuoted(found),
+		),
+	}}
 }
 
 // AtLeastOneOf reports a violation when none of the listed keys is present.
@@ -354,22 +309,22 @@ func RequiredIf(key, condPath, condValue string) Validator {
 type requiredIfValidator struct{ key, condPath, condValue string }
 
 func (v *requiredIfValidator) Validate(raw []byte, _ []document.Block) []Violation {
-	root, ok := rootMapping(raw)
+	root, ok := yamlnode.RootMapping(raw)
 	if !ok {
 		return nil
 	}
 	var errs []Violation
 	if parent, leaves, shared := splitSharedParent([]string{v.key, v.condPath}); shared {
 		keyLeaf, condLeaf := leaves[0], leaves[1]
-		navigateYAML(root, parent, "", &errs, func(n *yaml.Node, p string, e *[]Violation) {
-			if n.Kind != yaml.MappingNode || scalarChild(n, condLeaf) != v.condValue {
+		yamlnode.Navigate(root, parent, "", func(n *yaml.Node, p string) {
+			if n.Kind != yaml.MappingNode || yamlnode.ScalarChild(n, condLeaf) != v.condValue {
 				return
 			}
 			// A non-scalar value (mapping/sequence) counts as present; only a
 			// missing key or an empty scalar is a violation.
-			if !presentNonEmpty(childOf(n, keyLeaf)) {
-				*e = append(*e, Violation{
-					Path:    joinPath(p, keyLeaf),
+			if !yamlnode.PresentNonEmpty(yamlnode.ChildByKey(n, keyLeaf)) {
+				errs = append(errs, Violation{
+					Path:    yamlnode.JoinPath(p, keyLeaf),
 					Message: fmt.Sprintf("required when %q is %q", v.condPath, v.condValue),
 				})
 			}
@@ -377,10 +332,10 @@ func (v *requiredIfValidator) Validate(raw []byte, _ []document.Block) []Violati
 		return errs
 	}
 	// Unrelated parents: both paths are resolved from the root.
-	if scalarAt(root, strings.Split(v.condPath, ".")) != v.condValue {
+	if yamlnode.ScalarAt(root, strings.Split(v.condPath, ".")) != v.condValue {
 		return nil
 	}
-	if !presentNonEmpty(nodeAtStr(root, strings.Split(v.key, "."))) {
+	if !yamlnode.PresentNonEmpty(yamlnode.NodeAtPath(root, strings.Split(v.key, "."))) {
 		errs = append(errs, Violation{
 			Path:    v.key,
 			Message: fmt.Sprintf("required when %q is %q", v.condPath, v.condValue),
@@ -403,16 +358,16 @@ type valueOneOfValidator struct {
 }
 
 func (v *valueOneOfValidator) Validate(raw []byte, _ []document.Block) []Violation {
-	root, ok := rootMapping(raw)
+	root, ok := yamlnode.RootMapping(raw)
 	if !ok {
 		return nil
 	}
 	var errs []Violation
-	forEachLeaf(root, v.path, &errs, func(node *yaml.Node, where string, e *[]Violation) {
+	yamlnode.ForEachLeaf(root, v.path, func(node *yaml.Node, where string) {
 		// A mapping or sequence can never match a scalar from the allowed set —
 		// flag it instead of silently treating it as absent.
 		if node.Kind != yaml.ScalarNode {
-			*e = append(*e, Violation{
+			errs = append(errs, Violation{
 				Path:    where,
 				Message: fmt.Sprintf("expected a scalar value — use one of: %s", joinQuoted(v.allowed)),
 			})
@@ -426,7 +381,7 @@ func (v *valueOneOfValidator) Validate(raw []byte, _ []document.Block) []Violati
 				return
 			}
 		}
-		*e = append(*e, Violation{
+		errs = append(errs, Violation{
 			Path:    where,
 			Message: fmt.Sprintf("value %q is not allowed — use one of: %s", node.Value, joinQuoted(v.allowed)),
 		})
@@ -452,24 +407,24 @@ func CrossFieldOrdered(smallerPath, largerPath string) Validator {
 type crossFieldOrderedValidator struct{ smallerPath, largerPath string }
 
 func (v *crossFieldOrderedValidator) Validate(raw []byte, _ []document.Block) []Violation {
-	root, ok := rootMapping(raw)
+	root, ok := yamlnode.RootMapping(raw)
 	if !ok {
 		return nil
 	}
 	var errs []Violation
 	if parent, leaves, shared := splitSharedParent([]string{v.smallerPath, v.largerPath}); shared {
 		smallLeaf, largeLeaf := leaves[0], leaves[1]
-		navigateYAML(root, parent, "", &errs, func(n *yaml.Node, p string, e *[]Violation) {
+		yamlnode.Navigate(root, parent, "", func(n *yaml.Node, p string) {
 			if n.Kind != yaml.MappingNode {
 				return
 			}
-			checkOrdered(scalarChild(n, smallLeaf), scalarChild(n, largeLeaf), smallLeaf, largeLeaf, p, e)
+			checkOrdered(yamlnode.ScalarChild(n, smallLeaf), yamlnode.ScalarChild(n, largeLeaf), smallLeaf, largeLeaf, p, &errs)
 		})
 		return errs
 	}
 	// Unrelated parents: both paths are resolved from the root.
-	aStr := scalarAt(root, strings.Split(v.smallerPath, "."))
-	bStr := scalarAt(root, strings.Split(v.largerPath, "."))
+	aStr := yamlnode.ScalarAt(root, strings.Split(v.smallerPath, "."))
+	bStr := yamlnode.ScalarAt(root, strings.Split(v.largerPath, "."))
 	checkOrdered(aStr, bStr, v.smallerPath, v.largerPath, "", &errs)
 	return errs
 }
@@ -502,30 +457,20 @@ func NoDuplicates(seqPath, field string) Validator {
 type noDuplicatesValidator struct{ seqPath, field string }
 
 func (v *noDuplicatesValidator) Validate(raw []byte, _ []document.Block) []Violation {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(raw, &doc); err != nil || len(doc.Content) == 0 {
+	root, ok := yamlnode.RootMapping(raw)
+	if !ok {
 		return nil
 	}
-	seqNode := nodeAtStr(doc.Content[0], strings.Split(v.seqPath, "."))
+	seqNode := yamlnode.NodeAtPath(root, strings.Split(v.seqPath, "."))
 	if seqNode == nil || seqNode.Kind != yaml.SequenceNode {
 		return nil
 	}
-	seen := make(map[string]int)
-	var errs []Violation
+	values := make([]string, len(seqNode.Content))
 	for i, item := range seqNode.Content {
-		val := scalarAt(item, []string{v.field})
-		if val == "" {
-			continue
-		}
-		if firstIdx, dup := seen[val]; dup {
-			errs = append(errs, Violation{
-				Path:    fmt.Sprintf("%s[%d].%s", v.seqPath, i, v.field),
-				Message: fmt.Sprintf("duplicate value %q (first seen at %s[%d])", val, v.seqPath, firstIdx),
-			})
-		} else {
-			seen[val] = i
-		}
+		values[i] = yamlnode.ScalarAt(item, []string{v.field})
 	}
+	var errs []Violation
+	reportDuplicates(values, v.seqPath, "."+v.field, &errs)
 	return errs
 }
 
@@ -551,7 +496,7 @@ func Required(paths ...string) Validator {
 type requiredValidator struct{ paths []string }
 
 func (v *requiredValidator) Validate(raw []byte, _ []document.Block) []Violation {
-	root, ok := rootMapping(raw)
+	root, ok := yamlnode.RootMapping(raw)
 	if !ok {
 		return nil
 	}
@@ -562,12 +507,12 @@ func (v *requiredValidator) Validate(raw []byte, _ []document.Block) []Violation
 		// fallback therefore applies to intermediate segments only.
 		segs := strings.Split(p, ".")
 		parent, leaf := segs[:len(segs)-1], segs[len(segs)-1]
-		navigateYAML(root, parent, "", &errs, func(n *yaml.Node, path string, e *[]Violation) {
+		yamlnode.Navigate(root, parent, "", func(n *yaml.Node, path string) {
 			if n.Kind != yaml.MappingNode {
 				return
 			}
-			if !presentNonEmpty(childOf(n, leaf)) {
-				*e = append(*e, Violation{Path: joinPath(path, leaf), Message: "required"})
+			if !yamlnode.PresentNonEmpty(yamlnode.ChildByKey(n, leaf)) {
+				errs = append(errs, Violation{Path: yamlnode.JoinPath(path, leaf), Message: "required"})
 			}
 		})
 	}
@@ -594,7 +539,7 @@ func (v *requiredFromSchemaValidator) Validate(raw []byte, _ []document.Block) [
 	if len(v.defs) == 0 {
 		return nil
 	}
-	root, ok := rootMapping(raw)
+	root, ok := yamlnode.RootMapping(raw)
 	if !ok {
 		return nil
 	}
@@ -611,9 +556,9 @@ func checkRequiredDefs(node *yaml.Node, defs []schema.FieldDef, path string, err
 		return
 	}
 	for _, def := range defs {
-		child := childOf(node, def.YAMLName)
-		childPath := joinPath(path, def.YAMLName)
-		if def.Required && !presentNonEmpty(child) {
+		child := yamlnode.ChildByKey(node, def.YAMLName)
+		childPath := yamlnode.JoinPath(path, def.YAMLName)
+		if def.Required && !yamlnode.PresentNonEmpty(child) {
 			*errs = append(*errs, Violation{Path: childPath, Message: "required"})
 		}
 		// KindVariant children describe union alternatives, not required structure.
@@ -632,7 +577,7 @@ func checkRequiredDefs(node *yaml.Node, defs []schema.FieldDef, path string, err
 		case schema.KindDictionary:
 			if child.Kind == yaml.MappingNode {
 				for i := 0; i+1 < len(child.Content); i += 2 {
-					checkRequiredDefs(child.Content[i+1], def.Children, joinPath(childPath, child.Content[i].Value), errs)
+					checkRequiredDefs(child.Content[i+1], def.Children, yamlnode.JoinPath(childPath, child.Content[i].Value), errs)
 				}
 			}
 		}
@@ -655,7 +600,7 @@ func ValueInRange(path, minVal, maxVal string) Validator {
 type valueInRangeValidator struct{ path, min, max string }
 
 func (v *valueInRangeValidator) Validate(raw []byte, _ []document.Block) []Violation {
-	root, ok := rootMapping(raw)
+	root, ok := yamlnode.RootMapping(raw)
 	if !ok {
 		return nil
 	}
@@ -668,9 +613,9 @@ func (v *valueInRangeValidator) Validate(raw []byte, _ []document.Block) []Viola
 		}}
 	}
 	var errs []Violation
-	forEachLeaf(root, v.path, &errs, func(node *yaml.Node, where string, e *[]Violation) {
+	yamlnode.ForEachLeaf(root, v.path, func(node *yaml.Node, where string) {
 		if node.Kind != yaml.ScalarNode {
-			*e = append(*e, Violation{Path: where, Message: "expected a scalar value"})
+			errs = append(errs, Violation{Path: where, Message: "expected a scalar value"})
 			return
 		}
 		if node.Value == "" {
@@ -678,14 +623,14 @@ func (v *valueInRangeValidator) Validate(raw []byte, _ []document.Block) []Viola
 		}
 		val, kind, okVal := parseComparable(node.Value)
 		if !okVal || kind != loKind {
-			*e = append(*e, Violation{
+			errs = append(errs, Violation{
 				Path:    where,
 				Message: fmt.Sprintf("value %q is not comparable with range [%s, %s]", node.Value, v.min, v.max),
 			})
 			return
 		}
 		if val < lo || val > hi {
-			*e = append(*e, Violation{
+			errs = append(errs, Violation{
 				Path:    where,
 				Message: fmt.Sprintf("value %q out of range [%s, %s]", node.Value, v.min, v.max),
 			})
@@ -717,21 +662,21 @@ func (v *valueMatchesValidator) Validate(raw []byte, _ []document.Block) []Viola
 	if v.err != nil {
 		return []Violation{{Path: v.path, Message: fmt.Sprintf("invalid pattern %q: %v", v.pattern, v.err)}}
 	}
-	root, ok := rootMapping(raw)
+	root, ok := yamlnode.RootMapping(raw)
 	if !ok {
 		return nil
 	}
 	var errs []Violation
-	forEachLeaf(root, v.path, &errs, func(node *yaml.Node, where string, e *[]Violation) {
+	yamlnode.ForEachLeaf(root, v.path, func(node *yaml.Node, where string) {
 		if node.Kind != yaml.ScalarNode {
-			*e = append(*e, Violation{Path: where, Message: "expected a scalar value"})
+			errs = append(errs, Violation{Path: where, Message: "expected a scalar value"})
 			return
 		}
 		if node.Value == "" {
 			return
 		}
 		if !v.re.MatchString(node.Value) {
-			*e = append(*e, Violation{
+			errs = append(errs, Violation{
 				Path:    where,
 				Message: fmt.Sprintf("value %q does not match pattern %q", node.Value, v.pattern),
 			})
@@ -767,21 +712,31 @@ type allOrNoneValidator struct{ keys []string }
 
 func (v *allOrNoneValidator) Validate(_ []byte, blocks []document.Block) []Violation {
 	present := keysPresent(blocks)
+	return allOrNoneViolation(v.keys, func(k string) bool { return present[k] }, "")
+}
+
+// allOrNoneViolation returns a violation listing the missing keys when only
+// some of keys are present according to has. where is the violation path (may
+// be empty).
+func allOrNoneViolation(keys []string, has func(string) bool, where string) []Violation {
 	var found, missing []string
-	for _, k := range v.keys {
-		if present[k] {
+	for _, k := range keys {
+		if has(k) {
 			found = append(found, k)
 		} else {
 			missing = append(missing, k)
 		}
 	}
-	if len(found) > 0 && len(missing) > 0 {
-		return []Violation{{Message: fmt.Sprintf(
-			"all or none of %s must be set — missing: %s",
-			joinQuoted(v.keys), joinQuoted(missing),
-		)}}
+	if len(found) == 0 || len(missing) == 0 {
+		return nil
 	}
-	return nil
+	return []Violation{{
+		Path: where,
+		Message: fmt.Sprintf(
+			"all or none of %s must be set — missing: %s",
+			joinQuoted(keys), joinQuoted(missing),
+		),
+	}}
 }
 
 type pathAllOrNoneValidator struct {
@@ -790,12 +745,12 @@ type pathAllOrNoneValidator struct {
 }
 
 func (v *pathAllOrNoneValidator) Validate(raw []byte, _ []document.Block) []Violation {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(raw, &doc); err != nil || len(doc.Content) == 0 {
+	root, ok := yamlnode.RootMapping(raw)
+	if !ok {
 		return nil
 	}
 	var errs []Violation
-	navigateYAML(doc.Content[0], v.parentSegs, "", &errs, v.check)
+	yamlnode.Navigate(root, v.parentSegs, "", func(n *yaml.Node, p string) { v.check(n, p, &errs) })
 	return errs
 }
 
@@ -803,27 +758,13 @@ func (v *pathAllOrNoneValidator) check(node *yaml.Node, path string, errs *[]Vio
 	if node.Kind != yaml.MappingNode {
 		return
 	}
-	var found, missing []string
-	for _, k := range v.keys {
-		if childOf(node, k) != nil {
-			found = append(found, k)
-		} else {
-			missing = append(missing, k)
-		}
+	where := path
+	if where == "" {
+		where = strings.Join(v.parentSegs, ".")
 	}
-	if len(found) > 0 && len(missing) > 0 {
-		where := path
-		if where == "" {
-			where = strings.Join(v.parentSegs, ".")
-		}
-		*errs = append(*errs, Violation{
-			Path: where,
-			Message: fmt.Sprintf(
-				"all or none of %s must be set — missing: %s",
-				joinQuoted(v.keys), joinQuoted(missing),
-			),
-		})
-	}
+	*errs = append(*errs, allOrNoneViolation(v.keys, func(k string) bool {
+		return yamlnode.ChildByKey(node, k) != nil
+	}, where)...)
 }
 
 // CountRange reports a violation when the collection at path has fewer than
@@ -843,12 +784,12 @@ type countRangeValidator struct {
 }
 
 func (v *countRangeValidator) Validate(raw []byte, _ []document.Block) []Violation {
-	root, ok := rootMapping(raw)
+	root, ok := yamlnode.RootMapping(raw)
 	if !ok {
 		return nil
 	}
 	var errs []Violation
-	forEachLeaf(root, v.path, &errs, func(node *yaml.Node, where string, e *[]Violation) {
+	yamlnode.ForEachLeaf(root, v.path, func(node *yaml.Node, where string) {
 		var count int
 		switch node.Kind {
 		case yaml.SequenceNode:
@@ -856,7 +797,7 @@ func (v *countRangeValidator) Validate(raw []byte, _ []document.Block) []Violati
 		case yaml.MappingNode:
 			count = len(node.Content) / 2
 		default:
-			*e = append(*e, Violation{Path: where, Message: "expected a list or mapping"})
+			errs = append(errs, Violation{Path: where, Message: "expected a list or mapping"})
 			return
 		}
 		if count < v.min || (v.max >= 0 && count > v.max) {
@@ -864,7 +805,7 @@ func (v *countRangeValidator) Validate(raw []byte, _ []document.Block) []Violati
 			if v.max < 0 {
 				want = fmt.Sprintf("at least %d", v.min)
 			}
-			*e = append(*e, Violation{
+			errs = append(errs, Violation{
 				Path:    where,
 				Message: fmt.Sprintf("has %d entries — expected %s", count, want),
 			})
@@ -885,31 +826,43 @@ func UniqueValues(seqPath string) Validator {
 type uniqueValuesValidator struct{ seqPath string }
 
 func (v *uniqueValuesValidator) Validate(raw []byte, _ []document.Block) []Violation {
-	root, ok := rootMapping(raw)
+	root, ok := yamlnode.RootMapping(raw)
 	if !ok {
 		return nil
 	}
 	var errs []Violation
-	forEachLeaf(root, v.seqPath, &errs, func(seqNode *yaml.Node, where string, e *[]Violation) {
+	yamlnode.ForEachLeaf(root, v.seqPath, func(seqNode *yaml.Node, where string) {
 		if seqNode.Kind != yaml.SequenceNode {
 			return
 		}
-		seen := make(map[string]int)
+		values := make([]string, len(seqNode.Content))
 		for i, item := range seqNode.Content {
-			if item.Kind != yaml.ScalarNode || item.Value == "" {
-				continue
-			}
-			if firstIdx, dup := seen[item.Value]; dup {
-				*e = append(*e, Violation{
-					Path:    fmt.Sprintf("%s[%d]", where, i),
-					Message: fmt.Sprintf("duplicate value %q (first seen at %s[%d])", item.Value, where, firstIdx),
-				})
-			} else {
-				seen[item.Value] = i
+			if item.Kind == yaml.ScalarNode {
+				values[i] = item.Value
 			}
 		}
+		reportDuplicates(values, where, "", &errs)
 	})
 	return errs
+}
+
+// reportDuplicates appends a violation for every value that repeats an earlier
+// one. Empty values are skipped. The violation path is "<where>[<i>]<suffix>".
+func reportDuplicates(values []string, where, suffix string, errs *[]Violation) {
+	seen := make(map[string]int)
+	for i, val := range values {
+		if val == "" {
+			continue
+		}
+		if firstIdx, dup := seen[val]; dup {
+			*errs = append(*errs, Violation{
+				Path:    fmt.Sprintf("%s[%d]%s", where, i, suffix),
+				Message: fmt.Sprintf("duplicate value %q (first seen at %s[%d])", val, where, firstIdx),
+			})
+		} else {
+			seen[val] = i
+		}
+	}
 }
 
 // Deprecated reports a violation whenever path is present, carrying a
@@ -924,147 +877,15 @@ func Deprecated(path, message string) Validator {
 type deprecatedValidator struct{ path, message string }
 
 func (v *deprecatedValidator) Validate(raw []byte, _ []document.Block) []Violation {
-	root, ok := rootMapping(raw)
+	root, ok := yamlnode.RootMapping(raw)
 	if !ok {
 		return nil
 	}
 	var errs []Violation
-	forEachLeaf(root, v.path, &errs, func(_ *yaml.Node, where string, e *[]Violation) {
-		*e = append(*e, Violation{Path: where, Message: "deprecated — " + v.message})
+	yamlnode.ForEachLeaf(root, v.path, func(_ *yaml.Node, where string) {
+		errs = append(errs, Violation{Path: where, Message: "deprecated — " + v.message})
 	})
 	return errs
-}
-
-// forEachLeaf calls fn with every node reached by path and its full expanded
-// path. Sequences are expanded at every level, and — once at least one segment
-// has matched — a missing segment falls back to dict-of-structs descent
-// (every mapping value is searched), mirroring navigateYAML. The leaf node is
-// delivered as-is (scalar, sequence, or mapping); fn never receives nil —
-// absent paths simply produce no calls.
-func forEachLeaf(root *yaml.Node, path string, errs *[]Violation, fn func(node *yaml.Node, where string, errs *[]Violation)) {
-	walkLeaf(root, strings.Split(path, "."), "", false, errs, fn)
-}
-
-// walkLeaf implements forEachLeaf. matched tracks whether any segment has been
-// consumed yet: the dict-of-structs fallback is disabled at the root so a
-// missing top-level key is "absent" rather than a document-wide search.
-func walkLeaf(node *yaml.Node, segs []string, path string, matched bool, errs *[]Violation,
-	fn func(node *yaml.Node, where string, errs *[]Violation)) {
-	if node.Kind == yaml.SequenceNode {
-		for i, item := range node.Content {
-			walkLeaf(item, segs, fmt.Sprintf("%s[%d]", path, i), matched, errs, fn)
-		}
-		return
-	}
-	if node.Kind != yaml.MappingNode {
-		return
-	}
-	key, rest := segs[0], segs[1:]
-	if child := childOf(node, key); child != nil {
-		childPath := joinPath(path, key)
-		if len(rest) == 0 {
-			fn(child, childPath, errs)
-			return
-		}
-		walkLeaf(child, rest, childPath, true, errs, fn)
-		return
-	}
-	if !matched {
-		return
-	}
-	// Key not found at this level — treat as a dict-of-structs: search all values.
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		walkLeaf(node.Content[i+1], segs, joinPath(path, node.Content[i].Value), matched, errs, fn)
-	}
-}
-
-// scalarChild returns the scalar value of mapping node's direct key, or ""
-// when the key is absent or its value is not a scalar.
-func scalarChild(node *yaml.Node, key string) string {
-	c := childOf(node, key)
-	if c == nil || c.Kind != yaml.ScalarNode {
-		return ""
-	}
-	return c.Value
-}
-
-// rootMapping unmarshals raw and returns its root node. An empty document
-// yields an empty mapping (so unconditional checks like Required still run);
-// invalid YAML yields ok=false (the parse error is reported elsewhere).
-func rootMapping(raw []byte) (*yaml.Node, bool) {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return nil, false
-	}
-	if len(doc.Content) == 0 {
-		return &yaml.Node{Kind: yaml.MappingNode}, true
-	}
-	return doc.Content[0], true
-}
-
-// childOf returns the value node for the direct key k of mapping node, or nil.
-func childOf(node *yaml.Node, k string) *yaml.Node {
-	if node == nil || node.Kind != yaml.MappingNode {
-		return nil
-	}
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		if node.Content[i].Value == k {
-			return node.Content[i+1]
-		}
-	}
-	return nil
-}
-
-// presentNonEmpty reports whether node exists and is not an empty/null scalar.
-// Mappings and sequences count as present even when empty.
-func presentNonEmpty(node *yaml.Node) bool {
-	return node != nil && (node.Kind != yaml.ScalarNode || node.Value != "")
-}
-
-// joinPath joins a dot-separated prefix with a key, omitting the dot when the
-// prefix is empty.
-func joinPath(prefix, key string) string {
-	if prefix == "" {
-		return key
-	}
-	return prefix + "." + key
-}
-
-// scalarAt navigates node following segs and returns the scalar value at the terminal node.
-// Returns "" when the path does not exist or the terminal node is not a scalar.
-func scalarAt(node *yaml.Node, segs []string) string {
-	if len(segs) == 0 {
-		if node.Kind == yaml.ScalarNode {
-			return node.Value
-		}
-		return ""
-	}
-	if node.Kind != yaml.MappingNode {
-		return ""
-	}
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		if node.Content[i].Value == segs[0] {
-			return scalarAt(node.Content[i+1], segs[1:])
-		}
-	}
-	return ""
-}
-
-// nodeAtStr navigates node following string segs and returns the terminal yaml.Node.
-// Returns nil when the path does not exist.
-func nodeAtStr(node *yaml.Node, segs []string) *yaml.Node {
-	if len(segs) == 0 {
-		return node
-	}
-	if node.Kind != yaml.MappingNode {
-		return nil
-	}
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		if node.Content[i].Value == segs[0] {
-			return nodeAtStr(node.Content[i+1], segs[1:])
-		}
-	}
-	return nil
 }
 
 // parseOrderedPair tries to parse a and b as comparable values of the same

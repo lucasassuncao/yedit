@@ -499,7 +499,7 @@ Minimum terminal size: **80 × 20**. Below that the editor shows a resize prompt
 | `presets` | `Source` interface + `FromFS` for per-field YAML snippets |
 | `viewer` | Read-only preset browser TUI |
 | `theme` | Shared palette and layout primitives |
-| `components` | Reusable bubbletea widgets (`alert`) |
+| `internal` | Non-public helpers (`alert` widget, `yamlnode` utilities) |
 
 ## Examples
 

@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"github.com/lucasassuncao/yedit/internal/yamlnode"
 	"strings"
 	"testing"
 
@@ -30,8 +31,8 @@ func TestNodeAt_indexedPath(t *testing.T) {
       - regex: inner
         glob: "*.go"
 `
-	doc := parseValueNode(t, src)         // mapping {filters: seq}
-	filters := childByKey(doc, "filters") // sequence
+	doc := parseValueNode(t, src)                  // mapping {filters: seq}
+	filters := yamlnode.ChildByKey(doc, "filters") // sequence
 
 	// filters[0].any[0].regex == "inner"
 	path := []pathSeg{segIdx(0), segKey("any"), segIdx(0), segKey("regex")}
@@ -50,7 +51,7 @@ func TestSetNodeAt_preservesSiblingStructure(t *testing.T) {
       - regex: ""
 `
 	doc := parseValueNode(t, src)
-	filters := childByKey(doc, "filters")
+	filters := yamlnode.ChildByKey(doc, "filters")
 
 	// Replace filters[0].any[0] with a richer mapping.
 	newItem := parseValueNode(t, "regex: deep\nglob: x\n")
