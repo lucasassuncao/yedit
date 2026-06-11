@@ -148,6 +148,17 @@ func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 			top.statusMsg = "Nothing to undo."
 			m.setTopBE(top)
 			return m, nil
+		case "ctrl+y":
+			if len(top.redoStack) > 0 {
+				be := top.restoreRedo()
+				be.statusMsg = "Redone."
+				m.setTopBE(&be)
+				return m, nil
+			}
+			// Never fall through to m.doc.Redo() while a block editor is open.
+			top.statusMsg = "Nothing to redo."
+			m.setTopBE(top)
+			return m, nil
 		}
 	}
 	be, cmd := top.Update(msg)

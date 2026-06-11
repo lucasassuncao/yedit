@@ -258,9 +258,11 @@ func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
 			lm.fCursor = 0
 			lm.fOffset = 0
 		}
-	case "up", "k":
+	// Only the arrow keys navigate while filtering — "j"/"k" must remain
+	// typeable so filters like "unknown" or "worker" can be entered.
+	case "up":
 		lm.moveFCursor(-1)
-	case "down", "j":
+	case "down":
 		lm.moveFCursor(1)
 	default:
 		if r := key.Runes; len(r) == 1 && r[0] >= 32 {

@@ -30,3 +30,5 @@ Desktop.ini
 
 tmp/
 tmp/*
+# Cross-compiled binary used by demo.tape
+demo-app

@@ -34,6 +34,8 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.undo(), nil
 		case "ctrl+y":
 			return m.redo(), nil
+		case "ctrl+r":
+			return m.reload()
 		case "esc", "ctrl+c":
 			if m.doc.Dirty() {
 				return m.showConfirmAlert("Quit without saving?",

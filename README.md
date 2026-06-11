@@ -2,14 +2,14 @@
 
 A reusable TUI library for editing structured YAML files in Go.
 
-`yedit` turns any Go struct annotated with `yaml` tags into a two-panel
-bubbletea editor. The left panel lists the top-level keys discovered from
-the struct; the right panel shows a live YAML preview. Pressing `Enter`
-on a key opens a full-screen block editor where sub-fields can be toggled
-on/off, edited with presets, or written directly in YAML.
+`yedit` turns any Go struct annotated with `yaml` tags into a two-panel bubbletea editor. The left panel lists the top-level keys discovered from the struct; the right panel shows a live YAML preview. Pressing `Enter`
+on a key opens a full-screen block editor where sub-fields can be toggled on/off, edited with presets, or written directly in YAML.
 
-The library is schema-agnostic — clients supply a Go struct, optional
-presets, and any cross-field validation rules.
+The library is schema-agnostic: clients supply a Go struct, optional presets, and any cross-field validation rules.
+
+## Example
+
+![yedit demo](docs/demo.gif)
 
 ## Requirements
 
@@ -55,38 +55,23 @@ func main() {
 }
 ```
 
-A non-existent `Path` is not an error — the editor starts with an empty
-document and saves to that path on `Ctrl+S`.
+A non-existent `Path` is not an error — the editor starts with an empty document and saves to that path on `Ctrl+S`.
 
-`editor.Run` returns a `Result` whose `Saved` field reports whether the user
-saved at least once during the session. Use `editor.RunContext(ctx, cfg)` when
-the editor should shut down on context cancellation.
+`editor.Run` returns a `Result` whose `Saved` field reports whether the user saved at least once during the session. Use `editor.RunContext(ctx, cfg)` when the editor should shut down on context cancellation.
 
 ## UI layout
 
 The editor adapts its left panel to the field type:
 
-**Main list** — shows all top-level keys split into ADDED (present in the
-file) and AVAILABLE (schema-known but not yet set). `Enter` opens a block;
-`h` toggles a Hint/Example panel describing the selected key.
+**Main list** — shows all top-level keys split into ADDED (present in the file) and AVAILABLE (schema-known but not yet set). `Enter` opens a block; `h` toggles a Hint/Example panel describing the selected key.
 
-**Struct tree** (KindObject) — left panel lists sub-fields in ADDED /
-AVAILABLE sections; `Enter` adds a field, `Ctrl+D` removes it, and `→` / `←`
-expand or collapse a node. The right panel shows a live YAML preview.
+**Struct tree** (KindObject) — left panel lists sub-fields in ADDED/AVAILABLE sections; `Enter` adds a field, `Ctrl+D` removes it, and `→` / `←` expand or collapse a node. The right panel shows a live YAML preview.
 
-**Collection navigator** (KindList / KindDictionary with child defs) — left
-panel shows `[0] item`, `[1] item` … (map entries are keyed by their map key)
-and a `[+ add new]` row. `Enter` adds an item, `Ctrl+D` deletes the selected
-one.
+**Collection navigator** (KindList / KindDictionary with child defs) — left panel shows `[0] item`, `[1] item` … (map entries are keyed by their map key) and a `[+ add new]` row. `Enter` adds an item, `Ctrl+D` deletes the selected one.
 
-**Single field** (KindPrimitive, KindEnum, free-form map/list) — the YAML
-editor takes focus immediately; the left panel shows the field itself and the
-Hint/Example panel shows its type, constraints, and an example.
+**Single field** (KindPrimitive, KindEnum, free-form map/list) — the YAML editor takes focus immediately; the left panel shows the field itself and the Hint/Example panel shows its type, constraints, and an example.
 
-A **Hint/Example** panel (bottom-right) shows the focused field's concrete type
-(`string`, `int`, `bool`, …), whether it is required, its default, allowed
-values, and an example. It is only shown when `Config.Hints` is set; toggled
-with `h` in the main list and always visible inside the block editor.
+A **Hint/Example** panel (bottom-right) shows the focused field's concrete type (`string`, `int`, `bool`, …), whether it is required, its default, allowed values, and an example. It is only shown when `Config.Hints` is set; toggled with `h` in the main list and always visible inside the block editor.
 
 ## Keyboard reference
 
@@ -102,6 +87,7 @@ with `h` in the main list and always visible inside the block editor.
 | `Ctrl+D` | Delete block (with confirmation) |
 | `Ctrl+U` | Undo last change |
 | `Ctrl+Y` | Redo last undone change |
+| `Ctrl+R` | Reload file from disk (prompts if unsaved) |
 | `Tab` | Focus the read-only preview pane |
 | `Ctrl+S` | Save changes |
 | `Ctrl+L` | Validate document |
@@ -116,6 +102,7 @@ with `h` in the main list and always visible inside the block editor.
 | `Enter` | Add field / item, or drill into an openable field |
 | `Ctrl+D` | Remove field / sequence item |
 | `Ctrl+U` | Undo last change in this editor |
+| `Ctrl+Y` | Redo last undone change in this editor |
 | `p` | Open preset picker |
 | `Tab` | Switch to YAML editor |
 | `Ctrl+S` | Commit changes |
@@ -189,22 +176,13 @@ editor.Run(editor.Config{
 
 ## Validators
 
-Validators run before every save and when the user presses `Ctrl+L`. Each
-returns a list of `editor.Violation` values — a `Path` locating the offending
-node (empty for document-wide rules) plus a human-readable `Message` — shown
-in a blocking alert. Pass them via `editor.Config.Validators`; use
-`editor.ValidatorFunc` for inline custom rules.
+Validators run before every save and when the user presses `Ctrl+L`. Each returns a list of `editor.Violation` values — a `Path` locating the offending node (empty for document-wide rules) plus a human-readable `Message` — shown in a blocking alert. Pass them via `editor.Config.Validators`; use `editor.ValidatorFunc` for inline custom rules.
 
-Dotted paths expand sequences and dict-style mappings automatically in every
-path-based validator: a rule on `categories.installers.source.type` is checked
-inside every installer of every category, whether `categories` is a list or a
-map. Cross-field validators (`RequiredIf`, `CrossFieldOrdered`) apply this
-per-entry when both paths share the same parent prefix.
+Dotted paths expand sequences and dict-style mappings automatically in every path-based validator: a rule on `categories.installers.source.type` is checked inside every installer of every category, whether `categories` is a list or a map. Cross-field validators (`RequiredIf`, `CrossFieldOrdered`) apply this per-entry when both paths share the same parent prefix.
 
 ### MutuallyExclusive
 
-Reports a violation when more than one of the listed keys is present at the
-same time.
+Reports a violation when more than one of the listed keys is present at the same time.
 
 **Top-level keys** — compared against the document's root-level blocks:
 
@@ -217,10 +195,9 @@ editor.Run(editor.Config{
 })
 ```
 
-**Dotted paths** — all paths must share the same parent prefix. The validator
-navigates to that parent in the YAML tree and checks the leaf keys there.
-Sequences (`- item`) and dict-style mappings (`key: {…}`) are expanded
-automatically, so every entry in a list or every value in a map is checked:
+**Dotted paths** — all paths must share the same parent prefix (paths that don't are a configuration error, reported as a violation on every validate). The validator navigates to that parent in the YAML tree and checks the leaf keys there.
+
+Sequences (`- item`) and dict-style mappings (`key: {…}`) are expanded automatically, so every entry in a list or every value in a map is checked:
 
 ```go
 editor.Run(editor.Config{
@@ -238,13 +215,9 @@ editor.Run(editor.Config{
 
 ### MutuallyExclusiveNested
 
-Like `MutuallyExclusive` for dotted paths, but designed for **recursive
-schemas** where the same constraint must hold at every nesting level (e.g. a
-`filter` struct whose `any`/`all` lists can themselves contain `filter`
-structs).
+Like `MutuallyExclusive` for dotted paths, but designed for **recursive schemas** where the same constraint must hold at every nesting level (e.g. a `filter` struct whose `any`/`all` lists can themselves contain `filter` structs).
 
-**Single key** — searches the entire document for every mapping whose direct
-parent key equals the given name, regardless of depth:
+**Single key** — searches the entire document for every mapping whose direct parent key equals the given name, regardless of depth:
 
 ```go
 editor.Run(editor.Config{
@@ -255,10 +228,7 @@ editor.Run(editor.Config{
 })
 ```
 
-**Scoped dotted path** — navigates to the prefix first, then recurses only
-within that subtree. Use this when multiple unrelated objects in the document
-share the same key name and the rule should only apply to one of them. The
-last segment of the path is the recursive key name:
+**Scoped dotted path** — navigates to the prefix first, then recurses only within that subtree. Use this when multiple unrelated objects in the document share the same key name and the rule should only apply to one of them. The last segment of the path is the recursive key name:
 
 ```go
 editor.Run(editor.Config{
@@ -340,10 +310,7 @@ editor.NoDuplicates("categories", "name")
 
 ### Required
 
-Reports a violation when a path is absent or holds an empty/null scalar. A path
-with no dots is required unconditionally; a dotted path is conditional — the
-leaf is only required where its parent exists, and sequences / dict-style
-mappings along the path are expanded automatically:
+Reports a violation when a path is absent or holds an empty/null scalar. A path with no dots is required unconditionally; a dotted path is conditional — the leaf is only required where its parent exists, and sequences / dict-style mappings along the path are expanded automatically:
 
 ```go
 editor.Required("version")          // top-level, unconditional
@@ -352,11 +319,7 @@ editor.Required("categories.name")  // every category entry needs "name"
 
 ### RequiredFromSchema
 
-Enforces the schema's `validate:"required"` / `jsonschema:"required"` tags at
-validate/save time (without it the marker is display-only). Required fields
-inside an optional block are only enforced while the block is present; sequence
-and dictionary entries are checked individually. The editor wires the
-discovered schema in automatically:
+Enforces the schema's `validate:"required"` / `jsonschema:"required"` tags at validate/save time (without it the marker is display-only). Required fields inside an optional block are only enforced while the block is present; sequence and dictionary entries are checked individually. The editor wires the discovered schema in automatically:
 
 ```go
 editor.RequiredFromSchema()
@@ -364,9 +327,7 @@ editor.RequiredFromSchema()
 
 ### AllOrNone
 
-Reports a violation when only some of the listed keys are present — they must
-appear together or not at all (e.g. a TLS cert/key pair). Supports top-level
-keys and dotted paths with a shared parent, like `MutuallyExclusive`:
+Reports a violation when only some of the listed keys are present — they must appear together or not at all (e.g. a TLS cert/key pair). Supports top-level keys and dotted paths with a shared parent, like `MutuallyExclusive`:
 
 ```go
 editor.AllOrNone("tls-cert", "tls-key")
@@ -375,9 +336,7 @@ editor.AllOrNone("server.tls-cert", "server.tls-key")
 
 ### ValueInRange
 
-Reports a violation when the scalar at `path` is present but outside the
-inclusive `[min, max]` range. Bounds and value may be plain numbers,
-`time.Duration` strings, or size strings (same kinds as `CrossFieldOrdered`):
+Reports a violation when the scalar at `path` is present but outside the inclusive `[min, max]` range. Bounds and value may be plain numbers, `time.Duration` strings, or size strings (same kinds as `CrossFieldOrdered`):
 
 ```go
 editor.ValueInRange("server.port", "1", "65535")
@@ -386,8 +345,7 @@ editor.ValueInRange("filter.max-age", "1h", "8760h")
 
 ### ValueMatches
 
-Reports a violation when the scalar at `path` is present but does not match the
-regular expression. Combine with `Required` when the field is mandatory:
+Reports a violation when the scalar at `path` is present but does not match the regular expression. Combine with `Required` when the field is mandatory:
 
 ```go
 editor.ValueMatches("version", `^\d+\.\d+\.\d+$`)
@@ -395,9 +353,7 @@ editor.ValueMatches("version", `^\d+\.\d+\.\d+$`)
 
 ### CountRange
 
-Reports a violation when the collection at `path` has fewer than `min` or more
-than `max` entries (`max < 0` means no upper bound). Sequences count items,
-mappings count keys:
+Reports a violation when the collection at `path` has fewer than `min` or more than `max` entries (`max < 0` means no upper bound). Sequences count items, mappings count keys:
 
 ```go
 editor.CountRange("workers", 1, 10)
@@ -406,8 +362,7 @@ editor.CountRange("categories", 1, -1) // at least one
 
 ### UniqueValues
 
-Reports a violation when two or more scalar items in the sequence at `seqPath`
-share the same value (the struct-entry variant is `NoDuplicates`):
+Reports a violation when two or more scalar items in the sequence at `seqPath` share the same value (the struct-entry variant is `NoDuplicates`):
 
 ```go
 editor.UniqueValues("tags")
@@ -415,8 +370,7 @@ editor.UniqueValues("tags")
 
 ### Deprecated
 
-Reports a violation whenever `path` is present, carrying a migration hint.
-Combine with `Config.NoValidateOnSave` to make it a non-blocking warning:
+Reports a violation whenever `path` is present, carrying a migration hint. Combine with `Config.NoValidateOnSave` to make it a non-blocking warning:
 
 ```go
 editor.Deprecated("dockerFile", "use build.dockerfile instead")
@@ -440,8 +394,7 @@ editor.Run(editor.Config{
 
 ## Union types
 
-Reflection cannot infer the shape of types that wrap a union (scalar /
-sequence / mapping). Such types opt into a small interface:
+Reflection cannot infer the shape of types that wrap a union (scalar / sequence / mapping). Such types opt into a small interface:
 
 ```go
 type Provider interface {
@@ -449,9 +402,7 @@ type Provider interface {
 }
 ```
 
-If a field's type implements `Provider`, the editor uses the returned
-`[]FieldDef` instead of descending by reflection. The field kind is set to
-`KindVariant` and the YAML editor takes focus directly.
+If a field's type implements `Provider`, the editor uses the returned `[]FieldDef` instead of descending by reflection. The field kind is set to `KindVariant` and the YAML editor takes focus directly.
 
 ```go
 type TimeoutValue struct{}
@@ -467,8 +418,7 @@ func (TimeoutValue) YeditSchema() []schema.FieldDef {
 
 ## Presets
 
-Each field can have named presets. Implement `editor.PresetSource` or use
-`presets.FromFS` with a directory tree:
+Each field can have named presets. Implement `editor.PresetSource` or use `presets.FromFS` with a directory tree:
 
 ```
 my-presets/
@@ -503,11 +453,7 @@ Minimum terminal size: **80 × 20**. Below that the editor shows a resize prompt
 
 ## Examples
 
-See [`examples/test`](examples/test/main.go) for a self-contained program
-that exercises all five schema patterns, `KindVariant`, nested slices, deep
-nesting, `oneof`, `MutuallyExclusive`, unknown-key validation, and schema
-edge cases (anonymous embeds, `yaml.Marshaler`, `interface{}`, non-string
-map keys, `omitempty`/`flow` flags).
+See [`examples/test`](examples/test/main.go) for a self-contained program that exercises all five schema patterns, `KindVariant`, nested slices, deep nesting, `oneof`, `MutuallyExclusive`, unknown-key validation, and schema edge cases (anonymous embeds, `yaml.Marshaler`, `interface{}`, non-string map keys, `omitempty`/`flow` flags).
 
 ## Status
 

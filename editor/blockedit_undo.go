@@ -7,14 +7,15 @@ import (
 )
 
 // blockEditUndoSnap captures the state of a blockEditState before a
-// mutating operation so it can be restored by ctrl+u.
+// mutating operation so it can be restored by ctrl+u (and re-applied by
+// ctrl+y after an undo).
 type blockEditUndoSnap struct {
 	node            *yaml.Node // deep copy of the canonical node at snapshot time
 	currentEntryIdx int
 	yamlValue       string
 	dirty           bool
 	preset          string
-	// tree state for collection blocks — preserved so restoreUndo keeps
+	// tree state for collection blocks — preserved so restoring keeps
 	// the expanded/collapsed view and cursor position intact.
 	treeNodes  []treeNode
 	treeCursor int
@@ -23,10 +24,12 @@ type blockEditUndoSnap struct {
 
 const maxUndoDepth = 50
 
-func (be blockEditState) saveUndo() blockEditState {
+// captureSnap records the current editor state as a snapshot for the
+// undo/redo stacks.
+func (be blockEditState) captureSnap() *blockEditUndoSnap {
 	treeNodes := make([]treeNode, len(be.tree.nodes))
 	copy(treeNodes, be.tree.nodes)
-	snap := &blockEditUndoSnap{
+	return &blockEditUndoSnap{
 		node:            yamlnode.CloneNode(be.node),
 		currentEntryIdx: be.coll.current,
 		yamlValue:       be.yamlEditor.Value(),
@@ -36,25 +39,67 @@ func (be blockEditState) saveUndo() blockEditState {
 		treeCursor:      be.tree.cursor,
 		treeOffset:      be.tree.offset,
 	}
-	be.undoStack = append(be.undoStack, snap)
-	if len(be.undoStack) > maxUndoDepth {
-		drop := len(be.undoStack) - maxUndoDepth
+}
+
+// appendSnapCapped appends snap to stack, dropping (and nil-ing, so the
+// backing array does not pin evicted snapshots) the oldest entries beyond
+// maxUndoDepth.
+func appendSnapCapped(stack []*blockEditUndoSnap, snap *blockEditUndoSnap) []*blockEditUndoSnap {
+	stack = append(stack, snap)
+	if len(stack) > maxUndoDepth {
+		drop := len(stack) - maxUndoDepth
 		for i := range drop {
-			be.undoStack[i] = nil
+			stack[i] = nil
 		}
-		be.undoStack = be.undoStack[drop:]
+		stack = stack[drop:]
 	}
+	return stack
+}
+
+// saveUndo pushes the current state onto the undo stack. Any redo entries are
+// discarded — a new mutation forks away from the undone states.
+func (be blockEditState) saveUndo() blockEditState {
+	be.undoStack = appendSnapCapped(be.undoStack, be.captureSnap())
+	be.redoStack = nil
 	return be
 }
 
+// restoreUndo restores the most recent undo snapshot and pushes the undone
+// state onto the redo stack. No-op when the undo stack is empty.
 func (be blockEditState) restoreUndo() blockEditState {
 	if len(be.undoStack) == 0 {
 		return be
 	}
-	last := len(be.undoStack) - 1
-	snap := be.undoStack[last]
-	be.undoStack[last] = nil
-	be.undoStack = be.undoStack[:last]
+	be.redoStack = appendSnapCapped(be.redoStack, be.captureSnap())
+	var snap *blockEditUndoSnap
+	snap, be.undoStack = popSnap(be.undoStack)
+	return be.applySnap(snap)
+}
+
+// restoreRedo re-applies the most recently undone change and pushes the
+// current state onto the undo stack so the redo itself can be undone. No-op
+// when the redo stack is empty.
+func (be blockEditState) restoreRedo() blockEditState {
+	if len(be.redoStack) == 0 {
+		return be
+	}
+	be.undoStack = appendSnapCapped(be.undoStack, be.captureSnap())
+	var snap *blockEditUndoSnap
+	snap, be.redoStack = popSnap(be.redoStack)
+	return be.applySnap(snap)
+}
+
+// popSnap removes and returns the top snapshot of stack, nil-ing the slot so
+// the backing array does not pin it.
+func popSnap(stack []*blockEditUndoSnap) (*blockEditUndoSnap, []*blockEditUndoSnap) {
+	last := len(stack) - 1
+	snap := stack[last]
+	stack[last] = nil
+	return snap, stack[:last]
+}
+
+// applySnap loads snap into the live editor state.
+func (be blockEditState) applySnap(snap *blockEditUndoSnap) blockEditState {
 	be.currentPreset = snap.preset
 	be.dirty = snap.dirty
 	be.errMsg = ""

@@ -3,6 +3,8 @@
 package editor
 
 import (
+	"gopkg.in/yaml.v3"
+
 	"github.com/lucasassuncao/yedit/document"
 	"github.com/lucasassuncao/yedit/theme"
 )
@@ -169,11 +171,21 @@ func (v Violation) String() string {
 	return v.Path + ": " + v.Message
 }
 
+// ValidationInput carries the document state inspected by validators. RunAll
+// builds it once per run and shares it across all validators, so the document
+// is parsed a single time instead of once per validator. Build one with
+// NewValidationInput when invoking a validator directly.
+type ValidationInput struct {
+	Raw    []byte           // document bytes, CRLF-normalised
+	Root   *yaml.Node       // parsed document root; an empty document yields an empty mapping, invalid YAML yields nil
+	Blocks []document.Block // top-level blocks
+}
+
 // Validator is a pluggable rule executed at validate/save time. It returns
 // one Violation per problem it finds. Returning an empty slice (or nil)
 // means "all good".
 type Validator interface {
-	Validate(raw []byte, blocks []document.Block) []Violation
+	Validate(in ValidationInput) []Violation
 }
 
 // ValidatorFunc adapts a plain function to the Validator interface, letting
@@ -181,17 +193,17 @@ type Validator interface {
 //
 //	editor.Run(editor.Config{
 //	    Validators: []editor.Validator{
-//	        editor.ValidatorFunc(func(raw []byte, blocks []document.Block) []editor.Violation {
+//	        editor.ValidatorFunc(func(in editor.ValidationInput) []editor.Violation {
 //	            // custom rule ...
 //	            return nil
 //	        }),
 //	    },
 //	})
-type ValidatorFunc func(raw []byte, blocks []document.Block) []Violation
+type ValidatorFunc func(in ValidationInput) []Violation
 
 // Validate calls f.
-func (f ValidatorFunc) Validate(raw []byte, blocks []document.Block) []Violation {
-	return f(raw, blocks)
+func (f ValidatorFunc) Validate(in ValidationInput) []Violation {
+	return f(in)
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────

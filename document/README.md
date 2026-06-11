@@ -32,6 +32,7 @@ Package document provides primitives for editing YAML files structured as a flat
   - [func \(d \*Document\) Path\(\) string](<#Document.Path>)
   - [func \(d \*Document\) Raw\(\) \[\]byte](<#Document.Raw>)
   - [func \(d \*Document\) Redo\(\) bool](<#Document.Redo>)
+  - [func \(d \*Document\) Reload\(\) error](<#Document.Reload>)
   - [func \(d \*Document\) Remove\(key string\) error](<#Document.Remove>)
   - [func \(d \*Document\) Replace\(key, snippet string\) error](<#Document.Replace>)
   - [func \(d \*Document\) ReplaceRaw\(raw \[\]byte\) error](<#Document.ReplaceRaw>)
@@ -185,7 +186,7 @@ func (d *Document) Dirty() bool
 
 
 <a name="Document.ExternallyChanged"></a>
-### func \(\*Document\) [ExternallyChanged](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L309>)
+### func \(\*Document\) [ExternallyChanged](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L326>)
 
 ```go
 func (d *Document) ExternallyChanged() bool
@@ -228,6 +229,15 @@ func (d *Document) Redo() bool
 ```
 
 Redo re\-applies the most recently undone change. Returns false if there is nothing to redo. The current state is pushed onto the undo history so the redo itself can be undone.
+
+<a name="Document.Reload"></a>
+### func \(\*Document\) [Reload](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L309>)
+
+```go
+func (d *Document) Reload() error
+```
+
+Reload re\-reads the file from disk, replacing the in\-memory state entirely: raw, blocks, dirty, and the undo/redo history are reset as if the document had just been loaded. A missing file reloads as an empty document, mirroring Load. On error \(no path, unreadable or unparseable file\) the in\-memory state is left untouched.
 
 <a name="Document.Remove"></a>
 ### func \(\*Document\) [Remove](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L155>)

@@ -21,6 +21,7 @@ const (
 	keyCtrlDRemove   = "[ctrl+d] remove"
 	keyCtrlUUndo     = "[ctrl+u] undo"
 	keyCtrlYRedo     = "[ctrl+y] redo"
+	keyCtrlRReload   = "[ctrl+r] reload"
 	keyCtrlLValidate = "[ctrl+l] validate"
 
 	keyEscBack   = "[Esc] back"
@@ -45,7 +46,7 @@ const (
 
 // Composite hints built by concatenating atoms with hintSep.
 const (
-	hintSaveTail = keyTabPane + hintSep + keyCtrlUUndo + hintSep + keyCtrlSSaveChg + hintSep + keyEscBack
+	hintSaveTail = keyTabPane + hintSep + keyCtrlUUndo + hintSep + keyCtrlYRedo + hintSep + keyCtrlSSaveChg + hintSep + keyEscBack
 
 	hintPresetPreviewFocused = keyScroll + hintSep + keyTabPresets + hintSep + keyEscBack
 	hintPresetListScalar     = keyNavigate + hintSep + keyTabPreview + hintSep + keyEnterApply + hintSep + keyEscCancel
@@ -53,8 +54,8 @@ const (
 
 	hintModelPreviewFocused = keyScroll + hintSep + keyTabEscList
 	hintModelFiltering      = keyTypeFilter + hintSep + keyNavigate + hintSep + keyEnterSelect + hintSep + keyEscClear
-	hintModelExisting       = keyNav + hintSep + keyFilter + hintSep + keyEnterOpen + hintSep + keyCtrlDDelete + hintSep + keyCtrlUUndo + hintSep + keyCtrlYRedo + hintSep + keyCtrlSSave + hintSep + keyCtrlLValidate
-	hintModelNew            = keyNav + hintSep + keyFilter + hintSep + keyEnterAdd + hintSep + keyCtrlUUndo + hintSep + keyCtrlYRedo + hintSep + keyCtrlSSave + hintSep + keyCtrlLValidate
+	hintModelExisting       = keyNav + hintSep + keyFilter + hintSep + keyEnterOpen + hintSep + keyCtrlDDelete + hintSep + keyCtrlUUndo + hintSep + keyCtrlYRedo + hintSep + keyCtrlRReload + hintSep + keyCtrlSSave + hintSep + keyCtrlLValidate
+	hintModelNew            = keyNav + hintSep + keyFilter + hintSep + keyEnterAdd + hintSep + keyCtrlUUndo + hintSep + keyCtrlYRedo + hintSep + keyCtrlRReload + hintSep + keyCtrlSSave + hintSep + keyCtrlLValidate
 
 	msgUncommittedChanges = "Uncommitted changes — ctrl+s to commit"
 )

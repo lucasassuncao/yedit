@@ -839,3 +839,88 @@ func TestCtrlDRemovesNestedParentBlock(t *testing.T) {
 		t.Errorf("after block should remain:\n%s", got)
 	}
 }
+
+// TestRedo_structFieldRemove verifies the undo→redo round-trip: removing a
+// field, undoing, then redoing lands back on the post-remove state, and the
+// redo itself can be undone again.
+func TestRedo_structFieldRemove(t *testing.T) {
+	spec := blockSpec{
+		key:  "configuration",
+		kind: schema.KindObject,
+		defs: []schema.FieldDef{
+			{YAMLName: "output", Kind: schema.KindPrimitive},
+			{YAMLName: "log-level", Kind: schema.KindPrimitive},
+		},
+		// output has an empty value so ctrl+d removes it directly (no confirm).
+		content: `configuration:
+  output: ""
+  log-level: info
+`,
+	}
+	be := newBlockEdit(Config{}, spec, 100, 40)
+	original := be.yamlEditor.Value()
+
+	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	removed := be.yamlEditor.Value()
+	if strings.Contains(removed, "output:") {
+		t.Fatalf("output still present after remove: %q", removed)
+	}
+
+	be = be.restoreUndo()
+	if be.yamlEditor.Value() != original {
+		t.Fatalf("after undo YAML = %q, want %q", be.yamlEditor.Value(), original)
+	}
+	if len(be.redoStack) == 0 {
+		t.Fatal("redoStack must be non-empty after undo")
+	}
+
+	be = be.restoreRedo()
+	if be.yamlEditor.Value() != removed {
+		t.Errorf("after redo YAML = %q, want %q", be.yamlEditor.Value(), removed)
+	}
+
+	// The redo itself is undoable.
+	be = be.restoreUndo()
+	if be.yamlEditor.Value() != original {
+		t.Errorf("after undoing the redo YAML = %q, want %q", be.yamlEditor.Value(), original)
+	}
+}
+
+// TestRedo_clearedByNewMutation verifies that a new mutation after an undo
+// discards the redo stack — the editor forks away from the undone state.
+func TestRedo_clearedByNewMutation(t *testing.T) {
+	spec := blockSpec{
+		key:  "configuration",
+		kind: schema.KindObject,
+		defs: []schema.FieldDef{
+			{YAMLName: "output", Kind: schema.KindPrimitive},
+			{YAMLName: "log-level", Kind: schema.KindPrimitive},
+		},
+		content: `configuration:
+  output: ""
+  log-level: info
+`,
+	}
+	be := newBlockEdit(Config{}, spec, 100, 40)
+
+	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be = be.restoreUndo()
+	if len(be.redoStack) == 0 {
+		t.Fatal("redoStack must be non-empty after undo")
+	}
+
+	// New mutation (remove again) must clear the redo stack.
+	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	if len(be.redoStack) != 0 {
+		t.Errorf("redoStack must be cleared by a new mutation, got %d entries", len(be.redoStack))
+	}
+}
+
+// TestRestoreRedo_emptyStackIsNoOp guards restoreRedo against an empty stack.
+func TestRestoreRedo_emptyStackIsNoOp(t *testing.T) {
+	be := newBlockEdit(Config{}, structSpec(), 100, 40)
+	got := be.restoreRedo() // must not panic with an empty stack
+	if len(got.redoStack) != 0 {
+		t.Error("restoreRedo on an empty stack should leave it empty")
+	}
+}

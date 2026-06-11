@@ -38,7 +38,7 @@ func TestMutuallyExclusive(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(nil, tc.blocks)
+			errs := v.Validate(NewValidationInput(nil, tc.blocks))
 			if tc.wantViolation && len(errs) != 1 {
 				t.Fatalf("expected 1 violation, got %v", errs)
 			}
@@ -125,7 +125,7 @@ categories:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate([]byte(tc.raw), nil)
+			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
 			if tc.wantViolation && len(errs) == 0 {
 				t.Fatal("expected a violation, got none")
 			}
@@ -139,8 +139,40 @@ categories:
 func TestMutuallyExclusive_topLevel_unchanged(t *testing.T) {
 	blocks := []document.Block{{Key: "image"}, {Key: "build"}}
 	v := MutuallyExclusive("image", "build")
-	if errs := v.Validate(nil, blocks); len(errs) != 1 {
+	if errs := v.Validate(NewValidationInput(nil, blocks)); len(errs) != 1 {
 		t.Errorf("top-level behavior should be unchanged, got %v", errs)
+	}
+}
+
+func TestMutuallyExclusive_misconfiguredPaths(t *testing.T) {
+	tests := []struct {
+		name string
+		v    Validator
+	}{
+		{"diverging parents", MutuallyExclusive("server.tls", "proxy.tls")},
+		{"different depths", MutuallyExclusive("server.tls", "server.http.port")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := tc.v.Validate(NewValidationInput([]byte("server:\n  tls: true\n"), nil))
+			if len(errs) != 1 {
+				t.Fatalf("expected 1 misconfiguration violation, got %v", errs)
+			}
+			if !strings.Contains(errs[0].Message, "share the same parent prefix") {
+				t.Errorf("violation should explain the misconfiguration; got %q", errs[0].Message)
+			}
+		})
+	}
+}
+
+func TestAllOrNone_misconfiguredPaths(t *testing.T) {
+	v := AllOrNone("server.tls-cert", "proxy.tls-key")
+	errs := v.Validate(NewValidationInput([]byte("server:\n  tls-cert: a\n"), nil))
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 misconfiguration violation, got %v", errs)
+	}
+	if !strings.Contains(errs[0].Message, "share the same parent prefix") {
+		t.Errorf("violation should explain the misconfiguration; got %q", errs[0].Message)
 	}
 }
 
@@ -173,7 +205,7 @@ func TestRequiredWith(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(nil, tc.blocks)
+			errs := v.Validate(NewValidationInput(nil, tc.blocks))
 			if tc.wantViolation && len(errs) != 1 {
 				t.Fatalf("expected 1 violation, got %v", errs)
 			}
@@ -186,6 +218,93 @@ func TestRequiredWith(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRequiredWith_dottedPath(t *testing.T) {
+	v := RequiredWith("server.tls-key", "server.tls-cert")
+
+	tests := []struct {
+		name          string
+		raw           string
+		wantViolation bool
+		wantContains  []string
+	}{
+		{
+			name: "key present without parent — violation",
+			raw: `
+server:
+  tls-key: /etc/tls/key.pem
+`,
+			wantViolation: true,
+			wantContains:  []string{"server", "tls-key", "tls-cert"},
+		},
+		{
+			name: "both present — ok",
+			raw: `
+server:
+  tls-cert: /etc/tls/cert.pem
+  tls-key: /etc/tls/key.pem
+`,
+		},
+		{
+			name: "key absent — ok",
+			raw: `
+server:
+  host: localhost
+`,
+		},
+		{
+			name: "parent mapping absent — ok",
+			raw:  "name: myapp\n",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runValidator(t, v, tc.raw, nil)
+			if tc.wantViolation && len(got) != 1 {
+				t.Fatalf("expected 1 violation, got %v", got)
+			}
+			if !tc.wantViolation && len(got) != 0 {
+				t.Errorf("expected no violations, got %v", got)
+			}
+			for _, want := range tc.wantContains {
+				if len(got) > 0 && !strings.Contains(got[0], want) {
+					t.Errorf("violation should contain %q; got %q", want, got[0])
+				}
+			}
+		})
+	}
+}
+
+func TestRequiredWith_dottedPath_sequenceExpansion(t *testing.T) {
+	v := RequiredWith("servers.tls-key", "servers.tls-cert")
+	raw := `
+servers:
+  - name: a
+    tls-cert: cert.pem
+    tls-key: key.pem
+  - name: b
+    tls-key: key.pem
+`
+	got := runValidator(t, v, raw, nil)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 violation (entry b only), got %v", got)
+	}
+	if !strings.Contains(got[0], "servers[1]") {
+		t.Errorf("violation should point at servers[1]; got %q", got[0])
+	}
+}
+
+func TestRequiredWith_misconfiguredPaths(t *testing.T) {
+	v := RequiredWith("server.tls-key", "proxy.tls-cert")
+	errs := v.Validate(NewValidationInput([]byte("server:\n  tls-key: a\n"), nil))
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 misconfiguration violation, got %v", errs)
+	}
+	if !strings.Contains(errs[0].Message, "share the same parent prefix") {
+		t.Errorf("violation should explain the misconfiguration; got %q", errs[0].Message)
 	}
 }
 
@@ -221,7 +340,7 @@ func TestAtLeastOneOf(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(nil, tc.blocks)
+			errs := v.Validate(NewValidationInput(nil, tc.blocks))
 			if tc.wantViolation && len(errs) == 0 {
 				t.Fatal("expected a violation, got none")
 			}
@@ -274,7 +393,7 @@ func TestExactlyOneOf(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(nil, tc.blocks)
+			errs := v.Validate(NewValidationInput(nil, tc.blocks))
 			if tc.wantViolation && len(errs) == 0 {
 				t.Fatal("expected a violation, got none")
 			}
@@ -358,7 +477,7 @@ tls:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate([]byte(tc.raw), nil)
+			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
 			if tc.wantViolation && len(errs) == 0 {
 				t.Fatal("expected a violation, got none")
 			}
@@ -432,7 +551,7 @@ configuration:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate([]byte(tc.raw), nil)
+			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
 			if tc.wantViolation && len(errs) == 0 {
 				t.Fatal("expected a violation, got none")
 			}
@@ -570,7 +689,7 @@ filter:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := tc.validator.Validate([]byte(tc.raw), nil)
+			errs := tc.validator.Validate(NewValidationInput([]byte(tc.raw), nil))
 			if tc.wantViolation && len(errs) == 0 {
 				t.Fatal("expected a violation, got none")
 			}
@@ -662,7 +781,7 @@ categories:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate([]byte(tc.raw), nil)
+			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}
@@ -680,7 +799,7 @@ categories:
 func runValidator(t *testing.T, v Validator, raw string, blocks []document.Block) []string {
 	t.Helper()
 	var out []string
-	for _, viol := range v.Validate([]byte(raw), blocks) {
+	for _, viol := range v.Validate(NewValidationInput([]byte(raw), blocks)) {
 		out = append(out, viol.String())
 	}
 	return out
@@ -883,6 +1002,268 @@ func TestValueMatches(t *testing.T) {
 			raw:           "version: 1\n",
 			wantViolation: true,
 			wantContains:  []string{"invalid pattern"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runValidator(t, tc.validator, tc.raw, nil)
+			if tc.wantViolation && len(got) == 0 {
+				t.Fatal("expected a violation, got none")
+			}
+			if !tc.wantViolation && len(got) != 0 {
+				t.Errorf("expected no violations, got %v", got)
+			}
+			for _, want := range tc.wantContains {
+				if len(got) > 0 && !strings.Contains(got[0], want) {
+					t.Errorf("violation should contain %q; got %q", want, got[0])
+				}
+			}
+		})
+	}
+}
+
+func TestAtLeastOneOf_dottedPath(t *testing.T) {
+	v := AtLeastOneOf("auth.token", "auth.password")
+
+	tests := []struct {
+		name          string
+		raw           string
+		wantViolation bool
+		wantContains  []string
+	}{
+		{
+			name: "one present — ok",
+			raw: `
+auth:
+  token: abc
+`,
+		},
+		{
+			name: "none present — violation",
+			raw: `
+auth:
+  user: admin
+`,
+			wantViolation: true,
+			wantContains:  []string{"auth", "at least one of", "token", "password"},
+		},
+		{
+			name: "parent absent — ok",
+			raw:  "name: myapp\n",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runValidator(t, v, tc.raw, nil)
+			if tc.wantViolation && len(got) != 1 {
+				t.Fatalf("expected 1 violation, got %v", got)
+			}
+			if !tc.wantViolation && len(got) != 0 {
+				t.Errorf("expected no violations, got %v", got)
+			}
+			for _, want := range tc.wantContains {
+				if len(got) > 0 && !strings.Contains(got[0], want) {
+					t.Errorf("violation should contain %q; got %q", want, got[0])
+				}
+			}
+		})
+	}
+}
+
+func TestAtLeastOneOf_dottedPath_sequenceExpansion(t *testing.T) {
+	v := AtLeastOneOf("accounts.auth.token", "accounts.auth.password")
+	raw := `
+accounts:
+  - auth:
+      token: abc
+  - auth:
+      user: admin
+`
+	got := runValidator(t, v, raw, nil)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 violation (second account), got %v", got)
+	}
+	if !strings.Contains(got[0], "accounts[1].auth") {
+		t.Errorf("violation should point at accounts[1].auth; got %q", got[0])
+	}
+}
+
+func TestExactlyOneOf_dottedPath(t *testing.T) {
+	v := ExactlyOneOf("source.git", "source.local")
+
+	tests := []struct {
+		name          string
+		raw           string
+		wantViolation bool
+		wantContains  []string
+	}{
+		{
+			name: "exactly one — ok",
+			raw: `
+source:
+  git: https://example.com/repo.git
+`,
+		},
+		{
+			name: "none — violation",
+			raw: `
+source:
+  branch: main
+`,
+			wantViolation: true,
+			wantContains:  []string{"source", "exactly one of"},
+		},
+		{
+			name: "both — violation",
+			raw: `
+source:
+  git: https://example.com/repo.git
+  local: ./vendor
+`,
+			wantViolation: true,
+			wantContains:  []string{"source", "found:", "git", "local"},
+		},
+		{
+			name: "parent absent — ok",
+			raw:  "name: myapp\n",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runValidator(t, v, tc.raw, nil)
+			if tc.wantViolation && len(got) != 1 {
+				t.Fatalf("expected 1 violation, got %v", got)
+			}
+			if !tc.wantViolation && len(got) != 0 {
+				t.Errorf("expected no violations, got %v", got)
+			}
+			for _, want := range tc.wantContains {
+				if len(got) > 0 && !strings.Contains(got[0], want) {
+					t.Errorf("violation should contain %q; got %q", want, got[0])
+				}
+			}
+		})
+	}
+}
+
+func TestAtLeastOneOf_ExactlyOneOf_misconfiguredPaths(t *testing.T) {
+	tests := []struct {
+		name string
+		v    Validator
+	}{
+		{"AtLeastOneOf diverging parents", AtLeastOneOf("auth.token", "server.password")},
+		{"ExactlyOneOf different depths", ExactlyOneOf("source.git", "source.local.path")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := tc.v.Validate(NewValidationInput([]byte("auth:\n  token: a\n"), nil))
+			if len(errs) != 1 {
+				t.Fatalf("expected 1 misconfiguration violation, got %v", errs)
+			}
+			if !strings.Contains(errs[0].Message, "share the same parent prefix") {
+				t.Errorf("violation should explain the misconfiguration; got %q", errs[0].Message)
+			}
+		})
+	}
+}
+
+func TestNoDuplicates_expandedPath(t *testing.T) {
+	v := NoDuplicates("categories.installers", "name")
+	raw := `
+categories:
+  - name: tools
+    installers:
+      - name: git
+      - name: git
+  - name: apps
+    installers:
+      - name: git
+`
+	got := runValidator(t, v, raw, nil)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 violation (duplicate within first category only), got %v", got)
+	}
+	if !strings.Contains(got[0], "categories[0].installers[1].name") {
+		t.Errorf("violation should point at categories[0].installers[1].name; got %q", got[0])
+	}
+}
+
+func TestNoDuplicates_dottedField(t *testing.T) {
+	v := NoDuplicates("servers", "meta.name")
+	raw := `
+servers:
+  - meta:
+      name: a
+  - meta:
+      name: a
+`
+	got := runValidator(t, v, raw, nil)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 violation, got %v", got)
+	}
+	if !strings.Contains(got[0], `duplicate value "a"`) {
+		t.Errorf("violation should report the duplicate value; got %q", got[0])
+	}
+}
+
+func TestValueHasPrefixSuffix(t *testing.T) {
+	tests := []struct {
+		name          string
+		validator     Validator
+		raw           string
+		wantViolation bool
+		wantContains  []string
+	}{
+		{
+			name:      "prefix match — ok",
+			validator: ValueHasPrefix("image", "registry.example.com/"),
+			raw:       "image: registry.example.com/app:1.0\n",
+		},
+		{
+			name:          "prefix mismatch — violation",
+			validator:     ValueHasPrefix("image", "registry.example.com/"),
+			raw:           "image: docker.io/app:1.0\n",
+			wantViolation: true,
+			wantContains:  []string{"image", "docker.io/app:1.0", "does not start with"},
+		},
+		{
+			name:      "suffix match — ok",
+			validator: ValueHasSuffix("output", ".yaml"),
+			raw:       "output: result.yaml\n",
+		},
+		{
+			name:          "suffix mismatch — violation",
+			validator:     ValueHasSuffix("output", ".yaml"),
+			raw:           "output: result.json\n",
+			wantViolation: true,
+			wantContains:  []string{"output", "result.json", "does not end with"},
+		},
+		{
+			name:      "absent path — ok",
+			validator: ValueHasPrefix("image", "registry/"),
+			raw:       "name: myapp\n",
+		},
+		{
+			name:      "empty value — ok",
+			validator: ValueHasSuffix("output", ".yaml"),
+			raw:       "output:\n",
+		},
+		{
+			name:          "non-scalar value — violation",
+			validator:     ValueHasPrefix("image", "registry/"),
+			raw:           "image:\n  name: app\n",
+			wantViolation: true,
+			wantContains:  []string{"scalar"},
+		},
+		{
+			name:          "sequence expansion — violation points at item",
+			validator:     ValueHasPrefix("mirrors.url", "https://"),
+			raw:           "mirrors:\n  - url: https://a.example.com\n  - url: http://b.example.com\n",
+			wantViolation: true,
+			wantContains:  []string{"mirrors[1].url", "http://b.example.com"},
 		},
 	}
 
@@ -1328,7 +1709,7 @@ func TestViolation_PathAndString(t *testing.T) {
 	}
 
 	v := ValueOneOf("configuration.log-level", "info")
-	errs := v.Validate([]byte("configuration:\n  log-level: verbose\n"), nil)
+	errs := v.Validate(NewValidationInput([]byte("configuration:\n  log-level: verbose\n"), nil))
 	if len(errs) != 1 {
 		t.Fatalf("expected 1 violation, got %v", errs)
 	}
@@ -1462,7 +1843,7 @@ some:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := tc.validator.Validate([]byte(tc.raw), nil)
+			errs := tc.validator.Validate(NewValidationInput([]byte(tc.raw), nil))
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}
@@ -1573,7 +1954,7 @@ port-attrs:
 				v = RequiredFromSchema()
 			}
 			var got []string
-			for _, viol := range v.Validate([]byte(tc.raw), nil) {
+			for _, viol := range v.Validate(NewValidationInput([]byte(tc.raw), nil)) {
 				got = append(got, viol.String())
 			}
 			if len(got) != len(tc.want) {

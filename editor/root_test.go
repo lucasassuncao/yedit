@@ -365,3 +365,94 @@ func TestRootHintPanelToggle(t *testing.T) {
 		t.Error("hint panel should be hidden after toggling off")
 	}
 }
+
+// TestReloadFromDisk covers ctrl+r in the main list: a clean document reloads
+// immediately, a dirty one prompts first and reloads after confirmation.
+func TestReloadFromDisk(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "reload.yaml")
+	if err := os.WriteFile(path, []byte("server:\n  host: a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	// Clean document: ctrl+r reloads immediately and picks up external changes.
+	if err := os.WriteFile(path, []byte("server:\n  host: b\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	m = updated.(model)
+	if m.mode != paneList {
+		t.Fatalf("clean reload should not prompt; mode = %d", m.mode)
+	}
+	if !strings.Contains(string(m.doc.Raw()), "host: b") {
+		t.Errorf("external change not loaded: %q", m.doc.Raw())
+	}
+
+	// Dirty document: ctrl+r prompts; confirming discards the local edit.
+	if err := m.doc.Insert("extra: 1\n"); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("server:\n  host: c\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	m = updated.(model)
+	if m.mode != paneAlert {
+		t.Fatalf("dirty reload should prompt; mode = %d", m.mode)
+	}
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("confirming the alert should produce a command")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(model)
+	if m.mode != paneList {
+		t.Fatalf("expected list after confirmed reload; mode = %d", m.mode)
+	}
+	if !strings.Contains(string(m.doc.Raw()), "host: c") || strings.Contains(string(m.doc.Raw()), "extra") {
+		t.Errorf("reload did not replace local state: %q", m.doc.Raw())
+	}
+	if m.doc.Dirty() {
+		t.Error("reloaded document should not be dirty")
+	}
+}
+
+// TestFilterAcceptsJK guards against j/k being swallowed as navigation while
+// the filter input is active — filters like "unknown" (contains k) or
+// "worker" (contains k) must be typeable; only the arrow keys navigate.
+func TestFilterAcceptsJK(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "filter.yaml")
+	seed := "server:\n  host: a\nunknown-key: flagged\n"
+	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}})
+	if err != nil {
+		t.Fatalf("newModel: %v", err)
+	}
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(model)
+	for _, r := range "unknown" {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(model)
+	}
+	if m.list.filter != "unknown" {
+		t.Fatalf("filter = %q, want %q", m.list.filter, "unknown")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+
+	sel := m.list.SelectedItem()
+	if sel == nil || sel.Key != "unknown-key" {
+		t.Fatalf("filter+enter selected %v, want unknown-key", sel)
+	}
+}

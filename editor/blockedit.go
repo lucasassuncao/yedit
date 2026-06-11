@@ -87,6 +87,7 @@ type blockEditState struct {
 	confirmAlert *alert.Model   // alert data when mode == modeConfirming
 
 	undoStack []*blockEditUndoSnap // undo history; each mutating op pushes a snapshot
+	redoStack []*blockEditUndoSnap // redo history; populated by restoreUndo, discarded on new mutations
 	theme     resolvedTheme
 }
 
@@ -598,7 +599,7 @@ func (be blockEditState) currentHint() string {
 	} else {
 		parts = append(parts, keyEnterAdd, keyCtrlDRemove)
 	}
-	parts = append(parts, keyCtrlUUndo, keyTabPane, keyCtrlSSaveChg, keyEscBack)
+	parts = append(parts, keyCtrlUUndo, keyCtrlYRedo, keyTabPane, keyCtrlSSaveChg, keyEscBack)
 	return strings.Join(parts, hintSep)
 }
 

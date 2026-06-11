@@ -41,3 +41,7 @@ type pendingEntryDeleteMsg struct{ seqIdx int }
 // confirmedDeleteMsg is dispatched by the "Remove block?" confirm alert when
 // the user confirms deleting a top-level block from the main list.
 type confirmedDeleteMsg struct{ Key string }
+
+// confirmedReloadMsg is dispatched by the "Reload from disk?" confirm alert
+// when the user confirms discarding local edits in favour of the on-disk file.
+type confirmedReloadMsg struct{}

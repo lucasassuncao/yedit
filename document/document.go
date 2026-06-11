@@ -301,6 +301,23 @@ func (d *Document) Save() error {
 	return nil
 }
 
+// Reload re-reads the file from disk, replacing the in-memory state entirely:
+// raw, blocks, dirty, and the undo/redo history are reset as if the document
+// had just been loaded. A missing file reloads as an empty document, mirroring
+// Load. On error (no path, unreadable or unparseable file) the in-memory state
+// is left untouched.
+func (d *Document) Reload() error {
+	if d.path == "" {
+		return fmt.Errorf("document has no path; Load requires a path")
+	}
+	nd, err := Load(d.path, d.knownOrder)
+	if err != nil {
+		return err
+	}
+	*d = *nd
+	return nil
+}
+
 // ExternallyChanged reports whether the file on disk was modified since this
 // Document last loaded or saved it — e.g. another process or a git operation
 // edited it. Returns false when there is no path or the file is absent (a save

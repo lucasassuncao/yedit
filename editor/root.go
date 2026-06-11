@@ -227,6 +227,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case confirmedDeleteMsg:
 		m.enterList()
 		return m.handleDelete(msg.Key)
+	case confirmedReloadMsg:
+		m.enterList()
+		return m.execReload()
 	case alert.DismissedMsg:
 		// Forward to the active blockEdit first so its confirmAlert is cleared.
 		if top := m.topBE(); top != nil {
@@ -388,6 +391,26 @@ func (m model) execSave() (tea.Model, tea.Cmd) {
 	}
 	m.saved = true
 	return m.showAlert("Saved", fmt.Sprintf("Saved to %s.", m.doc.Path()), alert.KindSuccess)
+}
+
+// reload re-reads the file from disk, discarding local edits. Unsaved changes
+// are a substantive loss, so they require confirmation; a clean document
+// reloads immediately.
+func (m model) reload() (tea.Model, tea.Cmd) {
+	if m.doc.Dirty() {
+		msg := fmt.Sprintf("Re-read %s from disk?\nUnsaved changes will be lost.", m.doc.Path())
+		return m.showConfirmAlert("Reload from disk?", msg, func() tea.Msg { return confirmedReloadMsg{} })
+	}
+	return m.execReload()
+}
+
+func (m model) execReload() (tea.Model, tea.Cmd) {
+	if err := m.doc.Reload(); err != nil {
+		return m.showAlert("Reload failed", err.Error(), alert.KindError)
+	}
+	m.syncView()
+	m.statusMsg = fmt.Sprintf("Reloaded %s from disk.", m.doc.Path())
+	return m, nil
 }
 
 func (m model) validateKeys() (tea.Model, tea.Cmd) {

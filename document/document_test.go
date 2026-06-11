@@ -708,3 +708,75 @@ func TestDocument_InsertStripsTrailingBlankLines(t *testing.T) {
 		t.Errorf("Insert left blank lines: got %q want %q", got, want)
 	}
 }
+
+// TestDocument_Reload replaces the in-memory state with the on-disk content,
+// resetting dirty and the undo history.
+func TestDocument_Reload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "reload.yaml")
+	if err := os.WriteFile(path, []byte("name: original\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := document.Load(path, canonicalOrder)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// Local edit, then an external rewrite of the file.
+	if err := doc.Insert("image: ubuntu:22.04\n"); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	external := "name: rewritten\nremoteUser: root\n"
+	if err := os.WriteFile(path, []byte(external), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := doc.Reload(); err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+	if got := string(doc.Raw()); got != external {
+		t.Errorf("Raw after reload = %q, want %q", got, external)
+	}
+	if doc.Dirty() {
+		t.Error("reloaded document should not be dirty")
+	}
+	if doc.CanUndo() || doc.CanRedo() {
+		t.Error("reload should reset the undo/redo history")
+	}
+	if len(doc.Blocks()) != 2 {
+		t.Errorf("expected 2 blocks after reload, got %d", len(doc.Blocks()))
+	}
+}
+
+// TestDocument_Reload_missingFile mirrors Load: a deleted file reloads as an
+// empty document rather than erroring.
+func TestDocument_Reload_missingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gone.yaml")
+	if err := os.WriteFile(path, []byte("name: x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := document.Load(path, canonicalOrder)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := doc.Reload(); err != nil {
+		t.Fatalf("Reload after delete: %v", err)
+	}
+	if len(doc.Raw()) != 0 {
+		t.Errorf("expected empty raw, got %q", doc.Raw())
+	}
+}
+
+// TestDocument_Reload_noPath errors on in-memory documents.
+func TestDocument_Reload_noPath(t *testing.T) {
+	doc, err := document.New([]byte("name: x\n"), canonicalOrder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Reload(); err == nil {
+		t.Error("Reload without a path should return an error")
+	}
+}
