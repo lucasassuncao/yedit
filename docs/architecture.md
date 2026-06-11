@@ -4,22 +4,27 @@ How the yedit packages fit together and why they are split the way they are.
 
 ---
 
-## Package map
+## Folder structure
 
 ```
-github.com/lucasassuncao/yedit/
-├── editor          - public API: Config, Run, FieldMeta, MetadataSource, Validator, …
-├── metadata        - metadata.Build: validates a Node tree against the schema struct
-├── schema          - schema.Discover: reflects a Go struct into a []FieldDef tree
-├── document        - raw YAML bytes, block list, undo/redo history
-├── presets         - presets.FromFS: embed.FS-backed PresetSource
-├── docgenerator    - generates Markdown reference tables; TUI doc browser
-├── theme           - color palette, layout helpers
-├── viewer          - reusable list+viewport model (used by docgenerator TUI)
-└── internal/
-    ├── alert       - modal alert overlay (bubbletea component)
-    └── yamlnode    - *yaml.Node helpers shared by editor sub-packages
+yedit/
+├── editor/             - public API: Config, Run, FieldMeta, MetadataSource, Validator, …
+├── metadata/           - metadata.Build: validates a Node tree against the schema struct
+├── schema/             - schema.Discover: reflects a Go struct into a []FieldDef tree
+├── document/           - raw YAML bytes, block list, undo/redo history
+├── presets/            - presets.FromFS: embed.FS-backed PresetSource
+├── docgenerator/       - generates Markdown reference tables; TUI doc browser
+├── theme/              - color palette, layout helpers
+├── viewer/             - reusable list+viewport model (used by docgenerator TUI)
+├── internal/
+│   ├── alert/          - modal alert overlay (bubbletea component)
+│   └── yamlnode/       - *yaml.Node helpers shared by editor sub-packages
+├── examples/
+│   └── test/           - runnable example exercising every schema pattern and Config option
+└── docs/               - reference documentation
 ```
+
+## Package map
 
 ### Typical import graph
 
