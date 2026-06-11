@@ -254,7 +254,7 @@ func TestAudit_EntryDeleteConfirms(t *testing.T) {
 	if n := seqItemCount(be); n != 2 {
 		t.Errorf("entry must not be deleted before confirmation; have %d", n)
 	}
-	be, _ = be.Update(pendingEntryDeleteMsg{seqIdx: 0})
+	be = be.dispatch(DeleteEntry{SeqIdx: 0})
 	if n := seqItemCount(be); n != 1 {
 		t.Errorf("entry not deleted after confirm; have %d", n)
 	}
@@ -359,7 +359,7 @@ func TestAudit_RemoveParentResetsDescendantChecks(t *testing.T) {
 				break
 			}
 		}
-		be, _ = be.Update(pendingRemoveMsg{nodeIdx: idx})
+		be = be.dispatch(ToggleField{NodeIdx: idx, Checked: false})
 		return be
 	}
 	checked := func(be blockEditState, sfx ...string) bool {

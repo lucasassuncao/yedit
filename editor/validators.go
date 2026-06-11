@@ -2,17 +2,43 @@ package editor
 
 import (
 	"fmt"
-	"github.com/lucasassuncao/yedit/internal/yamlnode"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/lucasassuncao/yedit/internal/yamlnode"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/document"
 	"github.com/lucasassuncao/yedit/schema"
 )
+
+// # Validator families
+//
+// There are two families of validators. Choose based on whether you have a
+// MetadataSource configured in editor.Config.Metadata:
+//
+// FromMetadata family — RequiredFromMetadata, OneOfFromMetadata,
+// RangeFromMetadata, PatternFromMetadata, CountFromMetadata,
+// UniqueFromMetadata, DeprecatedFromMetadata:
+//   - Use when you have a MetadataSource (e.g. metadata.Build).
+//   - Constraints are declared once in the metadata tree and reused by both
+//     the hint panel and the validators — no duplication.
+//   - These validators are inert until editor.Run wires them; they cannot be
+//     used standalone outside a session.
+//
+// Explicit family — Required, ValueOneOf, ValueInRange, ValueMatches,
+// CountRange, UniqueValues, Deprecated:
+//   - Use for one-off rules that do not need a metadata tree, or for
+//     cross-field rules that cannot live in per-field metadata
+//     (MutuallyExclusive, RequiredWith, CrossFieldOrdered, etc.).
+//   - Work standalone: pass raw YAML to RunAll and they evaluate immediately.
+//
+// Mixing both families is valid. A typical setup uses FromMetadata for all
+// per-field constraints and explicit validators only for cross-field rules.
 
 // NewValidationInput parses raw once and bundles it with blocks for a
 // validation run. Root is nil when raw is not valid YAML; an empty document
@@ -600,8 +626,8 @@ func (v *noDuplicatesValidator) Validate(in ValidationInput) []Violation {
 //	editor.Required("version")          // top-level, unconditional
 //	editor.Required("categories.name")  // every category entry needs "name"
 //
-// To enforce the schema's validate:"required" tags without listing paths by
-// hand, use RequiredFromSchema.
+// To enforce the MetadataSource's Required markers without listing paths by hand,
+// use RequiredFromMetadata.
 func Required(paths ...string) Validator {
 	return &requiredValidator{paths: paths}
 }
@@ -625,96 +651,41 @@ func (v *requiredValidator) Validate(in ValidationInput) []Violation {
 	return errs
 }
 
-// RequiredFromSchema enforces the schema's required markers
-// (validate:"required" / jsonschema:"required") at validate/save time. Without
-// it the marker is display-only: the "*" in the tree and the "Required: yes"
-// hint line do not block saving.
-//
-// A required field is only enforced where its parent exists — a required field
-// inside an optional block is not reported while the whole block is absent.
-// Top-level required fields are always enforced. Sequence and dictionary
-// entries are checked individually.
-//
-// The editor wires the discovered schema into this validator when the session
-// starts; outside editor.Run it reports nothing.
-func RequiredFromSchema() Validator { return &requiredFromSchemaValidator{} }
-
-type requiredFromSchemaValidator struct{ defs []schema.FieldDef }
-
-func (v *requiredFromSchemaValidator) Validate(in ValidationInput) []Violation {
-	if len(v.defs) == 0 {
-		return nil
-	}
-	root := in.Root
-	if root == nil {
-		return nil
-	}
-	var errs []Violation
-	checkRequiredDefs(root, v.defs, "", &errs)
-	return errs
-}
-
-// checkRequiredDefs walks node guided by defs, reporting every required field
-// that is absent or an empty scalar, and recursing into present children
-// according to their schema kind.
-func checkRequiredDefs(node *yaml.Node, defs []schema.FieldDef, path string, errs *[]Violation) {
-	if node == nil || node.Kind != yaml.MappingNode {
-		return
-	}
-	for _, def := range defs {
-		child := yamlnode.ChildByKey(node, def.YAMLName)
-		childPath := yamlnode.JoinPath(path, def.YAMLName)
-		if def.Required && !yamlnode.PresentNonEmpty(child) {
-			*errs = append(*errs, Violation{Path: childPath, Message: "required"})
-		}
-		// KindVariant children describe union alternatives, not required structure.
-		if child == nil || len(def.Children) == 0 || def.Kind == schema.KindVariant {
-			continue
-		}
-		switch def.Kind {
-		case schema.KindObject:
-			checkRequiredDefs(child, def.Children, childPath, errs)
-		case schema.KindList:
-			if child.Kind == yaml.SequenceNode {
-				for i, item := range child.Content {
-					checkRequiredDefs(item, def.Children, fmt.Sprintf("%s[%d]", childPath, i), errs)
-				}
-			}
-		case schema.KindDictionary:
-			if child.Kind == yaml.MappingNode {
-				for i := 0; i+1 < len(child.Content); i += 2 {
-					checkRequiredDefs(child.Content[i+1], def.Children, yamlnode.JoinPath(childPath, child.Content[i].Value), errs)
-				}
-			}
-		}
-	}
-}
-
-// RequiredFromHints enforces the HintSource's required markers
-// (FieldMeta.Required) at validate/save time, mirroring RequiredFromSchema for
-// applications that declare required-ness in their hints instead of struct
-// tags. Without it the marker is display-only: the "Required: yes" hint line
-// does not block saving.
+// RequiredFromMetadata enforces the MetadataSource's required markers
+// (FieldMeta.Required) at validate/save time, for applications that declare
+// required-ness in their hints. Without it the marker is display-only: the
+// "Required: yes" hint line does not block saving.
 //
 // The walk is guided by the discovered schema: for every schema path the
-// validator asks the HintSource for that field's FieldMeta — using the same
-// query convention as the hint panel, FieldHint(block, "") for a top-level
-// block and FieldHint(block, "source.path") for nested fields — and, when
+// validator asks the MetadataSource for that field's FieldMeta — using the same
+// query convention as the hint panel, FieldMeta(block, "") for a top-level
+// block and FieldMeta(block, "source.path") for nested fields — and, when
 // Required is set, checks presence. A required field is only enforced where
 // its parent exists; top-level required blocks are always enforced. Sequence
 // and dictionary entries are checked individually.
 //
-// The editor wires the discovered schema and the configured HintSource into
+// The editor wires the discovered schema and the configured MetadataSource into
 // this validator when the session starts; outside editor.Run, or when no
-// HintSource is configured, it reports nothing.
-func RequiredFromHints() Validator { return &requiredFromHintsValidator{} }
+// MetadataSource is configured, it reports nothing.
+func RequiredFromMetadata() Validator { return &metadataRuleValidator{check: checkHintRequired} }
 
-type requiredFromHintsValidator struct {
+// metadataRuleValidator is the shared engine of the FromMetadata validator family.
+// It walks the YAML guided by the discovered schema, queries the MetadataSource
+// for every field — FieldMeta(block, "") for top-level blocks,
+// FieldMeta(block, "a.b") for nested fields, the hint panel's convention —
+// and delegates to check. Sequence and dictionary entries are visited
+// individually. The editor wires defs and hints at session start; outside
+// editor.Run, or without a MetadataSource, the validator is inert.
+type metadataRuleValidator struct {
 	defs  []schema.FieldDef
-	hints HintSource
+	hints MetadataSource
+	// check receives the field's hint metadata and its YAML node (nil when the
+	// field is absent), and appends violations. Zero-valued metadata must
+	// report nothing.
+	check func(meta FieldMeta, child *yaml.Node, path string, errs *[]Violation)
 }
 
-func (v *requiredFromHintsValidator) Validate(in ValidationInput) []Violation {
+func (v *metadataRuleValidator) Validate(in ValidationInput) []Violation {
 	if v.hints == nil || len(v.defs) == 0 {
 		return nil
 	}
@@ -727,13 +698,12 @@ func (v *requiredFromHintsValidator) Validate(in ValidationInput) []Violation {
 	return errs
 }
 
-// walk mirrors checkRequiredDefs, but required-ness comes from the HintSource
-// instead of schema tags. blockKey is empty at the document root, where each
-// def is itself a top-level block queried as FieldHint(name, ""); below that,
-// hintPath is the dot-joined schema path from the block root (no sequence
-// indexes), matching the hint panel's query convention. yamlPath carries the
-// expanded path used in violations.
-func (v *requiredFromHintsValidator) walk(node *yaml.Node, defs []schema.FieldDef, blockKey, hintPath, yamlPath string, errs *[]Violation) {
+// walk visits node guided by defs. blockKey is empty at the document root,
+// where each def is itself a top-level block queried as FieldMeta(name, "");
+// below that, hintPath is the dot-joined schema path from the block root (no
+// sequence indexes), matching the hint panel's query convention. yamlPath
+// carries the expanded path used in violations.
+func (v *metadataRuleValidator) walk(node *yaml.Node, defs []schema.FieldDef, blockKey, hintPath, yamlPath string, errs *[]Violation) {
 	if node == nil || node.Kind != yaml.MappingNode {
 		return
 	}
@@ -744,9 +714,7 @@ func (v *requiredFromHintsValidator) walk(node *yaml.Node, defs []schema.FieldDe
 		}
 		child := yamlnode.ChildByKey(node, def.YAMLName)
 		childYAML := yamlnode.JoinPath(yamlPath, def.YAMLName)
-		if v.hints.FieldHint(childBlock, childHint).Required && !yamlnode.PresentNonEmpty(child) {
-			*errs = append(*errs, Violation{Path: childYAML, Message: "required"})
-		}
+		v.check(v.hints.FieldMeta(childBlock, childHint), child, childYAML, errs)
 		// KindVariant children describe union alternatives, not required structure.
 		if child == nil || len(def.Children) == 0 || def.Kind == schema.KindVariant {
 			continue
@@ -768,6 +736,227 @@ func (v *requiredFromHintsValidator) walk(node *yaml.Node, defs []schema.FieldDe
 			}
 		}
 	}
+}
+
+// checkHintRequired enforces FieldMeta.Required: absent fields or empty
+// scalars violate; a non-scalar value counts as present.
+func checkHintRequired(meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
+	if meta.Required && !yamlnode.PresentNonEmpty(child) {
+		*errs = append(*errs, Violation{Path: path, Message: "required"})
+	}
+}
+
+// OneOfFromMetadata enforces FieldMeta.OneOf from the MetadataSource: a present,
+// non-empty scalar must be one of the declared values (ValueOneOf semantics).
+// Fields without OneOf declare nothing. Wired by the editor like
+// RequiredFromMetadata.
+func OneOfFromMetadata() Validator { return &metadataRuleValidator{check: checkHintOneOf} }
+
+func checkHintOneOf(meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
+	if len(meta.OneOf) == 0 {
+		return
+	}
+	val, ok := hintScalarValue(child, path, errs)
+	if !ok {
+		return
+	}
+	for _, a := range meta.OneOf {
+		if val == a {
+			return
+		}
+	}
+	*errs = append(*errs, Violation{
+		Path:    path,
+		Message: fmt.Sprintf("value %q is not allowed — use one of: %s", val, joinQuoted(meta.OneOf)),
+	})
+}
+
+// RangeFromMetadata enforces FieldMeta.Min/Max from the MetadataSource (ValueInRange
+// semantics): bounds and value may be plain numbers, durations, or sizes, and
+// must be of the same kind. One-sided bounds are allowed — only Min means "at
+// least Min", only Max means "at most Max". Malformed or mixed-kind bounds in
+// a hint are reported as a misconfiguration violation on every run.
+func RangeFromMetadata() Validator { return &metadataRuleValidator{check: checkHintRange} }
+
+func checkHintRange(meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
+	if meta.Min == "" && meta.Max == "" {
+		return
+	}
+	loStr, hiStr := meta.Min, meta.Max
+	lo, hi := math.Inf(-1), math.Inf(1)
+	loKind, hiKind := compKind(-1), compKind(-1)
+	var ok bool
+	if loStr != "" {
+		if lo, loKind, ok = parseComparable(loStr); !ok {
+			reportInvalidHintRange(loStr, hiStr, path, errs)
+			return
+		}
+	}
+	if hiStr != "" {
+		if hi, hiKind, ok = parseComparable(hiStr); !ok {
+			reportInvalidHintRange(loStr, hiStr, path, errs)
+			return
+		}
+	}
+	if loKind >= 0 && hiKind >= 0 && loKind != hiKind {
+		reportInvalidHintRange(loStr, hiStr, path, errs)
+		return
+	}
+	wantKind := loKind
+	if wantKind < 0 {
+		wantKind = hiKind
+	}
+	if loStr == "" {
+		loStr = "-∞"
+	}
+	if hiStr == "" {
+		hiStr = "∞"
+	}
+	val, okVal := hintScalarValue(child, path, errs)
+	if !okVal {
+		return
+	}
+	v, kind, okParse := parseComparable(val)
+	if !okParse || kind != wantKind {
+		*errs = append(*errs, Violation{
+			Path:    path,
+			Message: fmt.Sprintf("value %q is not comparable with range [%s, %s]", val, loStr, hiStr),
+		})
+		return
+	}
+	if v < lo || v > hi {
+		*errs = append(*errs, Violation{
+			Path:    path,
+			Message: fmt.Sprintf("value %q out of range [%s, %s]", val, loStr, hiStr),
+		})
+	}
+}
+
+func reportInvalidHintRange(lo, hi, path string, errs *[]Violation) {
+	*errs = append(*errs, Violation{
+		Path:    path,
+		Message: fmt.Sprintf("invalid range [%s, %s] in hint — bounds must both be durations, sizes, or numbers", lo, hi),
+	})
+}
+
+// PatternFromMetadata enforces FieldMeta.Pattern from the MetadataSource
+// (ValueMatches semantics). Compiled patterns are cached per validator
+// instance; an invalid pattern is reported as a misconfiguration violation
+// wherever the hint declares it.
+func PatternFromMetadata() Validator {
+	cache := map[string]*regexp.Regexp{} // pattern → compiled; nil marks invalid
+	return &metadataRuleValidator{check: func(meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
+		checkHintPattern(cache, meta, child, path, errs)
+	}}
+}
+
+func checkHintPattern(cache map[string]*regexp.Regexp, meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
+	if meta.Pattern == "" {
+		return
+	}
+	re, seen := cache[meta.Pattern]
+	if !seen {
+		re, _ = regexp.Compile(meta.Pattern)
+		cache[meta.Pattern] = re
+	}
+	if re == nil {
+		*errs = append(*errs, Violation{Path: path, Message: fmt.Sprintf("invalid pattern %q in hint", meta.Pattern)})
+		return
+	}
+	val, ok := hintScalarValue(child, path, errs)
+	if !ok {
+		return
+	}
+	if !re.MatchString(val) {
+		*errs = append(*errs, Violation{
+			Path:    path,
+			Message: fmt.Sprintf("value %q does not match pattern %q", val, meta.Pattern),
+		})
+	}
+}
+
+// CountFromMetadata enforces FieldMeta.MinCount/MaxCount from the MetadataSource
+// (CountRange semantics): sequences count items, mappings count keys. Both
+// zero declares nothing; MinCount > 0 with MaxCount == 0 means "at least
+// MinCount, no upper bound". Absent fields report nothing — combine with
+// Required when the collection is mandatory.
+func CountFromMetadata() Validator { return &metadataRuleValidator{check: checkHintCount} }
+
+func checkHintCount(meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
+	if (meta.MinCount == 0 && meta.MaxCount == 0) || child == nil {
+		return
+	}
+	var count int
+	switch child.Kind {
+	case yaml.SequenceNode:
+		count = len(child.Content)
+	case yaml.MappingNode:
+		count = len(child.Content) / 2
+	default:
+		if child.Value == "" { // null scalar: an empty collection
+			break
+		}
+		*errs = append(*errs, Violation{Path: path, Message: "expected a list or mapping"})
+		return
+	}
+	if count < meta.MinCount || (meta.MaxCount > 0 && count > meta.MaxCount) {
+		want := fmt.Sprintf("between %d and %d", meta.MinCount, meta.MaxCount)
+		if meta.MaxCount == 0 {
+			want = fmt.Sprintf("at least %d", meta.MinCount)
+		}
+		*errs = append(*errs, Violation{
+			Path:    path,
+			Message: fmt.Sprintf("has %d entries — expected %s", count, want),
+		})
+	}
+}
+
+// UniqueFromMetadata enforces FieldMeta.Unique from the MetadataSource (UniqueValues
+// semantics): scalar items in the sequence must not repeat. Non-sequence
+// fields and non-scalar items are skipped.
+func UniqueFromMetadata() Validator { return &metadataRuleValidator{check: checkHintUnique} }
+
+func checkHintUnique(meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
+	if !meta.Unique || child == nil || child.Kind != yaml.SequenceNode {
+		return
+	}
+	values := make([]string, len(child.Content))
+	for i, item := range child.Content {
+		if item.Kind == yaml.ScalarNode {
+			values[i] = item.Value
+		}
+	}
+	reportDuplicates(values, path, "", errs)
+}
+
+// DeprecatedFromMetadata enforces FieldMeta.Deprecated from the MetadataSource
+// (Deprecated semantics): every present occurrence of the field is reported,
+// carrying the hint's migration message. Combine with Config.NoValidateOnSave
+// to make it a non-blocking warning.
+func DeprecatedFromMetadata() Validator { return &metadataRuleValidator{check: checkHintDeprecated} }
+
+func checkHintDeprecated(meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
+	if meta.Deprecated == "" || child == nil {
+		return
+	}
+	*errs = append(*errs, Violation{Path: path, Message: "deprecated — " + meta.Deprecated})
+}
+
+// hintScalarValue applies the shared value-rule contract to a hint-checked
+// field: nil or empty children report nothing (combine with Required when the
+// field is mandatory); a non-scalar child is flagged.
+func hintScalarValue(child *yaml.Node, path string, errs *[]Violation) (string, bool) {
+	if child == nil {
+		return "", false
+	}
+	if child.Kind != yaml.ScalarNode {
+		*errs = append(*errs, Violation{Path: path, Message: "expected a scalar value"})
+		return "", false
+	}
+	if child.Value == "" {
+		return "", false
+	}
+	return child.Value, true
 }
 
 // ValueInRange reports a violation when the scalar at path is present but

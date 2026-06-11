@@ -8,7 +8,7 @@
 import "github.com/lucasassuncao/yedit/schema"
 ```
 
-Package schema discovers the editable shape of a Go struct via reflection over yaml/validate/jsonschema tags. It produces a FieldDef tree that yedit/editor uses to drive its UI.
+Package schema discovers the editable shape of a Go struct via reflection over yaml tags. It produces a FieldDef tree that yedit/editor uses to drive its UI.
 
 ## Index
 
@@ -33,7 +33,7 @@ KnownChildren collapses a FieldDef tree into a map of dotted paths to the set of
 A nil value at a path means "free\-form" — children at that path are not validated \(e.g. customizations.vscode.settings has no fixed schema\).
 
 <a name="TopLevelOrder"></a>
-## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L260>)
+## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L243>)
 
 ```go
 func TopLevelOrder(fields []FieldDef) []string
@@ -51,23 +51,19 @@ func UnknownKeys(raw []byte, known map[string]map[string]bool) []string
 UnknownKeys returns the dotted paths of any YAML keys not present in the schema described by known. Free\-form sub\-trees \(paths missing from known\) are not validated.
 
 <a name="FieldDef"></a>
-## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L29-L41>)
+## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L26-L34>)
 
 FieldDef describes a single editable field discovered from a Go struct.
 
 Children is populated when the field nests a struct \(Kind == KindObject\) or when its type implements Provider.
 
-Required, Default, Description, and OneOf are populated by Discover but are not currently consumed by the built\-in editor UI. They are part of the public API for external tooling \(e.g. doc generators, custom renderers\) that wants richer field metadata without re\-running reflection. The built\-in editor may use them in a future release to render hints and pre\-fill defaults.
+FieldDef carries structure only. Field metadata \(required, allowed values, ranges, descriptions\) is declared through the editor's MetadataSource — see the yedit/metadata package.
 
 ```go
 type FieldDef struct {
     YAMLName     string
     Kind         Kind
-    Scalar       string   // concrete scalar type for primitives/enums ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
-    Required     bool     // from validate:"required" or jsonschema:"required"
-    Default      string   // from jsonschema:"default=X"
-    Description  string   // from jsonschema_description
-    OneOf        []string // from validate:"oneof=a b c"
+    Scalar       string // concrete scalar type for primitives ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
     Children     []FieldDef
     OmitEmpty    bool   // yaml:",omitempty" — zero value is not written to disk
     Flow         bool   // yaml:",flow" — serialised inline rather than block style
@@ -76,7 +72,7 @@ type FieldDef struct {
 ```
 
 <a name="Discover"></a>
-### func [Discover](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L47>)
+### func [Discover](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L39>)
 
 ```go
 func Discover(v any, recursionLimit ...int) []FieldDef
@@ -84,15 +80,7 @@ func Discover(v any, recursionLimit ...int) []FieldDef
 
 Discover walks the type of v by reflection and returns the editable schema of its exported fields. Fields without a yaml tag, with yaml:"\-", or with a name in defaultSkip are omitted. Nested struct fields recurse one level deeper.
 
-Only the yaml tag is required. validate and jsonschema\_description are optional and merely enrich the FieldDef when present:
-
-- validate:"required" → FieldDef.Required = true \(renders a "\*"\)
-- validate:"oneof=a b c" → FieldDef.OneOf populated
-- jsonschema:"default=X" → FieldDef.Default populated
-- jsonschema:"required" → FieldDef.Required = true \(alternative\)
-- jsonschema\_description:"..." → FieldDef.Description populated
-
-A struct annotated only with yaml tags discovers cleanly; fields just have zero\-valued Required/Default/Description/OneOf.
+Only the yaml tag is read. Field metadata \(required, allowed values, ranges, descriptions\) is not derived from struct tags — declare it through the editor's MetadataSource instead \(see the yedit/metadata package\).
 
 To customise discovery for union types \(a value that can be a scalar OR a struct OR a map\), make the wrapper type implement Provider — its YeditSchema\(\) return value is used in place of reflective traversal.
 
@@ -116,13 +104,12 @@ const (
     KindList                   // slice or array
     KindDictionary             // map[K]V
     KindVariant                // union type via the Provider interface
-    KindEnum                   // scalar with a fixed oneof set (validate:"oneof=…")
     KindAny                    // interface{}/any — use Provider or raw YAML editing
 )
 ```
 
 <a name="Provider"></a>
-## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L47-L49>)
+## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L40-L42>)
 
 Provider is an opt\-in interface for types that reflection cannot introspect correctly — typically union types \(e.g. a value that can be a string OR a struct OR a map\). Implementations return the FieldDef tree they want the editor to see in place of the wrapper type's own fields.
 

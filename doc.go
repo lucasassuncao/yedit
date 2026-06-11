@@ -3,7 +3,8 @@
 //
 // The library is composed of independent sub-packages:
 //
-//   - schema:     reflection over the client's Go structs (yaml tag required; validate and jsonschema_description optional)
+//   - schema:     reflection over the client's Go structs (yaml tags only)
+//   - hints:      tree-based MetadataSource with strict schema validation
 //   - document:   YAML state with block-level mutations, history, and parsing
 //   - editor:     two-panel bubbletea TUI that ties the pieces together
 //   - presets:    Source interface + fs.FS-backed implementation for per-field YAML snippets

@@ -1856,11 +1856,10 @@ some:
 	}
 }
 
-// wiredRequiredFromHints wires RequiredFromHints with rfsConfig's schema and a
-// HintSource marking version (block-level), server.host, workers.name and
-// port-attrs.label as required — the same set the schema tags mark, so the
-// scenarios mirror TestRequiredFromSchema.
-func wiredRequiredFromHints(t *testing.T) Validator {
+// wiredRequiredFromMetadata wires RequiredFromMetadata with hintsConfig's schema and
+// a HintSource marking version (block-level), server.host, workers.name and
+// port-attrs.label as required.
+func wiredRequiredFromMetadata(t *testing.T) Validator {
 	t.Helper()
 	required := map[string]bool{
 		"version|":         true,
@@ -1868,16 +1867,22 @@ func wiredRequiredFromHints(t *testing.T) Validator {
 		"workers|name":     true,
 		"port-attrs|label": true,
 	}
-	v := RequiredFromHints()
-	rfh := v.(*requiredFromHintsValidator)
-	rfh.defs = schema.Discover(&rfsConfig{})
-	rfh.hints = HintFunc(func(block, fieldPath string) FieldMeta {
+	return wireMetadataRule(t, RequiredFromMetadata(), func(block, fieldPath string) FieldMeta {
 		return FieldMeta{Required: required[block+"|"+fieldPath]}
 	})
+}
+
+// wireMetadataRule wires any FromMetadata validator with hintsConfig's schema and the
+// given hint function.
+func wireMetadataRule(t *testing.T, v Validator, hints MetadataFunc) Validator {
+	t.Helper()
+	rfh := v.(*metadataRuleValidator)
+	rfh.defs = schema.Discover(&hintsConfig{})
+	rfh.hints = hints
 	return v
 }
 
-func TestRequiredFromHints(t *testing.T) {
+func TestRequiredFromMetadata(t *testing.T) {
 	tests := []struct {
 		name string
 		raw  string
@@ -1936,7 +1941,7 @@ port-attrs:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			v := wiredRequiredFromHints(t)
+			v := wiredRequiredFromMetadata(t)
 			var got []string
 			for _, viol := range v.Validate(NewValidationInput([]byte(tc.raw), nil)) {
 				got = append(got, viol.String())
@@ -1953,152 +1958,266 @@ port-attrs:
 	}
 }
 
-func TestRequiredFromHints_inertWithoutWiring(t *testing.T) {
-	if errs := RequiredFromHints().Validate(NewValidationInput(nil, nil)); len(errs) != 0 {
+func TestRequiredFromMetadata_inertWithoutWiring(t *testing.T) {
+	if errs := RequiredFromMetadata().Validate(NewValidationInput(nil, nil)); len(errs) != 0 {
 		t.Errorf("unwired validator should report nothing, got %v", errs)
 	}
 
 	// Wired schema but no HintSource: reports nothing.
-	v := RequiredFromHints()
-	v.(*requiredFromHintsValidator).defs = schema.Discover(&rfsConfig{})
+	v := RequiredFromMetadata()
+	v.(*metadataRuleValidator).defs = schema.Discover(&hintsConfig{})
 	if errs := v.Validate(NewValidationInput([]byte(""), nil)); len(errs) != 0 {
 		t.Errorf("validator without HintSource should report nothing, got %v", errs)
 	}
 }
 
-func TestRequiredFromHints_ignoresSchemaTags(t *testing.T) {
-	// rfsConfig marks version with validate:"required", but a HintSource that
-	// marks nothing must yield no violations — hints are the sole authority.
-	v := RequiredFromHints()
-	rfh := v.(*requiredFromHintsValidator)
-	rfh.defs = schema.Discover(&rfsConfig{})
-	rfh.hints = HintFunc(func(block, fieldPath string) FieldMeta { return FieldMeta{} })
-	if errs := v.Validate(NewValidationInput([]byte(""), nil)); len(errs) != 0 {
-		t.Errorf("hints mark nothing, expected no violations, got %v", errs)
-	}
-}
-
-// rfsConfig exercises RequiredFromSchema across the structural kinds: a
-// top-level required scalar, a required field inside an optional object, a
-// required field per sequence entry, and one per dictionary value.
-type rfsConfig struct {
-	Version string `yaml:"version" validate:"required"`
+// hintsConfig exercises the FromMetadata walk across the structural kinds: a
+// top-level scalar, an optional object, a sequence, a dictionary, and a
+// scalar list.
+type hintsConfig struct {
+	Version string   `yaml:"version"`
+	Tags    []string `yaml:"tags"`
 	Server  *struct {
-		Host string `yaml:"host" validate:"required"`
+		Host string `yaml:"host"`
 		Port int    `yaml:"port"`
 	} `yaml:"server"`
 	Workers []struct {
-		Name string `yaml:"name" validate:"required"`
+		Name string `yaml:"name"`
 	} `yaml:"workers"`
 	PortAttrs map[string]struct {
-		Label string `yaml:"label" validate:"required"`
+		Label string `yaml:"label"`
 	} `yaml:"port-attrs"`
 }
 
-func wiredRequiredFromSchema(t *testing.T) Validator {
+// runMetadataRule wires v with hintsConfig's schema and hints, validates raw, and
+// compares the violation strings against want.
+func runMetadataRule(t *testing.T, v Validator, hints MetadataFunc, raw string, want []string) {
 	t.Helper()
-	v := RequiredFromSchema()
-	v.(*requiredFromSchemaValidator).defs = schema.Discover(&rfsConfig{})
-	return v
+	wireMetadataRule(t, v, hints)
+	var got []string
+	for _, viol := range v.Validate(NewValidationInput([]byte(raw), nil)) {
+		got = append(got, viol.String())
+	}
+	if len(got) != len(want) {
+		t.Fatalf("violations = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("violation[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
 }
 
-func TestRequiredFromSchema(t *testing.T) {
+func TestOneOfFromMetadata(t *testing.T) {
+	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+		if block == "server" && fieldPath == "host" {
+			return FieldMeta{OneOf: []string{"localhost", "0.0.0.0"}}
+		}
+		return FieldMeta{}
+	})
 	tests := []struct {
 		name string
 		raw  string
-		want []string // exact violation strings, in order
+		want []string
 	}{
-		{
-			name: "unwired validator reports nothing",
-			raw:  "",
-			want: nil, // overridden below: uses the bare validator
-		},
-		{
-			name: "empty document — only top-level required reported",
-			raw:  "",
-			want: []string{"version: required"},
-		},
-		{
-			name: "all satisfied — ok",
-			raw: `
-version: 1.0.0
-server:
-  host: localhost
-`,
-			want: nil,
-		},
-		{
-			name: "optional block absent — its required children not reported",
-			raw:  "version: 1.0.0\n",
-			want: nil,
-		},
-		{
-			name: "optional block present without required child",
-			raw: `
-version: 1.0.0
-server:
-  port: 8080
-`,
-			want: []string{"server.host: required"},
-		},
-		{
-			name: "sequence entries checked individually",
-			raw: `
-version: 1.0.0
-workers:
-  - name: a
-  - queue: fast
-`,
-			want: []string{"workers[1].name: required"},
-		},
-		{
-			name: "dictionary values checked individually",
-			raw: `
-version: 1.0.0
-port-attrs:
-  "8080":
-    label: web
-  "9090": {}
-`,
-			want: []string{`port-attrs.9090.label: required`},
-		},
-		{
-			name: "empty scalar counts as missing",
-			raw:  "version:\n",
-			want: []string{"version: required"},
-		},
+		{"allowed value — ok", "server:\n  host: localhost\n", nil},
+		{"absent — ok", "version: 1\n", nil},
+		{"empty — ok", "server:\n  host:\n", nil},
+		{"not allowed — violation", "server:\n  host: example.com\n",
+			[]string{`server.host: value "example.com" is not allowed — use one of: "localhost", "0.0.0.0"`}},
+		{"non-scalar — violation", "server:\n  host:\n    a: b\n",
+			[]string{"server.host: expected a scalar value"}},
 	}
-
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			v := wiredRequiredFromSchema(t)
-			if tc.name == "unwired validator reports nothing" {
-				v = RequiredFromSchema()
-			}
-			var got []string
-			for _, viol := range v.Validate(NewValidationInput([]byte(tc.raw), nil)) {
-				got = append(got, viol.String())
-			}
-			if len(got) != len(tc.want) {
-				t.Fatalf("violations = %v, want %v", got, tc.want)
-			}
-			for i := range tc.want {
-				if got[i] != tc.want[i] {
-					t.Errorf("violation[%d] = %q, want %q", i, got[i], tc.want[i])
-				}
-			}
+			runMetadataRule(t, OneOfFromMetadata(), hints, tc.raw, tc.want)
 		})
 	}
 }
 
-// TestRequiredFromSchema_wiredByNewModel verifies that newModel injects the
-// discovered schema into RequiredFromSchema validators, so a plain
-// editor.RequiredFromSchema() in Config.Validators enforces the tags.
-func TestRequiredFromSchema_wiredByNewModel(t *testing.T) {
+func TestRangeFromMetadata(t *testing.T) {
+	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+		switch {
+		case block == "server" && fieldPath == "port":
+			return FieldMeta{Min: "1", Max: "65535"}
+		case block == "version" && fieldPath == "": // Min only, no upper bound
+			return FieldMeta{Min: "1"}
+		}
+		return FieldMeta{}
+	})
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{"in range — ok", "server:\n  port: 8080\n", nil},
+		{"absent — ok", "tags:\n  - a\n", nil},
+		{"below min — violation", "server:\n  port: 0\n",
+			[]string{`server.port: value "0" out of range [1, 65535]`}},
+		{"min-only bound — ok above", "version: 5\n", nil},
+		{"min-only bound — violation below", "version: 0\n",
+			[]string{`version: value "0" out of range [1, ∞]`}},
+		{"not comparable — violation", "server:\n  port: abc\n",
+			[]string{`server.port: value "abc" is not comparable with range [1, 65535]`}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runMetadataRule(t, RangeFromMetadata(), hints, tc.raw, tc.want)
+		})
+	}
+}
+
+func TestRangeFromMetadata_misconfiguredBounds(t *testing.T) {
+	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+		if block == "version" {
+			return FieldMeta{Min: "10MB", Max: "24h"} // mixed kinds
+		}
+		return FieldMeta{}
+	})
+	v := wireMetadataRule(t, RangeFromMetadata(), hints)
+	errs := v.Validate(NewValidationInput([]byte("version: 1\n"), nil))
+	if len(errs) != 1 || !strings.Contains(errs[0].Message, "invalid range") {
+		t.Fatalf("expected 1 invalid-range violation, got %v", errs)
+	}
+}
+
+func TestPatternFromMetadata(t *testing.T) {
+	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+		if block == "version" {
+			return FieldMeta{Pattern: `^\d+\.\d+\.\d+$`}
+		}
+		return FieldMeta{}
+	})
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{"match — ok", "version: 1.2.3\n", nil},
+		{"absent — ok", "server:\n  host: x\n", nil},
+		{"mismatch — violation", "version: latest\n",
+			// %q in the message escapes the pattern's backslashes.
+			[]string{`version: value "latest" does not match pattern "^\\d+\\.\\d+\\.\\d+$"`}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runMetadataRule(t, PatternFromMetadata(), hints, tc.raw, tc.want)
+		})
+	}
+}
+
+func TestPatternFromMetadata_invalidPattern(t *testing.T) {
+	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+		if block == "version" {
+			return FieldMeta{Pattern: `^(\d+$`}
+		}
+		return FieldMeta{}
+	})
+	v := wireMetadataRule(t, PatternFromMetadata(), hints)
+	errs := v.Validate(NewValidationInput([]byte("version: 1\n"), nil))
+	if len(errs) != 1 || !strings.Contains(errs[0].Message, "invalid pattern") {
+		t.Fatalf("expected 1 invalid-pattern violation, got %v", errs)
+	}
+}
+
+func TestCountFromMetadata(t *testing.T) {
+	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+		if block == "workers" && fieldPath == "" {
+			return FieldMeta{MinCount: 1, MaxCount: 2}
+		}
+		return FieldMeta{}
+	})
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{"within range — ok", "workers:\n  - name: a\n", nil},
+		{"absent — ok", "version: 1\n", nil},
+		{"empty list — violation", "workers: []\n",
+			[]string{"workers: has 0 entries — expected between 1 and 2"}},
+		{"above max — violation", "workers:\n  - name: a\n  - name: b\n  - name: c\n",
+			[]string{"workers: has 3 entries — expected between 1 and 2"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runMetadataRule(t, CountFromMetadata(), hints, tc.raw, tc.want)
+		})
+	}
+}
+
+func TestCountFromMetadata_minOnlyHasNoUpperBound(t *testing.T) {
+	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+		if block == "workers" && fieldPath == "" {
+			return FieldMeta{MinCount: 1}
+		}
+		return FieldMeta{}
+	})
+	v := wireMetadataRule(t, CountFromMetadata(), hints)
+	raw := "workers:\n  - name: a\n  - name: b\n  - name: c\n  - name: d\n"
+	if errs := v.Validate(NewValidationInput([]byte(raw), nil)); len(errs) != 0 {
+		t.Errorf("MinCount-only must not cap the list, got %v", errs)
+	}
+}
+
+func TestUniqueFromMetadata(t *testing.T) {
+	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+		if block == "tags" {
+			return FieldMeta{Unique: true}
+		}
+		return FieldMeta{}
+	})
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{"unique — ok", "tags:\n  - a\n  - b\n", nil},
+		{"absent — ok", "version: 1\n", nil},
+		{"duplicate — violation", "tags:\n  - a\n  - b\n  - a\n",
+			[]string{`tags[2]: duplicate value "a" (first seen at tags[0])`}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runMetadataRule(t, UniqueFromMetadata(), hints, tc.raw, tc.want)
+		})
+	}
+}
+
+func TestDeprecatedFromMetadata(t *testing.T) {
+	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+		if block == "version" {
+			return FieldMeta{Deprecated: "use api-version instead"}
+		}
+		return FieldMeta{}
+	})
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{"absent — ok", "tags:\n  - a\n", nil},
+		{"present — violation", "version: 1\n",
+			[]string{"version: deprecated — use api-version instead"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runMetadataRule(t, DeprecatedFromMetadata(), hints, tc.raw, tc.want)
+		})
+	}
+}
+
+// TestRequiredFromMetadata_wiredByNewModel verifies that newModel injects the
+// discovered schema and the HintSource into FromMetadata validators, so a plain
+// editor.RequiredFromMetadata() in Config.Validators enforces the hint markers.
+func TestRequiredFromMetadata_wiredByNewModel(t *testing.T) {
 	m, err := newModel(Config{
-		Path:       filepath.Join(t.TempDir(), "missing.yaml"), // empty document
-		Schema:     &rfsConfig{},
-		Validators: []Validator{RequiredFromSchema()},
+		Path:   filepath.Join(t.TempDir(), "missing.yaml"), // empty document
+		Schema: &hintsConfig{},
+		Metadata: MetadataFunc(func(block, fieldPath string) FieldMeta {
+			return FieldMeta{Required: block == "version" && fieldPath == ""}
+		}),
+		Validators: []Validator{RequiredFromMetadata()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2111,6 +2230,6 @@ func TestRequiredFromSchema_wiredByNewModel(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("collectErrors should report the schema-required field; got %v", errs)
+		t.Errorf("collectErrors should report the hint-required field; got %v", errs)
 	}
 }

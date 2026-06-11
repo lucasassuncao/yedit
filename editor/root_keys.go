@@ -23,17 +23,6 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "tab":
 			return m.togglePreviewPane()
-		case "h":
-			if m.cfg.Hints != nil {
-				m.showHint = !m.showHint
-				m.relayout()
-				m.scrollPreviewToSelected()
-			}
-			return m, nil
-		case "ctrl+u":
-			return m.undo(), nil
-		case "ctrl+y":
-			return m.redo(), nil
 		case "ctrl+r":
 			return m.reload()
 		case "esc", "ctrl+c":
@@ -42,6 +31,9 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					"Unsaved changes will be lost.", tea.Quit)
 			}
 			return m, tea.Quit
+		}
+		if ma, ok := listKeymap(m, msg); ok {
+			return m.dispatch(ma)
 		}
 	}
 

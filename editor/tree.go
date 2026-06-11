@@ -88,12 +88,12 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 		}
 
 	default:
-		// KindPrimitive, KindEnum, KindDictionary, KindVariant — no tree nodes; YAML editor gets focus.
+		// KindPrimitive, KindDictionary, KindVariant — no tree nodes; YAML editor gets focus.
 	}
 	return tm
 }
 
-// isEmpty reports whether the tree has no nodes — true for primitive, enum, and
+// isEmpty reports whether the tree has no nodes — true for primitive and
 // free-form collection blocks, which have no sub-fields to navigate.
 func (tm treeModel) isEmpty() bool {
 	return len(tm.nodes) == 0

@@ -1,15 +1,16 @@
 package editor
 
 import (
+	"strconv"
 	"strings"
-
-	"github.com/lucasassuncao/yedit/schema"
 )
 
 // selectedHint renders the Hint/Example panel body for the currently selected
-// list item. All display data comes from HintSource; the "base" preset is used
-// as a fallback example when meta.Example is empty.
+// list item. All display data comes from MetadataSource.
 func (m model) selectedHint() string {
+	if m.cfg.Metadata == nil {
+		return m.theme.hintDim.Render("  Config.Metadata is not set — no metadata source configured")
+	}
 	it := m.list.SelectedItem()
 	if it == nil || it.Separator {
 		return m.theme.hintDim.Render("  select a field to see hints")
@@ -21,41 +22,16 @@ func (m model) selectedHint() string {
 	if def.YAMLName == "" {
 		def.YAMLName = it.Key
 	}
-
-	var meta FieldMeta
-	if m.cfg.Hints != nil {
-		meta = m.cfg.Hints.FieldHint(it.Key, "")
+	meta := m.cfg.Metadata.FieldMeta(it.Key, "")
+	if out := renderFieldHint(m.theme, meta, meta.Example); out != "" {
+		return out
 	}
-	example := meta.Example
-	if example == "" {
-		example = m.hintExample(it.Key, def)
-	}
-	return renderFieldHint(m.theme, meta, example)
-}
-
-// hintExample resolves the Example snippet for a top-level block: the "base"
-// preset when one exists, otherwise a structural fallback from the schema.
-func (m model) hintExample(key string, def schema.FieldDef) string {
-	if m.cfg.Presets != nil {
-		if y, err := m.cfg.Presets.PresetYAML(key, "base"); err == nil {
-			return y
-		}
-	}
-	return generateFallbackExample(def)
-}
-
-// anyChildRequired reports whether any direct child field is marked required.
-func anyChildRequired(children []schema.FieldDef) bool {
-	for _, c := range children {
-		if c.Required {
-			return true
-		}
-	}
-	return false
+	return m.theme.hintDim.Render("  no metadata declared for this field")
 }
 
 // renderFieldHint formats a FieldMeta into the Hint/Example panel body.
-// Order: description, type, required, default, allowed values, example.
+// Order: description, type, required, default, allowed values, range,
+// pattern, entries, unique, deprecated, example.
 // example is passed separately because the caller may substitute a generated
 // fallback when meta.Example is empty.
 func renderFieldHint(th resolvedTheme, meta FieldMeta, example string) string {
@@ -86,6 +62,37 @@ func renderFieldHint(th resolvedTheme, meta FieldMeta, example string) string {
 		}
 	}
 
+	if meta.Min != "" || meta.Max != "" {
+		switch {
+		case meta.Min != "" && meta.Max != "":
+			sb.WriteString(label("Range:") + " " + meta.Min + " – " + meta.Max + "\n")
+		case meta.Min != "":
+			sb.WriteString(label("Range:") + " ≥ " + meta.Min + "\n")
+		default:
+			sb.WriteString(label("Range:") + " ≤ " + meta.Max + "\n")
+		}
+	}
+
+	if meta.Pattern != "" {
+		sb.WriteString(label("Pattern:") + " " + meta.Pattern + "\n")
+	}
+
+	if meta.MinCount > 0 || meta.MaxCount > 0 {
+		upper := "∞"
+		if meta.MaxCount > 0 {
+			upper = strconv.Itoa(meta.MaxCount)
+		}
+		sb.WriteString(label("Entries:") + " " + strconv.Itoa(meta.MinCount) + " – " + upper + "\n")
+	}
+
+	if meta.Unique {
+		sb.WriteString(label("Unique:") + " yes\n")
+	}
+
+	if meta.Deprecated != "" {
+		sb.WriteString(label("Deprecated:") + " " + meta.Deprecated + "\n")
+	}
+
 	if example != "" {
 		sb.WriteString(label("Example:") + "\n")
 		for _, line := range strings.Split(strings.TrimRight(example, "\n"), "\n") {
@@ -94,41 +101,4 @@ func renderFieldHint(th resolvedTheme, meta FieldMeta, example string) string {
 	}
 
 	return sb.String()
-}
-
-// generateFallbackExample produces a minimal valid YAML snippet for def when no
-// HintSource example is available.
-func generateFallbackExample(def schema.FieldDef) string {
-	switch def.Kind {
-	case schema.KindEnum:
-		if len(def.OneOf) > 0 {
-			return def.YAMLName + ": " + def.OneOf[0]
-		}
-		return def.YAMLName + ": \"\""
-	case schema.KindList:
-		return def.YAMLName + ":\n  - "
-	case schema.KindDictionary:
-		return def.YAMLName + ":\n  key: value"
-	case schema.KindObject:
-		if len(def.Children) == 0 {
-			return def.YAMLName + ":\n  # ..."
-		}
-		var sb strings.Builder
-		sb.WriteString(def.YAMLName + ":\n")
-		for _, child := range def.Children {
-			val := "\"\""
-			if child.Default != "" {
-				val = child.Default
-			}
-			sb.WriteString("  " + child.YAMLName + ": " + val + "\n")
-		}
-		return strings.TrimRight(sb.String(), "\n")
-	case schema.KindVariant:
-		return def.YAMLName + ": \"\""
-	default: // KindPrimitive
-		if def.Default != "" {
-			return def.YAMLName + ": " + def.Default
-		}
-		return def.YAMLName + ": \"\""
-	}
 }

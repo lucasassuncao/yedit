@@ -23,8 +23,8 @@
 //	Pattern 2 — KindObject (ADDED/AVAILABLE tree with nested structs)
 //	  server    : flat struct with []string and map[string]string leaves
 //	  database  : struct with nested Pool (3-level nesting)
-//	  logging   : struct with KindEnum (level) and bool
-//	  deploy    : struct with *bool pointer and KindEnum
+//	  logging   : struct with enum-like level (OneOf via hints) and bool
+//	  deploy    : struct with *bool pointer and enum-like strategy
 //
 //	Pattern 3 — KindList with child defs ([N] sequence navigator)
 //	  workers   : []Worker  (name required, concurrency, queue, tags []string)
@@ -49,7 +49,7 @@
 //	  PreCheckedFields : opening a new "server" block pre-checks host and port
 //	  FieldSnippets    : toggling a struct field inserts a real default value
 //	  Presets          : struct-backed presets for "server" and "logging" (testPresetSource)
-//	  Hints            : hierarchical hint tree for "server" and "logging" (buildHintSource)
+//	  Hints            : hierarchical hint tree for "server" and "logging" (buildMetadataSource)
 //	  Validators       : MutuallyExclusive(server, proxy), RequiredWith(routes, server)
 //	  NoDeleteConfirm  : controlled by --no-delete-confirm flag
 //	  NoSaveConfirm    : controlled by --no-save-confirm flag
@@ -84,9 +84,9 @@ type TimeoutValue struct{}
 
 func (TimeoutValue) YeditSchema() []schema.FieldDef {
 	return []schema.FieldDef{
-		{YAMLName: "connect", Kind: schema.KindPrimitive, Default: "5s"},
-		{YAMLName: "read", Kind: schema.KindPrimitive, Default: "30s"},
-		{YAMLName: "write", Kind: schema.KindPrimitive, Default: "30s"},
+		{YAMLName: "connect", Kind: schema.KindPrimitive},
+		{YAMLName: "read", Kind: schema.KindPrimitive},
+		{YAMLName: "write", Kind: schema.KindPrimitive},
 	}
 }
 
@@ -95,7 +95,7 @@ func (TimeoutValue) YeditSchema() []schema.FieldDef {
 // ServerConfig: flat struct with slice and map leaves.
 type ServerConfig struct {
 	Host       string            `yaml:"host"`
-	Port       int               `yaml:"port"        jsonschema:"default=8080"`
+	Port       int               `yaml:"port"`
 	TLS        bool              `yaml:"tls"`
 	AllowedIPs []string          `yaml:"allowed-ips"`
 	Headers    map[string]string `yaml:"headers"`
@@ -103,22 +103,22 @@ type ServerConfig struct {
 
 // PoolConfig: nested struct (depth 3 from root).
 type PoolConfig struct {
-	MinSize int `yaml:"min-size" jsonschema:"default=2"`
-	MaxSize int `yaml:"max-size" jsonschema:"default=10"`
-	Timeout int `yaml:"timeout"  jsonschema:"default=30"`
+	MinSize int `yaml:"min-size"`
+	MaxSize int `yaml:"max-size"`
+	Timeout int `yaml:"timeout"`
 }
 
 // DatabaseConfig: nested struct + oneof + required.
 type DatabaseConfig struct {
-	Driver   string     `yaml:"driver"    validate:"required,oneof=postgres mysql sqlite"`
-	DSN      string     `yaml:"dsn"       validate:"required"`
-	MaxConns int        `yaml:"max-conns" jsonschema:"default=10"`
+	Driver   string     `yaml:"driver"`
+	DSN      string     `yaml:"dsn"`
+	MaxConns int        `yaml:"max-conns"`
 	Pool     PoolConfig `yaml:"pool"`
 }
 
 // LoggingConfig: flat struct with bool and enum.
 type LoggingConfig struct {
-	Level      string `yaml:"level"       validate:"oneof=debug info warn error" jsonschema:"default=info"`
+	Level      string `yaml:"level"`
 	File       string `yaml:"file"`
 	ShowCaller bool   `yaml:"show-caller"`
 }
@@ -126,8 +126,8 @@ type LoggingConfig struct {
 // DeployConfig: struct with *bool pointer and enum — from movelooper patterns.
 type DeployConfig struct {
 	Enabled    *bool  `yaml:"enabled"`
-	Strategy   string `yaml:"strategy"   validate:"oneof=rolling blue-green canary"`
-	Replicas   int    `yaml:"replicas"   jsonschema:"default=1"`
+	Strategy   string `yaml:"strategy"`
+	Replicas   int    `yaml:"replicas"`
 	AutoRevert bool   `yaml:"auto-revert"`
 }
 
@@ -135,8 +135,8 @@ type DeployConfig struct {
 
 // Worker: seq-item struct with []string leaf.
 type Worker struct {
-	Name        string   `yaml:"name"        validate:"required"`
-	Concurrency int      `yaml:"concurrency" jsonschema:"default=1"`
+	Name        string   `yaml:"name"`
+	Concurrency int      `yaml:"concurrency"`
 	Queue       string   `yaml:"queue"`
 	Extensions  []string `yaml:"extensions"` // edge: flow-style ["go","yaml"] in seed
 	Tags        []string `yaml:"tags"`
@@ -144,9 +144,9 @@ type Worker struct {
 
 // Route: seq-item with oneof.
 type Route struct {
-	Path    string `yaml:"path"    validate:"required"`
-	Method  string `yaml:"method"  validate:"required,oneof=GET POST PUT DELETE PATCH"`
-	Handler string `yaml:"handler" validate:"required"`
+	Path    string `yaml:"path"`
+	Method  string `yaml:"method"`
+	Handler string `yaml:"handler"`
 	Auth    bool   `yaml:"auth"`
 }
 
@@ -168,8 +168,8 @@ type Filter struct {
 // Demonstrates the KindDictionary + child defs navigator.
 type PortAttr struct {
 	Label         string `yaml:"label"`
-	OnAutoForward string `yaml:"on-auto-forward" validate:"oneof=notify openBrowser openPreview ignore silent"`
-	Protocol      string `yaml:"protocol"        validate:"oneof=http https tcp udp"`
+	OnAutoForward string `yaml:"on-auto-forward"`
+	Protocol      string `yaml:"protocol"`
 }
 
 // ── Pattern 5: Schema edge cases ─────────────────────────────────────────────
@@ -212,7 +212,7 @@ func (c *Color) UnmarshalYAML(value *yaml.Node) error {
 
 // PortRule: value type for map[int]PortRule — demonstrates non-string map key (item 8).
 type PortRule struct {
-	Proto   string `yaml:"proto"   validate:"oneof=tcp udp"`
+	Proto   string `yaml:"proto"`
 	Allowed bool   `yaml:"allowed"`
 }
 
@@ -240,9 +240,9 @@ type TestConfig struct {
 	// Pattern 1 — KindPrimitive
 	AppName      string        `yaml:"app-name"`
 	Debug        bool          `yaml:"debug"`
-	Version      string        `yaml:"version"       validate:"required" jsonschema:"default=0.1.0"`
-	Port         int           `yaml:"port"          jsonschema:"default=8080"`
-	Ratio        float64       `yaml:"ratio"         jsonschema:"default=1.0"`
+	Version      string        `yaml:"version"`
+	Port         int           `yaml:"port"`
+	Ratio        float64       `yaml:"ratio"`
 	BuildTimeout time.Duration `yaml:"build-timeout"`
 
 	// Pattern 1 — KindDictionary (free-form, no child defs)
@@ -345,18 +345,18 @@ func (testPresetSource) PresetYAML(field, name string) (string, error) {
 
 // ── Hints ─────────────────────────────────────────────────────────────────────
 
-// hintNode is a local HintNode-style type for building a hierarchical hint
+// metadataNode is a local HintNode-style type for building a hierarchical hint
 // tree. Embed FieldMeta for Description, Type, Required, Default, OneOf, Example.
 // Use Children to nest fields; shared pointers handle recursive types.
-type hintNode struct {
+type metadataNode struct {
 	editor.FieldMeta
-	Children map[string]*hintNode
+	Children map[string]*metadataNode
 }
 
-// buildHintSource wraps a hintNode tree as an editor.HintSource. The block key
+// buildMetadataSource wraps a metadataNode tree as an editor.MetadataSource. The block key
 // maps to top-level nodes; field paths are dot-separated child lookups.
-func buildHintSource(tree map[string]*hintNode) editor.HintSource {
-	return editor.HintFunc(func(block, fieldPath string) editor.FieldMeta {
+func buildMetadataSource(tree map[string]*metadataNode) editor.MetadataSource {
+	return editor.MetadataFunc(func(block, fieldPath string) editor.FieldMeta {
 		node, ok := tree[block]
 		if !ok {
 			return editor.FieldMeta{}
@@ -425,8 +425,8 @@ func main() {
 		Presets: testPresets,
 
 		// Config.Hints: hierarchical hint tree; paths are dot-separated field names.
-		// See hintNode / buildHintSource above for the canonical implementation pattern.
-		Hints: testHints,
+		// See metadataNode / buildMetadataSource above for the canonical implementation pattern.
+		Metadata: testHints,
 
 		Validators: []editor.Validator{
 			// MutuallyExclusive: server and proxy cannot coexist.

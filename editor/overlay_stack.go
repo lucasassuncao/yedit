@@ -5,6 +5,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
+
+	"github.com/lucasassuncao/yedit/internal/alert"
+	"github.com/lucasassuncao/yedit/theme"
 )
 
 // blockBreadcrumbPrefix returns the breadcrumb segments for all editors in the
@@ -82,6 +85,14 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
+	// Capture the parent's pre-drill-in state before applying the child's
+	// changes, so Ctrl+U on the parent can undo the drill-in as one step.
+	if childWasDirty {
+		if top := m.topBE(); top != nil {
+			be := top.saveUndo()
+			m.setTopBE(&be)
+		}
+	}
 	m = m.refreshTopFromRoot(childWasDirty)
 	m.statusMsg = ""
 	return m, nil
@@ -132,36 +143,91 @@ func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.enterList()
 		return m, nil
 	}
+
 	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "ctrl+s":
-			// Commit all stacked editors at once, then save the file.
-			return m.saveAll()
-		case "ctrl+u":
-			if len(top.undoStack) > 0 {
-				be := top.restoreUndo()
-				be.statusMsg = "Undone."
-				m.setTopBE(&be)
-				return m, nil
-			}
-			// Never fall through to m.doc.Undo() while a block editor is open.
-			top.statusMsg = "Nothing to undo."
-			m.setTopBE(top)
-			return m, nil
-		case "ctrl+y":
-			if len(top.redoStack) > 0 {
-				be := top.restoreRedo()
-				be.statusMsg = "Redone."
-				m.setTopBE(&be)
-				return m, nil
-			}
-			// Never fall through to m.doc.Redo() while a block editor is open.
-			top.statusMsg = "Nothing to redo."
-			m.setTopBE(top)
+		return m.handleBlockEditKey(top, key)
+	}
+
+	// Non-key messages (window resize, pending confirms, etc.): forward to sub-components.
+	prevYAML := top.yamlEditor.Value()
+	be, cmd := top.forwardMsg(msg)
+
+	// After forwarding, sync the node if the YAML content changed.
+	if be.active == blockEditPanelYAML && be.yamlEditor.Value() != prevYAML {
+		be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value()})
+	}
+
+	m.setTopBE(&be)
+	return m, cmd
+}
+
+func (m model) handleBlockEditKey(top *blockEditState, key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Esc at root with dirty state: show discard-changes confirmation.
+	if key.Type == tea.KeyEsc && len(top.focus) == 0 && top.dirty {
+		be := *top
+		al := alert.NewConfirm(
+			"Discard changes?",
+			"Uncommitted changes will be lost.",
+			func() tea.Msg { return blockEditDiscardedMsg{discarded: true} },
+			theme.Size{W: m.width, H: m.height},
+		)
+		be.confirmAlert = &al
+		be.mode = modeConfirming
+		m.setTopBE(&be)
+		return m, nil
+	}
+
+	// ctrl+u / ctrl+y with empty stacks: show status, never fall through to doc-level undo.
+	if key.String() == "ctrl+u" && len(top.undoStack) == 0 {
+		top.statusMsg = "Nothing to undo."
+		m.setTopBE(top)
+		return m, nil
+	}
+	if key.String() == "ctrl+y" && len(top.redoStack) == 0 {
+		top.statusMsg = "Nothing to redo."
+		m.setTopBE(top)
+		return m, nil
+	}
+
+	// Semantic keys: resolved by keymap → dispatch.
+	if ea, ok := blockKeymap(top, key); ok {
+		if ea.Block != nil {
+			be := top.dispatch(ea.Block)
+			m.setTopBE(&be)
 			return m, nil
 		}
+		if ea.Model != nil {
+			return m.dispatch(ea.Model)
+		}
 	}
-	be, cmd := top.Update(msg)
+
+	// Tab: switch panel focus (pure UI, not dispatched).
+	if key.Type == tea.KeyTab && top.mode == modeEditing {
+		be := top.switchPanel()
+		m.setTopBE(&be)
+		return m, nil
+	}
+
+	// p: open preset picker (pure UI mode change, not dispatched).
+	if key.String() == "p" && top.active == blockEditPanelTree && top.mode == modeEditing {
+		be := top.openPresetPicker()
+		m.setTopBE(&be)
+		return m, nil
+	}
+
+	// Tree panel: semantic tree actions go through updateTreePanel.
+	if top.active == blockEditPanelTree && top.mode == modeEditing {
+		be, cmd := top.updateTreePanel(key)
+		m.setTopBE(&be)
+		return m, cmd
+	}
+
+	// Non-tree key with no special handling: forward to YAML editor.
+	prevYAML := top.yamlEditor.Value()
+	be, cmd := top.forwardMsg(key)
+	if be.active == blockEditPanelYAML && be.yamlEditor.Value() != prevYAML {
+		be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value()})
+	}
 	m.setTopBE(&be)
 	return m, cmd
 }
@@ -207,7 +273,7 @@ func (m model) flushTopToRoot() (model, bool) {
 	committed, cmd := top.commit()
 	m.setTopBE(&committed)
 	if cmd == nil {
-		m.statusMsg = committed.errMsg
+		m.statusMsg = committed.editorErr.message
 		return m, false
 	}
 	snippet := cmd().(blockEditCommittedMsg).Snippet
@@ -317,12 +383,21 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	final := nodeToContent(m.editBlockKey, m.editRoot)
+	pruneEmptyMappings(m.editRoot)
+	blockIsEmpty := m.editRoot.Kind == yaml.MappingNode && len(m.editRoot.Content) == 0
 	var err error
-	if isEdit {
-		err = m.doc.Replace(m.editBlockKey, final)
-	} else {
-		err = m.doc.Insert(final)
+	switch {
+	case blockIsEmpty && isEdit:
+		err = m.doc.Remove(m.editBlockKey)
+	case !blockIsEmpty:
+		final := nodeToContent(m.editBlockKey, m.editRoot)
+		if isEdit {
+			if current, _ := m.doc.BlockContent(m.editBlockKey); normalizeBlockContent(m.editBlockKey, current) != final {
+				err = m.doc.Replace(m.editBlockKey, final)
+			}
+		} else {
+			err = m.doc.Insert(final)
+		}
 	}
 	if err != nil {
 		m.statusMsg = fmt.Sprintf("Apply error: %v", err)

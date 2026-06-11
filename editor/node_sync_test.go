@@ -129,7 +129,7 @@ func TestSOT_ToggleSequenceConsistency(t *testing.T) {
 				break
 			}
 		}
-		be, _ = be.Update(pendingRemoveMsg{nodeIdx: idx})
+		be = be.dispatch(ToggleField{NodeIdx: idx, Checked: false})
 		be = expandAll(be)
 		assertTreeMatchesNode(t, be)
 	}
@@ -256,7 +256,7 @@ func TestSOT_CommitPreservesLeadingComments(t *testing.T) {
 			break
 		}
 	}
-	be, _ = be.Update(pendingRemoveMsg{nodeIdx: idx})
+	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: false})
 
 	if strings.Contains(be.yamlEditor.Value(), "output:") {
 		t.Error("output key still present after removal")
@@ -286,7 +286,7 @@ func TestSOT_ToggleRoundTripNode(t *testing.T) {
 			break
 		}
 	}
-	be, _ = be.Update(pendingRemoveMsg{nodeIdx: idx})
+	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: false})
 
 	if be.node.Kind == yaml.MappingNode && len(be.node.Content) != 0 {
 		t.Errorf("node not empty after round-trip:\n%s", be.yamlEditor.Value())

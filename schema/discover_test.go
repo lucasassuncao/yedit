@@ -8,10 +8,10 @@ import (
 	"github.com/lucasassuncao/yedit/schema"
 )
 
-type taggedConfig struct {
-	Name    string       `yaml:"name" validate:"required" jsonschema_description:"Project name."`
-	Image   string       `yaml:"image" jsonschema_description:"Docker image."`
-	Mode    string       `yaml:"mode" validate:"omitempty,oneof=dev prod"`
+type basicConfig struct {
+	Name    string       `yaml:"name"`
+	Image   string       `yaml:"image"`
+	Mode    string       `yaml:"mode"`
 	Build   *buildConfig `yaml:"build"`
 	Skipped string       // no yaml tag
 	Hidden  string       `yaml:"-"`
@@ -19,7 +19,7 @@ type taggedConfig struct {
 }
 
 func TestDiscover_topLevelFields(t *testing.T) {
-	fields := schema.Discover(&taggedConfig{})
+	fields := schema.Discover(&basicConfig{})
 	got := schema.TopLevelOrder(fields)
 	want := []string{"name", "image", "mode", "build"}
 	if len(got) != len(want) {
@@ -32,36 +32,8 @@ func TestDiscover_topLevelFields(t *testing.T) {
 	}
 }
 
-func TestDiscover_required(t *testing.T) {
-	fields := schema.Discover(&taggedConfig{})
-	for _, f := range fields {
-		switch f.YAMLName {
-		case "name":
-			if !f.Required {
-				t.Errorf("name should be Required")
-			}
-		case "image":
-			if f.Required {
-				t.Errorf("image should not be Required")
-			}
-		}
-	}
-}
-
-func TestDiscover_oneOf(t *testing.T) {
-	fields := schema.Discover(&taggedConfig{})
-	for _, f := range fields {
-		if f.YAMLName == "mode" {
-			want := []string{"dev", "prod"}
-			if len(f.OneOf) != len(want) || f.OneOf[0] != want[0] || f.OneOf[1] != want[1] {
-				t.Errorf("mode.OneOf = %v, want %v", f.OneOf, want)
-			}
-		}
-	}
-}
-
 func TestDiscover_descents(t *testing.T) {
-	fields := schema.Discover(&taggedConfig{})
+	fields := schema.Discover(&basicConfig{})
 	var build schema.FieldDef
 	for _, f := range fields {
 		if f.YAMLName == "build" {
@@ -85,8 +57,8 @@ type unionItem struct{}
 
 func (unionItem) YeditSchema() []schema.FieldDef {
 	return []schema.FieldDef{
-		{YAMLName: "type", Kind: schema.KindPrimitive, Required: true},
-		{YAMLName: "target", Kind: schema.KindPrimitive, Required: true},
+		{YAMLName: "type", Kind: schema.KindPrimitive},
+		{YAMLName: "target", Kind: schema.KindPrimitive},
 	}
 }
 
@@ -94,8 +66,7 @@ type configWithUnion struct {
 	Items []unionItem `yaml:"items"`
 }
 
-// minimalConfig has only yaml tags — no validate, no jsonschema_description.
-// Discover should still produce usable FieldDefs with zero-valued optional fields.
+// minimalConfig has only yaml tags.
 type minimalConfig struct {
 	Name    string         `yaml:"name"`
 	Port    int            `yaml:"port"`
@@ -119,22 +90,6 @@ func TestDiscover_yamlTagOnly(t *testing.T) {
 	for i, w := range want {
 		if got[i] != w {
 			t.Errorf("TopLevelOrder[%d] = %q, want %q", i, got[i], w)
-		}
-	}
-
-	// Every optional attribute must be zero-valued when its tag is absent.
-	for _, f := range fields {
-		if f.Required {
-			t.Errorf("%s.Required = true; expected false without validate tag", f.YAMLName)
-		}
-		if f.Description != "" {
-			t.Errorf("%s.Description = %q; expected empty without jsonschema_description", f.YAMLName, f.Description)
-		}
-		if f.Default != "" {
-			t.Errorf("%s.Default = %q; expected empty without jsonschema default", f.YAMLName, f.Default)
-		}
-		if len(f.OneOf) != 0 {
-			t.Errorf("%s.OneOf = %v; expected empty without validate oneof", f.YAMLName, f.OneOf)
 		}
 	}
 
@@ -174,7 +129,7 @@ type scalarConfig struct {
 	Size uint          `yaml:"size"`
 	TTL  time.Duration `yaml:"ttl"`
 	Ptr  *bool         `yaml:"ptr"`
-	Mode string        `yaml:"mode" validate:"oneof=a b"`
+	Mode string        `yaml:"mode"`
 	Tags []string      `yaml:"tags"`
 }
 
@@ -191,8 +146,8 @@ func TestDiscover_scalarType(t *testing.T) {
 		"size": "uint",
 		"ttl":  "duration",
 		"ptr":  "bool",
-		"mode": "string", // enum reclassification keeps the underlying scalar
-		"tags": "",       // a slice is not a scalar
+		"mode": "string",
+		"tags": "", // a slice is not a scalar
 	}
 	for name, w := range want {
 		if got[name] != w {

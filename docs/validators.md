@@ -25,8 +25,13 @@ and a human-readable `Message`.
 | Validator | Rule |
 |---|---|
 | [`Required`](#required) | listed paths must be present and non-empty |
-| [`RequiredFromSchema`](#requiredfromschema) | enforce the schema's `validate:"required"` markers |
-| [`RequiredFromHints`](#requiredfromhints) | enforce the HintSource's `FieldMeta.Required` markers |
+| [`RequiredFromHints`](#the-fromhints-family) | enforce the HintSource's `FieldMeta.Required` markers |
+| [`OneOfFromHints`](#the-fromhints-family) | enforce `FieldMeta.OneOf` |
+| [`RangeFromHints`](#the-fromhints-family) | enforce `FieldMeta.Min`/`Max` |
+| [`PatternFromHints`](#the-fromhints-family) | enforce `FieldMeta.Pattern` |
+| [`CountFromHints`](#the-fromhints-family) | enforce `FieldMeta.MinCount`/`MaxCount` |
+| [`UniqueFromHints`](#the-fromhints-family) | enforce `FieldMeta.Unique` |
+| [`DeprecatedFromHints`](#the-fromhints-family) | enforce `FieldMeta.Deprecated` |
 | [`RequiredWith`](#requiredwith) | key requires another top-level key to be set |
 | [`RequiredIf`](#requiredif) | key is required when another field has a given value |
 | [`AtLeastOneOf`](#atleastoneof) | at least one of the listed keys must be present |
@@ -85,41 +90,59 @@ path is conditional: the leaf is only required where its parent exists, so a
 required field inside an optional block is not reported while the block is
 absent.
 
-### RequiredFromSchema
+### The FromHints family
+
+Field constraints declared in the `HintSource` (`FieldMeta`) are enforced at
+validate/save time by a family of validators — declare once, the hint panel
+displays it and the save enforces it:
 
 ```go
-editor.RequiredFromSchema()
+editor.Run(editor.Config{
+    Hints: myHints, // e.g. built with the yedit/hints package
+    Validators: []editor.Validator{
+        editor.RequiredFromHints(),
+        editor.OneOfFromHints(),
+        editor.RangeFromHints(),
+        editor.PatternFromHints(),
+        editor.CountFromHints(),
+        editor.UniqueFromHints(),
+        editor.DeprecatedFromHints(),
+    },
+})
 ```
 
-Enforces the schema's required markers (`validate:"required"` /
-`jsonschema:"required"`) at validate/save time. Without it the marker is
-display-only: the `*` in the tree and the "Required: yes" hint line do not
-block saving.
+| Constructor | FieldMeta fields | Semantics of |
+|---|---|---|
+| `RequiredFromHints()` | `Required` | `Required` |
+| `OneOfFromHints()` | `OneOf` | `ValueOneOf` |
+| `RangeFromHints()` | `Min`, `Max` | `ValueInRange` |
+| `PatternFromHints()` | `Pattern` | `ValueMatches` |
+| `CountFromHints()` | `MinCount`, `MaxCount` | `CountRange` |
+| `UniqueFromHints()` | `Unique` | `UniqueValues` |
+| `DeprecatedFromHints()` | `Deprecated` | `Deprecated` |
 
-A required field is only enforced where its parent exists. Sequence and
-dictionary entries are checked individually. The editor wires the discovered
-schema into this validator when the session starts; outside `editor.Run` it
-reports nothing.
+All share the same engine: the walk is guided by the discovered schema; for
+every schema path the validator queries the `HintSource` —
+`FieldHint(block, "")` for a top-level block, `FieldHint(block, "source.path")`
+for nested fields, the same convention as the hint panel — and applies its
+rule where the corresponding `FieldMeta` fields are set. Zero-valued fields
+declare nothing. Sequence and dictionary entries are checked individually,
+and a rule only fires where the field's parent exists (top-level required
+blocks are always enforced).
 
-### RequiredFromHints
+Notes:
 
-```go
-editor.RequiredFromHints()
-```
+- Value rules (`OneOf`, `Range`, `Pattern`) follow the shared contract: an
+  absent or empty value reports nothing — combine with `Required: true` when
+  the field is mandatory.
+- `Range` bounds may be one-sided (`Min` only = "at least", `Max` only = "at
+  most"). Malformed or mixed-kind bounds, and invalid `Pattern` regexes, are
+  reported as misconfiguration violations.
+- `MinCount`/`MaxCount` both zero means no rule; `MinCount > 0` with
+  `MaxCount == 0` means "at least MinCount, no upper bound".
 
-The `HintSource` counterpart of `RequiredFromSchema`, for applications that
-declare required-ness in their hints (`FieldMeta.Required`) instead of struct
-tags. The walk is guided by the discovered schema; for every schema path the
-validator queries the `HintSource` — `FieldHint(block, "")` for a top-level
-block, `FieldHint(block, "source.path")` for nested fields, the same
-convention as the hint panel — and enforces presence where `Required` is set.
-Without it the "Required: yes" hint line is display-only.
-
-Same conditional semantics as `RequiredFromSchema`: a required field is only
-enforced where its parent exists, top-level required blocks are always
-enforced, and sequence/dictionary entries are checked individually. The editor
-wires the schema and the configured `HintSource` in at session start; outside
-`editor.Run`, or without a `HintSource`, it reports nothing.
+The editor wires the schema and the configured `HintSource` in at session
+start; outside `editor.Run`, or without a `HintSource`, the family is inert.
 
 ### RequiredWith
 

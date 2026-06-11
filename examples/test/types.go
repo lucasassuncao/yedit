@@ -3,14 +3,14 @@ package main
 import "github.com/lucasassuncao/yedit/editor"
 
 var testPresets = testPresetSource{}
-var testHints = buildHintSource(map[string]*hintNode{
+var testHints = buildMetadataSource(map[string]*metadataNode{
 	"server": {
 		FieldMeta: editor.FieldMeta{
 			Description: "HTTP server configuration.",
 			Type:        "object",
 			Required:    true,
 		},
-		Children: map[string]*hintNode{
+		Children: map[string]*metadataNode{
 			"host": {FieldMeta: editor.FieldMeta{
 				Description: "Address the server binds to.",
 				Type:        "string",
@@ -46,7 +46,7 @@ var testHints = buildHintSource(map[string]*hintNode{
 			Description: "Application logging configuration.",
 			Type:        "object",
 		},
-		Children: map[string]*hintNode{
+		Children: map[string]*metadataNode{
 			"level": {FieldMeta: editor.FieldMeta{
 				Description: "Minimum severity to emit. Lower levels produce more output.",
 				Type:        "string",

@@ -44,6 +44,22 @@ const (
 	modeConfirming                         // confirm alert overlay
 )
 
+// errKind classifies the origin of an editor error so blocking logic can be precise.
+type errKind int
+
+const (
+	errNone   errKind = iota
+	errParse          // YAML parse failed in flushCurrentEntry; blocks navigation
+	errCommit         // validation failed at commit time; blocks commit
+	errPreset         // preset I/O failure; display only
+)
+
+// editorError carries a typed error for the block editor's status bar.
+type editorError struct {
+	kind    errKind
+	message string
+}
+
 type blockEditState struct {
 	cfg Config
 	key string // top-level YAML key being edited
@@ -78,7 +94,7 @@ type blockEditState struct {
 	width, height int
 	listW, rightW int
 
-	errMsg        string
+	editorErr     editorError
 	statusMsg     string // neutral feedback (e.g. "Undone."); cleared on next edit action
 	currentPreset string
 
@@ -88,6 +104,7 @@ type blockEditState struct {
 
 	undoStack []*blockEditUndoSnap // undo history; each mutating op pushes a snapshot
 	redoStack []*blockEditUndoSnap // redo history; populated by restoreUndo, discarded on new mutations
+	actionLog []BlockAction        // in-memory log for debug and replay
 	theme     resolvedTheme
 }
 
@@ -171,7 +188,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 
 	// If there is no tree to show, focus the YAML editor immediately. A map with
 	// child defs uses the navigator; a free-form map (no defs) stays raw YAML.
-	if len(spec.defs) == 0 || spec.kind == schema.KindPrimitive || spec.kind == schema.KindEnum || (spec.kind == schema.KindDictionary && !structured) {
+	if len(spec.defs) == 0 || spec.kind == schema.KindPrimitive || (spec.kind == schema.KindDictionary && !structured) {
 		be.active = blockEditPanelYAML
 		be.yamlEditor.Focus()
 	}
@@ -208,10 +225,10 @@ func (be blockEditState) innerH() int {
 }
 
 // hintH returns the content height of the hint panel (bottom-right).
-// Returns 0 when no HintSource is configured (panel is not rendered).
+// Returns 0 when EnableHints is false (panel is not rendered).
 // Otherwise the hint takes ~1/3 of the right column, floored at 5 lines.
 func (be blockEditState) hintH() int {
-	if be.cfg.Hints == nil {
+	if !be.cfg.EnableHints {
 		return 0
 	}
 	total := be.innerH() - 2 // subtract 2 for the extra border row from stacking
@@ -239,18 +256,74 @@ func (be blockEditState) editorH() int {
 
 func (be blockEditState) Init() tea.Cmd { return textarea.Blink }
 
+// forwardMsg passes bubbletea messages to sub-components (textarea, alert,
+// preset browser, resize). Contains no editor logic — all semantic mutations go
+// through dispatch. pendingRemoveMsg and pendingEntryDeleteMsg are converted to
+// dispatch calls here because they arrive after a confirmation dialog clears.
+func (be blockEditState) forwardMsg(msg tea.Msg) (blockEditState, tea.Cmd) {
+	if m, ok := msg.(pendingRemoveMsg); ok {
+		be.mode = modeEditing
+		be.confirmAlert = nil
+		be = be.dispatch(ToggleField{NodeIdx: m.nodeIdx, Checked: false})
+		return be, nil
+	}
+	if m, ok := msg.(pendingEntryDeleteMsg); ok {
+		be.mode = modeEditing
+		be.confirmAlert = nil
+		be = be.dispatch(DeleteEntry{SeqIdx: m.seqIdx})
+		return be, nil
+	}
+	if m, ok := msg.(tea.WindowSizeMsg); ok {
+		be.width = m.Width
+		be.height = m.Height
+		be.relayout()
+		be.yamlEditor.SetWidth(be.rightW - 2)
+		be.yamlEditor.SetHeight(be.editorH() - 1)
+		be.tree.height = be.innerH()
+		if be.confirmAlert != nil {
+			be.confirmAlert.Resize(theme.Size{W: m.Width, H: m.Height})
+		}
+		return be, nil
+	}
+	switch be.mode {
+	case modeConfirming:
+		if _, ok := msg.(alert.DismissedMsg); ok {
+			be.mode = modeEditing
+			be.confirmAlert = nil
+			return be, nil
+		}
+		if key, ok := msg.(tea.KeyMsg); ok {
+			al, cmd := be.confirmAlert.Update(key)
+			be.confirmAlert = &al
+			return be, cmd
+		}
+	case modePresetBrowser:
+		return be.updatePresetBrowser(msg)
+	default:
+		// modeEditing: forward non-key messages to the textarea when it has focus.
+		if be.active == blockEditPanelYAML {
+			if _, ok := msg.(tea.KeyMsg); !ok {
+				var cmd tea.Cmd
+				be.yamlEditor, cmd = be.yamlEditor.Update(msg)
+				return be, cmd
+			}
+		}
+	}
+	return be, nil
+}
+
 func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	// pendingRemoveMsg fires from the "Remove field?" confirm alert as it
 	// dismisses, so it crosses the mode boundary and is handled up front.
 	if m, ok := msg.(pendingRemoveMsg); ok {
 		be.mode = modeEditing
 		be.confirmAlert = nil
-		return be.applyPendingRemove(m.nodeIdx), nil
+		return be.dispatch(ToggleField{NodeIdx: m.nodeIdx, Checked: false}), nil
 	}
 	if m, ok := msg.(pendingEntryDeleteMsg); ok {
 		be.mode = modeEditing
 		be.confirmAlert = nil
-		return be.performEntryDelete(m.seqIdx), nil
+		return be.dispatch(DeleteEntry{SeqIdx: m.seqIdx}), nil
 	}
 
 	if m, ok := msg.(tea.WindowSizeMsg); ok {
@@ -298,9 +371,23 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 	action, name := be.preset.Update(key, be.isCollectionNav())
 	switch action {
 	case presetApplied:
-		be = be.applyPreset(name)
+		if be.cfg.Presets != nil {
+			y, err := be.cfg.Presets.PresetYAML(be.key, name)
+			if err != nil {
+				be.editorErr = editorError{kind: errPreset, message: fmt.Sprintf("preset error: %v", err)}
+			} else {
+				be = be.applyPreset(name, y)
+			}
+		}
 	case presetAppended:
-		be = be.appendPreset(name)
+		if be.cfg.Presets != nil {
+			y, err := be.cfg.Presets.PresetYAML(be.key, name)
+			if err != nil {
+				be.editorErr = editorError{kind: errPreset, message: fmt.Sprintf("preset error: %v", err)}
+			} else {
+				be = be.appendPreset(name, y)
+			}
+		}
 	case presetNone:
 		return be, nil
 	}
@@ -375,17 +462,17 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	if be.yamlEditor.Value() != prevValue {
 		be.dirty = true
 		be.statusMsg = ""
-		be = be.syncParsedNode()
+		be = be.syncParsedNode(be.yamlEditor.Value())
 	}
 	return be, cmd
 }
 
 // syncParsedNode is the parse gate called after every YAML editor keystroke. It
-// advances the canonical node (and thus the tree) only when the buffer parses
+// advances the canonical node (and thus the tree) only when content parses
 // successfully; an invalid buffer leaves the last good state in place.
-func (be blockEditState) syncParsedNode() blockEditState {
+func (be blockEditState) syncParsedNode(content string) blockEditState {
 	if be.isCollectionNav() {
-		kn, vn, ok := parseEntryFromView(be.yamlEditor.Value(), be.coll.isMap)
+		kn, vn, ok := parseEntryFromView(content, be.coll.isMap)
 		if !ok {
 			return be
 		}
@@ -395,7 +482,7 @@ func (be blockEditState) syncParsedNode() blockEditState {
 		be.tree = be.collectionDeriveTree()
 		return be
 	}
-	if v := valueNodeOfSnippet(be.yamlEditor.Value()); v != nil {
+	if v := valueNodeOfSnippet(content); v != nil {
 		be.node = v
 		be.tree = be.resyncTreeFromYAML()
 	}
@@ -502,22 +589,22 @@ func (be blockEditState) commit() (blockEditState, tea.Cmd) {
 	var snippet string
 	if be.isCollectionNav() {
 		be = be.flushCurrentEntry()
-		if be.errMsg != "" {
+		if be.editorErr.kind != errNone {
 			return be, nil
 		}
 		snippet = nodeToContent(be.key, be.node)
 	} else {
-		be.errMsg = ""
+		be.editorErr = editorError{}
 		snippet = be.yamlEditor.Value()
 	}
 
 	if err := validateSnippetText(snippet); err != nil {
-		be.errMsg = fmt.Sprintf("Invalid YAML: %v", err)
+		be.editorErr = editorError{kind: errCommit, message: fmt.Sprintf("Invalid YAML: %v", err)}
 		return be, nil
 	}
 	if be.knownByPath != nil {
 		if unknown := schema.UnknownKeys([]byte(snippet), be.knownByPath); len(unknown) > 0 {
-			be.errMsg = fmt.Sprintf("Unknown keys: %s", strings.Join(unknown, ", "))
+			be.editorErr = editorError{kind: errCommit, message: fmt.Sprintf("Unknown keys: %s", strings.Join(unknown, ", "))}
 			return be, nil
 		}
 	}
@@ -561,7 +648,7 @@ func (be blockEditState) View(parentSegs []string) string {
 	topPanel := theme.RenderTitledPanelWith(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, clampLines(topContent, be.editorH()), be.theme.colors)
 
 	rightPanel := topPanel
-	if be.cfg.Hints != nil {
+	if be.cfg.EnableHints {
 		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, false, clampLines(be.hintContent(), be.hintH()), be.theme.colors)
 		rightPanel = lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)
 	}
@@ -570,9 +657,9 @@ func (be blockEditState) View(parentSegs []string) string {
 
 	var feedback string
 	switch {
-	case be.errMsg != "":
+	case be.editorErr.kind != errNone:
 		feedback = lipgloss.NewStyle().Width(be.width).
-			Render(be.theme.errorText.Render(be.errMsg))
+			Render(be.theme.errorText.Render(be.editorErr.message))
 	case be.dirty:
 		feedback = lipgloss.NewStyle().Width(be.width).
 			Render(be.theme.status.Render(msgUncommittedChanges))
@@ -642,7 +729,7 @@ func (be blockEditState) hintContent() string {
 	// Tree-less blocks (primitive/enum/free-form collection) have no field nodes;
 	// show the block's own metadata instead of the "select a field" placeholder.
 	if be.tree.isEmpty() {
-		return be.fieldHintFor(be.def, be.def.YAMLName)
+		return be.fieldHintFor(be.def.YAMLName)
 	}
 	idx := be.tree.currentNodeIdx()
 	if idx < 0 {
@@ -656,25 +743,18 @@ func (be blockEditState) hintContent() string {
 	if be.isCollectionNav() && len(node.yamlPath) > 0 {
 		fieldPath = strings.Join(node.yamlPath[1:], ".")
 	}
-	return be.fieldHintFor(node.def, fieldPath)
+	return be.fieldHintFor(fieldPath)
 }
 
 // fieldHintFor builds the hint text for a single field definition.
 // fieldPath is the dot-joined path from the block root (e.g. "source.path").
-// def is used only for fallback example generation and the implicit-required
-// check; all display data comes from HintSource.
-func (be blockEditState) fieldHintFor(def schema.FieldDef, fieldPath string) string {
-	var meta FieldMeta
-	if be.cfg.Hints != nil {
-		meta = be.cfg.Hints.FieldHint(be.key, fieldPath)
+func (be blockEditState) fieldHintFor(fieldPath string) string {
+	if be.cfg.Metadata == nil {
+		return be.theme.hintDim.Render("  Config.Metadata is not set — no metadata source configured")
 	}
-	// An object whose children include required fields is itself implicitly required.
-	if !meta.Required && def.Kind == schema.KindObject && anyChildRequired(def.Children) {
-		meta.Required = true
+	meta := be.cfg.Metadata.FieldMeta(be.key, fieldPath)
+	if out := renderFieldHint(be.theme, meta, meta.Example); out != "" {
+		return out
 	}
-	example := meta.Example
-	if example == "" {
-		example = generateFallbackExample(def)
-	}
-	return renderFieldHint(be.theme, meta, example)
+	return be.theme.hintDim.Render("  no metadata declared for this field")
 }

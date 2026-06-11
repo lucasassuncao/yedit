@@ -24,17 +24,9 @@ var (
 // name in defaultSkip are omitted. Nested struct fields recurse one level
 // deeper.
 //
-// Only the yaml tag is required. validate and jsonschema_description are
-// optional and merely enrich the FieldDef when present:
-//
-//   - validate:"required"          → FieldDef.Required = true (renders a "*")
-//   - validate:"oneof=a b c"       → FieldDef.OneOf populated
-//   - jsonschema:"default=X"       → FieldDef.Default populated
-//   - jsonschema:"required"        → FieldDef.Required = true (alternative)
-//   - jsonschema_description:"..." → FieldDef.Description populated
-//
-// A struct annotated only with yaml tags discovers cleanly; fields just have
-// zero-valued Required/Default/Description/OneOf.
+// Only the yaml tag is read. Field metadata (required, allowed values, ranges,
+// descriptions) is not derived from struct tags — declare it through the
+// editor's MetadataSource instead (see the yedit/metadata package).
 //
 // To customise discovery for union types (a value that can be a scalar OR a
 // struct OR a map), make the wrapper type implement Provider — its
@@ -88,9 +80,6 @@ func discoverFields(t reflect.Type, depth int, seen map[reflect.Type]int, limit 
 		}
 		info := buildFieldDef(f, yamlName, yamlTag)
 		fillFieldChildren(&info, f, depth, seen, limit)
-		if info.Kind == KindPrimitive && len(info.OneOf) > 0 {
-			info.Kind = KindEnum
-		}
 		out = append(out, info)
 	}
 	return out
@@ -108,18 +97,12 @@ func embedFields(f reflect.StructField, depth int, seen map[reflect.Type]int, li
 	return discoverFields(ft, depth+1, seen, limit)
 }
 
-// buildFieldDef constructs a FieldDef from a struct field's tags.
+// buildFieldDef constructs a FieldDef from a struct field's yaml tag.
 func buildFieldDef(f reflect.StructField, yamlName, yamlTag string) FieldDef {
-	validateTag := f.Tag.Get("validate")
-	jsTag := f.Tag.Get("jsonschema")
 	info := FieldDef{
-		YAMLName:    yamlName,
-		Kind:        kindOf(f.Type),
-		Scalar:      scalarLabel(f.Type),
-		Required:    containsTagOption(validateTag, "required") || containsTagOption(jsTag, "required"),
-		Default:     extractValue(jsTag, "default="),
-		Description: f.Tag.Get("jsonschema_description"),
-		OneOf:       extractList(validateTag, "oneof="),
+		YAMLName: yamlName,
+		Kind:     kindOf(f.Type),
+		Scalar:   scalarLabel(f.Type),
 	}
 	for _, opt := range strings.Split(yamlTag, ",")[1:] {
 		switch strings.TrimSpace(opt) {

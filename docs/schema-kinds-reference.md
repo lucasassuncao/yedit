@@ -11,7 +11,6 @@ How Go types map to yedit editor behavior, with complete code examples.
 | `string`, `int`, `bool`, `float64`, `time.Duration` | `KindPrimitive` | YAML pane only (no tree) |
 | Implements `yaml.Marshaler` or `encoding.TextMarshaler` | `KindPrimitive` | YAML pane only — struct fields are NOT exposed |
 | `interface{}` / `any` | `KindAny` | YAML pane only — use `Provider` for a typed schema |
-| `type X string` + `validate:"oneof=a b"` | `KindEnum` | YAML pane + values list in hint |
 | `SomeStruct` | `KindObject` | Tree with ADDED/AVAILABLE fields |
 | `[]string`, `[]int` (scalar slice) | `KindList` (no child defs) | YAML pane only |
 | `[]SomeStruct` | `KindList` with child defs | `[N]` navigator + field tree per entry |
@@ -28,11 +27,11 @@ How Go types map to yedit editor behavior, with complete code examples.
 ```go
 type Config struct {
     AppName      string        `yaml:"app-name"`
-    Port         int           `yaml:"port"          jsonschema:"default=8080"`
+    Port         int           `yaml:"port"`
     Debug        bool          `yaml:"debug"`
-    Ratio        float64       `yaml:"ratio"         jsonschema:"default=1.0"`
+    Ratio        float64       `yaml:"ratio"`
     BuildTimeout time.Duration `yaml:"build-timeout"`
-    Version      string        `yaml:"version"       validate:"required" jsonschema:"default=0.1.0"`
+    Version      string        `yaml:"version"`
 }
 ```
 
@@ -47,48 +46,13 @@ version: "0.1.0"
 ```
 
 **Notes:**
-- `jsonschema:"default=X"` — value shown in the hint panel; does **not** auto-fill the field
-- `validate:"required"` — field marked with `*` in the hint; ctrl+l reports it missing
 - `time.Duration` is stored as a plain string (`"30s"`, `"2m30s"`) — YAML does not have a duration type
 - Pointer variants (`*string`, `*int`, `*bool`) behave identically; nil = field absent from the file
-
----
-
-## KindEnum — one of a fixed set of values
-
-**Go:**
-```go
-// Option A: plain string with validate tag (simplest)
-type ServerConfig struct {
-    LogLevel string `yaml:"log-level" validate:"oneof=debug info warn error" jsonschema:"default=info"`
-    Protocol string `yaml:"protocol"  validate:"oneof=http https"`
-}
-
-// Option B: named string type (documents intent, same behavior in yedit)
-type ConflictStrategy string
-
-const (
-    ConflictStrategyRename    ConflictStrategy = "rename"
-    ConflictStrategyOverwrite ConflictStrategy = "overwrite"
-    ConflictStrategySkip      ConflictStrategy = "skip"
-)
-
-type Category struct {
-    ConflictStrategy ConflictStrategy `yaml:"conflict-strategy" validate:"oneof=rename overwrite skip"`
-}
-```
-
-**YAML:**
-```yaml
-log-level: info
-protocol: https
-conflict-strategy: rename
-```
-
-**Notes:**
-- yedit promotes the field to `KindEnum` when `validate:"oneof=..."` is present
-- The allowed values appear in the hint panel under "values"
-- Saving an invalid value is blocked by ctrl+l validation
+- Field metadata (required, defaults, allowed values, ranges) is declared
+  through the `HintSource` (`FieldMeta`), not struct tags — see the
+  `yedit/hints` package. Enum-like fields are plain strings whose
+  `FieldMeta.OneOf` lists the allowed values, shown in the hint panel and
+  enforced by `editor.OneOfFromHints()`.
 
 ---
 
@@ -97,15 +61,15 @@ conflict-strategy: rename
 **Go:**
 ```go
 type PoolConfig struct {
-    MinSize int `yaml:"min-size" jsonschema:"default=2"`
-    MaxSize int `yaml:"max-size" jsonschema:"default=10"`
-    Timeout int `yaml:"timeout"  jsonschema:"default=30"`
+    MinSize int `yaml:"min-size"`
+    MaxSize int `yaml:"max-size"`
+    Timeout int `yaml:"timeout"`
 }
 
 type DatabaseConfig struct {
-    Driver   string     `yaml:"driver"    validate:"required,oneof=postgres mysql sqlite"`
-    DSN      string     `yaml:"dsn"       validate:"required"`
-    MaxConns int        `yaml:"max-conns" jsonschema:"default=10"`
+    Driver   string     `yaml:"driver"`
+    DSN      string     `yaml:"dsn"`
+    MaxConns int        `yaml:"max-conns"`
     Pool     PoolConfig `yaml:"pool"`     // nested struct — depth+1
 }
 
@@ -191,8 +155,8 @@ extensions: ["go", "yaml", "json"]
 **Go:**
 ```go
 type Worker struct {
-    Name        string   `yaml:"name"        validate:"required"`
-    Concurrency int      `yaml:"concurrency" jsonschema:"default=1"`
+    Name        string   `yaml:"name"`
+    Concurrency int      `yaml:"concurrency"`
     Queue       string   `yaml:"queue"`
     Tags        []string `yaml:"tags"`        // scalar slice inside struct — YAML pane in hint
     Extensions  []string `yaml:"extensions"`  // same
@@ -271,7 +235,7 @@ Annotations []map[string]string `yaml:"annotations"`
 
 // After: [N] navigator with field tree
 type Annotation struct {
-    Env    string `yaml:"env"    validate:"oneof=production staging development"`
+    Env    string `yaml:"env"`
     Region string `yaml:"region"`
 }
 Annotations []Annotation `yaml:"annotations"`
@@ -314,8 +278,8 @@ settings:
 ```go
 type PortAttr struct {
     Label         string `yaml:"label"`
-    OnAutoForward string `yaml:"on-auto-forward" validate:"oneof=notify openBrowser ignore silent"`
-    Protocol      string `yaml:"protocol"        validate:"oneof=http https tcp udp"`
+    OnAutoForward string `yaml:"on-auto-forward"`
+    Protocol      string `yaml:"protocol"`
 }
 
 type Config struct {
@@ -409,27 +373,12 @@ timeout:
 | `yaml:"-"` | Field excluded from discovery (never shown) |
 | `yaml:"name,omitempty"` | Sets `FieldDef.OmitEmpty = true`; zero value not written to disk |
 | `yaml:"name,flow"` | Sets `FieldDef.Flow = true`; serialised inline (e.g. `[a, b, c]`) |
-| `validate:"required"` | Marks field as required (`*` in hint); ctrl+l reports it missing |
-| `validate:"oneof=a b c"` | Promotes field to `KindEnum`; values listed in hint |
-| `jsonschema:"default=X"` | Default value shown in hint panel |
-| `jsonschema:"required"` | Alternative to `validate:"required"` |
-| `jsonschema_description:"..."` | Description shown in hint panel |
 
-**Full example:**
-```go
-type Route struct {
-    Path    string `yaml:"path"
-                    validate:"required"
-                    jsonschema_description:"HTTP path pattern, e.g. /api/v1/users"`
-    Method  string `yaml:"method"
-                    validate:"required,oneof=GET POST PUT DELETE PATCH"
-                    jsonschema:"default=GET"`
-    Handler string `yaml:"handler"  validate:"required"`
-    Auth    bool   `yaml:"auth"     jsonschema:"default=false"`
-    Timeout int    `yaml:"timeout"  jsonschema:"default=30"
-                    jsonschema_description:"Request timeout in seconds"`
-}
-```
+The `yaml` tag is the only tag yedit reads. Field metadata — description,
+required, defaults, allowed values, ranges, patterns — is declared through the
+`HintSource` (`editor.FieldMeta`), typically built with the `yedit/hints`
+package, and enforced by the FromHints validator family (see
+`docs/validators.md`).
 
 ---
 

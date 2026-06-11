@@ -319,13 +319,14 @@ func TestListFilterByTyping(t *testing.T) {
 	}
 }
 
-// TestRootHintPanelToggle verifies that "h" splits the right column to show the
-// Hint/Example panel for the selected field, and toggles it back off.
+// TestRootHintPanelToggle verifies that EnableHints opens the panel on start,
+// "h" toggles it off and back on, and the field metadata is visible.
 func TestRootHintPanelToggle(t *testing.T) {
 	m, err := newModel(Config{
-		Path:   filepath.Join(t.TempDir(), "hint.yaml"),
-		Schema: &sizeProbeConfig{},
-		Hints: HintFunc(func(block, fieldPath string) FieldMeta {
+		Path:        filepath.Join(t.TempDir(), "hint.yaml"),
+		Schema:      &sizeProbeConfig{},
+		EnableHints: true,
+		Metadata: MetadataFunc(func(block, fieldPath string) FieldMeta {
 			if block == "server" && fieldPath == "" {
 				return FieldMeta{Type: "object"}
 			}
@@ -338,31 +339,36 @@ func TestRootHintPanelToggle(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	if strings.Contains(m.View(), "Hint/Example") {
-		t.Fatal("hint panel should be hidden by default")
-	}
-
-	// "server" (a KindObject) is selected by default; toggling on shows its hint.
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
-	m = updated.(model)
+	// EnableHints: true → panel visible on start.
 	if !m.showHint {
-		t.Fatal("pressing h should enable the hint panel")
+		t.Fatal("EnableHints: true should show the hint panel on start")
 	}
 	view := m.View()
 	if !strings.Contains(view, "Hint/Example") {
-		t.Error("view should show the Hint/Example panel after toggling on")
+		t.Error("view should show the Hint/Example panel when EnableHints is true")
 	}
 	if !strings.Contains(view, "object") {
 		t.Error("hint should show the selected field's type (server → object)")
 	}
 
+	// "h" hides the panel.
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
 	m = updated.(model)
 	if m.showHint {
-		t.Fatal("pressing h again should disable the hint panel")
+		t.Fatal("pressing h should hide the hint panel")
 	}
 	if strings.Contains(m.View(), "Hint/Example") {
-		t.Error("hint panel should be hidden after toggling off")
+		t.Error("hint panel should be hidden after pressing h")
+	}
+
+	// "h" again shows it.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	m = updated.(model)
+	if !m.showHint {
+		t.Fatal("pressing h again should re-enable the hint panel")
+	}
+	if !strings.Contains(m.View(), "Hint/Example") {
+		t.Error("hint panel should be visible after toggling back on")
 	}
 }
 

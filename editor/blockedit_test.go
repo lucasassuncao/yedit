@@ -226,7 +226,8 @@ func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
 	be := newBlockEdit(Config{Presets: stub}, spec, 100, 40)
 
 	be = be.openPresetPicker()
-	be = be.appendPreset("extra")
+	y, _ := stub.PresetYAML("categories", "extra")
+	be = be.appendPreset("extra", y)
 
 	base := nodeToContent("categories", be.node)
 	if !strings.Contains(base, "name: existing") {
@@ -280,7 +281,8 @@ func TestAppendPreset_indentMismatch(t *testing.T) {
 	}
 	be := newBlockEdit(Config{Presets: stub}, spec, 100, 40)
 	be = be.openPresetPicker()
-	be = be.appendPreset("extra")
+	y, _ := stub.PresetYAML("categories", "extra")
+	be = be.appendPreset("extra", y)
 
 	base2 := nodeToContent("categories", be.node)
 	if !strings.Contains(base2, "name: existing") {
@@ -308,7 +310,8 @@ func TestAppendPreset_multiEntryPreset(t *testing.T) {
 `)
 	be := newBlockEdit(Config{Presets: stub}, spec, 100, 40)
 	be = be.openPresetPicker()
-	be = be.appendPreset("multi")
+	y, _ := stub.PresetYAML("categories", "multi")
+	be = be.appendPreset("multi", y)
 
 	seqCount := 0
 	for _, n := range be.tree.nodes {
@@ -394,9 +397,6 @@ func TestUndo_structFieldRemoveWithContent(t *testing.T) {
 	// ctrl+d on output (value "both") → shows confirm dialog.
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
 
-	if len(be.undoStack) == 0 {
-		t.Fatal("undoStack must be non-empty when confirm dialog is shown")
-	}
 	if be.mode != modeConfirming {
 		t.Fatal("expected modeConfirming after ctrl+d on field with content")
 	}
@@ -405,7 +405,8 @@ func TestUndo_structFieldRemoveWithContent(t *testing.T) {
 		t.Error("YAML must not change before confirmation")
 	}
 
-	// Locate the output node and simulate the user confirming.
+	// Locate the output node and simulate the user confirming via dispatch.
+	// (saveUndo happens inside dispatch after confirmation, not before the dialog.)
 	outputIdx := -1
 	for i, n := range be.tree.nodes {
 		if n.kind == treeNodeField && n.label == "output" {
@@ -416,10 +417,13 @@ func TestUndo_structFieldRemoveWithContent(t *testing.T) {
 	if outputIdx < 0 {
 		t.Fatal("output node not found")
 	}
-	be = be.applyPendingRemove(outputIdx)
+	be = be.dispatch(ToggleField{NodeIdx: outputIdx, Checked: false})
 
 	if strings.Contains(be.yamlEditor.Value(), "output:") {
 		t.Errorf("output still present after confirmed remove: %q", be.yamlEditor.Value())
+	}
+	if len(be.undoStack) == 0 {
+		t.Fatal("undoStack must be non-empty after confirmed remove")
 	}
 
 	be = be.restoreUndo()
@@ -477,7 +481,7 @@ func TestUndo_seqItemDelete(t *testing.T) {
 	if be.mode != modeConfirming {
 		t.Fatalf("ctrl+d on a seq item should confirm first; mode=%d", be.mode)
 	}
-	be, _ = be.Update(pendingEntryDeleteMsg{seqIdx: 0})
+	be = be.dispatch(DeleteEntry{SeqIdx: 0})
 
 	if len(be.undoStack) == 0 {
 		t.Fatal("undoStack must be non-empty after seq item delete")
@@ -607,11 +611,11 @@ func TestPrimitiveBlock_showsFieldItemAndHint(t *testing.T) {
 	spec := blockSpec{
 		key:     "debug",
 		kind:    schema.KindPrimitive,
-		def:     schema.FieldDef{YAMLName: "debug", Kind: schema.KindPrimitive, Scalar: "bool", Default: "false"},
+		def:     schema.FieldDef{YAMLName: "debug", Kind: schema.KindPrimitive, Scalar: "bool"},
 		content: "debug: false\n",
 	}
 	cfg := Config{
-		Hints: HintFunc(func(block, fieldPath string) FieldMeta {
+		Metadata: MetadataFunc(func(block, fieldPath string) FieldMeta {
 			if block == "debug" {
 				return FieldMeta{Type: "bool", Default: "false"}
 			}
@@ -673,6 +677,35 @@ func TestRenderFieldHint_typeAndRequiredBehavior(t *testing.T) {
 			t.Errorf("expected no Required line when false; got %q", out)
 		}
 	})
+}
+
+// TestRenderFieldHint_constraints verifies that the constraint fields render
+// when set and stay absent on a zero FieldMeta.
+func TestRenderFieldHint_constraints(t *testing.T) {
+	th := resolveTheme(theme.Theme{})
+	out := renderFieldHint(th, FieldMeta{
+		Min: "1s", Max: "168h",
+		Pattern:    `^\d+$`,
+		MinCount:   1,
+		Unique:     true,
+		Deprecated: "use limits instead",
+	}, "")
+	for _, want := range []string{
+		"Range:", "1s – 168h",
+		"Pattern:", `^\d+$`,
+		"Entries:", "1 – ∞",
+		"Unique:", "yes",
+		"Deprecated:", "use limits instead",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered hint should contain %q; got:\n%s", want, out)
+		}
+	}
+	if empty := renderFieldHint(th, FieldMeta{}, ""); strings.Contains(empty, "Range:") ||
+		strings.Contains(empty, "Pattern:") || strings.Contains(empty, "Entries:") ||
+		strings.Contains(empty, "Unique:") || strings.Contains(empty, "Deprecated:") {
+		t.Errorf("zero FieldMeta must render no constraint lines; got:\n%s", empty)
+	}
 }
 
 // TestRestoreUndo_emptyStackIsNoOp guards restoreUndo against an empty stack:
@@ -829,7 +862,7 @@ func TestCtrlDRemovesNestedParentBlock(t *testing.T) {
 	if beforeIdx < 0 {
 		t.Fatal("before node not found")
 	}
-	be, _ = be.Update(pendingRemoveMsg{nodeIdx: beforeIdx})
+	be = be.dispatch(ToggleField{NodeIdx: beforeIdx, Checked: false})
 
 	got := be.yamlEditor.Value()
 	if strings.Contains(got, "before:") {

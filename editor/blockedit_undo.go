@@ -102,7 +102,7 @@ func popSnap(stack []*blockEditUndoSnap) (*blockEditUndoSnap, []*blockEditUndoSn
 func (be blockEditState) applySnap(snap *blockEditUndoSnap) blockEditState {
 	be.currentPreset = snap.preset
 	be.dirty = snap.dirty
-	be.errMsg = ""
+	be.editorErr = editorError{}
 
 	be.node = yamlnode.CloneNode(snap.node)
 

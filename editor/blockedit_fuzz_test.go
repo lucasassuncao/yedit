@@ -69,7 +69,7 @@ func applyFuzzAction(be blockEditState, a byte) blockEditState {
 				n := be.tree.nodes[ni]
 				switch {
 				case n.kind == treeNodeField && n.checked:
-					be, _ = be.Update(pendingRemoveMsg{nodeIdx: ni})
+					be = be.dispatch(ToggleField{NodeIdx: ni, Checked: false})
 					be = expandAll(be)
 				case n.kind == treeNodeSeqItem:
 					be = be.performEntryDelete(n.seqIdx)

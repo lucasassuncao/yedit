@@ -85,6 +85,18 @@ func nodeToContent(key string, value *yaml.Node) string {
 	return strings.TrimRight(buf.String(), "\n") + "\n"
 }
 
+// normalizeBlockContent parses a raw block snippet and re-serializes it through
+// nodeToContent so the result can be compared against another nodeToContent
+// output without false mismatches from formatting differences. Returns raw
+// unchanged if the snippet cannot be parsed.
+func normalizeBlockContent(key, raw string) string {
+	val := valueNodeOfSnippet(raw)
+	if val == nil {
+		return raw
+	}
+	return nodeToContent(key, val)
+}
+
 // valueNodeOfSnippet parses a standalone "<key>:\n  ..." block and returns the
 // value node mapped to that key (the inverse of nodeToContent), or nil on a
 // parse error or unexpected shape. The returned node is detached and safe to
@@ -255,22 +267,39 @@ func removeMappingKey(mapping *yaml.Node, key string) {
 }
 
 // pruneEmptyMappings removes key-value pairs whose value is an empty mapping
-// node ({}), recursing into nested mappings first so the cleanup propagates
-// upward (e.g. source becomes empty after all its children are toggled off).
-func pruneEmptyMappings(mapping *yaml.Node) {
-	if mapping == nil || mapping.Kind != yaml.MappingNode {
+// ({}) or empty sequence ([]), and removes empty mapping items from sequences,
+// recursing into nested nodes first so the cleanup propagates upward.
+func pruneEmptyMappings(node *yaml.Node) {
+	if node == nil {
 		return
 	}
-	for i := 1; i < len(mapping.Content); i += 2 {
-		pruneEmptyMappings(mapping.Content[i])
-	}
-	i := 0
-	for i < len(mapping.Content)-1 {
-		val := mapping.Content[i+1]
-		if val.Kind == yaml.MappingNode && len(val.Content) == 0 {
-			mapping.Content = append(mapping.Content[:i], mapping.Content[i+2:]...)
-		} else {
-			i += 2
+	switch node.Kind {
+	case yaml.MappingNode:
+		for i := 1; i < len(node.Content); i += 2 {
+			pruneEmptyMappings(node.Content[i])
+		}
+		i := 0
+		for i < len(node.Content)-1 {
+			val := node.Content[i+1]
+			empty := (val.Kind == yaml.MappingNode || val.Kind == yaml.SequenceNode) && len(val.Content) == 0
+			if empty {
+				node.Content = append(node.Content[:i], node.Content[i+2:]...)
+			} else {
+				i += 2
+			}
+		}
+	case yaml.SequenceNode:
+		for _, item := range node.Content {
+			pruneEmptyMappings(item)
+		}
+		i := 0
+		for i < len(node.Content) {
+			item := node.Content[i]
+			if item.Kind == yaml.MappingNode && len(item.Content) == 0 {
+				node.Content = append(node.Content[:i], node.Content[i+1:]...)
+			} else {
+				i++
+			}
 		}
 	}
 }

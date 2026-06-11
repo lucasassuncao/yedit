@@ -139,7 +139,7 @@ func TestMapBlockCommitReassembles(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	be2, cmd := be.commit()
 	if cmd == nil {
-		t.Fatalf("commit produced no command; errMsg=%q", be2.errMsg)
+		t.Fatalf("commit produced no command; editorErr=%v", be2.editorErr)
 	}
 	committed, ok := cmd().(blockEditCommittedMsg)
 	if !ok {
@@ -205,7 +205,7 @@ func TestSeqBlockResyncNoContamination(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// flushCurrentEntry — missing key header sets errMsg, does not update entries
+// flushCurrentEntry — missing key header sets editorErr, does not update entries
 // ---------------------------------------------------------------------------
 
 func TestFlushCurrentEntry_missingHeader_setsErrMsg(t *testing.T) {
@@ -223,8 +223,8 @@ func TestFlushCurrentEntry_missingHeader_setsErrMsg(t *testing.T) {
 
 	result := be.flushCurrentEntry()
 
-	if result.errMsg == "" {
-		t.Error("expected errMsg to be set when key header is missing")
+	if result.editorErr.kind == errNone {
+		t.Error("expected editorErr to be set when key header is missing")
 	}
 	if result.entryYAML(0) != originalEntry {
 		t.Error("entry 0 was modified despite missing key header — silent data loss")
@@ -234,14 +234,14 @@ func TestFlushCurrentEntry_missingHeader_setsErrMsg(t *testing.T) {
 func TestFlushCurrentEntry_validContent_clearsErrMsg(t *testing.T) {
 	spec := seqSpec("categories:\n  - name: alpha\n")
 	be := newBlockEdit(Config{}, spec, 100, 40)
-	be.errMsg = "stale error from before"
+	be.editorErr = editorError{kind: errParse, message: "stale error from before"}
 	be.active = blockEditPanelYAML
 	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
 
 	result := be.flushCurrentEntry()
 
-	if result.errMsg != "" {
-		t.Errorf("errMsg should be cleared on successful flush, got %q", result.errMsg)
+	if result.editorErr.kind != errNone {
+		t.Errorf("editorErr should be cleared on successful flush, got %q", result.editorErr.message)
 	}
 	if !strings.Contains(result.entryYAML(0), "alpha_edited") {
 		t.Errorf("entry not updated: %q", result.entryYAML(0))

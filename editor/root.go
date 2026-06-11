@@ -60,6 +60,7 @@ type model struct {
 	showHint                     bool // root view: split the right column to show the Hint/Example panel
 	saved                        bool // at least one save succeeded this session; reported via Result
 	statusMsg                    string
+	actionLog                    []ModelAction // in-memory log for debug and replay
 	width, height, listW, innerH int
 }
 
@@ -77,16 +78,13 @@ func newModel(cfg Config) (model, error) {
 		tree = schema.Discover(cfg.Schema) // use schema default (1 extra recursive level)
 	}
 	tree = applyHidden(tree, cfg.Hidden)
-	// RequiredFromSchema/RequiredFromHints validators cannot see the schema (or
-	// the HintSource) at construction time; wire the discovered (and
-	// Hidden-filtered) tree into them here.
+	// FromMetadata validators cannot see the schema or the MetadataSource at
+	// construction time; wire the discovered (and Hidden-filtered) tree into
+	// them here.
 	for _, v := range cfg.Validators {
-		switch rv := v.(type) {
-		case *requiredFromSchemaValidator:
+		if rv, ok := v.(*metadataRuleValidator); ok {
 			rv.defs = tree
-		case *requiredFromHintsValidator:
-			rv.defs = tree
-			rv.hints = cfg.Hints
+			rv.hints = cfg.Metadata
 		}
 	}
 	known := schema.KnownChildren(tree)
@@ -118,9 +116,10 @@ func newModel(cfg Config) (model, error) {
 		knownByPath: known,
 		childrenOf:  childrenOf,
 
-		list:    list,
-		preview: preview,
-		theme:   resolveTheme(cfg.Theme),
+		list:     list,
+		preview:  preview,
+		showHint: cfg.EnableHints,
+		theme:    resolveTheme(cfg.Theme),
 	}, nil
 }
 
@@ -220,32 +219,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case openItemMsg:
 		return m.handleOpenItem(msg.Item)
 	case openChildMsg:
-		return m.handleOpenChild(msg)
+		return m.dispatch(DrillIn{Key: msg.key, Defs: msg.defs, Kind: msg.kind, RelSegs: msg.relSegs})
 	case blockEditCommittedMsg:
 		return m.handleOverlayConfirmed(msg.Snippet)
 	case blockEditDiscardedMsg:
 		return m.handleBlockEditDiscarded(msg)
 	case drillOutMsg:
-		return m.handleDrillOut()
+		return m.dispatch(DrillOut{})
 	case deleteItemMsg:
 		return m.handleDeleteItemMsg(msg)
 	case confirmedDeleteMsg:
 		m.enterList()
-		return m.handleDelete(msg.Key)
+		return m.dispatch(DeleteBlock(msg))
 	case confirmedReloadMsg:
 		m.enterList()
-		return m.execReload()
+		return m.dispatch(Reload{})
 	case alert.DismissedMsg:
 		// Forward to the active blockEdit first so its confirmAlert is cleared.
 		if top := m.topBE(); top != nil {
-			be, cmd := top.Update(msg)
+			be, cmd := top.forwardMsg(msg)
 			m.setTopBE(&be)
 			return m, cmd
 		}
 		m.enterList()
 		return m, nil
 	case doSaveMsg:
-		return m.execSave()
+		return m.dispatch(Save{})
 	}
 
 	switch m.mode {
@@ -281,7 +280,7 @@ func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	if len(m.blockEdits) > 0 {
 		var cmd tea.Cmd
 		for i := range m.blockEdits {
-			be, c := m.blockEdits[i].Update(msg)
+			be, c := m.blockEdits[i].forwardMsg(msg)
 			m.blockEdits[i] = &be
 			if i == len(m.blockEdits)-1 {
 				cmd = c
@@ -532,7 +531,7 @@ func (m model) View() string {
 	} else {
 		hintText = hintModelNew
 	}
-	if !previewFocused && !m.list.IsFiltering() && m.cfg.Hints != nil {
+	if !previewFocused && !m.list.IsFiltering() && m.cfg.EnableHints {
 		if m.showHint {
 			hintText += hintSep + keyHintHide
 		} else {

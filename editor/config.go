@@ -48,41 +48,53 @@ func (f PresetFunc) PresetYAML(field, name string) (string, error) { return f(fi
 
 // ─── Hints ───────────────────────────────────────────────────────────────────
 
-// FieldMeta carries display metadata for a single field in the Hint/Example
-// panel. Fields at their zero value are omitted from the rendered output.
-// HintSource is the sole authority: YEDIT never auto-populates any FieldMeta
-// field from struct tags. If no HintSource is configured, the hint panel
+// FieldMeta carries a single field's metadata: displayed in the Hint/Example
+// panel and enforced by the FromMetadata validator family. Fields at their zero
+// value declare nothing — no panel line, no enforcement.
+// MetadataSource is the sole authority: YEDIT never auto-populates any FieldMeta
+// field from struct tags. If no MetadataSource is configured, the hint panel
 // shows only a generated example.
 type FieldMeta struct {
 	Description string
-	Type        string // human-readable Go type: "string", "bool", "int", "[]string", "duration", "object", etc.
-	Required    bool
-	Default     string
-	OneOf       []string
-	Example     string // YAML snippet shown verbatim in the Example section
+	Type        string   // human-readable Go type: "string", "bool", "int", "[]string", "duration", "object", etc.
+	Required    bool     // enforced by RequiredFromMetadata
+	Default     string   // display only — no enforcement rule exists for defaults
+	OneOf       []string // enforced by OneOfFromMetadata
+	Example     string   // YAML snippet shown verbatim in the Example section
+
+	// Value constraints, enforced by the FromMetadata validator family.
+	Min, Max string // RangeFromMetadata — number, duration, or size strings (ValueInRange semantics)
+	Pattern  string // PatternFromMetadata — RE2 regular expression (ValueMatches semantics)
+	// Collection constraints. MinCount/MaxCount both zero means no rule;
+	// MinCount > 0 with MaxCount == 0 means "at least MinCount, no upper bound".
+	MinCount, MaxCount int  // CountFromMetadata (CountRange semantics)
+	Unique             bool // UniqueFromMetadata — scalar list items must not repeat
+	// Deprecation: non-empty marks the field deprecated; the value is the
+	// migration hint shown to the user (DeprecatedFromMetadata).
+	Deprecated string
 }
 
-// HintSource provides per-field display metadata for the Hint/Example panel.
-// It is called once per field render with the top-level block key and the
-// field's dot-joined path from the block root (e.g. "source", "source.path").
-// For top-level block entries in the root list, fieldPath is empty ("").
-// Returning a zero FieldMeta means "no override".
-type HintSource interface {
-	FieldHint(blockKey, fieldPath string) FieldMeta
+// MetadataSource provides per-field metadata for the Hint/Example panel and
+// the FromMetadata validator family. It is called with the top-level block key
+// and the field's dot-joined path from the block root (e.g. "source",
+// "source.path"). For top-level block entries in the root list, fieldPath is
+// empty (""). Returning a zero FieldMeta means "no override".
+type MetadataSource interface {
+	FieldMeta(blockKey, fieldPath string) FieldMeta
 }
 
-// HintFunc adapts a plain function to the HintSource interface:
+// MetadataFunc adapts a plain function to the MetadataSource interface:
 //
 //	editor.Run(editor.Config{
-//	    Hints: editor.HintFunc(func(block, fieldPath string) editor.FieldMeta {
+//	    Metadata: editor.MetadataFunc(func(block, fieldPath string) editor.FieldMeta {
 //	        // return metadata for (block, fieldPath) ...
 //	        return editor.FieldMeta{}
 //	    }),
 //	})
-type HintFunc func(blockKey, fieldPath string) FieldMeta
+type MetadataFunc func(blockKey, fieldPath string) FieldMeta
 
-// FieldHint calls f.
-func (f HintFunc) FieldHint(blockKey, fieldPath string) FieldMeta { return f(blockKey, fieldPath) }
+// FieldMeta calls f.
+func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta { return f(blockKey, fieldPath) }
 
 // ─── Checked Fields ──────────────────────────────────────────────────────────
 
@@ -237,7 +249,8 @@ type Config struct {
 	Schema               any                // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
 	Title                string             // label shown in the TUI header
 	Presets              PresetSource       // optional; nil disables the preset picker
-	Hints                HintSource         // optional; nil hides the Hint/Example panel entirely
+	EnableHints          bool               // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
+	Metadata             MetadataSource     // field metadata displayed in the hint panel and enforced by the FromMetadata validators
 	Validators           []Validator        // rules evaluated before every save and on the validate shortcut
 	PreCheckedFields     CheckedFieldSource // sub-fields that start checked when a block overlay opens; keyed by top-level yaml name
 	FieldSnippets        FieldSnippetSource // YAML inserted when a sub-field is toggled on; keyed by parent key → child yaml name

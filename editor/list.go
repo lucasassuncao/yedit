@@ -195,6 +195,17 @@ func (lm listModel) SelectedItem() *listItem {
 	return &it
 }
 
+// ItemByKey returns the listItem for the given key, or a zero listItem when
+// the key is not in the list.
+func (lm listModel) ItemByKey(key string) listItem {
+	for _, it := range lm.items {
+		if it.Key == key {
+			return it
+		}
+	}
+	return listItem{Key: key}
+}
+
 // Update handles keyboard input for both normal and filter modes.
 func (lm listModel) Update(msg tea.Msg) (listModel, tea.Cmd) {
 	key, ok := msg.(tea.KeyMsg)

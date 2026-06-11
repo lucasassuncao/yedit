@@ -71,6 +71,17 @@ func (be blockEditState) performEntryDelete(seqIdx int) blockEditState {
 	return be
 }
 
+// flushAndLoadEntry flushes the current entry into be.node and then loads the
+// entry at idx. If the flush fails (invalid YAML), be.editorErr is set and the
+// caller should surface it without navigating.
+func (be blockEditState) flushAndLoadEntry(idx int) blockEditState {
+	be = be.flushCurrentEntry()
+	if be.editorErr.kind == errParse {
+		return be
+	}
+	return be.loadEntry(idx)
+}
+
 // initialSeqItemContent returns a minimal YAML template for a new sequence item.
 // Uses the first child field name so the initial content matches the actual schema.
 func (be blockEditState) initialSeqItemContent(label string) string {
@@ -113,34 +124,34 @@ func (be blockEditState) collectionTreeNodes() []treeNode {
 // flushCurrentEntry parses the current entry's editor text back into the
 // canonical node. It is a no-op when there is no current entry or the editor is
 // empty. When the text cannot be parsed into an entry (e.g. the user deleted the
-// "key:" header, or it is mid-edit invalid), be.errMsg is set so callers block
+// "key:" header, or it is mid-edit invalid), be.editorErr is set so callers block
 // navigation or commit — the parse gate that keeps the node valid.
 func (be blockEditState) flushCurrentEntry() blockEditState {
 	cur := be.coll.current
 	if cur < 0 || cur >= entryCount(be.node, be.coll.isMap) {
-		be.errMsg = ""
+		be.editorErr = editorError{}
 		return be
 	}
 	view := be.yamlEditor.Value()
 	if strings.TrimSpace(view) == "" {
-		be.errMsg = ""
+		be.editorErr = editorError{}
 		return be
 	}
 	if !be.coll.isMap && viewHasMultipleSeqItems(view) {
-		be.errMsg = "One entry per editor — use [+ add new] to create additional entries."
+		be.editorErr = editorError{kind: errParse, message: "One entry per editor — use [+ add new] to create additional entries."}
 		return be
 	}
 	kn, vn, ok := parseEntryFromView(view, be.coll.isMap)
 	if !ok {
+		msg := "Invalid YAML — fix this entry before leaving it."
 		if itemContentFrom(be.key, view) == "" {
-			be.errMsg = "Missing '" + be.key + ":' header — restore it before navigating."
-		} else {
-			be.errMsg = "Invalid YAML — fix this entry before leaving it."
+			msg = "Missing '" + be.key + ":' header — restore it before navigating."
 		}
+		be.editorErr = editorError{kind: errParse, message: msg}
 		return be
 	}
 	setEntry(be.node, be.coll.isMap, cur, kn, vn)
-	be.errMsg = ""
+	be.editorErr = editorError{}
 	return be
 }
 

@@ -60,25 +60,6 @@ func (be blockEditState) fieldHasContent(node treeNode) bool {
 	}
 }
 
-// applyPendingRemove carries out the field removal that was held pending
-// confirmation. It sets the node to unchecked and applies the YAML change.
-func (be blockEditState) applyPendingRemove(nodeIdx int) blockEditState {
-	if nodeIdx < 0 || nodeIdx >= len(be.tree.nodes) {
-		return be
-	}
-	nodes := make([]treeNode, len(be.tree.nodes))
-	copy(nodes, be.tree.nodes)
-	nodes[nodeIdx].checked = false
-	be.tree.nodes = nodes
-
-	node := be.tree.nodes[nodeIdx]
-	ctx := toggleCtx{key: be.key, snippets: be.snippetsFn(), childDefs: be.childDefs}
-	be.applyToggle(ctx, node, false)
-	be.dirty = true
-	be.tree = be.resyncTreeFromYAML()
-	return be
-}
-
 func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	prevSeqIdx := be.tree.NearestSeqItem()
 
@@ -89,11 +70,14 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 	case treeOpenChild:
 		return be.handleTreeOpenChild()
 	case treeToggled:
-		return be.handleTreeToggled()
+		be = be.handleTreeToggleDispatch()
+		return be, nil
 	case treeAddNew:
-		return be.handleTreeAddNew(), nil
+		be = be.dispatch(AddEntry{})
+		return be, nil
 	case treeDeleted:
-		return be.handleTreeDeleted(), nil
+		be = be.handleTreeDeleteDispatch()
+		return be, nil
 	}
 
 	// Collection entries are shown one at a time; moving to a different entry
@@ -101,15 +85,62 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 	if be.isCollectionNav() && (action == treeNoAction || action == treeExpanded || action == treeCollapsed) {
 		newSeqIdx := be.tree.NearestSeqItem()
 		if newSeqIdx != prevSeqIdx {
-			be = be.flushCurrentEntry()
-			if be.errMsg == "" {
-				be = be.loadEntry(newSeqIdx)
-			}
-			// If errMsg is set, navigation is blocked; the error is visible in the status bar.
+			be = be.dispatch(NavigateEntry{Idx: newSeqIdx})
 		}
 	}
 
 	return be, nil
+}
+
+// handleTreeToggleDispatch either shows a confirmation dialog or dispatches
+// ToggleField immediately (when NoDeleteConfirm or the field has no content).
+func (be blockEditState) handleTreeToggleDispatch() blockEditState {
+	idx := be.tree.currentNodeIdx()
+	if idx < 0 {
+		return be
+	}
+	node := be.tree.nodes[idx]
+	if !node.checked && be.fieldHasContent(node) && !be.cfg.NoDeleteConfirm {
+		// Revert the visual toggle while waiting for the user to confirm.
+		nodes := make([]treeNode, len(be.tree.nodes))
+		copy(nodes, be.tree.nodes)
+		nodes[idx].checked = true
+		be.tree.nodes = nodes
+		capturedIdx := idx
+		al := alert.NewConfirm(
+			"Remove field?",
+			fmt.Sprintf("Remove %q? Its content will be lost.", node.label),
+			func() tea.Msg { return pendingRemoveMsg{nodeIdx: capturedIdx} },
+			theme.Size{W: be.width, H: be.height},
+		)
+		be.confirmAlert = &al
+		be.mode = modeConfirming
+		return be
+	}
+	return be.dispatch(ToggleField{NodeIdx: idx, Checked: node.checked})
+}
+
+// handleTreeDeleteDispatch either shows a confirmation dialog or dispatches
+// DeleteEntry immediately (when NoDeleteConfirm).
+func (be blockEditState) handleTreeDeleteDispatch() blockEditState {
+	idx := be.tree.currentNodeIdx()
+	if idx < 0 || be.tree.nodes[idx].kind != treeNodeSeqItem {
+		return be
+	}
+	seqIdx := be.tree.nodes[idx].seqIdx
+	if be.cfg.NoDeleteConfirm {
+		return be.dispatch(DeleteEntry{SeqIdx: seqIdx})
+	}
+	label := be.tree.nodes[idx].label
+	al := alert.NewConfirm(
+		"Remove entry?",
+		fmt.Sprintf("Remove %q? Its content will be lost.", label),
+		func() tea.Msg { return pendingEntryDeleteMsg{seqIdx: seqIdx} },
+		theme.Size{W: be.width, H: be.height},
+	)
+	be.confirmAlert = &al
+	be.mode = modeConfirming
+	return be
 }
 
 // handleTreeOpenChild drills into the openable field under the cursor by
@@ -147,39 +178,6 @@ func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
 			relSegs: relSegs,
 		}
 	}
-}
-
-// handleTreeToggled applies or reverts a field toggle. Toggling a field OFF when
-// it already has content requires confirmation to avoid silent data loss.
-func (be blockEditState) handleTreeToggled() (blockEditState, tea.Cmd) {
-	idx := be.tree.currentNodeIdx()
-	if idx < 0 {
-		return be, nil
-	}
-	node := be.tree.nodes[idx]
-	be = be.saveUndo()
-	if !node.checked && be.fieldHasContent(node) && !be.cfg.NoDeleteConfirm {
-		// Revert the toggle in the tree while waiting for the user to confirm.
-		nodes := make([]treeNode, len(be.tree.nodes))
-		copy(nodes, be.tree.nodes)
-		nodes[idx].checked = true
-		be.tree.nodes = nodes
-		capturedIdx := idx
-		al := alert.NewConfirm(
-			"Remove field?",
-			fmt.Sprintf("Remove %q? Its content will be lost.", node.label),
-			func() tea.Msg { return pendingRemoveMsg{nodeIdx: capturedIdx} },
-			theme.Size{W: be.width, H: be.height},
-		)
-		be.confirmAlert = &al
-		be.mode = modeConfirming
-		return be, nil
-	}
-	be.dirty = true
-	ctx := toggleCtx{key: be.key, snippets: be.snippetsFn(), childDefs: be.childDefs}
-	be.applyToggle(ctx, node, node.checked)
-	be.tree = be.resyncTreeFromYAML()
-	return be, nil
 }
 
 // applyToggle adds or removes the field at node within the canonical node, then
@@ -221,7 +219,7 @@ func (be blockEditState) handleTreeAddNew() blockEditState {
 	be = be.saveUndo()
 	be.dirty = true
 	be = be.flushCurrentEntry()
-	be.errMsg = "" // adding overrides an in-progress invalid entry; don't block on it
+	be.editorErr = editorError{} // adding overrides an in-progress invalid entry; don't block on it
 	label := be.newEntryLabel()
 	be.tree = be.tree.WithNewSeqItem(be.childDefs, label)
 	// Build the new entry node from the schema template and append it.
@@ -237,30 +235,6 @@ func (be blockEditState) handleTreeAddNew() blockEditState {
 	}
 	be = be.loadEntry(be.tree.NearestSeqItem())
 	be.tree = be.resyncTreeFromYAML()
-	return be
-}
-
-// handleTreeDeleted fires when ctrl+d targets a collection entry. Dropping a whole
-// entry is the most destructive tree action, so it confirms first (unless
-// NoDeleteConfirm); the actual removal runs in performEntryDelete.
-func (be blockEditState) handleTreeDeleted() blockEditState {
-	idx := be.tree.currentNodeIdx()
-	if idx < 0 || be.tree.nodes[idx].kind != treeNodeSeqItem {
-		return be
-	}
-	seqIdx := be.tree.nodes[idx].seqIdx
-	if be.cfg.NoDeleteConfirm {
-		return be.performEntryDelete(seqIdx)
-	}
-	label := be.tree.nodes[idx].label
-	al := alert.NewConfirm(
-		"Remove entry?",
-		fmt.Sprintf("Remove %q? Its content will be lost.", label),
-		func() tea.Msg { return pendingEntryDeleteMsg{seqIdx: seqIdx} },
-		theme.Size{W: be.width, H: be.height},
-	)
-	be.confirmAlert = &al
-	be.mode = modeConfirming
 	return be
 }
 

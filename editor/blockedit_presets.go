@@ -157,18 +157,10 @@ func (be blockEditState) openPresetPicker() blockEditState {
 	return be
 }
 
-func (be blockEditState) applyPreset(name string) blockEditState {
-	if be.cfg.Presets == nil {
-		return be
-	}
-	y, err := be.cfg.Presets.PresetYAML(be.key, name)
-	if err != nil {
-		be.errMsg = fmt.Sprintf("preset error: %v", err)
-		return be
-	}
+func (be blockEditState) applyPreset(name, y string) blockEditState {
 	be = be.saveUndo()
 	be.currentPreset = name
-	be.errMsg = ""
+	be.editorErr = editorError{}
 	be.dirty = true
 
 	if be.isCollectionNav() {
@@ -186,13 +178,8 @@ func (be blockEditState) applyPreset(name string) blockEditState {
 	return be
 }
 
-func (be blockEditState) appendPreset(name string) blockEditState {
-	if be.cfg.Presets == nil || !be.isCollectionNav() {
-		return be
-	}
-	y, err := be.cfg.Presets.PresetYAML(be.key, name)
-	if err != nil {
-		be.errMsg = fmt.Sprintf("preset error: %v", err)
+func (be blockEditState) appendPreset(name, y string) blockEditState {
+	if !be.isCollectionNav() {
 		return be
 	}
 	be = be.saveUndo()
@@ -203,7 +190,7 @@ func (be blockEditState) appendPreset(name string) blockEditState {
 	}
 
 	be = be.flushCurrentEntry()
-	be.errMsg = "" // appending overrides an in-progress invalid entry; don't block
+	be.editorErr = editorError{} // appending overrides an in-progress invalid entry; don't block
 	// Indentation is irrelevant now: the entries are spliced as nodes and re-encoded.
 	be.node.Content = append(be.node.Content, presetNode.Content...)
 
@@ -213,7 +200,7 @@ func (be blockEditState) appendPreset(name string) blockEditState {
 
 	be = be.loadEntry(entryCount(be.node, be.isMapNav()) - 1)
 	be.currentPreset = name
-	be.errMsg = ""
+	be.editorErr = editorError{}
 	be.dirty = true
 	return be
 }
