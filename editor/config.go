@@ -50,7 +50,7 @@ func (f PresetFunc) PresetYAML(field, name string) (string, error) { return f(fi
 
 // FieldMeta carries a single field's metadata: displayed in the Hint/Example
 // panel and enforced by the FromMetadata validator family. Fields at their zero
-// value declare nothing — no panel line, no enforcement.
+// value declare nothing - no panel line, no enforcement.
 // MetadataSource is the sole authority: YEDIT never auto-populates any FieldMeta
 // field from struct tags. If no MetadataSource is configured, the hint panel
 // shows only a generated example.
@@ -58,17 +58,17 @@ type FieldMeta struct {
 	Description string
 	Type        string   // human-readable Go type: "string", "bool", "int", "[]string", "duration", "object", etc.
 	Required    bool     // enforced by RequiredFromMetadata
-	Default     string   // display only — no enforcement rule exists for defaults
+	Default     string   // display only - no enforcement rule exists for defaults
 	OneOf       []string // enforced by OneOfFromMetadata
 	Example     string   // YAML snippet shown verbatim in the Example section
 
 	// Value constraints, enforced by the FromMetadata validator family.
-	Min, Max string // RangeFromMetadata — number, duration, or size strings (ValueInRange semantics)
-	Pattern  string // PatternFromMetadata — RE2 regular expression (ValueMatches semantics)
+	Min, Max string // RangeFromMetadata - number, duration, or size strings (ValueInRange semantics)
+	Pattern  string // PatternFromMetadata - RE2 regular expression (ValueMatches semantics)
 	// Collection constraints. MinCount/MaxCount both zero means no rule;
 	// MinCount > 0 with MaxCount == 0 means "at least MinCount, no upper bound".
 	MinCount, MaxCount int  // CountFromMetadata (CountRange semantics)
-	Unique             bool // UniqueFromMetadata — scalar list items must not repeat
+	Unique             bool // UniqueFromMetadata - scalar list items must not repeat
 	// Deprecation: non-empty marks the field deprecated; the value is the
 	// migration hint shown to the user (DeprecatedFromMetadata).
 	Deprecated string
@@ -225,13 +225,13 @@ func (f ValidatorFunc) Validate(in ValidationInput) []Violation {
 // Schema must be a pointer to the Go type describing the YAML document's top
 // level (e.g. &MyConfig{}). The editor introspects it through yedit/schema.
 //
-// Presets is optional — when nil the editor opens fresh blocks with a minimal
+// Presets is optional - when nil the editor opens fresh blocks with a minimal
 // "<key>:\n" template and the preset picker is disabled.
 //
 // Validators run before every save and on the explicit "validate" shortcut.
 // Use editor.MutuallyExclusive and editor.RequiredWith for the common cases.
 //
-// Hints is optional — when set, each field's Hint/Example panel is populated
+// Hints is optional - when set, each field's Hint/Example panel is populated
 // from the returned FieldMeta. All FieldMeta fields are used as-is; YEDIT
 // does not fall back to struct tag values. When Hints is nil, the panel shows
 // only a generated example.

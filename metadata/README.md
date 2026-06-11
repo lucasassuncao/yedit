@@ -30,7 +30,7 @@ A tree key with no matching yaml\-tagged field is an error naming the full offen
 <a name="Node"></a>
 ## type [Node](<https://github.com/lucasassuncao/yedit/blob/main/metadata/metadata.go#L22-L25>)
 
-Node is one field's metadata plus its children, keyed by yaml name. Use shared pointers in Children to model recursive schema types \(e.g. a filter whose "any"/"all" children are filters again\) without duplicating definitions — Build handles the cycle.
+Node is one field's metadata plus its children, keyed by yaml name. Use shared pointers in Children to model recursive schema types \(e.g. a filter whose "any"/"all" children are filters again\) without duplicating definitions - Build handles the cycle.
 
 ```go
 type Node struct {

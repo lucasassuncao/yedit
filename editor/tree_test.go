@@ -207,7 +207,7 @@ func TestMatrix_ToggleConsequenceAcrossContexts(t *testing.T) {
 			be = expandAll(be)
 			be = cursorToLabel(be, tc.leaf)
 
-			// Enter toggles the leaf ON — it must appear in the editor YAML.
+			// Enter toggles the leaf ON - it must appear in the editor YAML.
 			be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
 			if !strings.Contains(be.yamlEditor.Value(), tc.leaf+":") {
 				t.Fatalf("[%s] toggle ON did not add %q:\n%s", tc.name, tc.leaf, be.yamlEditor.Value())

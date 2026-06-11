@@ -11,7 +11,7 @@ import (
 
 // This file holds the node-based collection navigator: the structural
 // counterpart of the seqEntry/collectionBuffer text layer. The collection's
-// value node (be.node — a SequenceNode for []Struct, a MappingNode for
+// value node (be.node - a SequenceNode for []Struct, a MappingNode for
 // map[string]Struct) is the single source of truth; entry labels, the entry
 // list, and per-entry checkmarks are all derived from it.
 
@@ -94,7 +94,7 @@ func entryViewYAML(node *yaml.Node, key string, isMap bool, i int) string {
 
 // viewHasMultipleSeqItems reports whether the YAML text contains more than one
 // sequence item under the collection key. Used to catch the case where a user
-// manually adds a second "- …" block to the single-entry editor — that extra
+// manually adds a second "- …" block to the single-entry editor - that extra
 // entry would be silently dropped by parseEntryFromView, so we reject it early.
 func viewHasMultipleSeqItems(view string) bool {
 	blockVal := valueNodeOfSnippet(view)
@@ -103,7 +103,7 @@ func viewHasMultipleSeqItems(view string) bool {
 
 // parseEntryFromView parses single-entry editor text back into the entry's key
 // node (maps only) and value mapping. ok is false on a parse error or a shape
-// that does not match the collection kind — the parse gate that keeps invalid
+// that does not match the collection kind - the parse gate that keeps invalid
 // text from corrupting the canonical node.
 func parseEntryFromView(view string, isMap bool) (keyNode, valNode *yaml.Node, ok bool) {
 	blockVal := valueNodeOfSnippet(view)

@@ -9,14 +9,14 @@ import (
 // list item. All display data comes from MetadataSource.
 func (m model) selectedHint() string {
 	if m.cfg.Metadata == nil {
-		return m.theme.hintDim.Render("  Config.Metadata is not set — no metadata source configured")
+		return m.theme.hintDim.Render("  Config.Metadata is not set - no metadata source configured")
 	}
 	it := m.list.SelectedItem()
 	if it == nil || it.Separator {
 		return m.theme.hintDim.Render("  select a field to see hints")
 	}
 	if it.Unknown {
-		return m.theme.hintDim.Render("  unknown key — not in the schema")
+		return m.theme.hintDim.Render("  unknown key - not in the schema")
 	}
 	def := fieldDefByName(m.schemaTree, it.Key)
 	if def.YAMLName == "" {

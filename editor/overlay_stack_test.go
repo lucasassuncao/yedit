@@ -101,7 +101,7 @@ func TestEnterOnNestedMapEmitsOpenChild(t *testing.T) {
 // TestDrillInCommitsThroughCanonicalTree exercises the canonical-tree model:
 // drilling into a nested field reads its content from editRoot (no substring
 // copy), and Ctrl+S flushes the focused editor back into editRoot and serializes
-// the whole block to the document — structurally intact, with no per-level splice.
+// the whole block to the document - structurally intact, with no per-level splice.
 func TestDrillInCommitsThroughCanonicalTree(t *testing.T) {
 	type ceProbe struct {
 		HTTPRoutes map[string]struct {
@@ -248,7 +248,7 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Nested toggle combinations — deep nesting, pruning, and interaction probes
+// Nested toggle combinations - deep nesting, pruning, and interaction probes
 // ---------------------------------------------------------------------------
 
 // catDefs mirrors the movelooper category schema shape: nested structs (source,

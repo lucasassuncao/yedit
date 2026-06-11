@@ -269,7 +269,7 @@ func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
 			lm.fCursor = 0
 			lm.fOffset = 0
 		}
-	// Only the arrow keys navigate while filtering — "j"/"k" must remain
+	// Only the arrow keys navigate while filtering - "j"/"k" must remain
 	// typeable so filters like "unknown" or "worker" can be entered.
 	case "up":
 		lm.moveFCursor(-1)
@@ -308,7 +308,7 @@ func (lm *listModel) clampFScroll() {
 }
 
 func (lm *listModel) moveCursor(delta int) {
-	// Clamp at the list bounds (no wrap-around), skipping separator rows —
+	// Clamp at the list bounds (no wrap-around), skipping separator rows -
 	// matching the tree and viewer panels.
 	for i := lm.cursor + delta; i >= 0 && i < len(lm.items); i += delta {
 		if !lm.items[i].Separator {

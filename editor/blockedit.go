@@ -71,7 +71,7 @@ type blockEditState struct {
 	coll        collectionBuffer // non-zero only for collection-nav editors
 	knownByPath map[string]map[string]bool
 
-	// node is the block's canonical value node — the single source of truth from
+	// node is the block's canonical value node - the single source of truth from
 	// which the tree (checkmarks, labels) is projected. For non-collection blocks
 	// it mirrors what the YAML editor renders; tree-driven toggles mutate it
 	// structurally and the editor is re-rendered from it. Collection blocks still
@@ -257,7 +257,7 @@ func (be blockEditState) editorH() int {
 func (be blockEditState) Init() tea.Cmd { return textarea.Blink }
 
 // forwardMsg passes bubbletea messages to sub-components (textarea, alert,
-// preset browser, resize). Contains no editor logic — all semantic mutations go
+// preset browser, resize). Contains no editor logic - all semantic mutations go
 // through dispatch. pendingRemoveMsg and pendingEntryDeleteMsg are converted to
 // dispatch calls here because they arrive after a confirmation dialog clears.
 func (be blockEditState) forwardMsg(msg tea.Msg) (blockEditState, tea.Cmd) {
@@ -415,7 +415,7 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	case tea.KeyEsc:
 		// Nested editor: Esc navigates up one level, keeping edits (they are
 		// flushed into the canonical tree by the model). Nothing is lost, so no
-		// discard prompt — that only guards leaving the block edit entirely.
+		// discard prompt - that only guards leaving the block edit entirely.
 		if len(be.focus) > 0 {
 			return be, func() tea.Msg { return drillOutMsg{} }
 		}
@@ -448,7 +448,7 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	}
 
 	// YAML panel active. The buffer may be transiently invalid while the user
-	// types — we never block keystrokes or discard what they wrote. The canonical
+	// types - we never block keystrokes or discard what they wrote. The canonical
 	// node is parse-gated below: it (and the tree derived from it) advances only
 	// when the buffer parses; while it is invalid the tree freezes at the last good
 	// state, so tree and node never disagree. The model's editRoot is touched only
@@ -458,7 +458,7 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	be.yamlEditor, cmd = be.yamlEditor.Update(msg)
 	// Only re-project when the content actually changed. Cursor moves, selection,
 	// and other non-mutating keys leave the tree unchanged, so there is nothing to
-	// resync — and no reason to re-parse the buffer.
+	// resync - and no reason to re-parse the buffer.
 	if be.yamlEditor.Value() != prevValue {
 		be.dirty = true
 		be.statusMsg = ""
@@ -490,7 +490,7 @@ func (be blockEditState) syncParsedNode(content string) blockEditState {
 }
 
 // resyncTreeFromYAML re-derives the tree's checked states from the canonical
-// node — for struct blocks via syncTreeCheckedFromNode (with ADDED/AVAILABLE
+// node - for struct blocks via syncTreeCheckedFromNode (with ADDED/AVAILABLE
 // sectioning), for collections via collectionDeriveTree (per-entry labels and
 // checks). The node is the source of truth, so the tree can never disagree with
 // it even while the text buffer is mid-edit.
@@ -718,7 +718,7 @@ func validateSnippetText(text string) error {
 
 // fieldItemView renders the left panel for a tree-less block (primitive, enum,
 // or free-form collection): a single non-toggleable row naming the field being
-// edited. There are no sub-fields to navigate, so the row is just an anchor —
+// edited. There are no sub-fields to navigate, so the row is just an anchor -
 // the field's metadata lives in the Hint/Example panel.
 func (be blockEditState) fieldItemView() string {
 	return be.theme.existingItem.Render(" ▸ " + be.key)
@@ -750,7 +750,7 @@ func (be blockEditState) hintContent() string {
 // fieldPath is the dot-joined path from the block root (e.g. "source.path").
 func (be blockEditState) fieldHintFor(fieldPath string) string {
 	if be.cfg.Metadata == nil {
-		return be.theme.hintDim.Render("  Config.Metadata is not set — no metadata source configured")
+		return be.theme.hintDim.Render("  Config.Metadata is not set - no metadata source configured")
 	}
 	meta := be.cfg.Metadata.FieldMeta(be.key, fieldPath)
 	if out := renderFieldHint(be.theme, meta, meta.Example); out != "" {

@@ -7,8 +7,8 @@ import (
 )
 
 // This file holds the structural (node-based) counterparts of the text-parsing
-// sync helpers. They read/derive tree state directly from a *yaml.Node — the
-// single source of truth — instead of re-parsing the YAML text on every edit.
+// sync helpers. They read/derive tree state directly from a *yaml.Node - the
+// single source of truth - instead of re-parsing the YAML text on every edit.
 // See the "single source of truth" design: the tree is a pure projection of the
 // node, so the two can never disagree even while the text buffer is mid-edit.
 
@@ -16,7 +16,7 @@ import (
 // from valueNode (the block's value mapping). It is the structural replacement
 // for syncTreeCheckedStates / syncCurrentEntry / syncMapEntryChecked.
 //
-// skipFirstSeg drops yamlPath[0] for nodes below depth 0 — used for collection
+// skipFirstSeg drops yamlPath[0] for nodes below depth 0 - used for collection
 // entries, where path[0] is the entry label, not a real mapping key. The
 // returned slice is a copy; the input is left untouched.
 func deriveChecked(valueNode *yaml.Node, nodes []treeNode, skipFirstSeg bool) []treeNode {
@@ -115,7 +115,7 @@ func nodeHasContent(n *yaml.Node) bool {
 }
 
 // blockValueNode parses content of the form "<key>:\n  ..." and returns the
-// value node mapped to key — the canonical node for a block editor. When the
+// value node mapped to key - the canonical node for a block editor. When the
 // content is empty or unparseable it returns an empty mapping so a fresh block
 // always has a writable node. It reuses valueNodeOfSnippet for the happy path.
 func blockValueNode(content string) *yaml.Node {

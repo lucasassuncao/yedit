@@ -25,13 +25,13 @@ and a human-readable `Message`.
 | Validator | Rule |
 |---|---|
 | [`Required`](#required) | listed paths must be present and non-empty |
-| [`RequiredFromHints`](#the-fromhints-family) | enforce the HintSource's `FieldMeta.Required` markers |
-| [`OneOfFromHints`](#the-fromhints-family) | enforce `FieldMeta.OneOf` |
-| [`RangeFromHints`](#the-fromhints-family) | enforce `FieldMeta.Min`/`Max` |
-| [`PatternFromHints`](#the-fromhints-family) | enforce `FieldMeta.Pattern` |
-| [`CountFromHints`](#the-fromhints-family) | enforce `FieldMeta.MinCount`/`MaxCount` |
-| [`UniqueFromHints`](#the-fromhints-family) | enforce `FieldMeta.Unique` |
-| [`DeprecatedFromHints`](#the-fromhints-family) | enforce `FieldMeta.Deprecated` |
+| [`RequiredFromMetadata`](#the-frommetadata-family) | enforce the MetadataSource's `FieldMeta.Required` markers |
+| [`OneOfFromMetadata`](#the-frommetadata-family) | enforce `FieldMeta.OneOf` |
+| [`RangeFromMetadata`](#the-frommetadata-family) | enforce `FieldMeta.Min`/`Max` |
+| [`PatternFromMetadata`](#the-frommetadata-family) | enforce `FieldMeta.Pattern` |
+| [`CountFromMetadata`](#the-frommetadata-family) | enforce `FieldMeta.MinCount`/`MaxCount` |
+| [`UniqueFromMetadata`](#the-frommetadata-family) | enforce `FieldMeta.Unique` |
+| [`DeprecatedFromMetadata`](#the-frommetadata-family) | enforce `FieldMeta.Deprecated` |
 | [`RequiredWith`](#requiredwith) | key requires another top-level key to be set |
 | [`RequiredIf`](#requiredif) | key is required when another field has a given value |
 | [`AtLeastOneOf`](#atleastoneof) | at least one of the listed keys must be present |
@@ -57,17 +57,17 @@ and a human-readable `Message`.
 Most validators take dot-separated YAML paths (`server.tls.cert`). Three rules
 apply consistently:
 
-- **Sequence expansion** — when a path segment lands on a sequence, every item
+- **Sequence expansion** - when a path segment lands on a sequence, every item
   is checked. `categories.name` checks `name` inside each entry of the
   `categories` list, reporting violations as `categories[2].name`.
-- **Dictionary expansion** — when a segment lands on a dict-style mapping
+- **Dictionary expansion** - when a segment lands on a dict-style mapping
   (arbitrary keys, struct values), every value is checked.
-- **Absent is not an error** — value validators (`ValueOneOf`, `ValueInRange`,
+- **Absent is not an error** - value validators (`ValueOneOf`, `ValueInRange`,
   `ValueMatches`, `CountRange`, …) report nothing when the path is absent or the
   scalar is empty. Combine them with `Required` when the field is mandatory.
 
 Validators built from invalid arguments (a bad regex, dotted paths with
-diverging parents, an inconsistent range) do not silently never fire — they
+diverging parents, an inconsistent range) do not silently never fire - they
 report the misconfiguration as a violation on every run, so the mistake
 surfaces on the first validate.
 
@@ -90,41 +90,41 @@ path is conditional: the leaf is only required where its parent exists, so a
 required field inside an optional block is not reported while the block is
 absent.
 
-### The FromHints family
+### The FromMetadata family
 
-Field constraints declared in the `HintSource` (`FieldMeta`) are enforced at
-validate/save time by a family of validators — declare once, the hint panel
+Field constraints declared in the `MetadataSource` (`FieldMeta`) are enforced at
+validate/save time by a family of validators - declare once, the hint panel
 displays it and the save enforces it:
 
 ```go
 editor.Run(editor.Config{
-    Hints: myHints, // e.g. built with the yedit/hints package
+    Metadata: src, // e.g. built with metadata.Build
     Validators: []editor.Validator{
-        editor.RequiredFromHints(),
-        editor.OneOfFromHints(),
-        editor.RangeFromHints(),
-        editor.PatternFromHints(),
-        editor.CountFromHints(),
-        editor.UniqueFromHints(),
-        editor.DeprecatedFromHints(),
+        editor.RequiredFromMetadata(),
+        editor.OneOfFromMetadata(),
+        editor.RangeFromMetadata(),
+        editor.PatternFromMetadata(),
+        editor.CountFromMetadata(),
+        editor.UniqueFromMetadata(),
+        editor.DeprecatedFromMetadata(),
     },
 })
 ```
 
 | Constructor | FieldMeta fields | Semantics of |
 |---|---|---|
-| `RequiredFromHints()` | `Required` | `Required` |
-| `OneOfFromHints()` | `OneOf` | `ValueOneOf` |
-| `RangeFromHints()` | `Min`, `Max` | `ValueInRange` |
-| `PatternFromHints()` | `Pattern` | `ValueMatches` |
-| `CountFromHints()` | `MinCount`, `MaxCount` | `CountRange` |
-| `UniqueFromHints()` | `Unique` | `UniqueValues` |
-| `DeprecatedFromHints()` | `Deprecated` | `Deprecated` |
+| `RequiredFromMetadata()` | `Required` | `Required` |
+| `OneOfFromMetadata()` | `OneOf` | `ValueOneOf` |
+| `RangeFromMetadata()` | `Min`, `Max` | `ValueInRange` |
+| `PatternFromMetadata()` | `Pattern` | `ValueMatches` |
+| `CountFromMetadata()` | `MinCount`, `MaxCount` | `CountRange` |
+| `UniqueFromMetadata()` | `Unique` | `UniqueValues` |
+| `DeprecatedFromMetadata()` | `Deprecated` | `Deprecated` |
 
 All share the same engine: the walk is guided by the discovered schema; for
-every schema path the validator queries the `HintSource` —
-`FieldHint(block, "")` for a top-level block, `FieldHint(block, "source.path")`
-for nested fields, the same convention as the hint panel — and applies its
+every schema path the validator queries the `MetadataSource` -
+`FieldMeta(block, "")` for a top-level block, `FieldMeta(block, "source.path")`
+for nested fields, the same convention as the hint panel - and applies its
 rule where the corresponding `FieldMeta` fields are set. Zero-valued fields
 declare nothing. Sequence and dictionary entries are checked individually,
 and a rule only fires where the field's parent exists (top-level required
@@ -133,7 +133,7 @@ blocks are always enforced).
 Notes:
 
 - Value rules (`OneOf`, `Range`, `Pattern`) follow the shared contract: an
-  absent or empty value reports nothing — combine with `Required: true` when
+  absent or empty value reports nothing - combine with `Required: true` when
   the field is mandatory.
 - `Range` bounds may be one-sided (`Min` only = "at least", `Max` only = "at
   most"). Malformed or mixed-kind bounds, and invalid `Pattern` regexes, are
@@ -141,8 +141,8 @@ Notes:
 - `MinCount`/`MaxCount` both zero means no rule; `MinCount > 0` with
   `MaxCount == 0` means "at least MinCount, no upper bound".
 
-The editor wires the schema and the configured `HintSource` in at session
-start; outside `editor.Run`, or without a `HintSource`, the family is inert.
+The editor wires the schema and the configured `MetadataSource` in at session
+start; outside `editor.Run`, or without a `MetadataSource`, the family is inert.
 
 ### RequiredWith
 
@@ -153,8 +153,8 @@ editor.RequiredWith("server.tls-key", "server.tls-cert")
 
 Reports a violation when `key` is present but `parent` is not. Supports the
 same two forms as `MutuallyExclusive`: plain keys are checked against the
-document's top-level blocks, and dotted paths — both sharing the same parent
-prefix — are checked inside every mapping reached by that parent, with
+document's top-level blocks, and dotted paths - both sharing the same parent
+prefix - are checked inside every mapping reached by that parent, with
 sequences and dict-style mappings expanded automatically. For symmetric pairs
 (both or neither), prefer `AllOrNone`.
 
@@ -167,7 +167,7 @@ editor.RequiredIf("servers.tls-cert", "servers.protocol", "https")
 
 Reports a violation when `key` is absent but the field at `condPath` equals
 `condValue`. When the two paths share the same parent prefix, the rule is
-evaluated inside every mapping reached by that parent — each list entry is
+evaluated inside every mapping reached by that parent - each list entry is
 checked against its own condition value. Paths with unrelated parents are both
 resolved from the document root.
 
@@ -203,7 +203,7 @@ paths sharing a parent). The rule only fires where the parent mapping exists.
 // top-level keys
 editor.MutuallyExclusive("image", "build", "dockerComposeFile")
 
-// dotted paths — all must share the same parent prefix
+// dotted paths - all must share the same parent prefix
 editor.MutuallyExclusive(
     "categories.installers.source.filter.any",
     "categories.installers.source.filter.all",
@@ -213,7 +213,7 @@ editor.MutuallyExclusive(
 Reports a violation when more than one of the listed keys is present at the
 same time. Plain keys are checked against the document's top-level blocks.
 Dotted paths must all share the same parent prefix; the validator navigates to
-that parent — expanding sequences and dictionaries — and checks the leaf keys
+that parent - expanding sequences and dictionaries - and checks the leaf keys
 inside every mapping it reaches.
 
 ### MutuallyExclusiveNested
@@ -267,7 +267,7 @@ editor.ValueInRange("cache.max-size", "1MB", "2GiB")
 
 Reports a violation when the scalar at `path` is present but outside the
 inclusive `[min, max]` range. Bounds and value may be plain numbers (`"1"`,
-`"0.5"`), `time.Duration` strings (`"24h"`), or size strings — and all three
+`"0.5"`), `time.Duration` strings (`"24h"`), or size strings - and all three
 must be of the same kind. Size suffixes follow their standard meaning:
 `KB`/`MB`/`GB`/`TB` are decimal (powers of 1000) and `KiB`/`MiB`/`GiB`/`TiB`
 are binary (powers of 1024).
@@ -289,7 +289,7 @@ editor.ValueHasSuffix("output", ".yaml")
 ```
 
 Report a violation when the scalar at `path` is present but does not start
-with `prefix` / end with `suffix` — a simpler alternative to `ValueMatches`
+with `prefix` / end with `suffix` - a simpler alternative to `ValueMatches`
 when the rule is a fixed affix and no regex is needed.
 
 ---
@@ -308,7 +308,7 @@ plain numbers, durations, or sizes (same rules as `ValueInRange`); both sides
 must be of the same kind.
 
 When the two paths share the same parent prefix, the pair is compared inside
-every mapping reached by that parent — each list entry's own min/max pair is
+every mapping reached by that parent - each list entry's own min/max pair is
 checked. Unrelated parents are resolved from the document root.
 
 ---
@@ -333,7 +333,7 @@ editor.UniqueValues("tags")
 ```
 
 Reports a violation when two or more scalar items in the sequence at `seqPath`
-share the same value. Non-scalar items are skipped — use `NoDuplicates` to
+share the same value. Non-scalar items are skipped - use `NoDuplicates` to
 deduplicate struct entries by one of their fields.
 
 ### NoDuplicates
@@ -345,7 +345,7 @@ editor.NoDuplicates("categories.installers", "meta.name")
 
 Reports a violation when two or more items in the sequence at `seqPath` share
 the same value for `field`. Sequences and dict-style mappings along `seqPath`
-are expanded automatically, and uniqueness is checked per reached list —
+are expanded automatically, and uniqueness is checked per reached list -
 entries in different lists may repeat. `field` may be a dotted path inside
 each item.
 
@@ -374,9 +374,9 @@ rules, `ValidatorFunc` adapts a plain function:
 editor.Run(editor.Config{
     Validators: []editor.Validator{
         editor.ValidatorFunc(func(in editor.ValidationInput) []editor.Violation {
-            // in.Raw    — document bytes, CRLF-normalised
-            // in.Root   — parsed YAML root (nil when the document is invalid YAML)
-            // in.Blocks — top-level blocks
+            // in.Raw    - document bytes, CRLF-normalised
+            // in.Root   - parsed YAML root (nil when the document is invalid YAML)
+            // in.Blocks - top-level blocks
             return nil
         }),
     },
@@ -384,5 +384,5 @@ editor.Run(editor.Config{
 ```
 
 Outside the editor, `editor.RunAll(validators, raw, blocks)` executes a set of
-validators against a document and collects the violations — useful for CLI
+validators against a document and collects the violations - useful for CLI
 `lint`-style commands that reuse the same rules.

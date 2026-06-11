@@ -8,7 +8,7 @@ import (
 )
 
 // BenchmarkDeriveChecked measures re-deriving checked states for all field
-// nodes in a flat list — called once per user action on a collection.
+// nodes in a flat list - called once per user action on a collection.
 func BenchmarkDeriveChecked_10(b *testing.B)  { benchmarkDeriveChecked(b, 10) }
 func BenchmarkDeriveChecked_100(b *testing.B) { benchmarkDeriveChecked(b, 100) }
 func BenchmarkDeriveChecked_500(b *testing.B) { benchmarkDeriveChecked(b, 500) }
@@ -24,7 +24,7 @@ func benchmarkDeriveChecked(b *testing.B, n int) {
 }
 
 // BenchmarkBuildSeqNodes measures the full tree rebuild for a sequence
-// collection — includes flattenDefsAsTree + deriveChecked per entry.
+// collection - includes flattenDefsAsTree + deriveChecked per entry.
 func BenchmarkBuildSeqNodes_10(b *testing.B)  { benchmarkBuildSeqNodes(b, 10) }
 func BenchmarkBuildSeqNodes_100(b *testing.B) { benchmarkBuildSeqNodes(b, 100) }
 func BenchmarkBuildSeqNodes_500(b *testing.B) { benchmarkBuildSeqNodes(b, 500) }
@@ -40,7 +40,7 @@ func benchmarkBuildSeqNodes(b *testing.B, n int) {
 }
 
 // makeBenchSeqNode returns a SequenceNode with n entries, each a MappingNode
-// carrying a "name" key — representative of a real category list.
+// carrying a "name" key - representative of a real category list.
 func makeBenchSeqNode(n int) *yaml.Node {
 	seq := &yaml.Node{Kind: yaml.SequenceNode}
 	for i := 0; i < n; i++ {

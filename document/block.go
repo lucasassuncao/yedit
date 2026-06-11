@@ -1,5 +1,5 @@
 // Package document provides primitives for editing YAML files structured as
-// a flat mapping of top-level keys ("blocks"). It is schema-agnostic — the
+// a flat mapping of top-level keys ("blocks"). It is schema-agnostic - the
 // caller supplies the canonical key order when needed for ordered inserts.
 package document
 
@@ -50,7 +50,7 @@ func ParseBlocks(raw []byte) ([]Block, error) {
 			continue
 		}
 		// Stop this block's range before the blank lines and comments that precede
-		// the next key — by convention those belong to the next block (a comment
+		// the next key - by convention those belong to the next block (a comment
 		// directly above a key documents that key). Otherwise removing or replacing
 		// a block would silently delete the next block's leading comments.
 		end := blocks[i+1].Line - 1

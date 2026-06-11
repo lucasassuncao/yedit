@@ -56,10 +56,10 @@ func (m model) handleBlockEditDiscarded(msg blockEditDiscardedMsg) (tea.Model, t
 	if len(m.blockEdits) == 0 {
 		m.enterList()
 		if msg.discarded {
-			// User threw away uncommitted changes — show explicit feedback.
+			// User threw away uncommitted changes - show explicit feedback.
 			m.statusMsg = "Cancelled."
 		}
-		// else: clean Esc after a commit — preserve the existing status message
+		// else: clean Esc after a commit - preserve the existing status message
 		// (e.g. "Block updated (not saved yet)").
 	} else {
 		m.statusMsg = ""
@@ -70,7 +70,7 @@ func (m model) handleBlockEditDiscarded(msg blockEditDiscardedMsg) (tea.Model, t
 // handleDrillOut navigates up one level while keeping edits. The current (child)
 // editor is flushed into editRoot, popped, and the parent editor is refreshed
 // from editRoot so it reflects what the child changed. Editing a child and
-// returning to fix a parent field is therefore non-destructive — nothing is
+// returning to fix a parent field is therefore non-destructive - nothing is
 // committed to the document until Ctrl+S. Only fired for nested editors.
 func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 	if len(m.blockEdits) <= 1 {
@@ -80,7 +80,7 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 
 	var ok bool
 	if m, ok = m.flushTopToRoot(); !ok {
-		// Invalid YAML in the child — cannot write it into the canonical tree.
+		// Invalid YAML in the child - cannot write it into the canonical tree.
 		// The error is already shown; stay so the user can fix it.
 		return m, nil
 	}
@@ -287,7 +287,7 @@ func (m model) flushTopToRoot() (model, bool) {
 
 // handleOpenChild drills into a nested field. It flushes the parent editor into
 // the canonical editRoot, then builds the child editor from the node living at
-// the child's focus path within that same tree — no substring copy. Unknown-key
+// the child's focus path within that same tree - no substring copy. Unknown-key
 // validation is left to the parent, so the child uses a nil knownByPath (its
 // root key is the field name, which would otherwise read as an unknown key).
 func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
@@ -346,19 +346,19 @@ func (m model) handleOverlayConfirmed(snippet string) (tea.Model, tea.Cmd) {
 	if fresh, err := m.doc.BlockContent(be.key); err == nil {
 		*be = be.resyncAfterCommit(fresh)
 	}
-	// Keep blockEdit open — user stays in editing mode after commit.
+	// Keep blockEdit open - user stays in editing mode after commit.
 	if isEdit {
-		m.statusMsg = "Block updated (not saved yet) — Esc to return."
+		m.statusMsg = "Block updated (not saved yet) - Esc to return."
 	} else {
 		// First commit transitions the block edit to edit mode.
 		be.isEdit = true
-		m.statusMsg = "Block added (not saved yet) — Esc to return."
+		m.statusMsg = "Block added (not saved yet) - Esc to return."
 	}
 	return m, nil
 }
 
 // saveAll is the Ctrl+S handler. When block editors are open it commits all
-// stacked editors into m.doc and returns to the list — file save is a separate
+// stacked editors into m.doc and returns to the list - file save is a separate
 // action triggered by Ctrl+S from the list view. When no editors are open it
 // saves the file directly.
 func (m model) saveAll() (tea.Model, tea.Cmd) {
@@ -405,6 +405,6 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 	}
 	m.syncView()
 	m.enterList()
-	m.statusMsg = "Changes committed (not saved yet) — ctrl+s to save."
+	m.statusMsg = "Changes committed (not saved yet) - ctrl+s to save."
 	return m, nil
 }

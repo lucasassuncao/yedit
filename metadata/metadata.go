@@ -18,7 +18,7 @@ import (
 // Node is one field's metadata plus its children, keyed by yaml name.
 // Use shared pointers in Children to model recursive schema types (e.g. a
 // filter whose "any"/"all" children are filters again) without duplicating
-// definitions — Build handles the cycle.
+// definitions - Build handles the cycle.
 type Node struct {
 	editor.FieldMeta
 	Children map[string]*Node
@@ -38,7 +38,7 @@ func Build(schemaPtr any, tree map[string]*Node) (editor.MetadataSource, error) 
 	for blockName, node := range tree {
 		ft := fieldTypeByYAML(rootType, blockName)
 		if ft == nil {
-			return nil, fmt.Errorf("metadata: unknown key %q — no field with that yaml tag in the schema", blockName)
+			return nil, fmt.Errorf("metadata: unknown key %q - no field with that yaml tag in the schema", blockName)
 		}
 		if err := fill(node, ft, blockName, visited); err != nil {
 			return nil, err
@@ -93,7 +93,7 @@ func fill(node *Node, t reflect.Type, path string, visited map[*Node]bool) error
 		if verifiable {
 			childType = fieldTypeByYAML(elem, childName)
 			if childType == nil {
-				return fmt.Errorf("metadata: unknown key %q — no field with yaml tag %q", childPath, childName)
+				return fmt.Errorf("metadata: unknown key %q - no field with yaml tag %q", childPath, childName)
 			}
 		}
 		if err := fill(childNode, childType, childPath, visited); err != nil {
@@ -120,7 +120,7 @@ func elemType(t reflect.Type) reflect.Type {
 
 var providerType = reflect.TypeOf((*schema.Provider)(nil)).Elem()
 
-// isProvider reports whether t opts into schema.Provider — its metadata children
+// isProvider reports whether t opts into schema.Provider - its metadata children
 // describe the provided defs, not struct fields, so they cannot be verified
 // by reflection.
 func isProvider(t reflect.Type) bool {

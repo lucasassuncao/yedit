@@ -161,7 +161,7 @@ func TestNavigate(t *testing.T) {
 	t.Run("dict-of-structs fallback", func(t *testing.T) {
 		root := mustRoot(t, "categories:\n  docs:\n    source: a\n  media:\n    source: b\n")
 		var paths []string
-		// "source" is not a direct child of categories — every value is searched.
+		// "source" is not a direct child of categories - every value is searched.
 		Navigate(root, []string{"categories", "source"}, "", func(_ *yaml.Node, p string) {
 			paths = append(paths, p)
 		})

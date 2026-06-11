@@ -205,7 +205,7 @@ func TestSeqBlockResyncNoContamination(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// flushCurrentEntry — missing key header sets editorErr, does not update entries
+// flushCurrentEntry - missing key header sets editorErr, does not update entries
 // ---------------------------------------------------------------------------
 
 func TestFlushCurrentEntry_missingHeader_setsErrMsg(t *testing.T) {
@@ -227,7 +227,7 @@ func TestFlushCurrentEntry_missingHeader_setsErrMsg(t *testing.T) {
 		t.Error("expected editorErr to be set when key header is missing")
 	}
 	if result.entryYAML(0) != originalEntry {
-		t.Error("entry 0 was modified despite missing key header — silent data loss")
+		t.Error("entry 0 was modified despite missing key header - silent data loss")
 	}
 }
 
@@ -249,7 +249,7 @@ func TestFlushCurrentEntry_validContent_clearsErrMsg(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// collectionDeriveTree — labels and checks of every entry are derived from the
+// collectionDeriveTree - labels and checks of every entry are derived from the
 // canonical node, so editing one entry never contaminates another.
 // ---------------------------------------------------------------------------
 

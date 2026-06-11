@@ -27,7 +27,7 @@ func cfgStructDefs() []schema.FieldDef {
 }
 
 // keyExistsInNode reports whether the mapping path resolves to a present key in
-// valueNode — the structural ground truth a leaf's checked flag must mirror.
+// valueNode - the structural ground truth a leaf's checked flag must mirror.
 func keyExistsInNode(valueNode *yaml.Node, path []string) bool {
 	cur := valueNode
 	for i := 0; i < len(path)-1 && cur != nil; i++ {
@@ -78,7 +78,7 @@ func newStructEdit(t *testing.T, content string) blockEditState {
 
 // TestSOT_ToggleWhileBufferInvalid is the Classe A regression: with the YAML
 // buffer mid-edit and unparseable, toggling a field in the tree must still leave
-// tree and node in agreement and the buffer valid — the desync that motivated
+// tree and node in agreement and the buffer valid - the desync that motivated
 // the single-source-of-truth refactor.
 func TestSOT_ToggleWhileBufferInvalid(t *testing.T) {
 	be := newStructEdit(t, "cfg:\n")

@@ -621,7 +621,7 @@ func TestLoad_utf8BOM(t *testing.T) {
 	}
 	for _, b := range doc.Blocks() {
 		if b.Key != "name" && b.Key != "image" {
-			t.Errorf("unexpected block key %q — BOM leaking into key name?", b.Key)
+			t.Errorf("unexpected block key %q - BOM leaking into key name?", b.Key)
 		}
 	}
 
@@ -633,7 +633,7 @@ func TestLoad_utf8BOM(t *testing.T) {
 		t.Fatalf("Save after BOM edit: %v", err)
 	}
 
-	// Reload must also parse correctly — no BOM duplication or corruption.
+	// Reload must also parse correctly - no BOM duplication or corruption.
 	doc2, err := document.Load(path, canonicalOrder)
 	if err != nil {
 		t.Fatalf("reload after BOM save: %v", err)
@@ -652,7 +652,7 @@ image: ubuntu:22.04
 }
 
 // TestLoad_utf8BOM_strip verifies that the raw bytes returned by a BOM-prefixed
-// file do not start with the BOM sequence — stripping it prevents it from
+// file do not start with the BOM sequence - stripping it prevents it from
 // leaking into block content or being re-inserted on partial edits.
 func TestLoad_utf8BOM_strip(t *testing.T) {
 	bom := []byte{0xEF, 0xBB, 0xBF}
@@ -666,7 +666,7 @@ func TestLoad_utf8BOM_strip(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	if bytes.HasPrefix(doc.Raw(), bom) {
-		t.Error("Raw() still starts with UTF-8 BOM — should be stripped on load")
+		t.Error("Raw() still starts with UTF-8 BOM - should be stripped on load")
 	}
 }
 

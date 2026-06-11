@@ -16,7 +16,7 @@ import (
 const HistoryLimit = 50
 
 // Document owns the YAML editing state. All mutations are atomic and snapshot
-// for undo automatically. Single-threaded — no concurrent use.
+// for undo automatically. Single-threaded - no concurrent use.
 //
 // knownOrder defines the canonical key order used by Insert/Replace to place
 // blocks. Pass nil for unordered append behaviour.
@@ -38,7 +38,7 @@ type Document struct {
 	diskSize    int64
 }
 
-// Load reads a YAML file from path. A non-existent file is not an error — the
+// Load reads a YAML file from path. A non-existent file is not an error - the
 // returned Document is empty, dirty=false, and Save writes to path.
 //
 // knownOrder is the canonical key order for ordered Insert/Replace.
@@ -99,7 +99,7 @@ func (d *Document) BlockContent(key string) (string, error) {
 }
 
 // snapshot pushes the current raw onto the history stack, capping at
-// HistoryLimit. Any redo entries are discarded — a new mutation forks away
+// HistoryLimit. Any redo entries are discarded - a new mutation forks away
 // from the undone states.
 func (d *Document) snapshot() {
 	d.history = appendCapped(d.history, copyBytes(d.raw))
@@ -199,7 +199,7 @@ func (d *Document) Replace(key, snippet string) error {
 	return nil
 }
 
-// blockSemanticEqual reports whether two YAML strings are semantically equivalent —
+// blockSemanticEqual reports whether two YAML strings are semantically equivalent -
 // same structure and values regardless of formatting, key order, or quoting style.
 // Fails closed: any parse error returns false, so an unverifiable round-trip
 // triggers a rollback instead of silently accepting possibly corrupted content
@@ -217,7 +217,7 @@ func blockSemanticEqual(a, b string) bool {
 
 // ReplaceRaw replaces the document content with raw, normalising CRLF.
 // If raw fails to parse, the document is left untouched and the error is returned.
-// Does NOT snapshot — direct YAML editing is not tracked in the undo history;
+// Does NOT snapshot - direct YAML editing is not tracked in the undo history;
 // only committed block operations (Insert, Replace, Remove) are undoable.
 func (d *Document) ReplaceRaw(raw []byte) error {
 	raw = []byte(strings.ReplaceAll(string(raw), "\r\n", "\n"))
@@ -319,7 +319,7 @@ func (d *Document) Reload() error {
 }
 
 // ExternallyChanged reports whether the file on disk was modified since this
-// Document last loaded or saved it — e.g. another process or a git operation
+// Document last loaded or saved it - e.g. another process or a git operation
 // edited it. Returns false when there is no path or the file is absent (a save
 // would create it, clobbering nothing). Callers should confirm with the user
 // before overwriting when this returns true.

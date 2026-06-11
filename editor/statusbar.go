@@ -3,7 +3,7 @@ package editor
 // hintSep is the separator between hint segments.
 const hintSep = " • "
 
-// Atomic key hints — one per key or action.
+// Atomic key hints - one per key or action.
 const (
 	keyNav      = "[↑/↓] nav"
 	keyNavigate = "[↑/↓] navigate"
@@ -57,5 +57,5 @@ const (
 	hintModelExisting       = keyNav + hintSep + keyFilter + hintSep + keyEnterOpen + hintSep + keyCtrlDDelete + hintSep + keyCtrlUUndo + hintSep + keyCtrlYRedo + hintSep + keyCtrlRReload + hintSep + keyCtrlSSave + hintSep + keyCtrlLValidate
 	hintModelNew            = keyNav + hintSep + keyFilter + hintSep + keyEnterAdd + hintSep + keyCtrlUUndo + hintSep + keyCtrlYRedo + hintSep + keyCtrlRReload + hintSep + keyCtrlSSave + hintSep + keyCtrlLValidate
 
-	msgUncommittedChanges = "Uncommitted changes — ctrl+s to commit"
+	msgUncommittedChanges = "Uncommitted changes - ctrl+s to commit"
 )

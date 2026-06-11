@@ -197,7 +197,7 @@ func TestAudit_UndoAfterTwoTogglesKeepsFirst(t *testing.T) {
 
 // TestAudit_HasCheckedDescendantCountsOpenable: an inline parent whose only
 // content is a checked openable child (e.g. filter holding only "any") must count
-// as having content — for both coloring and ctrl+d removal.
+// as having content - for both coloring and ctrl+d removal.
 func TestAudit_HasCheckedDescendantCountsOpenable(t *testing.T) {
 	nodes := []treeNode{
 		{kind: treeNodeField, label: "filter", depth: 1, isLeaf: false},
@@ -209,7 +209,7 @@ func TestAudit_HasCheckedDescendantCountsOpenable(t *testing.T) {
 }
 
 // TestAudit_OpenableListHasNoInlineChildren guards the cleanup: an openable
-// list-of-struct field (filter.any) must not spawn phantom inline child nodes —
+// list-of-struct field (filter.any) must not spawn phantom inline child nodes -
 // it is drilled into, not expanded inline (matching openable maps).
 func TestAudit_OpenableListHasNoInlineChildren(t *testing.T) {
 	defs := []schema.FieldDef{
@@ -299,7 +299,7 @@ func confirmsOnCtrlD(content, label string) bool {
 }
 
 // TestAudit_RemovalConfirmIsDepthConsistent: a filled leaf confirms before
-// removal and an empty leaf removes directly — identically at top level and when
+// removal and an empty leaf removes directly - identically at top level and when
 // nested deep under hooks.before. ("Its content will be lost" → empty has none.)
 func TestAudit_RemovalConfirmIsDepthConsistent(t *testing.T) {
 	cases := []struct {

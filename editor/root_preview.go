@@ -17,7 +17,7 @@ func (m model) togglePreviewPane() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.enterPreview()
-	m.statusMsg = "Viewing YAML — ↑/↓ scroll, Tab/Esc back to list."
+	m.statusMsg = "Viewing YAML - ↑/↓ scroll, Tab/Esc back to list."
 	return m, nil
 }
 
@@ -90,8 +90,8 @@ func renderPreviewYAML(raw string, r *glamour.TermRenderer) string {
 
 var ansiEscapeRE = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
-// trimBlankLines drops leading and trailing whitespace-only lines — glamour
-// emits a padded blank line around the code block — while leaving any interior
+// trimBlankLines drops leading and trailing whitespace-only lines - glamour
+// emits a padded blank line around the code block - while leaving any interior
 // blank lines intact. It is ANSI-aware so colored padding still reads as blank.
 func trimBlankLines(s string) string {
 	lines := strings.Split(s, "\n")
@@ -110,7 +110,7 @@ func trimBlankLines(s string) string {
 
 // clampLines truncates s to at most maxLines newline-separated lines so that
 // content passed to RenderTitledPanel never overflows its allocated height.
-// lipgloss.Height() is a minimum, not a cap — without this, a tall hint or
+// lipgloss.Height() is a minimum, not a cap - without this, a tall hint or
 // preview would push the right column taller than the left.
 func clampLines(s string, maxLines int) string {
 	if maxLines <= 0 {

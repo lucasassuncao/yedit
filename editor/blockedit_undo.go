@@ -15,7 +15,7 @@ type blockEditUndoSnap struct {
 	yamlValue       string
 	dirty           bool
 	preset          string
-	// tree state for collection blocks — preserved so restoring keeps
+	// tree state for collection blocks - preserved so restoring keeps
 	// the expanded/collapsed view and cursor position intact.
 	treeNodes  []treeNode
 	treeCursor int
@@ -57,7 +57,7 @@ func appendSnapCapped(stack []*blockEditUndoSnap, snap *blockEditUndoSnap) []*bl
 }
 
 // saveUndo pushes the current state onto the undo stack. Any redo entries are
-// discarded — a new mutation forks away from the undone states.
+// discarded - a new mutation forks away from the undone states.
 func (be blockEditState) saveUndo() blockEditState {
 	be.undoStack = appendSnapCapped(be.undoStack, be.captureSnap())
 	be.redoStack = nil

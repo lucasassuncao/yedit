@@ -9,8 +9,8 @@ How Go types map to yedit editor behavior, with complete code examples.
 | Go type | Kind | Editor behavior |
 |---|---|---|
 | `string`, `int`, `bool`, `float64`, `time.Duration` | `KindPrimitive` | YAML pane only (no tree) |
-| Implements `yaml.Marshaler` or `encoding.TextMarshaler` | `KindPrimitive` | YAML pane only — struct fields are NOT exposed |
-| `interface{}` / `any` | `KindAny` | YAML pane only — use `Provider` for a typed schema |
+| Implements `yaml.Marshaler` or `encoding.TextMarshaler` | `KindPrimitive` | YAML pane only - struct fields are NOT exposed |
+| `interface{}` / `any` | `KindAny` | YAML pane only - use `Provider` for a typed schema |
 | `SomeStruct` | `KindObject` | Tree with ADDED/AVAILABLE fields |
 | `[]string`, `[]int` (scalar slice) | `KindList` (no child defs) | YAML pane only |
 | `[]SomeStruct` | `KindList` with child defs | `[N]` navigator + field tree per entry |
@@ -21,7 +21,7 @@ How Go types map to yedit editor behavior, with complete code examples.
 
 ---
 
-## KindPrimitive — scalar value
+## KindPrimitive - scalar value
 
 **Go:**
 ```go
@@ -46,17 +46,17 @@ version: "0.1.0"
 ```
 
 **Notes:**
-- `time.Duration` is stored as a plain string (`"30s"`, `"2m30s"`) — YAML does not have a duration type
+- `time.Duration` is stored as a plain string (`"30s"`, `"2m30s"`) - YAML does not have a duration type
 - Pointer variants (`*string`, `*int`, `*bool`) behave identically; nil = field absent from the file
 - Field metadata (required, defaults, allowed values, ranges) is declared
-  through the `HintSource` (`FieldMeta`), not struct tags — see the
-  `yedit/hints` package. Enum-like fields are plain strings whose
+  through the `MetadataSource` (`FieldMeta`), not struct tags - see the
+  `yedit/metadata` package. Enum-like fields are plain strings whose
   `FieldMeta.OneOf` lists the allowed values, shown in the hint panel and
-  enforced by `editor.OneOfFromHints()`.
+  enforced by `editor.OneOfFromMetadata()`.
 
 ---
 
-## KindObject — struct with known fields
+## KindObject - struct with known fields
 
 **Go:**
 ```go
@@ -70,7 +70,7 @@ type DatabaseConfig struct {
     Driver   string     `yaml:"driver"`
     DSN      string     `yaml:"dsn"`
     MaxConns int        `yaml:"max-conns"`
-    Pool     PoolConfig `yaml:"pool"`     // nested struct — depth+1
+    Pool     PoolConfig `yaml:"pool"`     // nested struct - depth+1
 }
 
 type Config struct {
@@ -95,21 +95,21 @@ database:
 - Toggling a field OFF removes it from the YAML; toggling ON inserts it (using `FieldSnippets` if configured)
 - Nested structs (`pool`) appear as expandable nodes in the tree (→ to expand)
 
-**FieldSnippets** — YAML inserted when a field is toggled ON:
+**FieldSnippets** - YAML inserted when a field is toggled ON:
 ```go
 editor.Config{
     FieldSnippets: editor.FieldSnippetMap{
         "database": {
             "driver":    "  driver: postgres\n",
             "dsn":       "  dsn: \"postgres://localhost/mydb\"\n",
-            // multi-field snippet — all sub-fields are inserted at once:
+            // multi-field snippet - all sub-fields are inserted at once:
             "pool":      "  pool:\n    min-size: 2\n    max-size: 10\n    timeout: 30\n",
         },
     },
 }
 ```
 
-**PreCheckedFields** — fields toggled ON automatically when opening a **new** block:
+**PreCheckedFields** - fields toggled ON automatically when opening a **new** block:
 ```go
 editor.Config{
     PreCheckedFields: editor.CheckedFieldMap{
@@ -120,7 +120,7 @@ editor.Config{
 
 ---
 
-## KindList (no child defs) — scalar list
+## KindList (no child defs) - scalar list
 
 **Go:**
 ```go
@@ -150,7 +150,7 @@ extensions: ["go", "yaml", "json"]
 
 ---
 
-## KindList with child defs — list of structs / `[N]` navigator
+## KindList with child defs - list of structs / `[N]` navigator
 
 **Go:**
 ```go
@@ -158,7 +158,7 @@ type Worker struct {
     Name        string   `yaml:"name"`
     Concurrency int      `yaml:"concurrency"`
     Queue       string   `yaml:"queue"`
-    Tags        []string `yaml:"tags"`        // scalar slice inside struct — YAML pane in hint
+    Tags        []string `yaml:"tags"`        // scalar slice inside struct - YAML pane in hint
     Extensions  []string `yaml:"extensions"`  // same
 }
 
@@ -186,7 +186,7 @@ workers:
 - `→` expands an entry to show its fields as a toggleable tree
 - `[+ add new]` appends a new empty entry
 
-**Self-referential structs** — cycle-detected, configurable depth (default 1 extra recursive level):
+**Self-referential structs** - cycle-detected, configurable depth (default 1 extra recursive level):
 ```go
 type Filter struct {
     Regex string   `yaml:"regex"`
@@ -207,7 +207,7 @@ filters:
 
 ---
 
-## KindList (no child defs) — list of free-form maps
+## KindList (no child defs) - list of free-form maps
 
 **Go:**
 ```go
@@ -225,7 +225,7 @@ annotations:
     region: eu-west-1
 ```
 
-**Editor behavior:** YAML pane only — no `[N]` navigator because `map[string]string`
+**Editor behavior:** YAML pane only - no `[N]` navigator because `map[string]string`
 has no fixed keys to discover.
 
 **To get the `[N]` navigator**, define a concrete struct:
@@ -243,7 +243,7 @@ Annotations []Annotation `yaml:"annotations"`
 
 ---
 
-## KindDictionary (no child defs) — free-form map
+## KindDictionary (no child defs) - free-form map
 
 **Go:**
 ```go
@@ -255,7 +255,7 @@ type Config struct {
 
 **YAML:**
 ```yaml
-labels:                    # no dashes — key: value pairs
+labels:                    # no dashes - key: value pairs
   env: production
   team: backend
 
@@ -268,11 +268,11 @@ settings:
 
 **Editor behavior:** YAML pane only. Tree left panel shows "(no fields)".
 
-**`map[string]any`** accepts any YAML value per key — scalars, lists, or nested maps.
+**`map[string]any`** accepts any YAML value per key - scalars, lists, or nested maps.
 
 ---
 
-## KindDictionary with child defs — map of structs / `[N]` navigator
+## KindDictionary with child defs - map of structs / `[N]` navigator
 
 **Go:**
 ```go
@@ -309,18 +309,18 @@ port-attrs:
 **Important distinction from `[]SomeStruct`:**
 
 ```go
-// KindList with child defs — ordered, integer-indexed
+// KindList with child defs - ordered, integer-indexed
 Workers []Worker `yaml:"workers"`
 // YAML: - name: foo    (each item has no name, position is its identity)
 
-// KindDictionary with child defs — unordered, string-keyed
+// KindDictionary with child defs - unordered, string-keyed
 PortAttrs map[string]PortAttr `yaml:"port-attrs"`
 // YAML: "3000": ...    (each item's key IS its identity)
 ```
 
 ---
 
-## KindVariant — union type via `schema.Provider`
+## KindVariant - union type via `schema.Provider`
 
 For fields that can be either a scalar **or** a struct in YAML:
 
@@ -359,7 +359,7 @@ timeout:
 ```
 
 **Notes:**
-- yedit renders the schema from `YeditSchema()` — reflection is skipped entirely
+- yedit renders the schema from `YeditSchema()` - reflection is skipped entirely
 - Useful for types that don't have a clean Go representation (union types, custom DSLs)
 - `schema.Provider` can also be implemented on a pointer receiver
 
@@ -374,10 +374,10 @@ timeout:
 | `yaml:"name,omitempty"` | Sets `FieldDef.OmitEmpty = true`; zero value not written to disk |
 | `yaml:"name,flow"` | Sets `FieldDef.Flow = true`; serialised inline (e.g. `[a, b, c]`) |
 
-The `yaml` tag is the only tag yedit reads. Field metadata — description,
-required, defaults, allowed values, ranges, patterns — is declared through the
-`HintSource` (`editor.FieldMeta`), typically built with the `yedit/hints`
-package, and enforced by the FromHints validator family (see
+The `yaml` tag is the only tag yedit reads. Field metadata - description,
+required, defaults, allowed values, ranges, patterns - is declared through the
+`MetadataSource` (`editor.FieldMeta`), typically built with the `yedit/metadata`
+package, and enforced by the FromMetadata validator family (see
 `docs/validators.md`).
 
 ---
@@ -397,7 +397,7 @@ map[string]any        → KindDictionary + no child defs → YAML pane   ✗
 ```
 
 yedit uses `reflect` to discover children. `map` types have no fixed keys at
-the type level, so no child defs can be derived — regardless of the value type.
+the type level, so no child defs can be derived - regardless of the value type.
 
 ---
 
@@ -448,8 +448,8 @@ type InlineAnnotations struct {
 }
 
 type Config struct {
-    BaseMeta                              // anonymous embed — fields promoted
-    InlineAnnotations `yaml:",inline"`   // yaml inline — fields promoted
+    BaseMeta                              // anonymous embed - fields promoted
+    InlineAnnotations `yaml:",inline"`   // yaml inline - fields promoted
     Port int          `yaml:"port"`
 }
 // Discovers: created-by, version-tag, team, contact, port
@@ -475,7 +475,7 @@ func (c Color) MarshalYAML() (any, error) {
 }
 
 type Config struct {
-    Background Color `yaml:"background"` // KindPrimitive — no R/G/B sub-fields
+    Background Color `yaml:"background"` // KindPrimitive - no R/G/B sub-fields
 }
 ```
 
@@ -511,7 +511,7 @@ enabled: true
 # "enabled" key is simply not written
 ```
 
-In the editor, a nil pointer corresponds to the field being absent — shown as
+In the editor, a nil pointer corresponds to the field being absent - shown as
 unchecked (`○`) in the tree. Toggling it ON inserts the field with its default
 or snippet value.
 
@@ -522,10 +522,10 @@ or snippet value.
 Fields that should never appear in the editor:
 
 ```go
-// Option A: yaml:"-" — excluded from discovery entirely
+// Option A: yaml:"-" - excluded from discovery entirely
 InternalID string `yaml:"-"`
 
-// Option B: Config.Hidden — discovered but hidden in the UI
+// Option B: Config.Hidden - discovered but hidden in the UI
 // Useful when the field exists in YAML but shouldn't be edited.
 editor.Config{
     Hidden: []string{"internal-id", "schema-version"},
@@ -535,7 +535,7 @@ editor.Config{
 Keys that should be silently preserved without validation:
 
 ```go
-// Config.PassthroughKeys — hidden from all sections, excluded from ctrl+l validation
+// Config.PassthroughKeys - hidden from all sections, excluded from ctrl+l validation
 editor.Config{
     PassthroughKeys: []string{"import", "$schema"},
 }
@@ -543,8 +543,8 @@ editor.Config{
 
 **YAML (both hidden and passthrough are preserved on save):**
 ```yaml
-import: shared.yaml          # passthrough — preserved, not shown in editor
-$schema: "./schema.json"     # passthrough — preserved, not shown in editor
-internal-id: "abc123"        # hidden — preserved, not shown in editor
-name: "my-app"               # normal field — shown and editable
+import: shared.yaml          # passthrough - preserved, not shown in editor
+$schema: "./schema.json"     # passthrough - preserved, not shown in editor
+internal-id: "abc123"        # hidden - preserved, not shown in editor
+name: "my-app"               # normal field - shown and editable
 ```

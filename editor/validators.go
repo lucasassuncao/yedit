@@ -21,16 +21,16 @@ import (
 // There are two families of validators. Choose based on whether you have a
 // MetadataSource configured in editor.Config.Metadata:
 //
-// FromMetadata family — RequiredFromMetadata, OneOfFromMetadata,
+// FromMetadata family - RequiredFromMetadata, OneOfFromMetadata,
 // RangeFromMetadata, PatternFromMetadata, CountFromMetadata,
 // UniqueFromMetadata, DeprecatedFromMetadata:
 //   - Use when you have a MetadataSource (e.g. metadata.Build).
 //   - Constraints are declared once in the metadata tree and reused by both
-//     the hint panel and the validators — no duplication.
+//     the hint panel and the validators - no duplication.
 //   - These validators are inert until editor.Run wires them; they cannot be
 //     used standalone outside a session.
 //
-// Explicit family — Required, ValueOneOf, ValueInRange, ValueMatches,
+// Explicit family - Required, ValueOneOf, ValueInRange, ValueMatches,
 // CountRange, UniqueValues, Deprecated:
 //   - Use for one-off rules that do not need a metadata tree, or for
 //     cross-field rules that cannot live in per-field metadata
@@ -67,11 +67,11 @@ func RunAll(validators []Validator, raw []byte, blocks []document.Block) []Viola
 //
 // Two forms are supported:
 //
-// Top-level keys (no dots) — checks the document's root-level blocks:
+// Top-level keys (no dots) - checks the document's root-level blocks:
 //
 //	editor.MutuallyExclusive("image", "build", "dockerComposeFile")
 //
-// Dotted paths — all paths must share the same parent prefix. The validator
+// Dotted paths - all paths must share the same parent prefix. The validator
 // navigates to that parent in the YAML tree, automatically expanding sequences
 // (all items are checked) and dict-style mappings (all values are checked).
 // Use this for constraints that live at a specific location in the document:
@@ -178,8 +178,8 @@ func (v *pathKeysValidator) Validate(in ValidationInput) []Violation {
 // RequiredWith reports a violation when key is present but parent is not.
 //
 // Like MutuallyExclusive it supports two forms: plain keys are checked against
-// the document's top-level blocks, and dotted paths — both sharing the same
-// parent prefix — are checked inside every mapping reached by that parent,
+// the document's top-level blocks, and dotted paths - both sharing the same
+// parent prefix - are checked inside every mapping reached by that parent,
 // with sequences and dict-style mappings expanded automatically:
 //
 //	editor.RequiredWith("service", "dockerComposeFile")
@@ -243,11 +243,11 @@ func (v *pathRequiredWithValidator) Validate(in ValidationInput) []Violation {
 //
 // Two forms:
 //
-// Single key — searches the entire document (backward-compatible):
+// Single key - searches the entire document (backward-compatible):
 //
 //	editor.MutuallyExclusiveNested("filter", "any", "all")
 //
-// Dotted path — navigates to the scoped root first, then recurses only within
+// Dotted path - navigates to the scoped root first, then recurses only within
 // that subtree. The last segment is the key name used for recursive matching.
 // Sequences and dict-style mappings along the path are expanded automatically:
 //
@@ -333,7 +333,7 @@ func mutualExclusionViolation(keys []string, has func(string) bool, where string
 	return []Violation{{
 		Path: where,
 		Message: fmt.Sprintf(
-			"mutually exclusive — use only one of: %s",
+			"mutually exclusive - use only one of: %s",
 			joinQuoted(found),
 		),
 	}}
@@ -342,8 +342,8 @@ func mutualExclusionViolation(keys []string, has func(string) bool, where string
 // AtLeastOneOf reports a violation when none of the listed keys is present.
 //
 // Like MutuallyExclusive it supports two forms: plain keys are checked against
-// the document's top-level blocks, and dotted paths — all sharing the same
-// parent prefix — are checked inside every mapping reached by that parent,
+// the document's top-level blocks, and dotted paths - all sharing the same
+// parent prefix - are checked inside every mapping reached by that parent,
 // with sequences and dict-style mappings expanded automatically. The rule only
 // fires where the parent mapping exists:
 //
@@ -386,8 +386,8 @@ func atLeastOneViolation(keys []string, has func(string) bool, where string) []V
 // ExactlyOneOf reports a violation when none or more than one of the listed keys is present.
 //
 // Like MutuallyExclusive it supports two forms: plain keys are checked against
-// the document's top-level blocks, and dotted paths — all sharing the same
-// parent prefix — are checked inside every mapping reached by that parent,
+// the document's top-level blocks, and dotted paths - all sharing the same
+// parent prefix - are checked inside every mapping reached by that parent,
 // with sequences and dict-style mappings expanded automatically. The rule only
 // fires where the parent mapping exists:
 //
@@ -434,7 +434,7 @@ func exactlyOneViolation(keys []string, has func(string) bool, where string) []V
 		return []Violation{{
 			Path: where,
 			Message: fmt.Sprintf(
-				"exactly one of %s must be set — found: %s",
+				"exactly one of %s must be set - found: %s",
 				joinQuoted(keys), joinQuoted(found),
 			),
 		}}
@@ -444,7 +444,7 @@ func exactlyOneViolation(keys []string, has func(string) bool, where string) []V
 // RequiredIf reports a violation when key is absent but condPath equals condValue.
 //
 // When key and condPath share the same parent prefix, the rule is evaluated
-// inside every mapping reached by that parent — sequences and dict-style
+// inside every mapping reached by that parent - sequences and dict-style
 // mappings are expanded automatically, so each entry is checked against its
 // own condition value:
 //
@@ -517,7 +517,7 @@ func (v *valueOneOfValidator) Validate(in ValidationInput) []Violation {
 		}
 		errs = append(errs, Violation{
 			Path:    where,
-			Message: fmt.Sprintf("value %q is not allowed — use one of: %s", value, joinQuoted(v.allowed)),
+			Message: fmt.Sprintf("value %q is not allowed - use one of: %s", value, joinQuoted(v.allowed)),
 		})
 	})
 	return errs
@@ -531,7 +531,7 @@ func (v *valueOneOfValidator) Validate(in ValidationInput) []Violation {
 // (powers of 1000) and KiB/MiB/GiB/TiB are binary (powers of 1024).
 //
 // When the two paths share the same parent prefix, the pair is compared inside
-// every mapping reached by that parent — sequences and dict-style mappings are
+// every mapping reached by that parent - sequences and dict-style mappings are
 // expanded automatically, so each entry's own min/max pair is checked. Paths
 // with unrelated parents are both resolved from the document root.
 func CrossFieldOrdered(smallerPath, largerPath string) Validator {
@@ -582,7 +582,7 @@ func checkOrdered(aStr, bStr, aName, bName, where string, errs *[]Violation) {
 // NoDuplicates reports a violation when two or more items in the sequence at seqPath
 // share the same value for field. Sequences and dict-style mappings along
 // seqPath are expanded automatically, and uniqueness is checked per reached
-// list — entries in different lists may repeat. field may be a dotted path
+// list - entries in different lists may repeat. field may be a dotted path
 // inside each item.
 //
 //	editor.NoDuplicates("servers", "name")
@@ -618,8 +618,8 @@ func (v *noDuplicatesValidator) Validate(in ValidationInput) []Violation {
 // present.
 //
 // A path with no dots is required unconditionally at the document root. A
-// dotted path is conditional: the validator navigates to the leaf's parent —
-// expanding sequences and dict-style mappings like MutuallyExclusive — and
+// dotted path is conditional: the validator navigates to the leaf's parent -
+// expanding sequences and dict-style mappings like MutuallyExclusive - and
 // only requires the leaf where that parent exists, so a required field inside
 // an optional block is not reported while the block is absent.
 //
@@ -657,9 +657,9 @@ func (v *requiredValidator) Validate(in ValidationInput) []Violation {
 // "Required: yes" hint line does not block saving.
 //
 // The walk is guided by the discovered schema: for every schema path the
-// validator asks the MetadataSource for that field's FieldMeta — using the same
+// validator asks the MetadataSource for that field's FieldMeta - using the same
 // query convention as the hint panel, FieldMeta(block, "") for a top-level
-// block and FieldMeta(block, "source.path") for nested fields — and, when
+// block and FieldMeta(block, "source.path") for nested fields - and, when
 // Required is set, checks presence. A required field is only enforced where
 // its parent exists; top-level required blocks are always enforced. Sequence
 // and dictionary entries are checked individually.
@@ -671,8 +671,8 @@ func RequiredFromMetadata() Validator { return &metadataRuleValidator{check: che
 
 // metadataRuleValidator is the shared engine of the FromMetadata validator family.
 // It walks the YAML guided by the discovered schema, queries the MetadataSource
-// for every field — FieldMeta(block, "") for top-level blocks,
-// FieldMeta(block, "a.b") for nested fields, the hint panel's convention —
+// for every field - FieldMeta(block, "") for top-level blocks,
+// FieldMeta(block, "a.b") for nested fields, the hint panel's convention -
 // and delegates to check. Sequence and dictionary entries are visited
 // individually. The editor wires defs and hints at session start; outside
 // editor.Run, or without a MetadataSource, the validator is inert.
@@ -767,13 +767,13 @@ func checkHintOneOf(meta FieldMeta, child *yaml.Node, path string, errs *[]Viola
 	}
 	*errs = append(*errs, Violation{
 		Path:    path,
-		Message: fmt.Sprintf("value %q is not allowed — use one of: %s", val, joinQuoted(meta.OneOf)),
+		Message: fmt.Sprintf("value %q is not allowed - use one of: %s", val, joinQuoted(meta.OneOf)),
 	})
 }
 
 // RangeFromMetadata enforces FieldMeta.Min/Max from the MetadataSource (ValueInRange
 // semantics): bounds and value may be plain numbers, durations, or sizes, and
-// must be of the same kind. One-sided bounds are allowed — only Min means "at
+// must be of the same kind. One-sided bounds are allowed - only Min means "at
 // least Min", only Max means "at most Max". Malformed or mixed-kind bounds in
 // a hint are reported as a misconfiguration violation on every run.
 func RangeFromMetadata() Validator { return &metadataRuleValidator{check: checkHintRange} }
@@ -835,7 +835,7 @@ func checkHintRange(meta FieldMeta, child *yaml.Node, path string, errs *[]Viola
 func reportInvalidHintRange(lo, hi, path string, errs *[]Violation) {
 	*errs = append(*errs, Violation{
 		Path:    path,
-		Message: fmt.Sprintf("invalid range [%s, %s] in hint — bounds must both be durations, sizes, or numbers", lo, hi),
+		Message: fmt.Sprintf("invalid range [%s, %s] in hint - bounds must both be durations, sizes, or numbers", lo, hi),
 	})
 }
 
@@ -878,7 +878,7 @@ func checkHintPattern(cache map[string]*regexp.Regexp, meta FieldMeta, child *ya
 // CountFromMetadata enforces FieldMeta.MinCount/MaxCount from the MetadataSource
 // (CountRange semantics): sequences count items, mappings count keys. Both
 // zero declares nothing; MinCount > 0 with MaxCount == 0 means "at least
-// MinCount, no upper bound". Absent fields report nothing — combine with
+// MinCount, no upper bound". Absent fields report nothing - combine with
 // Required when the collection is mandatory.
 func CountFromMetadata() Validator { return &metadataRuleValidator{check: checkHintCount} }
 
@@ -906,7 +906,7 @@ func checkHintCount(meta FieldMeta, child *yaml.Node, path string, errs *[]Viola
 		}
 		*errs = append(*errs, Violation{
 			Path:    path,
-			Message: fmt.Sprintf("has %d entries — expected %s", count, want),
+			Message: fmt.Sprintf("has %d entries - expected %s", count, want),
 		})
 	}
 }
@@ -939,7 +939,7 @@ func checkHintDeprecated(meta FieldMeta, child *yaml.Node, path string, errs *[]
 	if meta.Deprecated == "" || child == nil {
 		return
 	}
-	*errs = append(*errs, Violation{Path: path, Message: "deprecated — " + meta.Deprecated})
+	*errs = append(*errs, Violation{Path: path, Message: "deprecated - " + meta.Deprecated})
 }
 
 // hintScalarValue applies the shared value-rule contract to a hint-checked
@@ -962,8 +962,8 @@ func hintScalarValue(child *yaml.Node, path string, errs *[]Violation) (string, 
 // ValueInRange reports a violation when the scalar at path is present but
 // outside the inclusive [min, max] range. Bounds and value may be plain
 // numbers ("1", "0.5"), time.Duration strings ("24h"), or size strings
-// ("10MB", "256MiB" — KB/MB/GB/TB decimal, KiB/MiB/GiB/TiB binary); all three
-// must be of the same kind. An absent or empty value reports nothing —
+// ("10MB", "256MiB" - KB/MB/GB/TB decimal, KiB/MiB/GiB/TiB binary); all three
+// must be of the same kind. An absent or empty value reports nothing -
 // combine with Required when the field is mandatory.
 //
 //	editor.ValueInRange("server.port", "1", "65535")
@@ -984,7 +984,7 @@ func (v *valueInRangeValidator) Validate(in ValidationInput) []Violation {
 	if !okLo || !okHi || loKind != hiKind {
 		return []Violation{{
 			Path:    v.path,
-			Message: fmt.Sprintf("invalid range [%s, %s] — bounds must both be durations, sizes, or numbers", v.min, v.max),
+			Message: fmt.Sprintf("invalid range [%s, %s] - bounds must both be durations, sizes, or numbers", v.min, v.max),
 		}}
 	}
 	var errs []Violation
@@ -1009,7 +1009,7 @@ func (v *valueInRangeValidator) Validate(in ValidationInput) []Violation {
 
 // ValueMatches reports a violation when the scalar at path is present but does
 // not match the regular expression pattern. An absent or empty value reports
-// nothing — combine with Required when the field is mandatory. An invalid
+// nothing - combine with Required when the field is mandatory. An invalid
 // pattern is itself reported as a violation so the misconfiguration surfaces
 // on the first validate.
 //
@@ -1043,9 +1043,9 @@ func (v *valueMatchesValidator) Validate(in ValidationInput) []Violation {
 }
 
 // ValueHasPrefix reports a violation when the scalar at path is present but
-// does not start with prefix — a simpler alternative to ValueMatches when the
+// does not start with prefix - a simpler alternative to ValueMatches when the
 // rule is a fixed prefix and no regex is needed. An absent or empty value
-// reports nothing — combine with Required when the field is mandatory.
+// reports nothing - combine with Required when the field is mandatory.
 // Sequences and dict-style mappings along the path are expanded automatically.
 //
 //	editor.ValueHasPrefix("image", "registry.example.com/")
@@ -1093,8 +1093,8 @@ func (v *valueAffixValidator) Validate(in ValidationInput) []Violation {
 // they must appear together or not at all (e.g. a TLS cert/key pair).
 //
 // Like MutuallyExclusive it supports two forms: plain keys are checked against
-// the document's top-level blocks, and dotted paths — all sharing the same
-// parent prefix — are checked inside every mapping reached by that parent,
+// the document's top-level blocks, and dotted paths - all sharing the same
+// parent prefix - are checked inside every mapping reached by that parent,
 // with sequences and dict-style mappings expanded automatically:
 //
 //	editor.AllOrNone("tls-cert", "tls-key")
@@ -1137,7 +1137,7 @@ func allOrNoneViolation(keys []string, has func(string) bool, where string) []Vi
 	return []Violation{{
 		Path: where,
 		Message: fmt.Sprintf(
-			"all or none of %s must be set — missing: %s",
+			"all or none of %s must be set - missing: %s",
 			joinQuoted(keys), joinQuoted(missing),
 		),
 	}}
@@ -1145,7 +1145,7 @@ func allOrNoneViolation(keys []string, has func(string) bool, where string) []Vi
 
 // CountRange reports a violation when the collection at path has fewer than
 // minCount or more than maxCount entries. maxCount < 0 means no upper bound.
-// Sequences count items; mappings count keys. An absent path reports nothing —
+// Sequences count items; mappings count keys. An absent path reports nothing -
 // combine with Required when the collection itself is mandatory.
 //
 //	editor.CountRange("workers", 1, 10)
@@ -1183,7 +1183,7 @@ func (v *countRangeValidator) Validate(in ValidationInput) []Violation {
 			}
 			errs = append(errs, Violation{
 				Path:    where,
-				Message: fmt.Sprintf("has %d entries — expected %s", count, want),
+				Message: fmt.Sprintf("has %d entries - expected %s", count, want),
 			})
 		}
 	})
@@ -1191,7 +1191,7 @@ func (v *countRangeValidator) Validate(in ValidationInput) []Violation {
 }
 
 // UniqueValues reports a violation when two or more scalar items in the
-// sequence at seqPath share the same value. Non-scalar items are skipped — use
+// sequence at seqPath share the same value. Non-scalar items are skipped - use
 // NoDuplicates to deduplicate struct entries by one of their fields.
 //
 //	editor.UniqueValues("tags")
@@ -1259,7 +1259,7 @@ func (v *deprecatedValidator) Validate(in ValidationInput) []Violation {
 	}
 	var errs []Violation
 	yamlnode.ForEachLeaf(root, v.path, func(_ *yaml.Node, where string) {
-		errs = append(errs, Violation{Path: where, Message: "deprecated — " + v.message})
+		errs = append(errs, Violation{Path: where, Message: "deprecated - " + v.message})
 	})
 	return errs
 }
@@ -1335,8 +1335,8 @@ func parseSize(s string) (int64, bool) {
 	return 0, false
 }
 
-// forEachScalar visits every scalar reached by the dotted path — sequences and
-// dict-style mappings along the path are expanded automatically — and calls fn
+// forEachScalar visits every scalar reached by the dotted path - sequences and
+// dict-style mappings along the path are expanded automatically - and calls fn
 // with the value and its expanded path. It encodes the shared contract of the
 // value validators: a non-scalar leaf is flagged as a violation, and absent or
 // empty values report nothing (combine with Required when the field is
@@ -1357,8 +1357,8 @@ func forEachScalar(root *yaml.Node, path string, errs *[]Violation, fn func(valu
 	})
 }
 
-// forEachParentMapping navigates root to every mapping reached by segs —
-// sequences and dict-style mappings expanded automatically — and calls fn with
+// forEachParentMapping navigates root to every mapping reached by segs -
+// sequences and dict-style mappings expanded automatically - and calls fn with
 // the mapping and its dot/index path (empty when the parent is the document
 // root). Non-mapping arrivals and a nil root report nothing.
 func forEachParentMapping(root *yaml.Node, segs []string, fn func(n *yaml.Node, path string)) {

@@ -71,7 +71,7 @@ type minimalConfig struct {
 	Name    string         `yaml:"name"`
 	Port    int            `yaml:"port"`
 	Nested  *minimalNested `yaml:"nested"`
-	Skipped string         // no yaml tag — must be omitted
+	Skipped string         // no yaml tag - must be omitted
 }
 
 type minimalNested struct {
@@ -184,7 +184,7 @@ func TestDiscover_recursiveTypeStopsAtCycle(t *testing.T) {
 	if len(childrenField.Children) != 2 {
 		t.Errorf("children at depth 1 should have 2 children (shallow level), got %d", len(childrenField.Children))
 	}
-	// The "children" field at the second level (shallow) must be nil — cycle stopped.
+	// The "children" field at the second level (shallow) must be nil - cycle stopped.
 	if len(childrenField.Children) >= 2 {
 		deepChildrenField := childrenField.Children[1]
 		if len(deepChildrenField.Children) != 0 {

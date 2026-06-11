@@ -3,45 +3,45 @@
 //
 // Run from the yedit root:
 //
-//	go run ./examples/test
+//	go run ./examples/test               # open the editor
 //	go run ./examples/test --theme dracula
-//	go run ./examples/test --no-save-confirm
-//	go run ./examples/test --no-delete-confirm
+//	go run ./examples/test show-docs     # browse schema docs in the TUI
+//	go run ./examples/test generate-docs # write docs/ markdown files
 //
 // A test.yaml is created on first run and reused on subsequent runs so undo,
 // save, and validate can be exercised across restarts.
 //
 // # Patterns demonstrated
 //
-//	Pattern 1 — Primitives (no tree, YAML pane only)
+//	Pattern 1 - Primitives (no tree, YAML pane only)
 //	  KindPrimitive : app-name (string), debug (bool), version (string required),
 //	                  port (int default=8080), ratio (float64), build-timeout (duration)
 //	  KindDictionary: labels (map[string]string), settings (map[string]any)
-//	  KindList      : tags ([]string), ports ([]int)           — no child defs
-//	  KindVariant   : timeout                                   — Provider interface
+//	  KindList      : tags ([]string), ports ([]int)           - no child defs
+//	  KindVariant   : timeout                                   - Provider interface
 //
-//	Pattern 2 — KindObject (ADDED/AVAILABLE tree with nested structs)
+//	Pattern 2 - KindObject (ADDED/AVAILABLE tree with nested structs)
 //	  server    : flat struct with []string and map[string]string leaves
 //	  database  : struct with nested Pool (3-level nesting)
 //	  logging   : struct with enum-like level (OneOf via hints) and bool
 //	  deploy    : struct with *bool pointer and enum-like strategy
 //
-//	Pattern 3 — KindList with child defs ([N] sequence navigator)
+//	Pattern 3 - KindList with child defs ([N] sequence navigator)
 //	  workers   : []Worker  (name required, concurrency, queue, tags []string)
 //	  routes    : []Route   (path, method oneof, handler, auth bool)
 //	  filters   : []Filter  (self-referential, cycle-detected: any []Filter, all []Filter)
 //
-//	Pattern 4 — KindDictionary with child defs (map[key]struct navigator)
+//	Pattern 4 - KindDictionary with child defs (map[key]struct navigator)
 //	  port-attrs: map[string]PortAttr (label string, on-auto-forward oneof)
 //
-//	Pattern 5 — Schema edge cases (items 6–10 from robustness audit)
+//	Pattern 5 - Schema edge cases (items 6–10 from robustness audit)
 //	  embed     : embeddedMeta anonymous embed → created-by, version-tag promoted to root
 //	  inline    : inlineAnnotations yaml:",inline" → team, contact promoted to root
-//	  omitempty : replicas (int,omitempty) — FieldDef.OmitEmpty = true
-//	  flow      : ips ([]string,flow) — FieldDef.Flow = true
-//	  int key   : firewall-rules map[int]PortRule — FieldDef.MapKeyScalar = "int"
-//	  marshaler : background (Color via MarshalYAML) — KindPrimitive, no R/G/B sub-fields
-//	  any       : extras (interface{}) — KindAny
+//	  omitempty : replicas (int,omitempty) - FieldDef.OmitEmpty = true
+//	  flow      : ips ([]string,flow) - FieldDef.Flow = true
+//	  int key   : firewall-rules map[int]PortRule - FieldDef.MapKeyScalar = "int"
+//	  marshaler : background (Color via MarshalYAML) - KindPrimitive, no R/G/B sub-fields
+//	  any       : extras (interface{}) - KindAny
 //
 //	Config options exercised
 //	  PassthroughKeys  : "import" is preserved as-is, hidden from all sections
@@ -61,7 +61,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"sort"
@@ -69,8 +68,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/lucasassuncao/yedit/docgenerator"
 	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
@@ -123,7 +124,7 @@ type LoggingConfig struct {
 	ShowCaller bool   `yaml:"show-caller"`
 }
 
-// DeployConfig: struct with *bool pointer and enum — from movelooper patterns.
+// DeployConfig: struct with *bool pointer and enum - from movelooper patterns.
 type DeployConfig struct {
 	Enabled    *bool  `yaml:"enabled"`
 	Strategy   string `yaml:"strategy"`
@@ -186,7 +187,7 @@ type inlineAnnotations struct {
 	Contact string `yaml:"contact"`
 }
 
-// Color implements yaml.Marshaler — Discover classifies it as KindPrimitive (item 9).
+// Color implements yaml.Marshaler - Discover classifies it as KindPrimitive (item 9).
 // The editor shows it as a text scalar ("#rrggbb"), not as R/G/B sub-fields.
 type Color struct{ R, G, B uint8 }
 
@@ -210,7 +211,7 @@ func (c *Color) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// PortRule: value type for map[int]PortRule — demonstrates non-string map key (item 8).
+// PortRule: value type for map[int]PortRule - demonstrates non-string map key (item 8).
 type PortRule struct {
 	Proto   string `yaml:"proto"`
 	Allowed bool   `yaml:"allowed"`
@@ -234,10 +235,10 @@ type SchemaEdgeCases struct {
 // ── Root config ───────────────────────────────────────────────────────────────
 
 type TestConfig struct {
-	// Hidden by Config.Hidden — never appears in the UI.
+	// Hidden by Config.Hidden - never appears in the UI.
 	InternalID string `yaml:"internal-id"`
 
-	// Pattern 1 — KindPrimitive
+	// Pattern 1 - KindPrimitive
 	AppName      string        `yaml:"app-name"`
 	Debug        bool          `yaml:"debug"`
 	Version      string        `yaml:"version"`
@@ -245,32 +246,32 @@ type TestConfig struct {
 	Ratio        float64       `yaml:"ratio"`
 	BuildTimeout time.Duration `yaml:"build-timeout"`
 
-	// Pattern 1 — KindDictionary (free-form, no child defs)
+	// Pattern 1 - KindDictionary (free-form, no child defs)
 	Labels   map[string]string `yaml:"labels"`
 	Settings map[string]any    `yaml:"settings"`
 
-	// Pattern 1 — KindList, no child defs
+	// Pattern 1 - KindList, no child defs
 	Tags  []string `yaml:"tags"`
 	Ports []int    `yaml:"ports"`
 
-	// Pattern 1 — KindVariant via Provider
+	// Pattern 1 - KindVariant via Provider
 	Timeout TimeoutValue `yaml:"timeout"`
 
-	// Pattern 2 — KindObject structs
+	// Pattern 2 - KindObject structs
 	Server   ServerConfig   `yaml:"server"`
 	Database DatabaseConfig `yaml:"database"`
 	Logging  LoggingConfig  `yaml:"logging"`
 	Deploy   DeployConfig   `yaml:"deploy"`
 
-	// Pattern 3 — KindList with child defs
+	// Pattern 3 - KindList with child defs
 	Workers []Worker `yaml:"workers"`
 	Routes  []Route  `yaml:"routes"`
 	Filters []Filter `yaml:"filters"`
 
-	// Pattern 4 — KindDictionary with child defs
+	// Pattern 4 - KindDictionary with child defs
 	PortAttrs map[string]PortAttr `yaml:"port-attrs"`
 
-	// Pattern 5 — Schema edge cases
+	// Pattern 5 - Schema edge cases
 	EdgeCases SchemaEdgeCases `yaml:"edge-cases"`
 }
 
@@ -379,67 +380,100 @@ func buildMetadataSource(tree map[string]*metadataNode) editor.MetadataSource {
 	})
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── Commands ──────────────────────────────────────────────────────────────────
 
 func main() {
-	themeName := flag.String("theme", "dark", "theme preset (run --list-themes for options)")
-	noSaveConfirm := flag.Bool("no-save-confirm", false, "skip save confirmation dialog")
-	noDeleteConfirm := flag.Bool("no-delete-confirm", false, "skip delete confirmation dialog")
-	noValidate := flag.Bool("no-validate", false, "allow saving with validation errors")
-	flag.Parse()
-
-	const path = "test.yaml"
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := os.WriteFile(path, []byte(seedYAML), 0600); err != nil {
-			panic(err)
-		}
+	root := buildEditCmd()
+	root.AddCommand(buildShowDocsCmd())
+	root.AddCommand(buildGenerateDocsCmd())
+	if err := root.Execute(); err != nil {
+		os.Exit(1)
 	}
+}
 
-	res, err := editor.Run(editor.Config{
-		Theme:  appTheme(*themeName),
-		Path:   path,
-		Schema: &TestConfig{},
-		Title:  "yedit test",
+func buildEditCmd() *cobra.Command {
+	var themeName string
+	var noSaveConfirm, noDeleteConfirm, noValidate bool
 
-		// Config.Hidden: fields never shown in the UI.
-		Hidden: []string{"internal-id"},
+	cmd := &cobra.Command{
+		Use:   "test",
+		Short: "yedit test - exercises every schema pattern and Config option",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			const path = "test.yaml"
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				if err := os.WriteFile(path, []byte(seedYAML), 0600); err != nil {
+					return err
+				}
+			}
 
-		// Config.PassthroughKeys: preserved as-is, hidden from all sections,
-		// excluded from unknown-key validation (ctrl+l).
-		PassthroughKeys: []string{"import"},
+			res, err := editor.Run(editor.Config{
+				Theme:  appTheme(themeName),
+				Path:   path,
+				Schema: &TestConfig{},
+				Title:  "yedit test",
 
-		// Config.NoSaveConfirm / NoDeleteConfirm / NoValidateOnSave.
-		NoSaveConfirm:    *noSaveConfirm,
-		NoDeleteConfirm:  *noDeleteConfirm,
-		NoValidateOnSave: *noValidate,
+				Hidden:          []string{"internal-id"},
+				PassthroughKeys: []string{"import"},
 
-		// Config.PreCheckedFields: fields toggled ON automatically when opening a
-		// new (not yet existing) block. Opening an existing block is unaffected.
-		PreCheckedFields: testPreCheckedFields,
+				NoSaveConfirm:    noSaveConfirm,
+				NoDeleteConfirm:  noDeleteConfirm,
+				NoValidateOnSave: noValidate,
 
-		// Config.FieldSnippets: YAML inserted when a struct field is toggled ON.
-		FieldSnippets: testFieldSnippets,
+				PreCheckedFields: testPreCheckedFields,
+				FieldSnippets:    testFieldSnippets,
+				Presets:          testPresets,
+				Metadata:         testHints,
 
-		// Config.Presets: struct-backed presets marshaled to YAML on demand.
-		// See testPresetSource above for the canonical inline implementation pattern.
-		Presets: testPresets,
-
-		// Config.Hints: hierarchical hint tree; paths are dot-separated field names.
-		// See metadataNode / buildMetadataSource above for the canonical implementation pattern.
-		Metadata: testHints,
-
-		Validators: []editor.Validator{
-			// MutuallyExclusive: server and proxy cannot coexist.
-			// Add "proxy: true" manually to test.yaml to trigger this.
-			editor.MutuallyExclusive("server", "proxy"),
-			// RequiredWith: routes require server to be present.
-			editor.RequiredWith("routes", "server"),
+				Validators: []editor.Validator{
+					editor.MutuallyExclusive("server", "proxy"),
+					editor.RequiredWith("routes", "server"),
+				},
+			})
+			if err != nil {
+				return err
+			}
+			if res.Saved {
+				fmt.Println("changes saved to", path)
+			}
+			return nil
 		},
-	})
-	if err != nil {
-		panic(err)
 	}
-	if res.Saved {
-		fmt.Println("changes saved to", path)
+
+	cmd.Flags().StringVar(&themeName, "theme", "dark", "theme preset (--theme dracula, --theme light, …)")
+	cmd.Flags().BoolVar(&noSaveConfirm, "no-save-confirm", false, "skip save confirmation dialog")
+	cmd.Flags().BoolVar(&noDeleteConfirm, "no-delete-confirm", false, "skip delete confirmation dialog")
+	cmd.Flags().BoolVar(&noValidate, "no-validate", false, "allow saving with validation errors")
+	return cmd
+}
+
+func buildShowDocsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show-docs",
+		Short: "Browse schema documentation in the TUI",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(testHints))
+			docs := gen.GenerateDocsInMemory(TestConfig{})
+			return docgenerator.RenderMarkdownDocsInTerminal(docs, "yedit test")
+		},
+	}
+}
+
+func buildGenerateDocsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "generate-docs",
+		Short:  "Write markdown documentation to docs/",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(testHints))
+			names, err := gen.GenerateAllDocs(TestConfig{}, "docs")
+			if err != nil {
+				return err
+			}
+			if err := docgenerator.GenerateIndex("docs", names); err != nil {
+				return err
+			}
+			fmt.Println("documentation written to docs/")
+			return nil
+		},
 	}
 }

@@ -1,313 +1,61 @@
-# yedit — Internal Architecture
+# Architecture
 
-This document describes how the editor works end-to-end: how data flows from disk through the node tree and back, how the editor stack enables nested editing, and how the undo system operates at two independent levels.
-
----
-
-## Layers at a glance
-
-```
-┌─────────────────────────────────────────────────────┐
-│  editor.Run (bubbletea program)                     │
-│  ┌───────────────┐  ┌──────────────────────────┐    │
-│  │  model (root) │  │  blockEditState (stack)  │    │
-│  │  list / alert │  │  tree · YAML pane · node │    │
-│  └───────────────┘  └──────────────────────────┘    │
-│           │                      │                  │
-│      document.Document     *yaml.Node (editRoot)    │
-│      (raw bytes + history)  single canonical tree   │
-└─────────────────────────────────────────────────────┘
-           │
-      file on disk
-```
-
-There are two separate "sources of truth" that never overlap:
-
-| Layer | What it owns | Undo mechanism |
-|---|---|---|
-| `document.Document` | Raw YAML bytes as they would appear on disk | `doc.Undo()` / `doc.Redo()` — byte-level snapshots |
-| `blockEditState.node` | Parsed `*yaml.Node` while a block is open for editing | `be.undoStack` / `be.redoStack` — node snapshots |
-
-The document is only mutated when the user commits (Ctrl+S inside an editor) or explicitly removes a block. Between those moments, the only thing that changes is the in-memory node tree.
+How the yedit packages fit together and why they are split the way they are.
 
 ---
 
-## document.Document
-
-`document/document.go` owns the raw bytes of the YAML file.
+## Package map
 
 ```
-Load(path, knownOrder) → *Document
-    raw []byte              ← file content (CRLF normalised)
-    blocks []Block          ← parsed block list (key + line range)
-    history [][]byte        ← undo stack (raw snapshots)
-    future  [][]byte        ← redo stack
-    knownOrder []string     ← canonical key order for Insert/Replace
+github.com/lucasassuncao/yedit/
+├── editor          - public API: Config, Run, FieldMeta, MetadataSource, Validator, …
+├── metadata        - metadata.Build: validates a Node tree against the schema struct
+├── schema          - schema.Discover: reflects a Go struct into a []FieldDef tree
+├── document        - raw YAML bytes, block list, undo/redo history
+├── presets         - presets.FromFS: embed.FS-backed PresetSource
+├── docgenerator    - generates Markdown reference tables; TUI doc browser
+├── theme           - color palette, layout helpers
+├── viewer          - reusable list+viewport model (used by docgenerator TUI)
+└── internal/
+    ├── alert       - modal alert overlay (bubbletea component)
+    └── yamlnode    - *yaml.Node helpers shared by editor sub-packages
 ```
 
-**Block model.** The document is divided at the top level into named blocks — one per top-level YAML key. `ParseBlocks` splits the raw bytes into `Block{Key, StartLine, EndLine}` entries without full YAML parsing. This keeps all mutations fast: `Insert`, `Replace`, and `Remove` splice raw lines, then re-parse the block index.
+### Typical import graph
 
-**Mutation methods:**
+```
+your app
+  └── editor          ← Config, Run, MetadataSource, Validator, …
+        ├── schema    ← Discover (schema struct → []FieldDef tree)
+        ├── document  ← raw YAML mutations + undo stack
+        └── (internal packages)
 
-| Method | What it does |
-|---|---|
-| `Insert(snippet)` | Appends a new block, positioned by `knownOrder` |
-| `Replace(key, snippet)` | Removes the block then inserts the new version |
-| `Remove(key)` | Removes the block entirely |
+  └── metadata        ← Build (Node tree → MetadataSource)
+        └── editor    ← FieldMeta, MetadataSource
 
-Every mutation calls `snapshot()` first (saves the current raw bytes to `history`) and sets `dirty = true`. `Undo()` / `Redo()` swap the raw bytes back from those snapshots and re-parse the block index.
+  └── docgenerator    ← SchemaGenerator, RenderMarkdownDocsInTerminal
+        ├── editor    ← MetadataSource
+        └── schema    ← Discover
 
-**Round-trip guard.** After `Insert` and `Replace`, the document re-reads the stored block with `BlockContent` and compares it against the submitted snippet using `blockSemanticEqual` (YAML-parse both and compare node structure). If they diverge the mutation is rolled back. This catches any serialisation quirk before it reaches disk.
+  └── presets         ← FromFS (embed.FS-backed PresetSource)
+```
+
+`docgenerator` imports `editor` (for `MetadataSource`) but `editor` does not import `docgenerator` - the dependency is one-way, so wiring doc commands does not add weight to the editor itself.
 
 ---
 
-## Schema layer
+## editor
 
-`schema.Discover(ptr, depth)` walks the Go struct passed as `Config.Schema` via reflection and builds a `[]FieldDef` tree:
+The main entry point. `editor.Run` starts a bubbletea program that manages:
 
-```go
-type FieldDef struct {
-    YAMLName string
-    Kind      Kind       // KindPrimitive | KindObject | KindList | KindDictionary
-    Children  []FieldDef // nested struct fields
-    // ...
-}
-```
+- A **list view** - left panel shows top-level YAML blocks (ADDED / AVAILABLE sections).
+- A **block editor** - opens when the user selects a block; owns a field tree (left) and YAML pane (right).
+- An **editor stack** - drill-in (Enter on a nested field) pushes a new `blockEditState` onto the stack; drill-out (Esc) pops it. The single `editRoot *yaml.Node` holds all edits until Ctrl+S commits them to `document.Document`.
+- A **hint panel** - shown when `EnableHints` is set; renders `FieldMeta` from `Config.Metadata` for the focused field.
 
-`Kind` drives how a block editor behaves:
+`editor.Config` is the integration surface. See `editor/config.go` for the full field list.
 
-| Kind | What it maps to | Editor mode |
-|---|---|---|
-| `KindObject` | struct | tree + YAML pane (field toggles) |
-| `KindList` | `[]Struct` | collection navigator (sequence) |
-| `KindDictionary` | `map[string]Struct` | collection navigator (map) |
-| `KindPrimitive` | scalar / `[]string` / free map | YAML pane only |
-
-`schema.KnownChildren(tree)` produces a `map[path]map[key]bool` used at commit time to detect unknown YAML keys.
-
----
-
-## Root model
-
-`editor/root.go` holds the bubbletea `model`:
-
-```go
-type model struct {
-    cfg         Config
-    doc         *document.Document
-    schemaTree  []schema.FieldDef
-
-    list        listModel        // left-panel block list
-    blockEdits  []*blockEditState // editor stack (non-empty when a block is open)
-    editRoot    *yaml.Node       // canonical node for the block being edited
-    editBlockKey string          // top-level key that editRoot belongs to
-    alert       *alert.Model
-    // ...
-}
-```
-
-**Exactly one pane is active at a time:** `paneList`, `panePreview`, `paneBlockEdit`, or `paneAlert`. The four `enter*` methods are the only places that change `m.mode`, so invariants are maintained by construction: `alert != nil ⟺ paneAlert`, `len(blockEdits) > 0 ⟺ paneBlockEdit`.
-
----
-
-## Opening a block
-
-When the user presses Enter on a list item, `handleOpenItem` runs:
-
-1. Read the current block content from the document with `doc.BlockContent(key)` (or use an empty template for a new block).
-2. Create a `blockEditState` with `newBlockEdit(cfg, spec, w, h)`.
-3. Set `be.focus = nil` — the root editor addresses the whole block.
-4. Push it onto `m.blockEdits`.
-5. Initialise `m.editRoot` as a fresh empty `MappingNode` (a non-nil placeholder; the first flush populates it).
-6. Call `enterBlockEdit()`.
-
----
-
-## blockEditState — the block editor
-
-Each `blockEditState` owns:
-
-```
-node        *yaml.Node       ← canonical value node (single source of truth for this editor)
-tree        treeModel        ← checkmark tree projected from node
-yamlEditor  textarea.Model   ← text buffer (tolerant; may be mid-edit)
-coll        collectionBuffer ← current entry index (collections only)
-focus       []pathSeg        ← address of this editor inside editRoot
-undoStack   []*blockEditUndoSnap
-redoStack   []*blockEditUndoSnap
-```
-
-### be.node: the single source of truth
-
-`be.node` is the `*yaml.Node` for the block's value mapping (or sequence/map root for collections). It is the only authoritative representation of the block's current data. Everything else is derived from it:
-
-- **Tree panel** — `syncTreeCheckedFromNode(tree, node)` walks the node to compute which fields are present (checked), then applies ADDED/AVAILABLE sectioning.
-- **YAML panel** — `nodeToContent(key, node)` serialises the node to the text displayed (and editable) on the right.
-
-### Tolerant parse gate
-
-Typing in the YAML panel can leave the buffer temporarily invalid. After each content-changing keystroke, `syncParsedNode` tries to parse the buffer with `valueNodeOfSnippet`:
-
-- **Parse succeeds** → `be.node` advances to the new node; the tree is re-derived from it.
-- **Parse fails** → `be.node` keeps its last valid state; the tree is unchanged.
-
-Navigation keys (arrows, selection) do not trigger the gate — there is nothing to re-project.
-
-### Tree toggles
-
-When the user checks or unchecks a field in the tree panel, `handleTreeToggle` runs:
-
-1. `be.saveUndo()` — snapshot current state before mutation.
-2. `toggleNodeField(be.node, ctx, node, checked)` — structurally adds or removes the field from `be.node` using `applyToggleAt`, then calls `pruneEmptyMappings(be.node)` to remove any now-empty parent mappings or sequences.
-3. `reorderNestedMappingKeys` — sorts keys back to schema order.
-4. `syncTreeCheckedFromNode` — re-derives the tree from the updated `be.node`.
-5. `nodeToContent(key, be.node)` → `yamlEditor.SetValue(...)` — re-renders the YAML panel.
-
-The tree and YAML panel are always consistent because both are derived from `be.node` after every mutation.
-
----
-
-## Collection navigation
-
-For `KindList` and `KindDictionary` blocks with schema-defined children, the editor becomes a **collection navigator**. `be.node` is the entire sequence or map node (not just one entry's value). A `collectionBuffer` tracks which entry is shown:
-
-```
-be.node          ← sequence/map node — owns ALL entries
-be.coll.current  ← index of the entry shown in yamlEditor
-```
-
-Navigation between entries is a two-step flush-load cycle:
-
-1. `flushCurrentEntry()` — parse the YAML editor text and write it back into `be.node` at the current entry position (parse gate: rejects invalid YAML and blocks navigation).
-2. `loadEntry(idx)` — read `be.node[idx]` and set `yamlEditor` to its serialised form.
-
-`collectionDeriveTree()` re-projects labels and field checkmarks for **all** entries from `be.node` after any structural change (add, delete, reorder).
-
----
-
-## editRoot and the editor stack
-
-`model.editRoot` is the single canonical `*yaml.Node` for the top-level block currently being edited. It starts as an empty mapping and is populated by the first `flushTopToRoot` call.
-
-**Why one shared tree instead of one node per editor?**  
-String-splicing between stacked editors would corrupt nested data (e.g. if an outer field's text happened to match an inner block boundary). Using one shared node tree means every editor's `focus` path addresses the same live object, so writes at any depth can never corrupt unrelated paths.
-
-### flushTopToRoot
-
-Serialises the active (top) editor and writes its result back into `editRoot` at `be.focus`:
-
-```
-top.commit() → snippet (YAML text)
-valueNodeOfSnippet(snippet) → val (*yaml.Node)
-setNodeAt(editRoot, top.focus, val)
-```
-
-`setNodeAt` with `segs = nil` (root editor, `focus = nil`) replaces `editRoot` itself with `val`.
-
-### Drill-in (Enter on an openable field)
-
-1. Flush the current top editor into `editRoot` (`flushTopToRoot`).
-2. Compute `childFocus = parentFocus + relSegs`.
-3. Read `nodeAt(editRoot, childFocus)` — the child's current content from the live tree.
-4. Create a `blockEditState` for the child field with `focus = childFocus`.
-5. Push it onto `blockEdits`.
-
-### Drill-out (Esc on a nested editor)
-
-1. Record `childWasDirty = top.dirty`.
-2. Flush the child into `editRoot` (`flushTopToRoot`).
-3. Pop the child from `blockEdits`.
-4. If `childWasDirty`, call `saveUndo()` on the new top (parent) editor — this lets Ctrl+U on the parent undo the entire drill-in in one step.
-5. `refreshTopFromRoot(childWasDirty)` — re-read the parent's focus path from `editRoot` and rebuild its YAML panel and tree from the updated node.
-
-No data is written to the document during drill-out. Changes accumulate in `editRoot` until Ctrl+S.
-
----
-
-## commitAll — writing back to the document
-
-Ctrl+S inside any block editor calls `saveAll`, which runs validators first and then `commitAll`:
-
-```
-commitAll():
-    isEdit = blockEdits[0].isEdit   ← true = Replace, false = Insert
-
-    flushTopToRoot()                ← write active editor into editRoot
-
-    pruneEmptyMappings(editRoot)    ← remove empty mappings/sequences left by toggles
-                                       and empty collection items left by drill-out
-
-    blockIsEmpty = editRoot is an empty MappingNode
-
-    switch:
-    case blockIsEmpty && isEdit:
-        doc.Remove(editBlockKey)    ← all fields removed → delete the key entirely
-
-    case !blockIsEmpty:
-        final = nodeToContent(editBlockKey, editRoot)   ← serialise once
-        if isEdit:
-            current = doc.BlockContent(editBlockKey)
-            if normalizeBlockContent(current) != final: ← skip if content unchanged
-                doc.Replace(editBlockKey, final)
-        else:
-            doc.Insert(final)
-
-    syncView(); enterList()
-```
-
-`normalizeBlockContent` parses the document's existing block content and re-serialises it through `nodeToContent` so both sides of the comparison go through the same formatting pipeline (block style, 2-space indent). This prevents a no-op commit (e.g. an empty collection item that was pruned) from taking a history snapshot or marking the document dirty.
-
----
-
-## Undo/redo — two independent levels
-
-### Inside a block editor (Ctrl+U / Ctrl+Y)
-
-Every mutating operation calls `be.saveUndo()` before changing state. `saveUndo` calls `captureSnap()`:
-
-```go
-type blockEditUndoSnap struct {
-    node       *yaml.Node  // deep clone of be.node
-    yamlValue  string      // text buffer at snapshot time
-    dirty      bool
-    preset     string
-    treeNodes  []treeNode  // tree state (cursor, expansion)
-    // ...
-}
-```
-
-`restoreUndo()` clones the snapshot's node back into `be.node`, restores the YAML buffer and tree, and pushes the undone state onto `redoStack`. `restoreRedo()` is the symmetric operation.
-
-Ctrl+U/Ctrl+Y while a block editor is open **never** falls through to `doc.Undo()`/`doc.Redo()`. The two undo levels are fully separated.
-
-### At the document level (list view, Ctrl+U / Ctrl+Y)
-
-`doc.Undo()` and `doc.Redo()` swap raw byte snapshots. These cover `Insert`, `Replace`, and `Remove` operations — i.e. every Ctrl+S commit, every block deletion, and every preset application.
-
----
-
-## pruneEmptyMappings
-
-Called after every tree toggle and again in `commitAll`. Removes:
-
-- Mapping keys whose value is an empty mapping or empty sequence (bottom-up, so intermediate nodes are cleaned after their children).
-- Empty mapping items (`{}`) from sequences — this handles the case where a drill-in is opened for a new collection item and the user commits without adding any fields.
-
----
-
-## Validators
-
-Two families, both run at save time via `RunAll(cfg.Validators, raw, blocks)`:
-
-**FromMetadata family** (`RequiredFromMetadata`, `OneOfFromMetadata`, etc.) — wired at startup in `newModel` with the discovered schema tree and `cfg.Metadata`. They read `FieldMeta` from the `MetadataSource` for each field and enforce the declared constraint against the raw YAML.
-
-**Explicit family** (`Required`, `ValueOneOf`, `ValueInRange`, etc.) — self-contained; work with just the raw bytes and block list. Used for one-off or cross-field rules.
-
----
-
-## MetadataSource and the hint panel
-
-`Config.Metadata` is a `MetadataSource`:
+### MetadataSource
 
 ```go
 type MetadataSource interface {
@@ -315,6 +63,107 @@ type MetadataSource interface {
 }
 ```
 
-`FieldMeta` carries display data (Description, Type, Default, OneOf, Example, …) and constraint data (Required, Min, Max, Pattern, MinCount, MaxCount, Unique, Deprecated). It is the single source of truth for both the Hint/Example panel and the `FromMetadata` validators — constraints are declared once and reused in both places.
+`MetadataSource` is the single source of truth for both the hint panel and the `FromMetadata` validator family. Declare constraints once (`Required: true`, `OneOf: [...]`, etc.) - the panel displays them and the validators enforce them.
 
-The hint panel is opt-in via `Config.EnableHints`. When enabled, the right column in the list view splits: Preview on top, Hint/Example below. The panel renders the `FieldMeta` for the currently selected block via `selectedHint()`, and `blockEditState.fieldHintFor(path)` does the same for individual fields inside an open editor.
+The recommended implementation is `metadata.Build`, which also validates field names against the struct at startup.
+
+### Validators
+
+Validators implement `editor.Validator` and are called before every save via `RunAll`. Two families:
+
+- **FromMetadata** (`RequiredFromMetadata`, `OneOfFromMetadata`, etc.) - walk the schema tree and query `MetadataSource` for each field. Wire in at session start via `editor.Config.Validators`.
+- **Explicit** (`Required`, `ValueOneOf`, `ValueInRange`, `MutuallyExclusive`, etc.) - self-contained; work from raw bytes and the block list. Used for one-off or cross-field rules.
+
+---
+
+## metadata
+
+`metadata.Build(schemaPtr, tree)` validates a `map[string]*Node` tree against the Go struct passed as `schemaPtr`. Any key in `tree` with no matching `yaml`-tagged struct field is an error - typos surface at startup, not silently at runtime.
+
+`metadata.Node` embeds `editor.FieldMeta` and adds `Children map[string]*Node`. Shared pointers in `Children` model recursive types (e.g. `any []Filter` pointing back to the same node) without infinite loops - `Build` tracks visited nodes.
+
+---
+
+## schema
+
+`schema.Discover(ptr)` reflects a Go struct into `[]schema.FieldDef`:
+
+```go
+type FieldDef struct {
+    YAMLName string
+    Kind      Kind       // KindPrimitive | KindObject | KindList | KindDictionary | KindVariant | KindAny
+    Scalar    string     // concrete scalar type for KindPrimitive
+    Children  []FieldDef // nested struct fields
+    // …
+}
+```
+
+`Kind` is the driving concept: `KindObject` gets a field tree, `KindList`/`KindDictionary` with children get a `[N]` navigator, everything else gets the raw YAML pane. See [Schema Kinds Reference](schema-kinds-reference.md) for the full mapping.
+
+The schema package has no dependency on `editor` - it can be used standalone (e.g. by `docgenerator`).
+
+---
+
+## document
+
+`document.Document` owns the raw YAML bytes. It divides the file into top-level **blocks** (`Block{Key, StartLine, EndLine}`) without full YAML parsing. All mutations splice raw lines:
+
+| Method | Effect |
+|---|---|
+| `Insert(snippet)` | Append a new block, positioned by `knownOrder` |
+| `Replace(key, snippet)` | Remove then insert the updated version |
+| `Remove(key)` | Delete the block entirely |
+
+Every mutation snapshots the current bytes to a history stack first - `doc.Undo()` / `doc.Redo()` restore those snapshots. This is the **document-level undo**, separate from the in-editor node-level undo inside `blockEditState`.
+
+A round-trip guard validates each `Insert`/`Replace` by re-parsing the stored block and comparing its structure against the submitted snippet. Mismatches roll back the mutation before it reaches disk.
+
+---
+
+## docgenerator
+
+Generates Markdown reference tables from a Go struct and a `MetadataSource`. Used for `show-docs` (TUI browser) and `generate-docs` (write files to disk) CLI subcommands.
+
+```go
+gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(src))
+
+// In-memory (for the TUI viewer):
+docs := gen.GenerateDocsInMemory(Config{})       // map[string]string
+docgenerator.RenderMarkdownDocsInTerminal(docs, "myapp")
+
+// On disk:
+names, _ := gen.GenerateAllDocs(Config{}, "docs/reference")
+docgenerator.GenerateIndex("docs/reference", names)
+```
+
+`GenerateAllDocs` creates one Markdown file per top-level field with children, plus a root index. `GenerateDocsInMemory` produces the same map in memory for the TUI viewer.
+
+`docgenerator` depends on `editor` (for `MetadataSource`) and `schema` (for `Discover`), but not the other way around - no import cycle.
+
+---
+
+## presets
+
+`presets.FromFS(fs, dir)` returns a `PresetSource` backed by an `embed.FS`. Expected layout:
+
+```
+presets/
+  server/
+    minimal.yaml
+    production.yaml
+```
+
+Each file is a YAML mapping keyed by the block name. For struct-backed presets (marshaled at runtime), implement `editor.PresetSource` directly - see [Presets & Metadata](presets-hints.md).
+
+---
+
+## Two-level undo
+
+yedit maintains two independent undo stacks:
+
+| Level | Scope | Keys |
+|---|---|---|
+| Block editor (`blockEditState`) | In-memory `*yaml.Node` changes while a block is open | Ctrl+U / Ctrl+Y |
+| Document (`document.Document`) | Raw byte snapshots of committed saves and removals | Ctrl+U / Ctrl+Y in list view |
+
+Ctrl+U while a block editor is open never falls through to the document level. Closing a block (Esc without saving) discards in-editor changes without touching the document history.

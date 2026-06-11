@@ -9,7 +9,7 @@ import (
 // KnownChildren collapses a FieldDef tree into a map of dotted paths to the
 // set of allowed direct children. Used by UnknownKeys to detect typos.
 //
-// A nil value at a path means "free-form" — children at that path are not
+// A nil value at a path means "free-form" - children at that path are not
 // validated (e.g. customizations.vscode.settings has no fixed schema).
 func KnownChildren(fields []FieldDef) map[string]map[string]bool {
 	out := make(map[string]map[string]bool, len(fields))

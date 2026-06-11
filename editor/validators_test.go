@@ -19,18 +19,18 @@ func TestMutuallyExclusive(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name:          "two keys present — violation",
+			name:          "two keys present - violation",
 			blocks:        []document.Block{{Key: "image"}, {Key: "build"}},
 			wantViolation: true,
 			wantContains:  []string{"image", "build"},
 		},
 		{
-			name:          "only one key — ok",
+			name:          "only one key - ok",
 			blocks:        []document.Block{{Key: "image"}},
 			wantViolation: false,
 		},
 		{
-			name:          "none of the keys — ok",
+			name:          "none of the keys - ok",
 			blocks:        []document.Block{{Key: "name"}},
 			wantViolation: false,
 		},
@@ -66,7 +66,7 @@ func TestMutuallyExclusive_dottedPath(t *testing.T) {
 		wantViolation bool
 	}{
 		{
-			name: "both keys in filter — violation",
+			name: "both keys in filter - violation",
 			raw: `
 categories:
   foo:
@@ -82,7 +82,7 @@ categories:
 			wantViolation: true,
 		},
 		{
-			name: "only one key — ok",
+			name: "only one key - ok",
 			raw: `
 categories:
   foo:
@@ -96,7 +96,7 @@ categories:
 			wantViolation: false,
 		},
 		{
-			name: "multiple installers — second violates",
+			name: "multiple installers - second violates",
 			raw: `
 categories:
   foo:
@@ -117,7 +117,7 @@ categories:
 			wantViolation: true,
 		},
 		{
-			name:          "empty document — ok",
+			name:          "empty document - ok",
 			raw:           "",
 			wantViolation: false,
 		},
@@ -186,18 +186,18 @@ func TestRequiredWith(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name:          "key present without parent — violation",
+			name:          "key present without parent - violation",
 			blocks:        []document.Block{{Key: "service"}},
 			wantViolation: true,
 			wantContains:  []string{"service", "dockerComposeFile"},
 		},
 		{
-			name:          "both present — ok",
+			name:          "both present - ok",
 			blocks:        []document.Block{{Key: "service"}, {Key: "dockerComposeFile"}},
 			wantViolation: false,
 		},
 		{
-			name:          "key absent — ok",
+			name:          "key absent - ok",
 			blocks:        []document.Block{{Key: "name"}},
 			wantViolation: false,
 		},
@@ -231,7 +231,7 @@ func TestRequiredWith_dottedPath(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name: "key present without parent — violation",
+			name: "key present without parent - violation",
 			raw: `
 server:
   tls-key: /etc/tls/key.pem
@@ -240,7 +240,7 @@ server:
 			wantContains:  []string{"server", "tls-key", "tls-cert"},
 		},
 		{
-			name: "both present — ok",
+			name: "both present - ok",
 			raw: `
 server:
   tls-cert: /etc/tls/cert.pem
@@ -248,14 +248,14 @@ server:
 `,
 		},
 		{
-			name: "key absent — ok",
+			name: "key absent - ok",
 			raw: `
 server:
   host: localhost
 `,
 		},
 		{
-			name: "parent mapping absent — ok",
+			name: "parent mapping absent - ok",
 			raw:  "name: myapp\n",
 		},
 	}
@@ -317,22 +317,22 @@ func TestAtLeastOneOf(t *testing.T) {
 		wantViolation bool
 	}{
 		{
-			name:          "none present — violation",
+			name:          "none present - violation",
 			blocks:        []document.Block{{Key: "name"}},
 			wantViolation: true,
 		},
 		{
-			name:          "one present — ok",
+			name:          "one present - ok",
 			blocks:        []document.Block{{Key: "image"}},
 			wantViolation: false,
 		},
 		{
-			name:          "multiple present — ok",
+			name:          "multiple present - ok",
 			blocks:        []document.Block{{Key: "image"}, {Key: "build"}},
 			wantViolation: false,
 		},
 		{
-			name:          "empty blocks — violation",
+			name:          "empty blocks - violation",
 			blocks:        nil,
 			wantViolation: true,
 		},
@@ -368,24 +368,24 @@ func TestExactlyOneOf(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name:          "none present — violation",
+			name:          "none present - violation",
 			blocks:        []document.Block{{Key: "name"}},
 			wantViolation: true,
 			wantContains:  []string{"required"},
 		},
 		{
-			name:          "one present — ok",
+			name:          "one present - ok",
 			blocks:        []document.Block{{Key: "image"}},
 			wantViolation: false,
 		},
 		{
-			name:          "two present — violation",
+			name:          "two present - violation",
 			blocks:        []document.Block{{Key: "image"}, {Key: "build"}},
 			wantViolation: true,
 			wantContains:  []string{"image", "build"},
 		},
 		{
-			name:          "all three present — violation",
+			name:          "all three present - violation",
 			blocks:        []document.Block{{Key: "image"}, {Key: "build"}, {Key: "dockerComposeFile"}},
 			wantViolation: true,
 		},
@@ -419,7 +419,7 @@ func TestRequiredIf(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name: "condition active, key absent — violation",
+			name: "condition active, key absent - violation",
 			raw: `
 tls:
   enabled: "true"
@@ -428,7 +428,7 @@ tls:
 			wantContains:  []string{"tls.cert", "tls.enabled", "true"},
 		},
 		{
-			name: "condition active, key present — ok",
+			name: "condition active, key present - ok",
 			raw: `
 tls:
   enabled: "true"
@@ -437,7 +437,7 @@ tls:
 			wantViolation: false,
 		},
 		{
-			name: "condition inactive (different value) — ok",
+			name: "condition inactive (different value) - ok",
 			raw: `
 tls:
   enabled: "false"
@@ -445,7 +445,7 @@ tls:
 			wantViolation: false,
 		},
 		{
-			name: "condition active, key present as mapping — ok",
+			name: "condition active, key present as mapping - ok",
 			raw: `
 tls:
   enabled: "true"
@@ -455,7 +455,7 @@ tls:
 			wantViolation: false,
 		},
 		{
-			name: "condition active, key present as empty scalar — violation",
+			name: "condition active, key present as empty scalar - violation",
 			raw: `
 tls:
   enabled: "true"
@@ -464,12 +464,12 @@ tls:
 			wantViolation: true,
 		},
 		{
-			name:          "condition path absent — ok",
+			name:          "condition path absent - ok",
 			raw:           `name: myapp`,
 			wantViolation: false,
 		},
 		{
-			name:          "empty document — ok",
+			name:          "empty document - ok",
 			raw:           "",
 			wantViolation: false,
 		},
@@ -503,7 +503,7 @@ func TestValueOneOf(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name: "allowed value — ok",
+			name: "allowed value - ok",
 			raw: `
 configuration:
   log-level: info
@@ -511,7 +511,7 @@ configuration:
 			wantViolation: false,
 		},
 		{
-			name: "disallowed value — violation",
+			name: "disallowed value - violation",
 			raw: `
 configuration:
   log-level: verbose
@@ -520,7 +520,7 @@ configuration:
 			wantContains:  []string{"log-level", "verbose", "trace", "fatal"},
 		},
 		{
-			name: "non-scalar value — violation",
+			name: "non-scalar value - violation",
 			raw: `
 configuration:
   log-level:
@@ -530,7 +530,7 @@ configuration:
 			wantContains:  []string{"log-level", "scalar"},
 		},
 		{
-			name: "field absent — ok",
+			name: "field absent - ok",
 			raw: `
 configuration:
   output: console
@@ -538,12 +538,12 @@ configuration:
 			wantViolation: false,
 		},
 		{
-			name:          "path absent — ok",
+			name:          "path absent - ok",
 			raw:           `name: myapp`,
 			wantViolation: false,
 		},
 		{
-			name:          "empty document — ok",
+			name:          "empty document - ok",
 			raw:           "",
 			wantViolation: false,
 		},
@@ -576,7 +576,7 @@ func TestCrossFieldOrdered(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name:      "duration: smaller < larger — ok",
+			name:      "duration: smaller < larger - ok",
 			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
 			raw: `
 filter:
@@ -586,7 +586,7 @@ filter:
 			wantViolation: false,
 		},
 		{
-			name:      "duration: smaller > larger — violation",
+			name:      "duration: smaller > larger - violation",
 			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
 			raw: `
 filter:
@@ -597,7 +597,7 @@ filter:
 			wantContains:  []string{"min-age", "max-age"},
 		},
 		{
-			name:      "duration: equal values — violation",
+			name:      "duration: equal values - violation",
 			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
 			raw: `
 filter:
@@ -607,7 +607,7 @@ filter:
 			wantViolation: true,
 		},
 		{
-			name:      "size: smaller < larger — ok",
+			name:      "size: smaller < larger - ok",
 			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
 			raw: `
 filter:
@@ -617,7 +617,7 @@ filter:
 			wantViolation: false,
 		},
 		{
-			name:      "size: smaller > larger — violation",
+			name:      "size: smaller > larger - violation",
 			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
 			raw: `
 filter:
@@ -628,7 +628,7 @@ filter:
 			wantContains:  []string{"min-size", "max-size"},
 		},
 		{
-			name:      "size: SI suffixes are decimal (999KB < 1MB) — ok",
+			name:      "size: SI suffixes are decimal (999KB < 1MB) - ok",
 			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
 			raw: `
 filter:
@@ -638,7 +638,7 @@ filter:
 			wantViolation: false,
 		},
 		{
-			name:      "size: IEC suffixes are binary (1023KiB < 1MiB) — ok",
+			name:      "size: IEC suffixes are binary (1023KiB < 1MiB) - ok",
 			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
 			raw: `
 filter:
@@ -648,7 +648,7 @@ filter:
 			wantViolation: false,
 		},
 		{
-			name:      "size: 1024KiB equals 1MiB — violation",
+			name:      "size: 1024KiB equals 1MiB - violation",
 			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
 			raw: `
 filter:
@@ -658,7 +658,7 @@ filter:
 			wantViolation: true,
 		},
 		{
-			name:      "one field absent — ok",
+			name:      "one field absent - ok",
 			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
 			raw: `
 filter:
@@ -667,7 +667,7 @@ filter:
 			wantViolation: false,
 		},
 		{
-			name:      "both absent — ok",
+			name:      "both absent - ok",
 			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
 			raw: `
 filter:
@@ -676,7 +676,7 @@ filter:
 			wantViolation: false,
 		},
 		{
-			name:      "incomparable types (mixed duration and size) — ok",
+			name:      "incomparable types (mixed duration and size) - ok",
 			validator: CrossFieldOrdered("filter.min-age", "filter.max-size"),
 			raw: `
 filter:
@@ -715,7 +715,7 @@ func TestNoDuplicates(t *testing.T) {
 		wantContains []string
 	}{
 		{
-			name: "no duplicates — ok",
+			name: "no duplicates - ok",
 			raw: `
 categories:
   - name: images
@@ -725,7 +725,7 @@ categories:
 			wantCount: 0,
 		},
 		{
-			name: "one duplicate — one violation",
+			name: "one duplicate - one violation",
 			raw: `
 categories:
   - name: images
@@ -736,7 +736,7 @@ categories:
 			wantContains: []string{"categories[2]", "images", "categories[0]"},
 		},
 		{
-			name: "two distinct duplicates — two violations",
+			name: "two distinct duplicates - two violations",
 			raw: `
 categories:
   - name: images
@@ -747,7 +747,7 @@ categories:
 			wantCount: 2,
 		},
 		{
-			name: "item without the field — skipped",
+			name: "item without the field - skipped",
 			raw: `
 categories:
   - name: images
@@ -758,22 +758,22 @@ categories:
 			wantContains: []string{"categories[2]"},
 		},
 		{
-			name:      "empty sequence — ok",
+			name:      "empty sequence - ok",
 			raw:       `categories: []`,
 			wantCount: 0,
 		},
 		{
-			name:      "path not a sequence — ok",
+			name:      "path not a sequence - ok",
 			raw:       `categories: images`,
 			wantCount: 0,
 		},
 		{
-			name:      "path absent — ok",
+			name:      "path absent - ok",
 			raw:       `name: myapp`,
 			wantCount: 0,
 		},
 		{
-			name:      "empty document — ok",
+			name:      "empty document - ok",
 			raw:       "",
 			wantCount: 0,
 		},
@@ -813,18 +813,18 @@ func TestRequired(t *testing.T) {
 		want      []string // exact violation strings, in order
 	}{
 		{
-			name:      "top-level present — ok",
+			name:      "top-level present - ok",
 			validator: Required("version"),
 			raw:       "version: 1.0.0\n",
 		},
 		{
-			name:      "top-level absent — violation",
+			name:      "top-level absent - violation",
 			validator: Required("version"),
 			raw:       "name: myapp\n",
 			want:      []string{"version: required"},
 		},
 		{
-			name:      "empty document — top-level still required",
+			name:      "empty document - top-level still required",
 			validator: Required("version"),
 			raw:       "",
 			want:      []string{"version: required"},
@@ -841,12 +841,12 @@ func TestRequired(t *testing.T) {
 			raw:       "build:\n  context: .\n",
 		},
 		{
-			name:      "dotted path — parent absent is ok",
+			name:      "dotted path - parent absent is ok",
 			validator: Required("categories.name"),
 			raw:       "version: 1.0.0\n",
 		},
 		{
-			name:      "dotted path — every sequence entry checked",
+			name:      "dotted path - every sequence entry checked",
 			validator: Required("categories.name"),
 			raw: `
 categories:
@@ -881,59 +881,59 @@ func TestValueInRange(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name:      "number within range — ok",
+			name:      "number within range - ok",
 			validator: ValueInRange("server.port", "1", "65535"),
 			raw:       "server:\n  port: 8080\n",
 		},
 		{
-			name:          "number out of range — violation",
+			name:          "number out of range - violation",
 			validator:     ValueInRange("server.port", "1", "65535"),
 			raw:           "server:\n  port: 70000\n",
 			wantViolation: true,
 			wantContains:  []string{"server.port", "70000", "out of range"},
 		},
 		{
-			name:      "duration within range — ok",
+			name:      "duration within range - ok",
 			validator: ValueInRange("filter.max-age", "1h", "8760h"),
 			raw:       "filter:\n  max-age: 24h\n",
 		},
 		{
-			name:          "duration below range — violation",
+			name:          "duration below range - violation",
 			validator:     ValueInRange("filter.max-age", "1h", "8760h"),
 			raw:           "filter:\n  max-age: 30m\n",
 			wantViolation: true,
 		},
 		{
-			name:      "size within range — ok",
+			name:      "size within range - ok",
 			validator: ValueInRange("filter.max-size", "1MB", "1GB"),
 			raw:       "filter:\n  max-size: 100MB\n",
 		},
 		{
-			name:      "absent path — ok",
+			name:      "absent path - ok",
 			validator: ValueInRange("server.port", "1", "65535"),
 			raw:       "name: myapp\n",
 		},
 		{
-			name:      "empty value — ok",
+			name:      "empty value - ok",
 			validator: ValueInRange("server.port", "1", "65535"),
 			raw:       "server:\n  port:\n",
 		},
 		{
-			name:          "non-scalar value — violation",
+			name:          "non-scalar value - violation",
 			validator:     ValueInRange("server.port", "1", "65535"),
 			raw:           "server:\n  port:\n    internal: 8080\n",
 			wantViolation: true,
 			wantContains:  []string{"scalar"},
 		},
 		{
-			name:          "value not comparable with range — violation",
+			name:          "value not comparable with range - violation",
 			validator:     ValueInRange("server.port", "1", "65535"),
 			raw:           "server:\n  port: eighty\n",
 			wantViolation: true,
 			wantContains:  []string{"not comparable"},
 		},
 		{
-			name:          "mixed-kind bounds — misconfiguration reported",
+			name:          "mixed-kind bounds - misconfiguration reported",
 			validator:     ValueInRange("server.port", "1h", "65535"),
 			raw:           "server:\n  port: 8080\n",
 			wantViolation: true,
@@ -968,36 +968,36 @@ func TestValueMatches(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name:      "match — ok",
+			name:      "match - ok",
 			validator: ValueMatches("version", `^\d+\.\d+\.\d+$`),
 			raw:       "version: 1.2.3\n",
 		},
 		{
-			name:          "mismatch — violation",
+			name:          "mismatch - violation",
 			validator:     ValueMatches("version", `^\d+\.\d+\.\d+$`),
 			raw:           "version: latest\n",
 			wantViolation: true,
 			wantContains:  []string{"version", "latest", "does not match"},
 		},
 		{
-			name:      "absent path — ok",
+			name:      "absent path - ok",
 			validator: ValueMatches("version", `^\d+$`),
 			raw:       "name: myapp\n",
 		},
 		{
-			name:      "empty value — ok",
+			name:      "empty value - ok",
 			validator: ValueMatches("version", `^\d+$`),
 			raw:       "version:\n",
 		},
 		{
-			name:          "non-scalar value — violation",
+			name:          "non-scalar value - violation",
 			validator:     ValueMatches("version", `^\d+$`),
 			raw:           "version:\n  major: 1\n",
 			wantViolation: true,
 			wantContains:  []string{"scalar"},
 		},
 		{
-			name:          "invalid pattern — misconfiguration reported",
+			name:          "invalid pattern - misconfiguration reported",
 			validator:     ValueMatches("version", `^(\d+$`),
 			raw:           "version: 1\n",
 			wantViolation: true,
@@ -1033,14 +1033,14 @@ func TestAtLeastOneOf_dottedPath(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name: "one present — ok",
+			name: "one present - ok",
 			raw: `
 auth:
   token: abc
 `,
 		},
 		{
-			name: "none present — violation",
+			name: "none present - violation",
 			raw: `
 auth:
   user: admin
@@ -1049,7 +1049,7 @@ auth:
 			wantContains:  []string{"auth", "at least one of", "token", "password"},
 		},
 		{
-			name: "parent absent — ok",
+			name: "parent absent - ok",
 			raw:  "name: myapp\n",
 		},
 	}
@@ -1100,14 +1100,14 @@ func TestExactlyOneOf_dottedPath(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name: "exactly one — ok",
+			name: "exactly one - ok",
 			raw: `
 source:
   git: https://example.com/repo.git
 `,
 		},
 		{
-			name: "none — violation",
+			name: "none - violation",
 			raw: `
 source:
   branch: main
@@ -1116,7 +1116,7 @@ source:
 			wantContains:  []string{"source", "exactly one of"},
 		},
 		{
-			name: "both — violation",
+			name: "both - violation",
 			raw: `
 source:
   git: https://example.com/repo.git
@@ -1126,7 +1126,7 @@ source:
 			wantContains:  []string{"source", "found:", "git", "local"},
 		},
 		{
-			name: "parent absent — ok",
+			name: "parent absent - ok",
 			raw:  "name: myapp\n",
 		},
 	}
@@ -1218,48 +1218,48 @@ func TestValueHasPrefixSuffix(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name:      "prefix match — ok",
+			name:      "prefix match - ok",
 			validator: ValueHasPrefix("image", "registry.example.com/"),
 			raw:       "image: registry.example.com/app:1.0\n",
 		},
 		{
-			name:          "prefix mismatch — violation",
+			name:          "prefix mismatch - violation",
 			validator:     ValueHasPrefix("image", "registry.example.com/"),
 			raw:           "image: docker.io/app:1.0\n",
 			wantViolation: true,
 			wantContains:  []string{"image", "docker.io/app:1.0", "does not start with"},
 		},
 		{
-			name:      "suffix match — ok",
+			name:      "suffix match - ok",
 			validator: ValueHasSuffix("output", ".yaml"),
 			raw:       "output: result.yaml\n",
 		},
 		{
-			name:          "suffix mismatch — violation",
+			name:          "suffix mismatch - violation",
 			validator:     ValueHasSuffix("output", ".yaml"),
 			raw:           "output: result.json\n",
 			wantViolation: true,
 			wantContains:  []string{"output", "result.json", "does not end with"},
 		},
 		{
-			name:      "absent path — ok",
+			name:      "absent path - ok",
 			validator: ValueHasPrefix("image", "registry/"),
 			raw:       "name: myapp\n",
 		},
 		{
-			name:      "empty value — ok",
+			name:      "empty value - ok",
 			validator: ValueHasSuffix("output", ".yaml"),
 			raw:       "output:\n",
 		},
 		{
-			name:          "non-scalar value — violation",
+			name:          "non-scalar value - violation",
 			validator:     ValueHasPrefix("image", "registry/"),
 			raw:           "image:\n  name: app\n",
 			wantViolation: true,
 			wantContains:  []string{"scalar"},
 		},
 		{
-			name:          "sequence expansion — violation points at item",
+			name:          "sequence expansion - violation points at item",
 			validator:     ValueHasPrefix("mirrors.url", "https://"),
 			raw:           "mirrors:\n  - url: https://a.example.com\n  - url: http://b.example.com\n",
 			wantViolation: true,
@@ -1295,15 +1295,15 @@ func TestAllOrNone_topLevel(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name:   "both present — ok",
+			name:   "both present - ok",
 			blocks: []document.Block{{Key: "tls-cert"}, {Key: "tls-key"}},
 		},
 		{
-			name:   "none present — ok",
+			name:   "none present - ok",
 			blocks: []document.Block{{Key: "name"}},
 		},
 		{
-			name:          "only one present — violation",
+			name:          "only one present - violation",
 			blocks:        []document.Block{{Key: "tls-cert"}},
 			wantViolation: true,
 			wantContains:  []string{"tls-cert", "tls-key", "missing"},
@@ -1337,7 +1337,7 @@ func TestAllOrNone_dottedPath(t *testing.T) {
 		wantViolation bool
 	}{
 		{
-			name: "both present — ok",
+			name: "both present - ok",
 			raw: `
 server:
   tls-cert: /etc/tls/cert.pem
@@ -1345,14 +1345,14 @@ server:
 `,
 		},
 		{
-			name: "none present — ok",
+			name: "none present - ok",
 			raw: `
 server:
   host: localhost
 `,
 		},
 		{
-			name: "only one present — violation",
+			name: "only one present - violation",
 			raw: `
 server:
   tls-cert: /etc/tls/cert.pem
@@ -1360,7 +1360,7 @@ server:
 			wantViolation: true,
 		},
 		{
-			name: "parent absent — ok",
+			name: "parent absent - ok",
 			raw:  "name: myapp\n",
 		},
 	}
@@ -1387,47 +1387,47 @@ func TestCountRange(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name:      "within range — ok",
+			name:      "within range - ok",
 			validator: CountRange("workers", 1, 10),
 			raw:       "workers:\n  - name: a\n  - name: b\n",
 		},
 		{
-			name:          "below min — violation",
+			name:          "below min - violation",
 			validator:     CountRange("workers", 1, 10),
 			raw:           "workers: []\n",
 			wantViolation: true,
 			wantContains:  []string{"workers", "0 entries", "between 1 and 10"},
 		},
 		{
-			name:          "above max — violation",
+			name:          "above max - violation",
 			validator:     CountRange("workers", 0, 1),
 			raw:           "workers:\n  - name: a\n  - name: b\n",
 			wantViolation: true,
 		},
 		{
-			name:      "no upper bound — ok",
+			name:      "no upper bound - ok",
 			validator: CountRange("workers", 1, -1),
 			raw:       "workers:\n  - name: a\n  - name: b\n  - name: c\n",
 		},
 		{
-			name:          "no upper bound, below min — violation",
+			name:          "no upper bound, below min - violation",
 			validator:     CountRange("workers", 2, -1),
 			raw:           "workers:\n  - name: a\n",
 			wantViolation: true,
 			wantContains:  []string{"at least 2"},
 		},
 		{
-			name:      "mapping counts keys — ok",
+			name:      "mapping counts keys - ok",
 			validator: CountRange("port-attrs", 1, 2),
 			raw:       "port-attrs:\n  \"8080\":\n    label: web\n",
 		},
 		{
-			name:      "absent path — ok",
+			name:      "absent path - ok",
 			validator: CountRange("workers", 1, 10),
 			raw:       "name: myapp\n",
 		},
 		{
-			name:          "scalar at path — violation",
+			name:          "scalar at path - violation",
 			validator:     CountRange("workers", 1, 10),
 			raw:           "workers: many\n",
 			wantViolation: true,
@@ -1463,18 +1463,18 @@ func TestUniqueValues(t *testing.T) {
 		wantContains []string
 	}{
 		{
-			name:      "unique — ok",
+			name:      "unique - ok",
 			raw:       "tags: [go, yaml, tui]\n",
 			wantCount: 0,
 		},
 		{
-			name:         "duplicate — violation with indices",
+			name:         "duplicate - violation with indices",
 			raw:          "tags: [go, yaml, go]\n",
 			wantCount:    1,
 			wantContains: []string{"tags[2]", `"go"`, "tags[0]"},
 		},
 		{
-			name:      "two distinct duplicates — two violations",
+			name:      "two distinct duplicates - two violations",
 			raw:       "tags: [a, b, a, b]\n",
 			wantCount: 2,
 		},
@@ -1484,7 +1484,7 @@ func TestUniqueValues(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name:      "absent path — ok",
+			name:      "absent path - ok",
 			raw:       "name: myapp\n",
 			wantCount: 0,
 		},
@@ -1514,19 +1514,19 @@ func TestDeprecated(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name:          "present — violation with hint",
+			name:          "present - violation with hint",
 			validator:     Deprecated("dockerFile", "use build.dockerfile instead"),
 			raw:           "dockerFile: Dockerfile\n",
 			wantViolation: true,
 			wantContains:  []string{"dockerFile", "deprecated", "use build.dockerfile instead"},
 		},
 		{
-			name:      "absent — ok",
+			name:      "absent - ok",
 			validator: Deprecated("dockerFile", "use build.dockerfile instead"),
 			raw:       "build:\n  dockerfile: Dockerfile\n",
 		},
 		{
-			name:          "present with null value — still deprecated",
+			name:          "present with null value - still deprecated",
 			validator:     Deprecated("dockerFile", "use build.dockerfile instead"),
 			raw:           "dockerFile:\n",
 			wantViolation: true,
@@ -1560,10 +1560,10 @@ func TestDeprecated(t *testing.T) {
 
 // TestPathExpansion_acrossValidators verifies that every path-based validator
 // expands sequences and dict-style mappings along the path, like
-// MutuallyExclusive always did — e.g. "categories.installers.source.type" is
+// MutuallyExclusive always did - e.g. "categories.installers.source.type" is
 // checked inside every installer of every category.
 func TestPathExpansion_acrossValidators(t *testing.T) {
-	// categories is a dict; installers is a list — both must be expanded.
+	// categories is a dict; installers is a list - both must be expanded.
 	const nested = `
 categories:
   media:
@@ -1596,7 +1596,7 @@ categories:
 			wantContains: []string{"categories.media.installers[1].source.type", "floppy"},
 		},
 		{
-			name:      "ValueOneOf — all entries valid",
+			name:      "ValueOneOf - all entries valid",
 			validator: ValueOneOf("categories.installers.source.type", "winget", "scoop", "floppy"),
 			raw:       nested,
 			wantCount: 0,
@@ -1740,7 +1740,7 @@ filter:
 			wantInErr: []string{"any", "all", "filter"},
 		},
 		{
-			name:      "single key — ok",
+			name:      "single key - ok",
 			validator: MutuallyExclusiveNested("filter", "any", "all"),
 			raw: `
 filter:
@@ -1765,7 +1765,7 @@ filter:
 			wantInErr: []string{"any[0].filter"},
 		},
 		{
-			name:      "both top-level and nested — two violations",
+			name:      "both top-level and nested - two violations",
 			validator: MutuallyExclusiveNested("filter", "any", "all"),
 			raw: `
 filter:
@@ -1799,7 +1799,7 @@ categories:
 			wantInErr: []string{"filter"},
 		},
 		{
-			name:      "scoped path — catches violation inside scope",
+			name:      "scoped path - catches violation inside scope",
 			validator: MutuallyExclusiveNested("categories.installers.source.filter", "any", "all"),
 			raw: `
 categories:
@@ -1817,7 +1817,7 @@ categories:
 			wantInErr: []string{"filter"},
 		},
 		{
-			name:      "scoped path — ignores filters outside scope",
+			name:      "scoped path - ignores filters outside scope",
 			validator: MutuallyExclusiveNested("categories.installers.source.filter", "any", "all"),
 			raw: `
 categories:
@@ -1889,12 +1889,12 @@ func TestRequiredFromMetadata(t *testing.T) {
 		want []string // exact violation strings, in order
 	}{
 		{
-			name: "empty document — only top-level required reported",
+			name: "empty document - only top-level required reported",
 			raw:  "",
 			want: []string{"version: required"},
 		},
 		{
-			name: "all satisfied — ok",
+			name: "all satisfied - ok",
 			raw: `
 version: 1.0.0
 server:
@@ -1903,7 +1903,7 @@ server:
 			want: nil,
 		},
 		{
-			name: "optional block absent — its required children not reported",
+			name: "optional block absent - its required children not reported",
 			raw:  "version: 1.0.0\n",
 			want: nil,
 		},
@@ -2020,12 +2020,12 @@ func TestOneOfFromMetadata(t *testing.T) {
 		raw  string
 		want []string
 	}{
-		{"allowed value — ok", "server:\n  host: localhost\n", nil},
-		{"absent — ok", "version: 1\n", nil},
-		{"empty — ok", "server:\n  host:\n", nil},
-		{"not allowed — violation", "server:\n  host: example.com\n",
-			[]string{`server.host: value "example.com" is not allowed — use one of: "localhost", "0.0.0.0"`}},
-		{"non-scalar — violation", "server:\n  host:\n    a: b\n",
+		{"allowed value - ok", "server:\n  host: localhost\n", nil},
+		{"absent - ok", "version: 1\n", nil},
+		{"empty - ok", "server:\n  host:\n", nil},
+		{"not allowed - violation", "server:\n  host: example.com\n",
+			[]string{`server.host: value "example.com" is not allowed - use one of: "localhost", "0.0.0.0"`}},
+		{"non-scalar - violation", "server:\n  host:\n    a: b\n",
 			[]string{"server.host: expected a scalar value"}},
 	}
 	for _, tc := range tests {
@@ -2050,14 +2050,14 @@ func TestRangeFromMetadata(t *testing.T) {
 		raw  string
 		want []string
 	}{
-		{"in range — ok", "server:\n  port: 8080\n", nil},
-		{"absent — ok", "tags:\n  - a\n", nil},
-		{"below min — violation", "server:\n  port: 0\n",
+		{"in range - ok", "server:\n  port: 8080\n", nil},
+		{"absent - ok", "tags:\n  - a\n", nil},
+		{"below min - violation", "server:\n  port: 0\n",
 			[]string{`server.port: value "0" out of range [1, 65535]`}},
-		{"min-only bound — ok above", "version: 5\n", nil},
-		{"min-only bound — violation below", "version: 0\n",
+		{"min-only bound - ok above", "version: 5\n", nil},
+		{"min-only bound - violation below", "version: 0\n",
 			[]string{`version: value "0" out of range [1, ∞]`}},
-		{"not comparable — violation", "server:\n  port: abc\n",
+		{"not comparable - violation", "server:\n  port: abc\n",
 			[]string{`server.port: value "abc" is not comparable with range [1, 65535]`}},
 	}
 	for _, tc := range tests {
@@ -2093,9 +2093,9 @@ func TestPatternFromMetadata(t *testing.T) {
 		raw  string
 		want []string
 	}{
-		{"match — ok", "version: 1.2.3\n", nil},
-		{"absent — ok", "server:\n  host: x\n", nil},
-		{"mismatch — violation", "version: latest\n",
+		{"match - ok", "version: 1.2.3\n", nil},
+		{"absent - ok", "server:\n  host: x\n", nil},
+		{"mismatch - violation", "version: latest\n",
 			// %q in the message escapes the pattern's backslashes.
 			[]string{`version: value "latest" does not match pattern "^\\d+\\.\\d+\\.\\d+$"`}},
 	}
@@ -2132,12 +2132,12 @@ func TestCountFromMetadata(t *testing.T) {
 		raw  string
 		want []string
 	}{
-		{"within range — ok", "workers:\n  - name: a\n", nil},
-		{"absent — ok", "version: 1\n", nil},
-		{"empty list — violation", "workers: []\n",
-			[]string{"workers: has 0 entries — expected between 1 and 2"}},
-		{"above max — violation", "workers:\n  - name: a\n  - name: b\n  - name: c\n",
-			[]string{"workers: has 3 entries — expected between 1 and 2"}},
+		{"within range - ok", "workers:\n  - name: a\n", nil},
+		{"absent - ok", "version: 1\n", nil},
+		{"empty list - violation", "workers: []\n",
+			[]string{"workers: has 0 entries - expected between 1 and 2"}},
+		{"above max - violation", "workers:\n  - name: a\n  - name: b\n  - name: c\n",
+			[]string{"workers: has 3 entries - expected between 1 and 2"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2172,9 +2172,9 @@ func TestUniqueFromMetadata(t *testing.T) {
 		raw  string
 		want []string
 	}{
-		{"unique — ok", "tags:\n  - a\n  - b\n", nil},
-		{"absent — ok", "version: 1\n", nil},
-		{"duplicate — violation", "tags:\n  - a\n  - b\n  - a\n",
+		{"unique - ok", "tags:\n  - a\n  - b\n", nil},
+		{"absent - ok", "version: 1\n", nil},
+		{"duplicate - violation", "tags:\n  - a\n  - b\n  - a\n",
 			[]string{`tags[2]: duplicate value "a" (first seen at tags[0])`}},
 	}
 	for _, tc := range tests {
@@ -2196,9 +2196,9 @@ func TestDeprecatedFromMetadata(t *testing.T) {
 		raw  string
 		want []string
 	}{
-		{"absent — ok", "tags:\n  - a\n", nil},
-		{"present — violation", "version: 1\n",
-			[]string{"version: deprecated — use api-version instead"}},
+		{"absent - ok", "tags:\n  - a\n", nil},
+		{"present - violation", "version: 1\n",
+			[]string{"version: deprecated - use api-version instead"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

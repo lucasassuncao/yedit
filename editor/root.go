@@ -43,7 +43,7 @@ type model struct {
 	// blockEdits is a stack of block editors. Index 0 is the top-level block
 	// opened from the list; deeper entries are nested drill-ins. The last element
 	// is the visible/active editor. The stack carries only UI state (cursor,
-	// expansion) and each editor's focus path — the canonical data lives in
+	// expansion) and each editor's focus path - the canonical data lives in
 	// editRoot.
 	blockEdits []*blockEditState
 	// editRoot is the single canonical *yaml.Node for the block currently being
@@ -367,17 +367,17 @@ func formatErrors(errs []Violation) string {
 func (m model) save() (tea.Model, tea.Cmd) {
 	errs := m.collectErrors()
 	if len(errs) > 0 && !m.cfg.NoValidateOnSave {
-		return m.showAlert("Cannot save — fix errors first", formatErrors(errs), alert.KindError)
+		return m.showAlert("Cannot save - fix errors first", formatErrors(errs), alert.KindError)
 	}
 	doSave := func() tea.Msg { return doSaveMsg{} }
-	// An external edit since open is a substantive data-loss risk — always confirm
+	// An external edit since open is a substantive data-loss risk - always confirm
 	// before clobbering it, even under NoSaveConfirm.
 	if m.doc.ExternallyChanged() {
 		msg := fmt.Sprintf("%s changed on disk since you opened it.\nSaving overwrites those external changes.", m.doc.Path())
-		return m.showConfirmAlert("File changed on disk — overwrite?", msg, doSave)
+		return m.showConfirmAlert("File changed on disk - overwrite?", msg, doSave)
 	}
 	if len(errs) > 0 {
-		// NoValidateOnSave: always confirm — warning is substantive, not routine.
+		// NoValidateOnSave: always confirm - warning is substantive, not routine.
 		msg := fmt.Sprintf("Save to %s?\n\nWarnings:\n%s", m.doc.Path(), formatErrors(errs))
 		return m.showConfirmAlert("Save with warnings?", msg, doSave)
 	}
@@ -492,7 +492,7 @@ func (m model) View() string {
 		return "Loading..."
 	}
 	if m.width < 80 || m.height < 20 {
-		return "Terminal too small — resize to at least 80×20."
+		return "Terminal too small - resize to at least 80×20."
 	}
 
 	switch m.mode {

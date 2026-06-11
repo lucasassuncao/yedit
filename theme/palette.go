@@ -17,16 +17,16 @@ func colorVal(c string) lipgloss.Color {
 	return lipgloss.Color(c)
 }
 
-// Palette — narrow on purpose. Clients can extend it with their own colours;
+// Palette - narrow on purpose. Clients can extend it with their own colours;
 // add to this list only when at least two yedit components need it.
 var (
-	Accent       = colorVal("63")  // blue — active borders, primary highlight
-	AccentBright = colorVal("212") // pink — titles, selection
-	Muted        = colorVal("240") // grey — inactive borders, status hints
-	Dim          = colorVal("245") // light grey — secondary text
-	Success      = colorVal("82")  // green — existing/added items, success alerts
-	Warning      = colorVal("220") // yellow — save-with-warnings alerts
-	Danger       = colorVal("196") // red — error alerts
+	Accent       = colorVal("63")  // blue - active borders, primary highlight
+	AccentBright = colorVal("212") // pink - titles, selection
+	Muted        = colorVal("240") // grey - inactive borders, status hints
+	Dim          = colorVal("245") // light grey - secondary text
+	Success      = colorVal("82")  // green - existing/added items, success alerts
+	Warning      = colorVal("220") // yellow - save-with-warnings alerts
+	Danger       = colorVal("196") // red - error alerts
 )
 
 // Common item styles. Each TUI is free to compose its own variants on top.

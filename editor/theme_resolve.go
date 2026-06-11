@@ -14,7 +14,7 @@ type resolvedTheme struct {
 	colors theme.Colors
 	styles theme.Styles
 
-	// internal derived styles — computed from colors, not user-configurable
+	// internal derived styles - computed from colors, not user-configurable
 	existingItem  lipgloss.Style
 	availableItem lipgloss.Style
 	unknownItem   lipgloss.Style

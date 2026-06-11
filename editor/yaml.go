@@ -37,7 +37,7 @@ func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked 
 	case !checked:
 		removeMappingKey(cur, leafName)
 	case hasMappingKey(cur, leafName):
-		// already present — keep as is
+		// already present - keep as is
 	case asStruct:
 		if snippet == "" || !appendFieldFromSnippet(cur, ctx.key, snippet) {
 			appendLeafToMapping(cur, leafName, "")
@@ -115,7 +115,7 @@ func valueNodeOfSnippet(snippet string) *yaml.Node {
 
 // nodeAt returns the node reached by following segs from node, or nil when any
 // step fails to resolve (wrong kind, missing key, index out of range). It never
-// descends implicitly — every step is explicit, so it can address a sequence
+// descends implicitly - every step is explicit, so it can address a sequence
 // node itself as well as an element inside it.
 func nodeAt(node *yaml.Node, segs []pathSeg) *yaml.Node {
 	for _, s := range segs {
@@ -235,7 +235,7 @@ func findOrCreateMappingChild(mapping *yaml.Node, key string) *yaml.Node {
 		if mapping.Content[i].Value == key {
 			child := mapping.Content[i+1]
 			// An existing key with a null/empty value (e.g. "source:\n") parses as
-			// a scalar node, not a mapping. Coerce it so children can be added —
+			// a scalar node, not a mapping. Coerce it so children can be added -
 			// without this, appendLeafToMapping silently no-ops on the scalar.
 			if child.Kind != yaml.MappingNode && child.Value == "" {
 				child.Kind = yaml.MappingNode

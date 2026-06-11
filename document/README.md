@@ -8,7 +8,7 @@
 import "github.com/lucasassuncao/yedit/document"
 ```
 
-Package document provides primitives for editing YAML files structured as a flat mapping of top\-level keys \("blocks"\). It is schema\-agnostic — the caller supplies the canonical key order when needed for ordered inserts.
+Package document provides primitives for editing YAML files structured as a flat mapping of top\-level keys \("blocks"\). It is schema\-agnostic \- the caller supplies the canonical key order when needed for ordered inserts.
 
 ## Index
 
@@ -110,7 +110,7 @@ ParseBlocks parses raw YAML bytes and returns top\-level blocks.
 <a name="Document"></a>
 ## type [Document](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L23-L39>)
 
-Document owns the YAML editing state. All mutations are atomic and snapshot for undo automatically. Single\-threaded — no concurrent use.
+Document owns the YAML editing state. All mutations are atomic and snapshot for undo automatically. Single\-threaded \- no concurrent use.
 
 knownOrder defines the canonical key order used by Insert/Replace to place blocks. Pass nil for unordered append behaviour.
 
@@ -127,7 +127,7 @@ type Document struct {
 func Load(path string, knownOrder []string) (*Document, error)
 ```
 
-Load reads a YAML file from path. A non\-existent file is not an error — the returned Document is empty, dirty=false, and Save writes to path.
+Load reads a YAML file from path. A non\-existent file is not an error \- the returned Document is empty, dirty=false, and Save writes to path.
 
 knownOrder is the canonical key order for ordered Insert/Replace.
 
@@ -192,7 +192,7 @@ func (d *Document) Dirty() bool
 func (d *Document) ExternallyChanged() bool
 ```
 
-ExternallyChanged reports whether the file on disk was modified since this Document last loaded or saved it — e.g. another process or a git operation edited it. Returns false when there is no path or the file is absent \(a save would create it, clobbering nothing\). Callers should confirm with the user before overwriting when this returns true.
+ExternallyChanged reports whether the file on disk was modified since this Document last loaded or saved it \- e.g. another process or a git operation edited it. Returns false when there is no path or the file is absent \(a save would create it, clobbering nothing\). Callers should confirm with the user before overwriting when this returns true.
 
 <a name="Document.Insert"></a>
 ### func \(\*Document\) [Insert](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L127>)
@@ -264,7 +264,7 @@ Replace removes the block at key and inserts snippet in its schema\-ordered posi
 func (d *Document) ReplaceRaw(raw []byte) error
 ```
 
-ReplaceRaw replaces the document content with raw, normalising CRLF. If raw fails to parse, the document is left untouched and the error is returned. Does NOT snapshot — direct YAML editing is not tracked in the undo history; only committed block operations \(Insert, Replace, Remove\) are undoable.
+ReplaceRaw replaces the document content with raw, normalising CRLF. If raw fails to parse, the document is left untouched and the error is returned. Does NOT snapshot \- direct YAML editing is not tracked in the undo history; only committed block operations \(Insert, Replace, Remove\) are undoable.
 
 <a name="Document.Save"></a>
 ### func \(\*Document\) [Save](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L287>)

@@ -25,11 +25,11 @@ var (
 // deeper.
 //
 // Only the yaml tag is read. Field metadata (required, allowed values, ranges,
-// descriptions) is not derived from struct tags — declare it through the
+// descriptions) is not derived from struct tags - declare it through the
 // editor's MetadataSource instead (see the yedit/metadata package).
 //
 // To customise discovery for union types (a value that can be a scalar OR a
-// struct OR a map), make the wrapper type implement Provider — its
+// struct OR a map), make the wrapper type implement Provider - its
 // YeditSchema() return value is used in place of reflective traversal.
 //
 // The optional recursionLimit controls how many extra levels a self-referential

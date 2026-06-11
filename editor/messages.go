@@ -26,7 +26,7 @@ type drillOutMsg struct{}
 // blockEditDiscardedMsg is sent when the user closes a block edit (Esc).
 // discarded is true only when uncommitted changes were intentionally thrown away
 // (user confirmed the "Discard changes?" dialog). It is false when Esc is pressed
-// on a clean editor (no uncommitted changes) — in that case the status message
+// on a clean editor (no uncommitted changes) - in that case the status message
 // from the last commit should be preserved.
 type blockEditDiscardedMsg struct{ discarded bool }
 

@@ -44,7 +44,7 @@ func parseSeqEntries(key, seqBase string) []seqEntry {
 		}
 	}
 	if itemPrefix == "" {
-		// Block prefix present but no items found — also try flow-style conversion
+		// Block prefix present but no items found - also try flow-style conversion
 		// for the case `key:\n[{...}]` (unlikely but defensive).
 		if converted := flowToBlockSeq(seqBase); converted != "" {
 			return parseSeqEntries(key, converted)

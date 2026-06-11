@@ -14,8 +14,8 @@ How the four schema `Kind`s (plus structure and state) appear as tree rows:
 | `KindPrimitive`, or `KindList`/`KindDictionary` **without** children | **leaf** (scalar) | unchecked, checked |
 | `KindObject` **with** children | **inline parent** (expand in place) | collapsed/expanded × empty/has-content |
 | `KindList`/`KindDictionary` **with** children | **openable** (drill into a sub-editor) | empty, has-content |
-| — | **seqItem** (a collection entry) | collapsed, expanded |
-| — | **addNew** (`[+ add new]` row) | — |
+| - | **seqItem** (a collection entry) | collapsed, expanded |
+| - | **addNew** (`[+ add new]` row) | - |
 
 `openable` lists and maps behave identically at the tree layer; the difference is
 only in the apply layer (`applyToggleToSeqItem` vs `applyToggleToMapEntry`).
@@ -45,7 +45,7 @@ Notes:
   (still a no-op action).
 - `up`/`down` only move the cursor; in a collection, crossing into a different
   entry flushes the current entry's buffer and loads the new one.
-- An inline parent has no checkbox of its own — its presence in the YAML is
+- An inline parent has no checkbox of its own - its presence in the YAML is
   derived from its children. Toggling a child auto-creates the parent; `ctrl+d`
   on the parent removes the whole subtree.
 - Global keys (`tab` switch pane, `ctrl+s` commit, `ctrl+u` undo, `esc`
@@ -57,7 +57,7 @@ Notes:
 This grid is a tested contract, not just documentation.
 
 The number **66** here means the cells of *this* matrix (11 cursor targets × 6
-keys) — it is not the number of test functions in the package. One test,
+keys) - it is not the number of test functions in the package. One test,
 `TestMatrix_TreeActions`, drives all 66 cells in a loop.
 
 - `interaction_matrix_test.go` → `TestMatrix_TreeActions` asserts all 66 cells

@@ -31,17 +31,17 @@ func Navigate(node *yaml.Node, segs []string, path string, onArrival func(node *
 			return
 		}
 	}
-	// Key not found at this level — treat as a dict-of-structs: check all values.
+	// Key not found at this level - treat as a dict-of-structs: check all values.
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		Navigate(node.Content[i+1], segs, JoinPath(path, node.Content[i].Value), onArrival)
 	}
 }
 
 // ForEachLeaf calls fn with every node reached by the dotted path and its full
-// expanded path. Sequences are expanded at every level, and — once at least
-// one segment has matched — a missing segment falls back to dict-of-structs
+// expanded path. Sequences are expanded at every level, and - once at least
+// one segment has matched - a missing segment falls back to dict-of-structs
 // descent (every mapping value is searched), mirroring Navigate. The leaf node
-// is delivered as-is (scalar, sequence, or mapping); fn never receives nil —
+// is delivered as-is (scalar, sequence, or mapping); fn never receives nil -
 // absent paths simply produce no calls.
 func ForEachLeaf(root *yaml.Node, path string, fn func(node *yaml.Node, where string)) {
 	walkLeaf(root, strings.Split(path, "."), "", false, fn)
@@ -73,7 +73,7 @@ func walkLeaf(node *yaml.Node, segs []string, path string, matched bool, fn func
 	if !matched {
 		return
 	}
-	// Key not found at this level — treat as a dict-of-structs: search all values.
+	// Key not found at this level - treat as a dict-of-structs: search all values.
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		walkLeaf(node.Content[i+1], segs, JoinPath(path, node.Content[i].Value), matched, fn)
 	}

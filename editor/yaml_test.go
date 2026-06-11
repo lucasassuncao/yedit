@@ -20,7 +20,7 @@ func parseValueNode(t *testing.T, src string) *yaml.Node {
 }
 
 // ---------------------------------------------------------------------------
-// nodeAt / setNodeAt — indexed focus paths into a live node tree
+// nodeAt / setNodeAt - indexed focus paths into a live node tree
 // ---------------------------------------------------------------------------
 
 func TestNodeAt_indexedPath(t *testing.T) {
@@ -43,7 +43,7 @@ func TestNodeAt_indexedPath(t *testing.T) {
 }
 
 func TestSetNodeAt_preservesSiblingStructure(t *testing.T) {
-	// Replacing a nested field must NOT collapse the sequence structure around it —
+	// Replacing a nested field must NOT collapse the sequence structure around it -
 	// the exact class of bug that string splicing caused.
 	src := `filters:
   - regex: ""
@@ -86,7 +86,7 @@ func TestSetNodeAt_preservesSiblingStructure(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// appendFieldFromSnippet — all fields from a multi-field snippet must be inserted
+// appendFieldFromSnippet - all fields from a multi-field snippet must be inserted
 // ---------------------------------------------------------------------------
 
 func TestAppendFieldFromSnippet_multipleFields(t *testing.T) {
@@ -114,7 +114,7 @@ func TestAppendFieldFromSnippet_multipleFields(t *testing.T) {
 		t.Error("field 'path' missing after appendFieldFromSnippet")
 	}
 	if !keys["recursive"] {
-		t.Error("field 'recursive' missing after appendFieldFromSnippet — only first field was inserted")
+		t.Error("field 'recursive' missing after appendFieldFromSnippet - only first field was inserted")
 	}
 	if !keys["existing"] {
 		t.Error("pre-existing field 'existing' was lost")
@@ -122,7 +122,7 @@ func TestAppendFieldFromSnippet_multipleFields(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// forceBlockStyle — flow sequences on leaf fields must be preserved
+// forceBlockStyle - flow sequences on leaf fields must be preserved
 // ---------------------------------------------------------------------------
 
 func TestForceBlockStyle_preservesFlowSequence(t *testing.T) {
@@ -143,7 +143,7 @@ func TestForceBlockStyle_preservesFlowSequence(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// flowToBlockSeq — flow-style collection is transparently parsed
+// flowToBlockSeq - flow-style collection is transparently parsed
 // ---------------------------------------------------------------------------
 
 func TestFlowToBlockSeq_singleEntry(t *testing.T) {
@@ -169,7 +169,7 @@ func TestFlowToBlockSeq_multipleEntries(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// applyToggleAt — complex snippets (arrays, maps) must be appended correctly
+// applyToggleAt - complex snippets (arrays, maps) must be appended correctly
 // ---------------------------------------------------------------------------
 
 func TestApplyToggleAt_complexSnippetArray(t *testing.T) {
@@ -205,7 +205,7 @@ func TestApplyToggleAt_complexSnippetArray(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// applyToggleToSeqItem — toggling a child under an empty parent struct key
+// applyToggleToSeqItem - toggling a child under an empty parent struct key
 // ---------------------------------------------------------------------------
 
 // TestToggleChildUnderEmptyParent reproduces the movelooper bug: a sequence item

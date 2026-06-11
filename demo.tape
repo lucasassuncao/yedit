@@ -1,4 +1,4 @@
-# VHS demo tape — https://github.com/charmbracelet/vhs
+# VHS demo tape - https://github.com/charmbracelet/vhs
 #
 # Regenerate (the vhs container has no Go toolchain, so build the example first):
 #

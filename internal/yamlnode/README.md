@@ -49,7 +49,7 @@ CloneNode returns a deep copy of n so a snapshot can be mutated independently of
 func ForEachLeaf(root *yaml.Node, path string, fn func(node *yaml.Node, where string))
 ```
 
-ForEachLeaf calls fn with every node reached by the dotted path and its full expanded path. Sequences are expanded at every level, and — once at least one segment has matched — a missing segment falls back to dict\-of\-structs descent \(every mapping value is searched\), mirroring Navigate. The leaf node is delivered as\-is \(scalar, sequence, or mapping\); fn never receives nil — absent paths simply produce no calls.
+ForEachLeaf calls fn with every node reached by the dotted path and its full expanded path. Sequences are expanded at every level, and \- once at least one segment has matched \- a missing segment falls back to dict\-of\-structs descent \(every mapping value is searched\), mirroring Navigate. The leaf node is delivered as\-is \(scalar, sequence, or mapping\); fn never receives nil \- absent paths simply produce no calls.
 
 <a name="JoinPath"></a>
 ## func [JoinPath](<https://github.com/lucasassuncao/yedit/blob/main/internal/yamlnode/yamlnode.go#L74>)

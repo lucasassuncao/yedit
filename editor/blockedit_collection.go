@@ -8,7 +8,7 @@ import (
 )
 
 // collectionBuffer tracks which entry of a collection-nav editor is currently
-// shown in the YAML editor. The entry list itself is no longer stored here — it
+// shown in the YAML editor. The entry list itself is no longer stored here - it
 // is derived structurally from blockEditState.node, the single source of truth.
 type collectionBuffer struct {
 	key     string
@@ -20,7 +20,7 @@ type collectionBuffer struct {
 // floating overlayModel. It reuses the same two-panel layout as the root view.
 // collectionDeriveTree refreshes every entry's label, yamlPath, and child
 // checkmarks from be.node, preserving the tree's structure (expansion/cursor).
-// It is the structural replacement for syncCurrentEntry — and unlike it, derives
+// It is the structural replacement for syncCurrentEntry - and unlike it, derives
 // all entries (not just the current one) from the single source of truth.
 func (be blockEditState) collectionDeriveTree() treeModel {
 	tm := be.tree
@@ -125,7 +125,7 @@ func (be blockEditState) collectionTreeNodes() []treeNode {
 // canonical node. It is a no-op when there is no current entry or the editor is
 // empty. When the text cannot be parsed into an entry (e.g. the user deleted the
 // "key:" header, or it is mid-edit invalid), be.editorErr is set so callers block
-// navigation or commit — the parse gate that keeps the node valid.
+// navigation or commit - the parse gate that keeps the node valid.
 func (be blockEditState) flushCurrentEntry() blockEditState {
 	cur := be.coll.current
 	if cur < 0 || cur >= entryCount(be.node, be.coll.isMap) {
@@ -138,14 +138,14 @@ func (be blockEditState) flushCurrentEntry() blockEditState {
 		return be
 	}
 	if !be.coll.isMap && viewHasMultipleSeqItems(view) {
-		be.editorErr = editorError{kind: errParse, message: "One entry per editor — use [+ add new] to create additional entries."}
+		be.editorErr = editorError{kind: errParse, message: "One entry per editor - use [+ add new] to create additional entries."}
 		return be
 	}
 	kn, vn, ok := parseEntryFromView(view, be.coll.isMap)
 	if !ok {
-		msg := "Invalid YAML — fix this entry before leaving it."
+		msg := "Invalid YAML - fix this entry before leaving it."
 		if itemContentFrom(be.key, view) == "" {
-			msg = "Missing '" + be.key + ":' header — restore it before navigating."
+			msg = "Missing '" + be.key + ":' header - restore it before navigating."
 		}
 		be.editorErr = editorError{kind: errParse, message: msg}
 		return be

@@ -121,7 +121,7 @@ func TestParseSeqEntries_tabIndented_doesNotPanic(t *testing.T) {
 	// Tab-indented YAML is invalid; parseSeqEntries must not panic.
 	seqBase := "categories:\n\t- name: foo\n"
 	entries := parseSeqEntries("categories", seqBase)
-	// May return nil (invalid YAML) or an empty slice — both are acceptable.
+	// May return nil (invalid YAML) or an empty slice - both are acceptable.
 	_ = entries
 }
 
@@ -154,7 +154,7 @@ func TestParseMapEntries_colonInKey(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// mapEntryKey — keys containing colons are preserved
+// mapEntryKey - keys containing colons are preserved
 // ---------------------------------------------------------------------------
 
 func TestMapEntryKey_withColon(t *testing.T) {

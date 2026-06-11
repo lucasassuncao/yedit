@@ -25,8 +25,8 @@ type treeNode struct {
 	yamlPath []string // path from block root, e.g. ["source", "filter"]
 	label    string   // display label
 	depth    int
-	isLeaf   bool // scalar/slice/map field — no children to expand
-	openable bool // map-of-struct field — Enter/→ drills into a child editor
+	isLeaf   bool // scalar/slice/map field - no children to expand
+	openable bool // map-of-struct field - Enter/→ drills into a child editor
 	checked  bool // field is present in the YAML
 	expanded bool
 	seqIdx   int             // for treeNodeSeqItem: index in the sequence
@@ -38,12 +38,12 @@ type treeAction int
 
 const (
 	treeNoAction  treeAction = iota
-	treeToggled              // Space on a leaf — checked state changed
+	treeToggled              // Space on a leaf - checked state changed
 	treeExpanded             // → on a collapsible node
 	treeCollapsed            // ← on an expanded node
 	treeAddNew               // Space/Enter on the treeNodeAddNew row
 	treeDeleted              // ctrl+d on a treeNodeSeqItem row
-	treeOpenChild            // Enter/→ on an openable map-of-struct field — drill in
+	treeOpenChild            // Enter/→ on an openable map-of-struct field - drill in
 )
 
 // treeModel is the unified left-panel component that replaces fieldListModel,
@@ -64,7 +64,7 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 	switch spec.kind {
 	case schema.KindList:
 		if len(spec.defs) == 0 {
-			// Scalar sequence — no tree; YAML editor gets focus directly.
+			// Scalar sequence - no tree; YAML editor gets focus directly.
 			break
 		}
 		tm.isSeq = true
@@ -72,7 +72,7 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 
 	case schema.KindDictionary:
 		if len(spec.defs) == 0 {
-			break // free-form map (e.g. map[string]string) — no tree; raw YAML
+			break // free-form map (e.g. map[string]string) - no tree; raw YAML
 		}
 		tm.isSeq = true // collection navigator, keyed by the map key
 		tm.nodes = buildMapNodesFromNode(spec.defs, collValueNode(spec.content, true))
@@ -88,12 +88,12 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 		}
 
 	default:
-		// KindPrimitive, KindDictionary, KindVariant — no tree nodes; YAML editor gets focus.
+		// KindPrimitive, KindDictionary, KindVariant - no tree nodes; YAML editor gets focus.
 	}
 	return tm
 }
 
-// isEmpty reports whether the tree has no nodes — true for primitive and
+// isEmpty reports whether the tree has no nodes - true for primitive and
 // free-form collection blocks, which have no sub-fields to navigate.
 func (tm treeModel) isEmpty() bool {
 	return len(tm.nodes) == 0
@@ -636,7 +636,7 @@ func (tm treeModel) fieldLine(nd treeNode, ni, vi int, th resolvedTheme) string 
 		return th.selectedItem.Render("▶ " + label)
 	case nd.openable:
 		// Openable fields are leaf-like for styling: active when they hold
-		// content, muted when empty — never the inline-struct header style.
+		// content, muted when empty - never the inline-struct header style.
 		if nd.checked {
 			return th.existingItem.Render("  " + label)
 		}

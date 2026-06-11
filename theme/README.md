@@ -30,17 +30,17 @@ Package theme provides the palette, base lipgloss styles, and shared layout prim
 
 ## Variables
 
-<a name="Accent"></a>Palette — narrow on purpose. Clients can extend it with their own colours; add to this list only when at least two yedit components need it.
+<a name="Accent"></a>Palette \- narrow on purpose. Clients can extend it with their own colours; add to this list only when at least two yedit components need it.
 
 ```go
 var (
-    Accent       = colorVal("63")  // blue — active borders, primary highlight
-    AccentBright = colorVal("212") // pink — titles, selection
-    Muted        = colorVal("240") // grey — inactive borders, status hints
-    Dim          = colorVal("245") // light grey — secondary text
-    Success      = colorVal("82")  // green — existing/added items, success alerts
-    Warning      = colorVal("220") // yellow — save-with-warnings alerts
-    Danger       = colorVal("196") // red — error alerts
+    Accent       = colorVal("63")  // blue - active borders, primary highlight
+    AccentBright = colorVal("212") // pink - titles, selection
+    Muted        = colorVal("240") // grey - inactive borders, status hints
+    Dim          = colorVal("245") // light grey - secondary text
+    Success      = colorVal("82")  // green - existing/added items, success alerts
+    Warning      = colorVal("220") // yellow - save-with-warnings alerts
+    Danger       = colorVal("196") // red - error alerts
 )
 ```
 

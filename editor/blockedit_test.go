@@ -90,7 +90,7 @@ func cursorToFieldExpanded(be blockEditState, label string) blockEditState {
 
 // TestOpenableChildReflectsContent verifies that an openable field (any/all)
 // is "checked" (rendered active) only when it holds content, and muted when
-// empty — fixing the bug where openable fields always looked active.
+// empty - fixing the bug where openable fields always looked active.
 func TestOpenableChildReflectsContent(t *testing.T) {
 	filled := newBlockEdit(Config{}, filterSpec(`filters:
   - regex: "x"
@@ -722,7 +722,7 @@ func TestRestoreUndo_emptyStackIsNoOp(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// resyncTreeFromYAML — tolerant, non-authoritative visual projection
+// resyncTreeFromYAML - tolerant, non-authoritative visual projection
 // ---------------------------------------------------------------------------
 
 // TestResyncToleratesInvalidYAML_struct verifies that a transiently unparseable
@@ -738,7 +738,7 @@ func TestResyncToleratesInvalidYAML_struct(t *testing.T) {
 		}
 	}
 
-	// Unterminated flow sequence — definitely invalid YAML.
+	// Unterminated flow sequence - definitely invalid YAML.
 	be.active = blockEditPanelYAML
 	be.yamlEditor.SetValue("configuration:\n  output: [unterminated\n")
 
@@ -792,7 +792,7 @@ func TestResyncToleratesInvalidYAML_collection(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// editorH — must never return a negative value
+// editorH - must never return a negative value
 // ---------------------------------------------------------------------------
 
 func TestEditorH_nonNegative(t *testing.T) {
@@ -803,13 +803,13 @@ func TestEditorH_nonNegative(t *testing.T) {
 	for _, h := range heights {
 		be := newBlockEdit(Config{}, spec, 100, h)
 		if got := be.editorH(); got < 0 {
-			t.Errorf("editorH() = %d at terminal height %d — must be >= 0", got, h)
+			t.Errorf("editorH() = %d at terminal height %d - must be >= 0", got, h)
 		}
 	}
 }
 
 // ---------------------------------------------------------------------------
-// ctrl+d on nested struct parent — must offer removal, not silently no-op
+// ctrl+d on nested struct parent - must offer removal, not silently no-op
 // ---------------------------------------------------------------------------
 
 // TestCtrlDRemovesNestedParentBlock reproduces the movelooper bug: ctrl+d on a
@@ -920,7 +920,7 @@ func TestRedo_structFieldRemove(t *testing.T) {
 }
 
 // TestRedo_clearedByNewMutation verifies that a new mutation after an undo
-// discards the redo stack — the editor forks away from the undone state.
+// discards the redo stack - the editor forks away from the undone state.
 func TestRedo_clearedByNewMutation(t *testing.T) {
 	spec := blockSpec{
 		key:  "configuration",

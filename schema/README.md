@@ -30,7 +30,7 @@ func KnownChildren(fields []FieldDef) map[string]map[string]bool
 
 KnownChildren collapses a FieldDef tree into a map of dotted paths to the set of allowed direct children. Used by UnknownKeys to detect typos.
 
-A nil value at a path means "free\-form" — children at that path are not validated \(e.g. customizations.vscode.settings has no fixed schema\).
+A nil value at a path means "free\-form" \- children at that path are not validated \(e.g. customizations.vscode.settings has no fixed schema\).
 
 <a name="TopLevelOrder"></a>
 ## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L243>)
@@ -57,7 +57,7 @@ FieldDef describes a single editable field discovered from a Go struct.
 
 Children is populated when the field nests a struct \(Kind == KindObject\) or when its type implements Provider.
 
-FieldDef carries structure only. Field metadata \(required, allowed values, ranges, descriptions\) is declared through the editor's MetadataSource — see the yedit/metadata package.
+FieldDef carries structure only. Field metadata \(required, allowed values, ranges, descriptions\) is declared through the editor's MetadataSource \- see the yedit/metadata package.
 
 ```go
 type FieldDef struct {
@@ -65,8 +65,8 @@ type FieldDef struct {
     Kind         Kind
     Scalar       string // concrete scalar type for primitives ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
     Children     []FieldDef
-    OmitEmpty    bool   // yaml:",omitempty" — zero value is not written to disk
-    Flow         bool   // yaml:",flow" — serialised inline rather than block style
+    OmitEmpty    bool   // yaml:",omitempty" - zero value is not written to disk
+    Flow         bool   // yaml:",flow" - serialised inline rather than block style
     MapKeyScalar string // KindDictionary only: scalar type of the map key ("int", "string", …); "" means string
 }
 ```
@@ -80,9 +80,9 @@ func Discover(v any, recursionLimit ...int) []FieldDef
 
 Discover walks the type of v by reflection and returns the editable schema of its exported fields. Fields without a yaml tag, with yaml:"\-", or with a name in defaultSkip are omitted. Nested struct fields recurse one level deeper.
 
-Only the yaml tag is read. Field metadata \(required, allowed values, ranges, descriptions\) is not derived from struct tags — declare it through the editor's MetadataSource instead \(see the yedit/metadata package\).
+Only the yaml tag is read. Field metadata \(required, allowed values, ranges, descriptions\) is not derived from struct tags \- declare it through the editor's MetadataSource instead \(see the yedit/metadata package\).
 
-To customise discovery for union types \(a value that can be a scalar OR a struct OR a map\), make the wrapper type implement Provider — its YeditSchema\(\) return value is used in place of reflective traversal.
+To customise discovery for union types \(a value that can be a scalar OR a struct OR a map\), make the wrapper type implement Provider \- its YeditSchema\(\) return value is used in place of reflective traversal.
 
 The optional recursionLimit controls how many extra levels a self\-referential type expands beyond the first: 0 \(or omitted\) uses the default of 1, which allows one recursive level so that fields like "any \[\]CategoryFilter" are navigable. Set to 0 explicitly behaves the same as omitting.
 
@@ -104,14 +104,14 @@ const (
     KindList                   // slice or array
     KindDictionary             // map[K]V
     KindVariant                // union type via the Provider interface
-    KindAny                    // interface{}/any — use Provider or raw YAML editing
+    KindAny                    // interface{}/any - use Provider or raw YAML editing
 )
 ```
 
 <a name="Provider"></a>
 ## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L40-L42>)
 
-Provider is an opt\-in interface for types that reflection cannot introspect correctly — typically union types \(e.g. a value that can be a string OR a struct OR a map\). Implementations return the FieldDef tree they want the editor to see in place of the wrapper type's own fields.
+Provider is an opt\-in interface for types that reflection cannot introspect correctly \- typically union types \(e.g. a value that can be a string OR a struct OR a map\). Implementations return the FieldDef tree they want the editor to see in place of the wrapper type's own fields.
 
 ```go
 type Provider interface {

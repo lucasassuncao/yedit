@@ -60,7 +60,7 @@ func TestWindowSizeReachesBlockEdit(t *testing.T) {
 }
 
 // TestPreviewIsReadOnly verifies that typing in the preview pane never mutates
-// the document — the right panel is a read-only, syntax-highlighted view.
+// the document - the right panel is a read-only, syntax-highlighted view.
 func TestPreviewIsReadOnly(t *testing.T) {
 	m, err := newModel(Config{
 		Path:   filepath.Join(t.TempDir(), "ro.yaml"),
@@ -91,7 +91,7 @@ func TestPreviewIsReadOnly(t *testing.T) {
 	before := string(m.doc.Raw())
 	dirtyBefore := m.doc.Dirty()
 
-	// Type characters — a read-only preview must ignore them.
+	// Type characters - a read-only preview must ignore them.
 	for _, r := range "xyz: hello" {
 		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = updated.(model)
@@ -178,13 +178,13 @@ func TestBuildListItemsAvailableKeepsCanonicalOrder(t *testing.T) {
 func TestListMoveCursorClampsAtBounds(t *testing.T) {
 	lm := newListModel([]string{"a", "b", "c"}, nil, nil, 10)
 	first := lm.cursor
-	lm.moveCursor(-1) // already at the top — must not wrap to the bottom
+	lm.moveCursor(-1) // already at the top - must not wrap to the bottom
 	if lm.cursor != first {
 		t.Errorf("moveCursor(-1) at top moved cursor to %d, want %d (clamp)", lm.cursor, first)
 	}
 	lm.jumpToLast()
 	last := lm.cursor
-	lm.moveCursor(1) // at the bottom — must not wrap to the top
+	lm.moveCursor(1) // at the bottom - must not wrap to the top
 	if lm.cursor != last {
 		t.Errorf("moveCursor(+1) at bottom moved cursor to %d, want %d (clamp)", lm.cursor, last)
 	}
@@ -430,7 +430,7 @@ func TestReloadFromDisk(t *testing.T) {
 }
 
 // TestFilterAcceptsJK guards against j/k being swallowed as navigation while
-// the filter input is active — filters like "unknown" (contains k) or
+// the filter input is active - filters like "unknown" (contains k) or
 // "worker" (contains k) must be typeable; only the arrow keys navigate.
 func TestFilterAcceptsJK(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "filter.yaml")
