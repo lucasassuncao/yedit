@@ -690,6 +690,86 @@ func checkRequiredDefs(node *yaml.Node, defs []schema.FieldDef, path string, err
 	}
 }
 
+// RequiredFromHints enforces the HintSource's required markers
+// (FieldMeta.Required) at validate/save time, mirroring RequiredFromSchema for
+// applications that declare required-ness in their hints instead of struct
+// tags. Without it the marker is display-only: the "Required: yes" hint line
+// does not block saving.
+//
+// The walk is guided by the discovered schema: for every schema path the
+// validator asks the HintSource for that field's FieldMeta — using the same
+// query convention as the hint panel, FieldHint(block, "") for a top-level
+// block and FieldHint(block, "source.path") for nested fields — and, when
+// Required is set, checks presence. A required field is only enforced where
+// its parent exists; top-level required blocks are always enforced. Sequence
+// and dictionary entries are checked individually.
+//
+// The editor wires the discovered schema and the configured HintSource into
+// this validator when the session starts; outside editor.Run, or when no
+// HintSource is configured, it reports nothing.
+func RequiredFromHints() Validator { return &requiredFromHintsValidator{} }
+
+type requiredFromHintsValidator struct {
+	defs  []schema.FieldDef
+	hints HintSource
+}
+
+func (v *requiredFromHintsValidator) Validate(in ValidationInput) []Violation {
+	if v.hints == nil || len(v.defs) == 0 {
+		return nil
+	}
+	root := in.Root
+	if root == nil {
+		return nil
+	}
+	var errs []Violation
+	v.walk(root, v.defs, "", "", "", &errs)
+	return errs
+}
+
+// walk mirrors checkRequiredDefs, but required-ness comes from the HintSource
+// instead of schema tags. blockKey is empty at the document root, where each
+// def is itself a top-level block queried as FieldHint(name, ""); below that,
+// hintPath is the dot-joined schema path from the block root (no sequence
+// indexes), matching the hint panel's query convention. yamlPath carries the
+// expanded path used in violations.
+func (v *requiredFromHintsValidator) walk(node *yaml.Node, defs []schema.FieldDef, blockKey, hintPath, yamlPath string, errs *[]Violation) {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return
+	}
+	for _, def := range defs {
+		childBlock, childHint := blockKey, yamlnode.JoinPath(hintPath, def.YAMLName)
+		if blockKey == "" {
+			childBlock, childHint = def.YAMLName, ""
+		}
+		child := yamlnode.ChildByKey(node, def.YAMLName)
+		childYAML := yamlnode.JoinPath(yamlPath, def.YAMLName)
+		if v.hints.FieldHint(childBlock, childHint).Required && !yamlnode.PresentNonEmpty(child) {
+			*errs = append(*errs, Violation{Path: childYAML, Message: "required"})
+		}
+		// KindVariant children describe union alternatives, not required structure.
+		if child == nil || len(def.Children) == 0 || def.Kind == schema.KindVariant {
+			continue
+		}
+		switch def.Kind {
+		case schema.KindObject:
+			v.walk(child, def.Children, childBlock, childHint, childYAML, errs)
+		case schema.KindList:
+			if child.Kind == yaml.SequenceNode {
+				for i, item := range child.Content {
+					v.walk(item, def.Children, childBlock, childHint, fmt.Sprintf("%s[%d]", childYAML, i), errs)
+				}
+			}
+		case schema.KindDictionary:
+			if child.Kind == yaml.MappingNode {
+				for i := 0; i+1 < len(child.Content); i += 2 {
+					v.walk(child.Content[i+1], def.Children, childBlock, childHint, yamlnode.JoinPath(childYAML, child.Content[i].Value), errs)
+				}
+			}
+		}
+	}
+}
+
 // ValueInRange reports a violation when the scalar at path is present but
 // outside the inclusive [min, max] range. Bounds and value may be plain
 // numbers ("1", "0.5"), time.Duration strings ("24h"), or size strings

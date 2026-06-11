@@ -1856,6 +1856,128 @@ some:
 	}
 }
 
+// wiredRequiredFromHints wires RequiredFromHints with rfsConfig's schema and a
+// HintSource marking version (block-level), server.host, workers.name and
+// port-attrs.label as required — the same set the schema tags mark, so the
+// scenarios mirror TestRequiredFromSchema.
+func wiredRequiredFromHints(t *testing.T) Validator {
+	t.Helper()
+	required := map[string]bool{
+		"version|":         true,
+		"server|host":      true,
+		"workers|name":     true,
+		"port-attrs|label": true,
+	}
+	v := RequiredFromHints()
+	rfh := v.(*requiredFromHintsValidator)
+	rfh.defs = schema.Discover(&rfsConfig{})
+	rfh.hints = HintFunc(func(block, fieldPath string) FieldMeta {
+		return FieldMeta{Required: required[block+"|"+fieldPath]}
+	})
+	return v
+}
+
+func TestRequiredFromHints(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want []string // exact violation strings, in order
+	}{
+		{
+			name: "empty document — only top-level required reported",
+			raw:  "",
+			want: []string{"version: required"},
+		},
+		{
+			name: "all satisfied — ok",
+			raw: `
+version: 1.0.0
+server:
+  host: localhost
+`,
+			want: nil,
+		},
+		{
+			name: "optional block absent — its required children not reported",
+			raw:  "version: 1.0.0\n",
+			want: nil,
+		},
+		{
+			name: "optional block present without required child",
+			raw: `
+version: 1.0.0
+server:
+  port: 8080
+`,
+			want: []string{"server.host: required"},
+		},
+		{
+			name: "sequence entries checked individually",
+			raw: `
+version: 1.0.0
+workers:
+  - name: a
+  - queue: fast
+`,
+			want: []string{"workers[1].name: required"},
+		},
+		{
+			name: "dictionary values checked individually",
+			raw: `
+version: 1.0.0
+port-attrs:
+  "8080":
+    label: web
+  "9090": {}
+`,
+			want: []string{`port-attrs.9090.label: required`},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v := wiredRequiredFromHints(t)
+			var got []string
+			for _, viol := range v.Validate(NewValidationInput([]byte(tc.raw), nil)) {
+				got = append(got, viol.String())
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("violations = %v, want %v", got, tc.want)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Errorf("violation[%d] = %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestRequiredFromHints_inertWithoutWiring(t *testing.T) {
+	if errs := RequiredFromHints().Validate(NewValidationInput(nil, nil)); len(errs) != 0 {
+		t.Errorf("unwired validator should report nothing, got %v", errs)
+	}
+
+	// Wired schema but no HintSource: reports nothing.
+	v := RequiredFromHints()
+	v.(*requiredFromHintsValidator).defs = schema.Discover(&rfsConfig{})
+	if errs := v.Validate(NewValidationInput([]byte(""), nil)); len(errs) != 0 {
+		t.Errorf("validator without HintSource should report nothing, got %v", errs)
+	}
+}
+
+func TestRequiredFromHints_ignoresSchemaTags(t *testing.T) {
+	// rfsConfig marks version with validate:"required", but a HintSource that
+	// marks nothing must yield no violations — hints are the sole authority.
+	v := RequiredFromHints()
+	rfh := v.(*requiredFromHintsValidator)
+	rfh.defs = schema.Discover(&rfsConfig{})
+	rfh.hints = HintFunc(func(block, fieldPath string) FieldMeta { return FieldMeta{} })
+	if errs := v.Validate(NewValidationInput([]byte(""), nil)); len(errs) != 0 {
+		t.Errorf("hints mark nothing, expected no violations, got %v", errs)
+	}
+}
+
 // rfsConfig exercises RequiredFromSchema across the structural kinds: a
 // top-level required scalar, a required field inside an optional object, a
 // required field per sequence entry, and one per dictionary value.

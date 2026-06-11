@@ -77,11 +77,16 @@ func newModel(cfg Config) (model, error) {
 		tree = schema.Discover(cfg.Schema) // use schema default (1 extra recursive level)
 	}
 	tree = applyHidden(tree, cfg.Hidden)
-	// RequiredFromSchema validators cannot see the schema at construction time;
-	// wire the discovered (and Hidden-filtered) tree into them here.
+	// RequiredFromSchema/RequiredFromHints validators cannot see the schema (or
+	// the HintSource) at construction time; wire the discovered (and
+	// Hidden-filtered) tree into them here.
 	for _, v := range cfg.Validators {
-		if rfs, ok := v.(*requiredFromSchemaValidator); ok {
-			rfs.defs = tree
+		switch rv := v.(type) {
+		case *requiredFromSchemaValidator:
+			rv.defs = tree
+		case *requiredFromHintsValidator:
+			rv.defs = tree
+			rv.hints = cfg.Hints
 		}
 	}
 	known := schema.KnownChildren(tree)

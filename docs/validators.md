@@ -26,6 +26,7 @@ and a human-readable `Message`.
 |---|---|
 | [`Required`](#required) | listed paths must be present and non-empty |
 | [`RequiredFromSchema`](#requiredfromschema) | enforce the schema's `validate:"required"` markers |
+| [`RequiredFromHints`](#requiredfromhints) | enforce the HintSource's `FieldMeta.Required` markers |
 | [`RequiredWith`](#requiredwith) | key requires another top-level key to be set |
 | [`RequiredIf`](#requiredif) | key is required when another field has a given value |
 | [`AtLeastOneOf`](#atleastoneof) | at least one of the listed keys must be present |
@@ -99,6 +100,26 @@ A required field is only enforced where its parent exists. Sequence and
 dictionary entries are checked individually. The editor wires the discovered
 schema into this validator when the session starts; outside `editor.Run` it
 reports nothing.
+
+### RequiredFromHints
+
+```go
+editor.RequiredFromHints()
+```
+
+The `HintSource` counterpart of `RequiredFromSchema`, for applications that
+declare required-ness in their hints (`FieldMeta.Required`) instead of struct
+tags. The walk is guided by the discovered schema; for every schema path the
+validator queries the `HintSource` — `FieldHint(block, "")` for a top-level
+block, `FieldHint(block, "source.path")` for nested fields, the same
+convention as the hint panel — and enforces presence where `Required` is set.
+Without it the "Required: yes" hint line is display-only.
+
+Same conditional semantics as `RequiredFromSchema`: a required field is only
+enforced where its parent exists, top-level required blocks are always
+enforced, and sequence/dictionary entries are checked individually. The editor
+wires the schema and the configured `HintSource` in at session start; outside
+`editor.Run`, or without a `HintSource`, it reports nothing.
 
 ### RequiredWith
 

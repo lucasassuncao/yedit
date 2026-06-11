@@ -48,6 +48,7 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
   - [func MutuallyExclusiveNested\(scopedPath string, keys ...string\) Validator](<#MutuallyExclusiveNested>)
   - [func NoDuplicates\(seqPath, field string\) Validator](<#NoDuplicates>)
   - [func Required\(paths ...string\) Validator](<#Required>)
+  - [func RequiredFromHints\(\) Validator](<#RequiredFromHints>)
   - [func RequiredFromSchema\(\) Validator](<#RequiredFromSchema>)
   - [func RequiredIf\(key, condPath, condValue string\) Validator](<#RequiredIf>)
   - [func RequiredWith\(key, parent string\) Validator](<#RequiredWith>)
@@ -417,7 +418,7 @@ type Validator interface {
 ```
 
 <a name="AllOrNone"></a>
-### func [AllOrNone](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L837>)
+### func [AllOrNone](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L917>)
 
 ```go
 func AllOrNone(keys ...string) Validator
@@ -453,7 +454,7 @@ editor.AtLeastOneOf("auth.token", "auth.password")
 Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
 
 <a name="CountRange"></a>
-### func [CountRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L884>)
+### func [CountRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L964>)
 
 ```go
 func CountRange(path string, minCount, maxCount int) Validator
@@ -478,7 +479,7 @@ CrossFieldOrdered reports a violation when both paths are present but the value 
 When the two paths share the same parent prefix, the pair is compared inside every mapping reached by that parent — sequences and dict\-style mappings are expanded automatically, so each entry's own min/max pair is checked. Paths with unrelated parents are both resolved from the document root.
 
 <a name="Deprecated"></a>
-### func [Deprecated](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L980>)
+### func [Deprecated](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1060>)
 
 ```go
 func Deprecated(path, message string) Validator
@@ -595,6 +596,19 @@ editor.Required("categories.name")  // every category entry needs "name"
 
 To enforce the schema's validate:"required" tags without listing paths by hand, use RequiredFromSchema.
 
+<a name="RequiredFromHints"></a>
+### func [RequiredFromHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L710>)
+
+```go
+func RequiredFromHints() Validator
+```
+
+RequiredFromHints enforces the HintSource's required markers \(FieldMeta.Required\) at validate/save time, mirroring RequiredFromSchema for applications that declare required\-ness in their hints instead of struct tags. Without it the marker is display\-only: the "Required: yes" hint line does not block saving.
+
+The walk is guided by the discovered schema: for every schema path the validator asks the HintSource for that field's FieldMeta — using the same query convention as the hint panel, FieldHint\(block, ""\) for a top\-level block and FieldHint\(block, "source.path"\) for nested fields — and, when Required is set, checks presence. A required field is only enforced where its parent exists; top\-level required blocks are always enforced. Sequence and dictionary entries are checked individually.
+
+The editor wires the discovered schema and the configured HintSource into this validator when the session starts; outside editor.Run, or when no HintSource is configured, it reports nothing.
+
 <a name="RequiredFromSchema"></a>
 ### func [RequiredFromSchema](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L640>)
 
@@ -645,7 +659,7 @@ editor.RequiredWith("server.tls-key", "server.tls-cert")
 Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
 
 <a name="UniqueValues"></a>
-### func [UniqueValues](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L929>)
+### func [UniqueValues](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1009>)
 
 ```go
 func UniqueValues(seqPath string) Validator
@@ -658,7 +672,7 @@ editor.UniqueValues("tags")
 ```
 
 <a name="ValueHasPrefix"></a>
-### func [ValueHasPrefix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L783>)
+### func [ValueHasPrefix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L863>)
 
 ```go
 func ValueHasPrefix(path, prefix string) Validator
@@ -671,7 +685,7 @@ editor.ValueHasPrefix("image", "registry.example.com/")
 ```
 
 <a name="ValueHasSuffix"></a>
-### func [ValueHasSuffix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L791>)
+### func [ValueHasSuffix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L871>)
 
 ```go
 func ValueHasSuffix(path, suffix string) Validator
@@ -684,7 +698,7 @@ editor.ValueHasSuffix("output", ".yaml")
 ```
 
 <a name="ValueInRange"></a>
-### func [ValueInRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L702>)
+### func [ValueInRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L782>)
 
 ```go
 func ValueInRange(path, minVal, maxVal string) Validator
@@ -698,7 +712,7 @@ editor.ValueInRange("filter.max-age", "1h", "8760h")
 ```
 
 <a name="ValueMatches"></a>
-### func [ValueMatches](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L748>)
+### func [ValueMatches](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L828>)
 
 ```go
 func ValueMatches(path, pattern string) Validator
