@@ -222,7 +222,21 @@ func (m model) handleBlockEditKey(top *blockEditState, key tea.KeyMsg) (tea.Mode
 		return m, cmd
 	}
 
-	// Non-tree key with no special handling: forward to YAML editor.
+	// modeEditing + YAML panel active: forward key directly to the textarea.
+	// forwardMsg filters out key messages in modeEditing, so it cannot be used here.
+	if top.mode == modeEditing && top.active == blockEditPanelYAML {
+		prevYAML := top.yamlEditor.Value()
+		be := *top
+		var cmd tea.Cmd
+		be.yamlEditor, cmd = be.yamlEditor.Update(key)
+		if be.yamlEditor.Value() != prevYAML {
+			be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value()})
+		}
+		m.setTopBE(&be)
+		return m, cmd
+	}
+
+	// Other modes (modeConfirming, modePresetBrowser): forward through forwardMsg.
 	prevYAML := top.yamlEditor.Value()
 	be, cmd := top.forwardMsg(key)
 	if be.active == blockEditPanelYAML && be.yamlEditor.Value() != prevYAML {
