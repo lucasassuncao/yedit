@@ -542,5 +542,11 @@ func (m model) View() string {
 	feedback := lipgloss.NewStyle().Width(m.width).Render(m.theme.status.Render(m.statusMsg))
 	hint := lipgloss.NewStyle().Width(m.width).Render(m.theme.status.Render(hintText))
 
-	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Hint: hint})
+	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Hint: hint})
+	if m.height > 0 {
+		if lines := strings.Split(out, "\n"); len(lines) > m.height {
+			out = strings.Join(lines[:m.height], "\n")
+		}
+	}
+	return out
 }

@@ -671,7 +671,13 @@ func (be blockEditState) View(parentSegs []string) string {
 	}
 	hint := lipgloss.NewStyle().Width(be.width).Render(be.theme.status.Render(hintText))
 
-	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Hint: hint})
+	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Hint: hint})
+	if be.height > 0 {
+		if lines := strings.Split(out, "\n"); len(lines) > be.height {
+			out = strings.Join(lines[:be.height], "\n")
+		}
+	}
+	return out
 }
 
 // currentHint returns the hint bar text for the current panel and cursor state.
@@ -707,7 +713,13 @@ func (be blockEditState) presetView(parentSegs []string) string {
 	}
 	hint := lipgloss.NewStyle().Width(be.width).Render(be.theme.status.Render(hintStr))
 
-	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Hint: hint})
+	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Hint: hint})
+	if be.height > 0 {
+		if lines := strings.Split(out, "\n"); len(lines) > be.height {
+			out = strings.Join(lines[:be.height], "\n")
+		}
+	}
+	return out
 }
 
 // validateSnippetText checks that text is valid YAML.
