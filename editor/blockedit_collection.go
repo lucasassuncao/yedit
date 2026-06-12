@@ -67,7 +67,7 @@ func (be blockEditState) performEntryDelete(seqIdx int) blockEditState {
 	be = be.loadEntry(be.tree.NearestSeqItem())
 	// Re-derive so positional ("item N") labels of unnamed entries stay in sync
 	// with their new index in the node after the surviving entries shift up.
-	be.tree = be.collectionDeriveTree()
+	be.tree = be.resyncTreeFromYAML()
 	return be
 }
 

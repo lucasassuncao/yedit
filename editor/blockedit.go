@@ -312,6 +312,10 @@ func (be blockEditState) forwardMsg(msg tea.Msg) (blockEditState, tea.Cmd) {
 	return be, nil
 }
 
+// Update is the blockEditState message router used by unit tests. At runtime
+// the model routes all messages through handlePaneBlockEdit/handleBlockEditKey
+// (overlay_stack.go), which handles model-level concerns (commitAll, drill
+// navigation, doc writes). New logic belongs there, not here.
 func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	// pendingRemoveMsg fires from the "Remove field?" confirm alert as it
 	// dismisses, so it crosses the mode boundary and is handled up front.

@@ -169,6 +169,7 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 		be.tree.cursor = 0
 		be.tree.offset = 0
 		be = be.loadEntry(0)
+		be.tree = be.resyncTreeFromYAML()
 		return be
 	}
 
@@ -199,6 +200,7 @@ func (be blockEditState) appendPreset(name, y string) blockEditState {
 	be.tree.cursor = entryCount(be.node, be.isMapNav()) - 1
 
 	be = be.loadEntry(entryCount(be.node, be.isMapNav()) - 1)
+	be.tree = be.resyncTreeFromYAML()
 	be.currentPreset = name
 	be.editorErr = editorError{}
 	be.dirty = true

@@ -23,15 +23,19 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 		be.statusMsg = ""
 
 	case AddEntry:
+		be.statusMsg = ""
 		be = be.handleTreeAddNew()
 
 	case DeleteEntry:
+		be.statusMsg = ""
 		be = be.performEntryDelete(act.SeqIdx)
 
 	case NavigateEntry:
+		be.statusMsg = ""
 		be = be.flushAndLoadEntry(act.Idx)
 
 	case ApplyPreset:
+		be.statusMsg = ""
 		be = be.applyPreset(act.Name, act.Content)
 
 	case Undo:
