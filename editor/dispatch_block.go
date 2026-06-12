@@ -4,7 +4,10 @@ package editor
 // Every block-editor mutation passes through here; side effects
 // (pruneEmptyMappings, saveUndo) are guaranteed per-case.
 func (be blockEditState) dispatch(a BlockAction) blockEditState {
-	be.actionLog = append(be.actionLog, a)
+	log := make([]BlockAction, len(be.actionLog)+1)
+	copy(log, be.actionLog)
+	log[len(be.actionLog)] = a
+	be.actionLog = log
 	switch act := a.(type) {
 	case ToggleField:
 		if act.NodeIdx < 0 || act.NodeIdx >= len(be.tree.nodes) {

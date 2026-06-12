@@ -39,7 +39,7 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
-	m.scrollPreviewToSelected()
+	m = m.scrollPreviewToSelected()
 	return m, cmd
 }
 

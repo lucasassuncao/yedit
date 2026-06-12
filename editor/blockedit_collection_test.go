@@ -109,7 +109,7 @@ func TestMapBlockRenameUpdatesTreeLabel(t *testing.T) {
 `)
 	// Simulate the parse-gated keystroke: splice the edited entry into the node.
 	if kn, vn, ok := parseEntryFromView(be.yamlEditor.Value(), be.coll.isMap); ok {
-		setEntry(be.node, be.coll.isMap, be.coll.current, kn, vn)
+		setEntry(&be.node, be.coll.isMap, be.coll.current, kn, vn)
 	}
 	be.tree = be.resyncTreeFromYAML()
 	if labels := seqItemLabels(be); len(labels) == 0 || labels[0] != "lucas" {
@@ -267,7 +267,7 @@ func TestCollectionDerive_perEntryLabels(t *testing.T) {
 	if !ok {
 		t.Fatal("parseEntryFromView failed on valid entry text")
 	}
-	setEntry(be.node, false, 1, kn, vn)
+	setEntry(&be.node, false, 1, kn, vn)
 	tm := be.collectionDeriveTree()
 
 	labels := map[int]string{}

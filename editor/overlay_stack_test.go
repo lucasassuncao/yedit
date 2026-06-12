@@ -218,7 +218,7 @@ func TestDrillOutKeepsEdits(t *testing.T) {
     host: new.com
 `)
 	child.dirty = true
-	m.setTopBE(&child)
+	m.setTopBE(child)
 
 	// Esc inside the nested editor → drill out, keeping the edit.
 	updated, _ = m.Update(drillOutMsg{})

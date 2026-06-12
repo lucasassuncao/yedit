@@ -23,10 +23,9 @@ func deriveChecked(valueNode *yaml.Node, nodes []treeNode, skipFirstSeg bool) []
 	out := make([]treeNode, len(nodes))
 	copy(out, nodes)
 	for i, n := range out {
-		// Leaves track key presence; openable fields (nested collections) track
-		// non-empty content. Inline-expandable structs derive their state from
-		// descendants (hasCheckedDescendant), so they are skipped here.
-		if n.kind != treeNodeField || (!n.isLeaf && !n.openable) {
+		// Leaves and inline-struct parents track key presence; openable fields
+		// (nested collections) track non-empty content.
+		if n.kind != treeNodeField {
 			continue
 		}
 		path := n.yamlPath
@@ -76,23 +75,24 @@ func syncTreeCheckedFromNode(tm treeModel, valueNode *yaml.Node) treeModel {
 }
 
 // toggleNodeField adds or removes a single leaf field within valueNode (the
-// block's value mapping), mutating it in place. It is the structural
-// replacement for applyTreeToggle: same logic, no string round-trip. A
-// null/scalar value node is coerced to an empty mapping first so fields can be
-// added to a block opened with no content yet.
-func toggleNodeField(valueNode *yaml.Node, ctx toggleCtx, node treeNode, checked bool) {
-	if valueNode.Kind != yaml.MappingNode {
-		valueNode.Kind = yaml.MappingNode
-		valueNode.Tag = ""
-		valueNode.Value = ""
-		valueNode.Content = nil
+// block's value mapping). It clones valueNode before any mutation and returns
+// the (possibly new) node; the caller must assign the result back. Returns
+// valueNode unchanged when the toggle produces no structural change.
+func toggleNodeField(valueNode *yaml.Node, ctx toggleCtx, node treeNode, checked bool) *yaml.Node {
+	cloned := yamlnode.CloneNode(valueNode)
+	if cloned.Kind != yaml.MappingNode {
+		cloned.Kind = yaml.MappingNode
+		cloned.Tag = ""
+		cloned.Value = ""
+		cloned.Content = nil
 	}
 	path := node.yamlPath
-	if !applyToggleAt(valueNode, path[:len(path)-1], path[len(path)-1], checked, ctx, node.depth == 0) {
-		return
+	if !applyToggleAt(cloned, path[:len(path)-1], path[len(path)-1], checked, ctx, node.depth == 0) {
+		return valueNode
 	}
-	pruneEmptyMappings(valueNode)
-	reorderNestedMappingKeys(valueNode, ctx.childDefs)
+	pruneEmptyMappings(cloned)
+	reorderNestedMappingKeys(cloned, ctx.childDefs)
+	return cloned
 }
 
 // nodeHasContent reports whether a value node carries real content. It is the

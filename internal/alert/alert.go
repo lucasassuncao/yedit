@@ -66,8 +66,9 @@ func NewConfirm(title, message string, confirmCmd tea.Cmd, term theme.Size) Mode
 
 // Resize updates the centre region the modal is rendered against. Call on
 // tea.WindowSizeMsg if the parent forwards resizes.
-func (a *Model) Resize(term theme.Size) {
+func (a Model) Resize(term theme.Size) Model {
 	a.term = term
+	return a
 }
 
 func (a Model) accentColor() lipgloss.Color {

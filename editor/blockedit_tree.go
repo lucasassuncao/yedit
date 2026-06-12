@@ -113,7 +113,8 @@ func (be blockEditState) handleTreeToggleDispatch() blockEditState {
 			func() tea.Msg { return pendingRemoveMsg{nodeIdx: capturedIdx} },
 			theme.Size{W: be.width, H: be.height},
 		)
-		be.confirmAlert = &al
+		be.confirmAlert = al
+		be.confirmAlertVisible = true
 		be.mode = modeConfirming
 		return be
 	}
@@ -138,7 +139,8 @@ func (be blockEditState) handleTreeDeleteDispatch() blockEditState {
 		func() tea.Msg { return pendingEntryDeleteMsg{seqIdx: seqIdx} },
 		theme.Size{W: be.width, H: be.height},
 	)
-	be.confirmAlert = &al
+	be.confirmAlert = al
+	be.confirmAlertVisible = true
 	be.mode = modeConfirming
 	return be
 }
@@ -187,11 +189,11 @@ func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
 func (be *blockEditState) applyToggle(ctx toggleCtx, node treeNode, checked bool) {
 	if be.isCollectionNav() {
 		be.toggleEntryField(ctx, node, checked)
-		be.yamlEditor.SetValue(entryViewYAML(be.node, be.key, be.coll.isMap, be.coll.current))
+		be.yamlEditor.SetValue(entryViewYAML(&be.node, be.key, be.coll.isMap, be.coll.current))
 		return
 	}
-	toggleNodeField(be.node, ctx, node, checked)
-	be.yamlEditor.SetValue(nodeToContent(be.key, be.node))
+	be.node = *toggleNodeField(&be.node, ctx, node, checked)
+	be.yamlEditor.SetValue(nodeToContent(be.key, &be.node))
 }
 
 // toggleEntryField mutates the current collection entry's value mapping. It
@@ -201,7 +203,7 @@ func (be *blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked
 	if len(node.yamlPath) < 2 {
 		return
 	}
-	entryNode := entryValueNode(be.node, be.coll.isMap, be.coll.current)
+	entryNode := entryValueNode(&be.node, be.coll.isMap, be.coll.current)
 	if entryNode == nil {
 		return
 	}

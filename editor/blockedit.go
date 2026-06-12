@@ -77,7 +77,7 @@ type blockEditState struct {
 	// it mirrors what the YAML editor renders; tree-driven toggles mutate it
 	// structurally and the editor is re-rendered from it. Collection blocks still
 	// carry their entry list in coll for now.
-	node *yaml.Node
+	node yaml.Node
 
 	yamlEditor      textarea.Model
 	previewRenderer *glamour.TermRenderer // non-nil only for KindObject blocks
@@ -101,13 +101,15 @@ type blockEditState struct {
 	statusMsg     string // neutral feedback (e.g. "Undone."); cleared on next edit action
 	currentPreset string
 
-	mode         blockEditMode
-	preset       *presetBrowser // preset-picker overlay state when mode == modePresetBrowser
-	confirmAlert *alert.Model   // alert data when mode == modeConfirming
+	mode                blockEditMode
+	preset              presetBrowser
+	presetVisible       bool
+	confirmAlert        alert.Model
+	confirmAlertVisible bool
 
-	undoStack []*blockEditUndoSnap // undo history; each mutating op pushes a snapshot
-	redoStack []*blockEditUndoSnap // redo history; populated by restoreUndo, discarded on new mutations
-	actionLog []BlockAction        // in-memory log for debug and replay
+	undoStack []blockEditUndoSnap // undo history; each mutating op pushes a snapshot
+	redoStack []blockEditUndoSnap // redo history; populated by restoreUndo, discarded on new mutations
+	actionLog []BlockAction       // in-memory log for debug and replay
 	theme     resolvedTheme
 }
 
@@ -148,7 +150,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 			raw = spec.key + ":\n"
 		}
 		be.coll = collectionBuffer{key: spec.key, isMap: be.isMapNav(), current: -1}
-		be.node = collValueNode(raw, be.isMapNav())
+		be.node = *collValueNode(raw, be.isMapNav())
 		be.tree.nodes = be.collectionTreeNodes()
 	}
 
@@ -174,8 +176,8 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	// above, from the full entry list.) Derive the tree once here so it reflects
 	// be.node even when content came from a preset rather than spec.content.
 	if !structured {
-		be.node = blockValueNode(content)
-		be.tree = syncTreeCheckedFromNode(be.tree, be.node)
+		be.node = *blockValueNode(content)
+		be.tree = syncTreeCheckedFromNode(be.tree, &be.node)
 	}
 
 	// For new struct blocks, pre-check fields listed in cfg.PreCheckedFields.
@@ -266,13 +268,13 @@ func (be blockEditState) Init() tea.Cmd { return textarea.Blink }
 func (be blockEditState) forwardMsg(msg tea.Msg) (blockEditState, tea.Cmd) {
 	if m, ok := msg.(pendingRemoveMsg); ok {
 		be.mode = modeEditing
-		be.confirmAlert = nil
+		be.confirmAlertVisible = false
 		be = be.dispatch(ToggleField{NodeIdx: m.nodeIdx, Checked: false})
 		return be, nil
 	}
 	if m, ok := msg.(pendingEntryDeleteMsg); ok {
 		be.mode = modeEditing
-		be.confirmAlert = nil
+		be.confirmAlertVisible = false
 		be = be.dispatch(DeleteEntry{SeqIdx: m.seqIdx})
 		return be, nil
 	}
@@ -283,8 +285,8 @@ func (be blockEditState) forwardMsg(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.yamlEditor.SetWidth(be.rightW - 2)
 		be.yamlEditor.SetHeight(be.editorH() - 1)
 		be.tree.height = be.innerH()
-		if be.confirmAlert != nil {
-			be.confirmAlert.Resize(theme.Size{W: m.Width, H: m.Height})
+		if be.confirmAlertVisible {
+			be.confirmAlert = be.confirmAlert.Resize(theme.Size{W: m.Width, H: m.Height})
 		}
 		return be, nil
 	}
@@ -292,12 +294,12 @@ func (be blockEditState) forwardMsg(msg tea.Msg) (blockEditState, tea.Cmd) {
 	case modeConfirming:
 		if _, ok := msg.(alert.DismissedMsg); ok {
 			be.mode = modeEditing
-			be.confirmAlert = nil
+			be.confirmAlertVisible = false
 			return be, nil
 		}
 		if key, ok := msg.(tea.KeyMsg); ok {
 			al, cmd := be.confirmAlert.Update(key)
-			be.confirmAlert = &al
+			be.confirmAlert = al
 			return be, cmd
 		}
 	case modePresetBrowser:
@@ -324,12 +326,12 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	// dismisses, so it crosses the mode boundary and is handled up front.
 	if m, ok := msg.(pendingRemoveMsg); ok {
 		be.mode = modeEditing
-		be.confirmAlert = nil
+		be.confirmAlertVisible = false
 		return be.dispatch(ToggleField{NodeIdx: m.nodeIdx, Checked: false}), nil
 	}
 	if m, ok := msg.(pendingEntryDeleteMsg); ok {
 		be.mode = modeEditing
-		be.confirmAlert = nil
+		be.confirmAlertVisible = false
 		return be.dispatch(DeleteEntry{SeqIdx: m.seqIdx}), nil
 	}
 
@@ -340,8 +342,8 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.yamlEditor.SetWidth(be.rightW - 2)
 		be.yamlEditor.SetHeight(be.editorH() - 1)
 		be.tree.height = be.innerH()
-		if be.confirmAlert != nil {
-			be.confirmAlert.Resize(theme.Size{W: m.Width, H: m.Height})
+		if be.confirmAlertVisible {
+			be.confirmAlert = be.confirmAlert.Resize(theme.Size{W: m.Width, H: m.Height})
 		}
 		return be, nil
 	}
@@ -359,12 +361,12 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 func (be blockEditState) updateConfirming(msg tea.Msg) (blockEditState, tea.Cmd) {
 	if _, ok := msg.(alert.DismissedMsg); ok {
 		be.mode = modeEditing
-		be.confirmAlert = nil
+		be.confirmAlertVisible = false
 		return be, nil
 	}
 	if key, ok := msg.(tea.KeyMsg); ok {
 		al, cmd := be.confirmAlert.Update(key)
-		be.confirmAlert = &al
+		be.confirmAlert = al
 		return be, cmd
 	}
 	return be, nil
@@ -400,7 +402,7 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 	}
 	// presetDismissed, presetApplied, presetAppended all close the browser.
 	be.mode = modeEditing
-	be.preset = nil
+	be.presetVisible = false
 	return be, nil
 }
 
@@ -434,7 +436,8 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 				func() tea.Msg { return blockEditDiscardedMsg{discarded: true} },
 				theme.Size{W: be.width, H: be.height},
 			)
-			be.confirmAlert = &al
+			be.confirmAlert = al
+			be.confirmAlertVisible = true
 			be.mode = modeConfirming
 			return be, nil
 		}
@@ -483,14 +486,14 @@ func (be blockEditState) syncParsedNode(content string) blockEditState {
 		if !ok {
 			return be
 		}
-		if cur := be.coll.current; cur >= 0 && cur < entryCount(be.node, be.coll.isMap) {
-			setEntry(be.node, be.coll.isMap, cur, kn, vn)
+		if cur := be.coll.current; cur >= 0 && cur < entryCount(&be.node, be.coll.isMap) {
+			setEntry(&be.node, be.coll.isMap, cur, kn, vn)
 		}
 		be.tree = be.collectionDeriveTree()
 		return be
 	}
 	if v := valueNodeOfSnippet(content); v != nil {
-		be.node = v
+		be.node = *v
 		be.tree = be.resyncTreeFromYAML()
 	}
 	return be
@@ -505,7 +508,7 @@ func (be blockEditState) resyncTreeFromYAML() treeModel {
 	if be.isCollectionNav() {
 		return be.collectionDeriveTree()
 	}
-	return syncTreeCheckedFromNode(be.tree, be.node)
+	return syncTreeCheckedFromNode(be.tree, &be.node)
 }
 
 // snippetsFn returns a lookup function for snippets scoped to be.key.
@@ -535,15 +538,15 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 		}
 		meta := be.cfg.Metadata.FieldMeta(be.key, n.label)
 		if meta.PreChecked {
-			toggleNodeField(be.node, ctx, n, true)
+			be.node = *toggleNodeField(&be.node, ctx, n, true)
 			changed = true
 		}
 	}
 	if !changed {
 		return be
 	}
-	be.yamlEditor.SetValue(nodeToContent(be.key, be.node))
-	be.tree = syncTreeCheckedFromNode(be.tree, be.node)
+	be.yamlEditor.SetValue(nodeToContent(be.key, &be.node))
+	be.tree = syncTreeCheckedFromNode(be.tree, &be.node)
 	return be
 }
 
@@ -553,20 +556,20 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 // YAML. Clears the dirty flag either way.
 func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 	if !be.isCollectionNav() {
-		be.node = blockValueNode(fresh)
+		be.node = *blockValueNode(fresh)
 		be.yamlEditor.SetValue(fresh)
 		be.dirty = false
 		return be
 	}
 	isMap := be.isMapNav()
-	oldCount := entryCount(be.node, isMap)
-	be.node = collValueNode(fresh, isMap)
-	if entryCount(be.node, isMap) != oldCount {
+	oldCount := entryCount(&be.node, isMap)
+	be.node = *collValueNode(fresh, isMap)
+	if entryCount(&be.node, isMap) != oldCount {
 		// Entry count changed: rebuild the tree from scratch (expansion is lost,
 		// but the structure must match the new node).
 		be.tree.nodes = be.collectionTreeNodes()
-		if be.coll.current >= entryCount(be.node, isMap) {
-			be.coll.current = entryCount(be.node, isMap) - 1
+		if be.coll.current >= entryCount(&be.node, isMap) {
+			be.coll.current = entryCount(&be.node, isMap) - 1
 		}
 	}
 	be.tree = be.collectionDeriveTree()
@@ -593,7 +596,7 @@ func (be blockEditState) commit() (blockEditState, tea.Cmd) {
 		if be.editorErr.kind != errNone {
 			return be, nil
 		}
-		snippet = nodeToContent(be.key, be.node)
+		snippet = nodeToContent(be.key, &be.node)
 	} else {
 		be.editorErr = editorError{}
 		snippet = be.yamlEditor.Value()

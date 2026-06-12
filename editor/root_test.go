@@ -243,8 +243,8 @@ f: 6
 //	len(m.blockEdits) > 0  ⟺  m.mode == paneBlockEdit
 func checkScreenInvariant(t *testing.T, m model, where string) {
 	t.Helper()
-	if (m.alert != nil) != (m.mode == paneAlert) {
-		t.Errorf("%s: alert/mode invariant broken: alert=%v mode=%d", where, m.alert != nil, m.mode)
+	if m.alertVisible != (m.mode == paneAlert) {
+		t.Errorf("%s: alert/mode invariant broken: alertVisible=%v mode=%d", where, m.alertVisible, m.mode)
 	}
 	if (len(m.blockEdits) > 0) != (m.mode == paneBlockEdit) {
 		t.Errorf("%s: blockEdits/mode invariant broken: len=%d mode=%d", where, len(m.blockEdits), m.mode)
@@ -386,21 +386,27 @@ func TestReloadFromDisk(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	// Clean document: ctrl+r reloads immediately and picks up external changes.
+	// Clean document: ctrl+r dispatches an async reload cmd; execute it.
 	if err := os.WriteFile(path, []byte("server:\n  host: b\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	var reloadCmd tea.Cmd
+	updated, reloadCmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
 	m = updated.(model)
 	if m.mode != paneList {
 		t.Fatalf("clean reload should not prompt; mode = %d", m.mode)
+	}
+	if reloadCmd != nil {
+		updated, _ = m.Update(reloadCmd())
+		m = updated.(model)
 	}
 	if !strings.Contains(string(m.doc.Raw()), "host: b") {
 		t.Errorf("external change not loaded: %q", m.doc.Raw())
 	}
 
 	// Dirty document: ctrl+r prompts; confirming discards the local edit.
-	if err := m.doc.Insert("extra: 1\n"); err != nil {
+	m.doc, err = m.doc.Insert("extra: 1\n")
+	if err != nil {
 		t.Fatalf("Insert: %v", err)
 	}
 	if err := os.WriteFile(path, []byte("server:\n  host: c\n"), 0o600); err != nil {
@@ -416,8 +422,13 @@ func TestReloadFromDisk(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("confirming the alert should produce a command")
 	}
-	updated, _ = m.Update(cmd())
+	// cmd() fires confirmedReloadMsg → execReload returns cmdReload
+	updated, reloadCmd = m.Update(cmd())
 	m = updated.(model)
+	if reloadCmd != nil {
+		updated, _ = m.Update(reloadCmd())
+		m = updated.(model)
+	}
 	if m.mode != paneList {
 		t.Fatalf("expected list after confirmed reload; mode = %d", m.mode)
 	}

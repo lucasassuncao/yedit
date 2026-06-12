@@ -304,6 +304,47 @@ func pruneEmptyMappings(node *yaml.Node) {
 	}
 }
 
+// pruneEmptyContent is like pruneEmptyMappings but also removes mapping values
+// that are null or empty scalars. Called on commit so that scaffold fields the
+// user never filled in (e.g. hooks.before.shell: "") are stripped before the
+// block is written to the document. Not used after individual toggles, where
+// "" is the legitimate placeholder for a just-added field.
+func pruneEmptyContent(node *yaml.Node) {
+	if node == nil {
+		return
+	}
+	switch node.Kind {
+	case yaml.MappingNode:
+		for i := 1; i < len(node.Content); i += 2 {
+			pruneEmptyContent(node.Content[i])
+		}
+		i := 0
+		for i < len(node.Content)-1 {
+			val := node.Content[i+1]
+			empty := (val.Kind == yaml.MappingNode || val.Kind == yaml.SequenceNode) && len(val.Content) == 0 ||
+				val.Kind == yaml.ScalarNode && (val.Tag == "!!null" || val.Value == "")
+			if empty {
+				node.Content = append(node.Content[:i], node.Content[i+2:]...)
+			} else {
+				i += 2
+			}
+		}
+	case yaml.SequenceNode:
+		for _, item := range node.Content {
+			pruneEmptyContent(item)
+		}
+		i := 0
+		for i < len(node.Content) {
+			item := node.Content[i]
+			if item.Kind == yaml.MappingNode && len(item.Content) == 0 {
+				node.Content = append(node.Content[:i], node.Content[i+1:]...)
+			} else {
+				i++
+			}
+		}
+	}
+}
+
 // hasMappingKey reports whether a mapping node contains the given key.
 func hasMappingKey(mapping *yaml.Node, key string) bool {
 	if mapping.Kind != yaml.MappingNode {

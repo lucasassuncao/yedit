@@ -32,7 +32,7 @@ func (be blockEditState) collectionDeriveTree() treeModel {
 			continue
 		}
 		seqIdx := nodes[i].seqIdx
-		label := entryLabel(be.node, isMap, seqIdx)
+		label := entryLabel(&be.node, isMap, seqIdx)
 		if label != "" {
 			nodes[i].label = label
 			nodes[i].yamlPath = []string{label}
@@ -50,7 +50,7 @@ func (be blockEditState) collectionDeriveTree() treeModel {
 		for k, ci := range childIdx {
 			sub[k] = nodes[ci]
 		}
-		sub = deriveChecked(entryValueNode(be.node, isMap, seqIdx), sub, true)
+		sub = deriveChecked(entryValueNode(&be.node, isMap, seqIdx), sub, true)
 		for k, ci := range childIdx {
 			nodes[ci] = sub[k]
 		}
@@ -63,7 +63,7 @@ func (be blockEditState) performEntryDelete(seqIdx int) blockEditState {
 	be = be.saveUndo()
 	be.dirty = true
 	be.tree = be.tree.WithDeletedSeqItem(seqIdx)
-	removeEntry(be.node, be.coll.isMap, seqIdx)
+	removeEntry(&be.node, be.coll.isMap, seqIdx)
 	be = be.loadEntry(be.tree.NearestSeqItem())
 	// Re-derive so positional ("item N") labels of unnamed entries stay in sync
 	// with their new index in the node after the surviving entries shift up.
@@ -116,9 +116,9 @@ func (be blockEditState) isCollectionNav() bool {
 // picking the map or sequence layout from the block kind.
 func (be blockEditState) collectionTreeNodes() []treeNode {
 	if be.isMapNav() {
-		return buildMapNodesFromNode(be.childDefs, be.node)
+		return buildMapNodesFromNode(be.childDefs, &be.node)
 	}
-	return buildSeqNodesFromNode(be.childDefs, be.node)
+	return buildSeqNodesFromNode(be.childDefs, &be.node)
 }
 
 // flushCurrentEntry parses the current entry's editor text back into the
@@ -128,7 +128,7 @@ func (be blockEditState) collectionTreeNodes() []treeNode {
 // navigation or commit - the parse gate that keeps the node valid.
 func (be blockEditState) flushCurrentEntry() blockEditState {
 	cur := be.coll.current
-	if cur < 0 || cur >= entryCount(be.node, be.coll.isMap) {
+	if cur < 0 || cur >= entryCount(&be.node, be.coll.isMap) {
 		be.editorErr = editorError{}
 		return be
 	}
@@ -150,7 +150,7 @@ func (be blockEditState) flushCurrentEntry() blockEditState {
 		be.editorErr = editorError{kind: errParse, message: msg}
 		return be
 	}
-	setEntry(be.node, be.coll.isMap, cur, kn, vn)
+	setEntry(&be.node, be.coll.isMap, cur, kn, vn)
 	be.editorErr = editorError{}
 	return be
 }
@@ -165,7 +165,7 @@ func (be blockEditState) loadEntry(idx int) blockEditState {
 
 // entryYAML returns the single-entry editor view for index idx.
 func (be blockEditState) entryYAML(idx int) string {
-	return entryViewYAML(be.node, be.key, be.coll.isMap, idx)
+	return entryViewYAML(&be.node, be.key, be.coll.isMap, idx)
 }
 
 // initialEntryContent returns the YAML template for a freshly added entry.

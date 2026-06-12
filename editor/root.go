@@ -3,6 +3,7 @@ package editor
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -32,7 +33,7 @@ const (
 // non-empty iff mode == paneBlockEdit (its last element is the visible editor).
 type model struct {
 	cfg         Config
-	doc         *document.Document
+	doc         document.Document
 	schemaTree  []schema.FieldDef
 	knownByPath map[string]map[string]bool
 	childrenOf  map[string][]schema.FieldDef
@@ -45,7 +46,7 @@ type model struct {
 	// is the visible/active editor. The stack carries only UI state (cursor,
 	// expansion) and each editor's focus path - the canonical data lives in
 	// editRoot.
-	blockEdits []*blockEditState
+	blockEdits []blockEditState
 	// editRoot is the single canonical *yaml.Node for the block currently being
 	// edited: the parsed value of the top-level block. Drilling in moves a focus
 	// path within this one tree (be.focus) rather than copying substrings between
@@ -53,13 +54,15 @@ type model struct {
 	// as live nodes, so nested edits can never corrupt them via string splicing.
 	editRoot     *yaml.Node
 	editBlockKey string // top-level YAML key of editRoot
-	alert        *alert.Model
+	alert        alert.Model
+	alertVisible bool
 	theme        resolvedTheme
 
 	mode                         pane
 	showHint                     bool // root view: split the right column to show the Hint/Example panel
 	saved                        bool // at least one save succeeded this session; reported via Result
 	statusMsg                    string
+	statusSeq                    uint          // incremented with each new status; used to cancel stale clear ticks
 	actionLog                    []ModelAction // in-memory log for debug and replay
 	width, height, listW, innerH int
 }
@@ -96,7 +99,7 @@ func newModel(cfg Config) (model, error) {
 		return model{}, fmt.Errorf("loading %s: %w", cfg.Path, err)
 	}
 	if cfg.SavePath != "" {
-		doc.SetPath(cfg.SavePath)
+		doc = doc.SetPath(cfg.SavePath)
 	}
 
 	passthrough := make(map[string]bool, len(cfg.PassthroughKeys))
@@ -129,29 +132,34 @@ func newModel(cfg Config) (model, error) {
 
 // enterList makes the block list the active screen, discarding any open editor
 // stack and alert.
-func (m *model) enterList() {
+func (m model) enterList() model {
 	m.mode = paneList
-	m.alert = nil
+	m.alertVisible = false
 	m.blockEdits = nil
+	return m
 }
 
 // enterPreview focuses the read-only preview pane.
-func (m *model) enterPreview() {
+func (m model) enterPreview() model {
 	m.mode = panePreview
-	m.alert = nil
+	m.alertVisible = false
+	return m
 }
 
 // enterBlockEdit makes the block-editor stack the active screen. The caller is
 // responsible for having pushed onto m.blockEdits first.
-func (m *model) enterBlockEdit() {
+func (m model) enterBlockEdit() model {
 	m.mode = paneBlockEdit
-	m.alert = nil
+	m.alertVisible = false
+	return m
 }
 
 // enterAlert shows a modal alert over the current (list) screen.
-func (m *model) enterAlert(al alert.Model) {
+func (m model) enterAlert(al alert.Model) model {
 	m.mode = paneAlert
-	m.alert = &al
+	m.alert = al
+	m.alertVisible = true
+	return m
 }
 
 func applyHidden(fields []schema.FieldDef, hidden []string) []schema.FieldDef {
@@ -229,29 +237,48 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case deleteItemMsg:
 		return m.handleDeleteItemMsg(msg)
 	case confirmedDeleteMsg:
-		m.enterList()
+		m = m.enterList()
 		return m.dispatch(DeleteBlock(msg))
 	case confirmedReloadMsg:
-		m.enterList()
+		m = m.enterList()
 		return m.dispatch(Reload{})
 	case alert.DismissedMsg:
 		// Forward to the active blockEdit first so its confirmAlert is cleared.
 		if top := m.topBE(); top != nil {
 			be, cmd := top.forwardMsg(msg)
-			m.setTopBE(&be)
+			m.setTopBE(be)
 			return m, cmd
 		}
-		m.enterList()
+		m = m.enterList()
 		return m, nil
 	case doSaveMsg:
 		return m.dispatch(Save{})
+	case saveResultMsg:
+		if msg.err != nil {
+			return m.showAlert("Save failed", msg.err.Error(), alert.KindError)
+		}
+		m.doc = msg.doc
+		m.saved = true
+		return m.showAlert("Saved", fmt.Sprintf("Saved to %s.", m.doc.Path()), alert.KindSuccess)
+	case reloadResultMsg:
+		if msg.err != nil {
+			return m.showAlert("Reload failed", msg.err.Error(), alert.KindError)
+		}
+		m.doc = msg.doc
+		m = m.syncView()
+		return m.withStatus(fmt.Sprintf("Reloaded %s from disk.", m.doc.Path()))
+	case clearStatusMsg:
+		if msg.seq == m.statusSeq {
+			m.statusMsg = ""
+		}
+		return m, nil
 	}
 
 	switch m.mode {
 	case paneAlert:
 		if key, ok := msg.(tea.KeyMsg); ok {
 			al, cmd := m.alert.Update(key)
-			m.alert = &al
+			m.alert = al
 			return m, cmd
 		}
 	case paneBlockEdit:
@@ -274,22 +301,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.width = msg.Width
 	m.height = msg.Height
-	m.relayout()
+	m = m.relayout()
 	// relayout only sizes the root list/preview; forward the resize to every
 	// stacked sub-model so each editor's panels resize too.
 	if len(m.blockEdits) > 0 {
 		var cmd tea.Cmd
 		for i := range m.blockEdits {
 			be, c := m.blockEdits[i].forwardMsg(msg)
-			m.blockEdits[i] = &be
+			m.blockEdits[i] = be
 			if i == len(m.blockEdits)-1 {
 				cmd = c
 			}
 		}
 		return m, cmd
 	}
-	if m.alert != nil {
-		m.alert.Resize(theme.Size{W: m.width, H: m.height})
+	if m.alertVisible {
+		m.alert = m.alert.Resize(theme.Size{W: m.width, H: m.height})
 	}
 	return m, nil
 }
@@ -306,33 +333,48 @@ func (m model) handleDeleteItemMsg(msg deleteItemMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleDelete(key string) (tea.Model, tea.Cmd) {
-	if err := m.doc.Remove(key); err != nil {
+	var err error
+	m.doc, err = m.doc.Remove(key)
+	if err != nil {
 		m.statusMsg = fmt.Sprintf("Error removing %s: %v", key, err)
 		return m, nil
 	}
-	m.syncView()
-	m.statusMsg = fmt.Sprintf("Removed %q (not saved yet).", key)
-	return m, nil
+	m = m.syncView()
+	return m.withStatus(fmt.Sprintf("Removed %q (not saved yet).", key))
 }
 
-func (m model) undo() tea.Model {
-	if !m.doc.Undo() {
-		m.statusMsg = "Nothing to undo."
-		return m
+func (m model) undo() (tea.Model, tea.Cmd) {
+	var ok bool
+	m.doc, ok = m.doc.Undo()
+	if !ok {
+		return m.withStatus("Nothing to undo.")
 	}
-	m.syncView()
-	m.statusMsg = "Undone."
-	return m
+	m = m.syncView()
+	return m.withStatus("Undone.")
 }
 
-func (m model) redo() tea.Model {
-	if !m.doc.Redo() {
-		m.statusMsg = "Nothing to redo."
-		return m
+func (m model) redo() (tea.Model, tea.Cmd) {
+	var ok bool
+	m.doc, ok = m.doc.Redo()
+	if !ok {
+		return m.withStatus("Nothing to redo.")
 	}
-	m.syncView()
-	m.statusMsg = "Redone."
-	return m
+	m = m.syncView()
+	return m.withStatus("Redone.")
+}
+
+const statusMsgDuration = 4 * time.Second
+
+// withStatus sets statusMsg and schedules a tick to clear it after statusMsgDuration.
+// The tick carries the current statusSeq; if a newer message has been set by the
+// time the tick fires, the seq will not match and the clear is a no-op.
+func (m model) withStatus(msg string) (model, tea.Cmd) {
+	m.statusSeq++
+	m.statusMsg = msg
+	seq := m.statusSeq
+	return m, tea.Tick(statusMsgDuration, func(time.Time) tea.Msg {
+		return clearStatusMsg{seq: seq}
+	})
 }
 
 func (m model) collectErrors() []Violation {
@@ -389,12 +431,22 @@ func (m model) save() (tea.Model, tea.Cmd) {
 
 type doSaveMsg struct{}
 
-func (m model) execSave() (tea.Model, tea.Cmd) {
-	if err := m.doc.Save(); err != nil {
-		return m.showAlert("Save failed", err.Error(), alert.KindError)
+func cmdSave(doc document.Document) tea.Cmd {
+	return func() tea.Msg {
+		saved, err := doc.Save()
+		return saveResultMsg{doc: saved, err: err}
 	}
-	m.saved = true
-	return m.showAlert("Saved", fmt.Sprintf("Saved to %s.", m.doc.Path()), alert.KindSuccess)
+}
+
+func cmdReload(doc document.Document) tea.Cmd {
+	return func() tea.Msg {
+		reloaded, err := doc.Reload()
+		return reloadResultMsg{doc: reloaded, err: err}
+	}
+}
+
+func (m model) execSave() (tea.Model, tea.Cmd) {
+	return m, cmdSave(m.doc)
 }
 
 // reload re-reads the file from disk, discarding local edits. Unsaved changes
@@ -409,12 +461,7 @@ func (m model) reload() (tea.Model, tea.Cmd) {
 }
 
 func (m model) execReload() (tea.Model, tea.Cmd) {
-	if err := m.doc.Reload(); err != nil {
-		return m.showAlert("Reload failed", err.Error(), alert.KindError)
-	}
-	m.syncView()
-	m.statusMsg = fmt.Sprintf("Reloaded %s from disk.", m.doc.Path())
-	return m, nil
+	return m, cmdReload(m.doc)
 }
 
 func (m model) validateKeys() (tea.Model, tea.Cmd) {
@@ -425,12 +472,12 @@ func (m model) validateKeys() (tea.Model, tea.Cmd) {
 }
 
 func (m model) showAlert(title, message string, kind alert.Kind) (tea.Model, tea.Cmd) {
-	m.enterAlert(alert.New(title, message, kind, theme.Size{W: m.width, H: m.height}))
+	m = m.enterAlert(alert.New(title, message, kind, theme.Size{W: m.width, H: m.height}))
 	return m, nil
 }
 
 func (m model) showConfirmAlert(title, message string, confirmCmd tea.Cmd) (tea.Model, tea.Cmd) {
-	m.enterAlert(alert.NewConfirm(title, message, confirmCmd, theme.Size{W: m.width, H: m.height}))
+	m = m.enterAlert(alert.NewConfirm(title, message, confirmCmd, theme.Size{W: m.width, H: m.height}))
 	return m, nil
 }
 
@@ -439,7 +486,7 @@ const (
 	statusBarLines = 2
 )
 
-func (m *model) relayout() {
+func (m model) relayout() model {
 	var previewW int
 	m.listW, previewW = theme.TwoColumnWidths(m.width)
 	m.innerH = m.height - headerLines - statusBarLines - 2
@@ -457,7 +504,8 @@ func (m *model) relayout() {
 	}
 	m.preview.Height = ph
 	m.previewRenderer = newPreviewRenderer(m.preview.Width)
-	m.refreshPreview()
+	m = m.refreshPreview()
+	return m
 }
 
 // hintPanelH is the content height of the Hint/Example panel when it shares the

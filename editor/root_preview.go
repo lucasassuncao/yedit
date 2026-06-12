@@ -12,19 +12,19 @@ import (
 
 func (m model) togglePreviewPane() (tea.Model, tea.Cmd) {
 	if m.mode == panePreview {
-		m.enterList()
+		m = m.enterList()
 		m.statusMsg = ""
 		return m, nil
 	}
-	m.enterPreview()
-	m.statusMsg = "Viewing YAML - ↑/↓ scroll, Tab/Esc back to list."
-	return m, nil
+	m = m.enterPreview()
+	return m.withStatus("Viewing YAML - ↑/↓ scroll, Tab/Esc back to list.")
 }
 
-func (m *model) syncView() {
-	m.refreshPreview()
+func (m model) syncView() model {
+	m = m.refreshPreview()
 	m.list.Rebuild(m.doc.Blocks())
-	m.scrollPreviewToSelected()
+	m = m.scrollPreviewToSelected()
+	return m
 }
 
 // scrollPreviewToSelected scrolls the read-only preview so the YAML for the
@@ -32,20 +32,21 @@ func (m *model) syncView() {
 // document. Applies only in the list pane and only for keys present in the file.
 // The scroll is line-based, so it can drift slightly when long lines above the
 // block wrap.
-func (m *model) scrollPreviewToSelected() {
+func (m model) scrollPreviewToSelected() model {
 	if m.mode != paneList {
-		return
+		return m
 	}
 	it := m.list.SelectedItem()
 	if it == nil || !it.Existing {
-		return
+		return m
 	}
 	for _, b := range m.doc.Blocks() {
 		if b.Key == it.Key {
 			m.preview.SetYOffset(b.Line - 1)
-			return
+			return m
 		}
 	}
+	return m
 }
 
 // newPreviewRenderer builds a glamour renderer that word-wraps to wrap columns.
@@ -125,6 +126,7 @@ func clampLines(s string, maxLines int) string {
 
 // refreshPreview re-renders the document into the read-only preview viewport,
 // syntax-highlighted and wrapped to the current panel width.
-func (m *model) refreshPreview() {
+func (m model) refreshPreview() model {
 	m.preview.SetContent(renderPreviewYAML(string(m.doc.Raw()), m.previewRenderer))
+	return m
 }

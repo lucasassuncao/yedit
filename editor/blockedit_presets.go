@@ -24,22 +24,22 @@ type presetBrowser struct {
 // newPresetBrowser builds the overlay for field, pre-selecting current when it
 // is one of the available presets. Returns nil when source is nil or the field
 // has no presets - the picker simply does not open.
-func newPresetBrowser(source PresetSource, field, current string) *presetBrowser {
+func newPresetBrowser(source PresetSource, field, current string) (presetBrowser, bool) {
 	if source == nil {
-		return nil
+		return presetBrowser{}, false
 	}
 	names := source.ListPresets(field)
 	if len(names) == 0 {
-		return nil
+		return presetBrowser{}, false
 	}
-	pb := &presetBrowser{source: source, field: field, names: names}
+	pb := presetBrowser{source: source, field: field, names: names}
 	for i, n := range names {
 		if n == current {
 			pb.cursor = i
 			break
 		}
 	}
-	return pb
+	return pb, true
 }
 
 // presetAction is the outcome of a key handled by the preset browser.
@@ -148,11 +148,12 @@ func (pb *presetBrowser) previewYAML() string {
 // openPresetPicker enters preset-browser mode if there are any presets for
 // this block. It's a no-op when Presets is nil or the field has none.
 func (be blockEditState) openPresetPicker() blockEditState {
-	pb := newPresetBrowser(be.cfg.Presets, be.key, be.currentPreset)
-	if pb == nil {
+	pb, ok := newPresetBrowser(be.cfg.Presets, be.key, be.currentPreset)
+	if !ok {
 		return be
 	}
 	be.preset = pb
+	be.presetVisible = true
 	be.mode = modePresetBrowser
 	return be
 }
@@ -164,7 +165,7 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 	be.dirty = true
 
 	if be.isCollectionNav() {
-		be.node = collValueNode(y, be.isMapNav())
+		be.node = *collValueNode(y, be.isMapNav())
 		be.tree.nodes = be.collectionTreeNodes()
 		be.tree.cursor = 0
 		be.tree.offset = 0
@@ -174,8 +175,8 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 	}
 
 	be.yamlEditor.SetValue(y)
-	be.node = blockValueNode(y)
-	be.tree = syncTreeCheckedFromNode(be.tree, be.node)
+	be.node = *blockValueNode(y)
+	be.tree = syncTreeCheckedFromNode(be.tree, &be.node)
 	return be
 }
 
@@ -197,9 +198,9 @@ func (be blockEditState) appendPreset(name, y string) blockEditState {
 
 	be.tree.nodes = be.collectionTreeNodes()
 	be.tree.offset = 0
-	be.tree.cursor = entryCount(be.node, be.isMapNav()) - 1
+	be.tree.cursor = entryCount(&be.node, be.isMapNav()) - 1
 
-	be = be.loadEntry(entryCount(be.node, be.isMapNav()) - 1)
+	be = be.loadEntry(entryCount(&be.node, be.isMapNav()) - 1)
 	be.tree = be.resyncTreeFromYAML()
 	be.currentPreset = name
 	be.editorErr = editorError{}

@@ -7,6 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/internal/alert"
+	"github.com/lucasassuncao/yedit/internal/yamlnode"
 	"github.com/lucasassuncao/yedit/theme"
 )
 
@@ -25,16 +26,16 @@ func (m model) blockBreadcrumbPrefix() []string {
 	return segs
 }
 
-// topBE returns the active (deepest) block editor, or nil when none is open.
+// topBE returns a pointer to the active (deepest) block editor, or nil when none is open.
 func (m *model) topBE() *blockEditState {
 	if len(m.blockEdits) == 0 {
 		return nil
 	}
-	return m.blockEdits[len(m.blockEdits)-1]
+	return &m.blockEdits[len(m.blockEdits)-1]
 }
 
 // setTopBE replaces the active block editor in place.
-func (m *model) setTopBE(be *blockEditState) {
+func (m *model) setTopBE(be blockEditState) {
 	if len(m.blockEdits) > 0 {
 		m.blockEdits[len(m.blockEdits)-1] = be
 	}
@@ -54,10 +55,10 @@ func (m model) handleBlockEditDiscarded(msg blockEditDiscardedMsg) (tea.Model, t
 		m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
 	}
 	if len(m.blockEdits) == 0 {
-		m.enterList()
+		m = m.enterList()
 		if msg.discarded {
 			// User threw away uncommitted changes - show explicit feedback.
-			m.statusMsg = "Cancelled."
+			return m.withStatus("Cancelled.")
 		}
 		// else: clean Esc after a commit - preserve the existing status message
 		// (e.g. "Block updated (not saved yet)").
@@ -90,7 +91,7 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 	if childWasDirty {
 		if top := m.topBE(); top != nil {
 			be := top.saveUndo()
-			m.setTopBE(&be)
+			m.setTopBE(be)
 		}
 	}
 	m = m.refreshTopFromRoot(childWasDirty)
@@ -114,33 +115,33 @@ func (m model) refreshTopFromRoot(markDirty bool) model {
 	be := *top
 	if be.isCollectionNav() {
 		isMap := be.isMapNav()
-		oldCount := entryCount(be.node, isMap)
-		be.node = node
+		oldCount := entryCount(&be.node, isMap)
+		be.node = *yamlnode.CloneNode(node)
 		// Rebuild the tree only when the entry count changed; otherwise keep it so
 		// the expanded/collapsed view and cursor survive the round-trip.
-		if entryCount(node, isMap) != oldCount {
+		if entryCount(&be.node, isMap) != oldCount {
 			be.tree.nodes = be.collectionTreeNodes()
-			if be.coll.current >= entryCount(node, isMap) {
-				be.coll.current = entryCount(node, isMap) - 1
+			if be.coll.current >= entryCount(&be.node, isMap) {
+				be.coll.current = entryCount(&be.node, isMap) - 1
 			}
 		}
 		be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
 	} else {
-		be.node = node
-		be.yamlEditor.SetValue(nodeToContent(be.key, node))
+		be.node = *yamlnode.CloneNode(node)
+		be.yamlEditor.SetValue(nodeToContent(be.key, &be.node))
 	}
 	be.tree = be.resyncTreeFromYAML()
 	if markDirty {
 		be.dirty = true
 	}
-	m.setTopBE(&be)
+	m.setTopBE(be)
 	return m
 }
 
 func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 	top := m.topBE()
 	if top == nil {
-		m.enterList()
+		m = m.enterList()
 		return m, nil
 	}
 
@@ -157,7 +158,7 @@ func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 		be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value()})
 	}
 
-	m.setTopBE(&be)
+	m.setTopBE(be)
 	return m, cmd
 }
 
@@ -171,21 +172,22 @@ func (m model) handleBlockEditKey(top *blockEditState, key tea.KeyMsg) (tea.Mode
 			func() tea.Msg { return blockEditDiscardedMsg{discarded: true} },
 			theme.Size{W: m.width, H: m.height},
 		)
-		be.confirmAlert = &al
+		be.confirmAlert = al
+		be.confirmAlertVisible = true
 		be.mode = modeConfirming
-		m.setTopBE(&be)
+		m.setTopBE(be)
 		return m, nil
 	}
 
 	// ctrl+u / ctrl+y with empty stacks: show status, never fall through to doc-level undo.
 	if key.String() == "ctrl+u" && len(top.undoStack) == 0 {
 		top.statusMsg = "Nothing to undo."
-		m.setTopBE(top)
+		m.setTopBE(*top)
 		return m, nil
 	}
 	if key.String() == "ctrl+y" && len(top.redoStack) == 0 {
 		top.statusMsg = "Nothing to redo."
-		m.setTopBE(top)
+		m.setTopBE(*top)
 		return m, nil
 	}
 
@@ -193,7 +195,7 @@ func (m model) handleBlockEditKey(top *blockEditState, key tea.KeyMsg) (tea.Mode
 	if ea, ok := blockKeymap(top, key); ok {
 		if ea.Block != nil {
 			be := top.dispatch(ea.Block)
-			m.setTopBE(&be)
+			m.setTopBE(be)
 			return m, nil
 		}
 		if ea.Model != nil {
@@ -209,21 +211,21 @@ func (m model) handleBlockEditKey(top *blockEditState, key tea.KeyMsg) (tea.Mode
 	// Tab: switch panel focus (pure UI, not dispatched).
 	if key.Type == tea.KeyTab && top.mode == modeEditing {
 		be := top.switchPanel()
-		m.setTopBE(&be)
+		m.setTopBE(be)
 		return m, nil
 	}
 
 	// p: open preset picker (pure UI mode change, not dispatched).
 	if key.String() == "p" && top.active == blockEditPanelTree && top.mode == modeEditing {
 		be := top.openPresetPicker()
-		m.setTopBE(&be)
+		m.setTopBE(be)
 		return m, nil
 	}
 
 	// Tree panel: semantic tree actions go through updateTreePanel.
 	if top.active == blockEditPanelTree && top.mode == modeEditing {
 		be, cmd := top.updateTreePanel(key)
-		m.setTopBE(&be)
+		m.setTopBE(be)
 		return m, cmd
 	}
 
@@ -237,7 +239,7 @@ func (m model) handleBlockEditKey(top *blockEditState, key tea.KeyMsg) (tea.Mode
 		if be.yamlEditor.Value() != prevYAML {
 			be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value()})
 		}
-		m.setTopBE(&be)
+		m.setTopBE(be)
 		return m, cmd
 	}
 
@@ -247,7 +249,7 @@ func (m model) handleBlockEditKey(top *blockEditState, key tea.KeyMsg) (tea.Mode
 	if be.active == blockEditPanelYAML && be.yamlEditor.Value() != prevYAML {
 		be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value()})
 	}
-	m.setTopBE(&be)
+	m.setTopBE(be)
 	return m, cmd
 }
 
@@ -274,12 +276,12 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 	be := newBlockEdit(m.cfg, blockSpec{key: it.Key, defs: children, kind: kind, def: fieldDefByName(m.schemaTree, it.Key), content: initial, knownByPath: knownByPath}, m.width, m.height)
 	be.isEdit = it.Existing
 	be.focus = nil // top-level editor edits the whole block
-	m.blockEdits = []*blockEditState{&be}
+	m.blockEdits = []blockEditState{be}
 	m.editBlockKey = it.Key
 	// Canonical tree, refreshed from the top editor on every flush (drill-in /
 	// commit). A non-nil placeholder is enough; the first flush populates it.
 	m.editRoot = &yaml.Node{Kind: yaml.MappingNode}
-	m.enterBlockEdit()
+	m = m.enterBlockEdit()
 	return m, be.Init()
 }
 
@@ -290,7 +292,7 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 func (m model) flushTopToRoot() (model, bool) {
 	top := m.topBE()
 	committed, cmd := top.commit()
-	m.setTopBE(&committed)
+	m.setTopBE(committed)
 	if cmd == nil {
 		m.statusMsg = committed.editorErr.message
 		return m, false
@@ -333,8 +335,8 @@ func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
 	be.isEdit = true
 	be.focus = childFocus
 
-	m.blockEdits = append(m.blockEdits, &be)
-	m.enterBlockEdit()
+	m.blockEdits = append(m.blockEdits, be)
+	m = m.enterBlockEdit()
 	return m, be.Init()
 }
 
@@ -352,28 +354,30 @@ func (m model) handleOverlayConfirmed(snippet string) (tea.Model, tea.Cmd) {
 	isEdit := be.isEdit
 	var err error
 	if isEdit {
-		err = m.doc.Replace(be.key, snippet)
+		m.doc, err = m.doc.Replace(be.key, snippet)
 	} else {
-		err = m.doc.Insert(snippet)
+		m.doc, err = m.doc.Insert(snippet)
 	}
 	if err != nil {
 		m.statusMsg = fmt.Sprintf("Apply error: %v", err)
 		return m, nil
 	}
-	m.syncView()
+	m = m.syncView()
 	// Re-sync after commit so repeated Ctrl+S is idempotent.
 	if fresh, err := m.doc.BlockContent(be.key); err == nil {
-		*be = be.resyncAfterCommit(fresh)
+		be = be.resyncAfterCommit(fresh)
 	}
 	// Keep blockEdit open - user stays in editing mode after commit.
+	var statusCmd tea.Cmd
 	if isEdit {
-		m.statusMsg = "Block updated (not saved yet) - Esc to return."
+		m, statusCmd = m.withStatus("Block updated (not saved yet) - Esc to return.")
 	} else {
 		// First commit transitions the block edit to edit mode.
 		be.isEdit = true
-		m.statusMsg = "Block added (not saved yet) - Esc to return."
+		m, statusCmd = m.withStatus("Block added (not saved yet) - Esc to return.")
 	}
-	return m, nil
+	m.blockEdits[0] = be
+	return m, statusCmd
 }
 
 // saveAll is the Ctrl+S handler. When block editors are open it commits all
@@ -402,30 +406,30 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	pruneEmptyMappings(m.editRoot)
-	blockIsEmpty := m.editRoot.Kind == yaml.MappingNode && len(m.editRoot.Content) == 0
+	pruneEmptyContent(m.editRoot)
+	blockIsEmpty := len(m.editRoot.Content) == 0 &&
+		(m.editRoot.Kind == yaml.MappingNode || m.editRoot.Kind == yaml.SequenceNode)
 	var err error
 	switch {
 	case blockIsEmpty && isEdit:
-		err = m.doc.Remove(m.editBlockKey)
+		m.doc, err = m.doc.Remove(m.editBlockKey)
 	case !blockIsEmpty:
 		final := nodeToContent(m.editBlockKey, m.editRoot)
 		if isEdit {
 			if current, _ := m.doc.BlockContent(m.editBlockKey); normalizeBlockContent(m.editBlockKey, current) != final {
-				err = m.doc.Replace(m.editBlockKey, final)
+				m.doc, err = m.doc.Replace(m.editBlockKey, final)
 			}
 		} else {
-			err = m.doc.Insert(final)
+			m.doc, err = m.doc.Insert(final)
 		}
 	}
 	if err != nil {
 		m.statusMsg = fmt.Sprintf("Apply error: %v", err)
 		return m, nil
 	}
-	m.syncView()
-	m.enterList()
-	m.statusMsg = "Changes committed (not saved yet) - ctrl+s to save."
-	return m, nil
+	m = m.syncView()
+	m = m.enterList()
+	return m.withStatus("Changes committed (not saved yet) - ctrl+s to save.")
 }
 
 // handleHintKey handles ctrl+h (toggle hint focus) and navigation keys when
@@ -443,7 +447,7 @@ func (m model) handleHintKey(top *blockEditState, key tea.KeyMsg) (tea.Model, bo
 			be.prevActive = be.active
 			be.active = blockEditPanelHint
 		}
-		m.setTopBE(&be)
+		m.setTopBE(be)
 		return m, true
 	}
 	if top.active != blockEditPanelHint {
@@ -460,6 +464,6 @@ func (m model) handleHintKey(top *blockEditState, key tea.KeyMsg) (tea.Model, bo
 	case "tab", "ctrl+h":
 		be.active = be.prevActive
 	}
-	m.setTopBE(&be)
+	m.setTopBE(be)
 	return m, true
 }

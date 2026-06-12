@@ -22,33 +22,49 @@ and a human-readable `Message`.
 
 ## Quick reference
 
+**FromMetadata** — per-field constraints driven by `FieldMeta`:
+
+| Validator | `FieldMeta` fields enforced |
+|---|---|
+| [`RequiredFromMetadata`](#the-frommetadata-family) | `Required` |
+| [`OneOfFromMetadata`](#the-frommetadata-family) | `OneOf` |
+| [`NotOneOfFromMetadata`](#the-frommetadata-family) | `NotOneOf` |
+| [`RangeFromMetadata`](#the-frommetadata-family) | `Min`, `Max` |
+| [`PatternFromMetadata`](#the-frommetadata-family) | `Pattern` |
+| [`LengthFromMetadata`](#the-frommetadata-family) | `MinLength`, `MaxLength` |
+| [`CountFromMetadata`](#the-frommetadata-family) | `MinCount`, `MaxCount` |
+| [`UniqueFromMetadata`](#the-frommetadata-family) | `Unique` |
+| [`FormatFromMetadata`](#the-frommetadata-family) | `Formats` |
+| [`DeprecatedFromMetadata`](#the-frommetadata-family) | `Deprecated` |
+
+**Cross-field** — explicit path rules:
+
+| Validator | Signature | Rule |
+|---|---|---|
+| [`Required`](#required) | `(paths ...string)` | paths must be present and non-empty |
+| [`RequiredWith`](#requiredwith) | `(key, parent string)` | `key` required when `parent` is present |
+| [`RequiredIf`](#requiredif) | `(key, condPath, condValue string)` | `key` required when `condPath == condValue` |
+| [`MutuallyExclusive`](#mutuallyexclusive) | `(keys ...string)` | at most one of `keys` may be present |
+| [`MutuallyExclusiveNested`](#mutuallyexclusivenested) | `(scopedPath string, keys ...string)` | mutual exclusion at every occurrence of a key, recursively |
+| [`AtLeastOneOf`](#atleastoneof) | `(keys ...string)` | at least one of `keys` must be present |
+| [`ExactlyOneOf`](#exactlyoneof) | `(keys ...string)` | exactly one of `keys` must be present |
+| [`AllOrNone`](#allornone) | `(keys ...string)` | all of `keys` present or none |
+| [`CrossFieldOrdered`](#crossfieldordered) | `(smallerPath, largerPath string)` | `smaller < larger` (numeric/duration/size) |
+| [`NoDuplicates`](#noduplicates) | `(seqPath, field string)` | field values across a list are unique |
+| [`ValueOneOf`](#valueoneof) | `(path string, allowed ...string)` | value at path must be in `allowed` |
+| [`ValueInRange`](#valueinrange) | `(path, minVal, maxVal string)` | value at path within `[min, max]` |
+| [`ValueMatches`](#valuematches) | `(path, pattern string)` | value at path matches a regular expression |
+| [`ValueHasPrefix`](#valuehasprefix--valuehassuffix) | `(path, prefix string)` | value at path starts with `prefix` |
+| [`ValueHasSuffix`](#valuehasprefix--valuehassuffix) | `(path, suffix string)` | value at path ends with `suffix` |
+| [`CountRange`](#countrange) | `(path string, minCount, maxCount int)` | list/mapping has between min and max entries |
+| [`UniqueValues`](#uniquevalues) | `(seqPath string)` | scalar list items must not repeat |
+| [`Deprecated`](#deprecated) | `(path, message string)` | field is flagged as deprecated |
+
+**Escape hatch:**
+
 | Validator | Rule |
 |---|---|
-| [`Required`](#required) | listed paths must be present and non-empty |
-| [`RequiredFromMetadata`](#the-frommetadata-family) | enforce the MetadataSource's `FieldMeta.Required` markers |
-| [`OneOfFromMetadata`](#the-frommetadata-family) | enforce `FieldMeta.OneOf` |
-| [`RangeFromMetadata`](#the-frommetadata-family) | enforce `FieldMeta.Min`/`Max` |
-| [`PatternFromMetadata`](#the-frommetadata-family) | enforce `FieldMeta.Pattern` |
-| [`CountFromMetadata`](#the-frommetadata-family) | enforce `FieldMeta.MinCount`/`MaxCount` |
-| [`UniqueFromMetadata`](#the-frommetadata-family) | enforce `FieldMeta.Unique` |
-| [`DeprecatedFromMetadata`](#the-frommetadata-family) | enforce `FieldMeta.Deprecated` |
-| [`RequiredWith`](#requiredwith) | key requires another top-level key to be set |
-| [`RequiredIf`](#requiredif) | key is required when another field has a given value |
-| [`AtLeastOneOf`](#atleastoneof) | at least one of the listed keys must be present |
-| [`ExactlyOneOf`](#exactlyoneof) | exactly one of the listed keys must be present |
-| [`MutuallyExclusive`](#mutuallyexclusive) | at most one of the listed keys may be present |
-| [`MutuallyExclusiveNested`](#mutuallyexclusivenested) | mutual exclusion at every occurrence of a key, recursively |
-| [`AllOrNone`](#allornone) | listed keys must appear together or not at all |
-| [`ValueOneOf`](#valueoneof) | value must be in a fixed allowed set |
-| [`ValueInRange`](#valueinrange) | numeric/duration/size value must be within `[min, max]` |
-| [`ValueMatches`](#valuematches) | value must match a regular expression |
-| [`ValueHasPrefix`](#valuehasprefix--valuehassuffix) | value must start with a fixed prefix |
-| [`ValueHasSuffix`](#valuehasprefix--valuehassuffix) | value must end with a fixed suffix |
-| [`CrossFieldOrdered`](#crossfieldordered) | one field's value must be strictly less than another's |
-| [`CountRange`](#countrange) | list/mapping must have between min and max entries |
-| [`UniqueValues`](#uniquevalues) | scalar list items must not repeat |
-| [`NoDuplicates`](#noduplicates) | struct list items must not repeat a given field's value |
-| [`Deprecated`](#deprecated) | flag a field that should no longer be used |
+| [`ValidatorFunc`](#custom-validators) | any custom logic via an anonymous function |
 
 ---
 
@@ -102,10 +118,13 @@ editor.Run(editor.Config{
     Validators: []editor.Validator{
         editor.RequiredFromMetadata(),
         editor.OneOfFromMetadata(),
+        editor.NotOneOfFromMetadata(),
         editor.RangeFromMetadata(),
         editor.PatternFromMetadata(),
+        editor.LengthFromMetadata(),
         editor.CountFromMetadata(),
         editor.UniqueFromMetadata(),
+        editor.FormatFromMetadata(),
         editor.DeprecatedFromMetadata(),
     },
 })
@@ -115,10 +134,13 @@ editor.Run(editor.Config{
 |---|---|---|
 | `RequiredFromMetadata()` | `Required` | `Required` |
 | `OneOfFromMetadata()` | `OneOf` | `ValueOneOf` |
+| `NotOneOfFromMetadata()` | `NotOneOf` | inverse of `ValueOneOf` |
 | `RangeFromMetadata()` | `Min`, `Max` | `ValueInRange` |
 | `PatternFromMetadata()` | `Pattern` | `ValueMatches` |
+| `LengthFromMetadata()` | `MinLength`, `MaxLength` | string length bounds |
 | `CountFromMetadata()` | `MinCount`, `MaxCount` | `CountRange` |
 | `UniqueFromMetadata()` | `Unique` | `UniqueValues` |
+| `FormatFromMetadata()` | `Formats` | runs each `Format.Validate` fn |
 | `DeprecatedFromMetadata()` | `Deprecated` | `Deprecated` |
 
 All share the same engine: the walk is guided by the discovered schema; for

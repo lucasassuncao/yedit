@@ -154,15 +154,15 @@ func TestPresetBrowser_updateAndSelection(t *testing.T) {
 		"workers/beta":  "workers:\n  - name: b\n",
 	}}
 
-	if pb := newPresetBrowser(nil, "workers", ""); pb != nil {
+	if _, ok := newPresetBrowser(nil, "workers", ""); ok {
 		t.Error("nil source should not open a browser")
 	}
-	if pb := newPresetBrowser(src, "nothing", ""); pb != nil {
+	if _, ok := newPresetBrowser(src, "nothing", ""); ok {
 		t.Error("field without presets should not open a browser")
 	}
 
-	pb := newPresetBrowser(src, "workers", "beta")
-	if pb == nil {
+	pb, ok := newPresetBrowser(src, "workers", "beta")
+	if !ok {
 		t.Fatal("expected a browser for workers")
 	}
 	if pb.names[pb.cursor] != "beta" {
@@ -229,7 +229,7 @@ func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
 	y, _ := stub.PresetYAML("categories", "extra")
 	be = be.appendPreset("extra", y)
 
-	base := nodeToContent("categories", be.node)
+	base := nodeToContent("categories", &be.node)
 	if !strings.Contains(base, "name: existing") {
 		t.Errorf("entries missing original entry:\n%s", base)
 	}
@@ -284,7 +284,7 @@ func TestAppendPreset_indentMismatch(t *testing.T) {
 	y, _ := stub.PresetYAML("categories", "extra")
 	be = be.appendPreset("extra", y)
 
-	base2 := nodeToContent("categories", be.node)
+	base2 := nodeToContent("categories", &be.node)
 	if !strings.Contains(base2, "name: existing") {
 		t.Errorf("entries missing original entry:\n%s", base2)
 	}
@@ -474,7 +474,7 @@ func TestUndo_seqItemDelete(t *testing.T) {
   - name: beta
 `)
 	be := newBlockEdit(Config{}, spec, 100, 40)
-	wantBase := nodeToContent("categories", be.node)
+	wantBase := nodeToContent("categories", &be.node)
 
 	// ctrl+d on the first item (alpha) now confirms before deleting.
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
@@ -488,7 +488,7 @@ func TestUndo_seqItemDelete(t *testing.T) {
 	}
 
 	be = be.restoreUndo()
-	gotBase := nodeToContent("categories", be.node)
+	gotBase := nodeToContent("categories", &be.node)
 	if gotBase != wantBase {
 		t.Errorf("after undo entries = %q, want %q", gotBase, wantBase)
 	}
@@ -504,7 +504,7 @@ func TestUndo_seqItemAdd(t *testing.T) {
   - name: alpha
 `)
 	be := newBlockEdit(Config{}, spec, 100, 40)
-	wantBase := nodeToContent("categories", be.node)
+	wantBase := nodeToContent("categories", &be.node)
 
 	// Navigate to [+ add new] and press Enter.
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -518,7 +518,7 @@ func TestUndo_seqItemAdd(t *testing.T) {
 	}
 
 	be = be.restoreUndo()
-	gotBase := nodeToContent("categories", be.node)
+	gotBase := nodeToContent("categories", &be.node)
 	if gotBase != wantBase {
 		t.Errorf("after undo entries = %q, want %q", gotBase, wantBase)
 	}
@@ -767,7 +767,7 @@ func TestResyncToleratesInvalidYAML_collection(t *testing.T) {
 	be := newBlockEdit(Config{}, seqSpec(`categories:
   - name: alpha
 `), 100, 40)
-	nodeBefore := nodeToContent(be.key, be.node)
+	nodeBefore := nodeToContent(be.key, &be.node)
 
 	be.active = blockEditPanelYAML
 	be.yamlEditor.SetValue("categories:\n  - name: [unterminated\n")
@@ -776,7 +776,7 @@ func TestResyncToleratesInvalidYAML_collection(t *testing.T) {
 
 	// The canonical node must be untouched: the tree is derived from it, not from
 	// the (now invalid) buffer.
-	if got := nodeToContent(be.key, be.node); got != nodeBefore {
+	if got := nodeToContent(be.key, &be.node); got != nodeBefore {
 		t.Fatalf("resync mutated canonical node:\nbefore %q\nafter  %q", nodeBefore, got)
 	}
 	// The existing item label must survive an unparseable buffer.

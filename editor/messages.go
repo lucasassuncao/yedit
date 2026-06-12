@@ -1,6 +1,21 @@
 package editor
 
-import "github.com/lucasassuncao/yedit/schema"
+import (
+	"github.com/lucasassuncao/yedit/document"
+	"github.com/lucasassuncao/yedit/schema"
+)
+
+// saveResultMsg carries the outcome of an async Save.
+type saveResultMsg struct {
+	doc document.Document
+	err error
+}
+
+// reloadResultMsg carries the outcome of an async Reload.
+type reloadResultMsg struct {
+	doc document.Document
+	err error
+}
 
 // openChildMsg requests drilling into a nested field, pushing a new block editor
 // scoped to that field onto the stack. relSegs is the focus-path suffix from the
@@ -45,3 +60,8 @@ type confirmedDeleteMsg struct{ Key string }
 // confirmedReloadMsg is dispatched by the "Reload from disk?" confirm alert
 // when the user confirms discarding local edits in favour of the on-disk file.
 type confirmedReloadMsg struct{}
+
+// clearStatusMsg is sent by a time.Tick to auto-clear the status bar. seq must
+// match model.statusSeq; a newer message will have incremented it, so the old
+// tick becomes a no-op.
+type clearStatusMsg struct{ seq uint }

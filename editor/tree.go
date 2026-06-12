@@ -646,7 +646,7 @@ func (tm treeModel) fieldLine(nd treeNode, ni, vi int, th resolvedTheme) string 
 	case !nd.isLeaf && hasCheckedDescendant(tm.nodes, ni):
 		return th.existingItem.Render("  " + label)
 	case !nd.isLeaf:
-		return th.sectionLabel.Render(" " + label) // PaddingLeft(1) + 1 sp = 2 cells, matches cursor prefix
+		return th.availableItem.Render("  " + label)
 	default:
 		return th.availableItem.Render("  " + label)
 	}

@@ -19,9 +19,6 @@ func TestLoad_missing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load on missing file: unexpected error %v", err)
 	}
-	if doc == nil {
-		t.Fatal("Load returned nil document")
-	}
 	if len(doc.Raw()) != 0 {
 		t.Errorf("expected empty raw, got %q", doc.Raw())
 	}
@@ -75,7 +72,8 @@ forwardPorts:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Insert("image: ubuntu:22.04\n"); err != nil {
+	doc, err = doc.Insert("image: ubuntu:22.04\n")
+	if err != nil {
 		t.Fatalf("Insert: %v", err)
 	}
 	got := string(doc.Raw())
@@ -97,7 +95,7 @@ forwardPorts:
 
 func TestDocument_RemoveNotFound(t *testing.T) {
 	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
-	err := doc.Remove("image")
+	_, err := doc.Remove("image")
 	if err == nil {
 		t.Fatal("expected error removing absent key, got nil")
 	}
@@ -113,7 +111,7 @@ image: ubuntu:22.04
 	}
 
 	// Invalid YAML: a mapping with a bare ":" value.
-	err = doc.ReplaceRaw([]byte("name: :\n  broken:"))
+	_, err = doc.ReplaceRaw([]byte("name: :\n  broken:"))
 	if err == nil {
 		t.Fatal("expected error for invalid YAML")
 	}
@@ -130,7 +128,8 @@ image: ubuntu:22.04
 
 func TestDocument_UndoEmpty(t *testing.T) {
 	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
-	if doc.Undo() {
+	_, ok := doc.Undo()
+	if ok {
 		t.Error("Undo on empty history should return false")
 	}
 }
@@ -140,17 +139,22 @@ func TestDocument_UndoRestores(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Insert("image: ubuntu:22.04\n"); err != nil {
+	doc, err = doc.Insert("image: ubuntu:22.04\n")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Insert("remoteUser: vscode\n"); err != nil {
+	doc, err = doc.Insert("remoteUser: vscode\n")
+	if err != nil {
 		t.Fatal(err)
 	}
 	// Undo twice should restore original.
-	if !doc.Undo() {
+	var ok bool
+	doc, ok = doc.Undo()
+	if !ok {
 		t.Fatal("first Undo failed")
 	}
-	if !doc.Undo() {
+	doc, ok = doc.Undo()
+	if !ok {
 		t.Fatal("second Undo failed")
 	}
 	if string(doc.Raw()) != "name: mydev\n" {
@@ -163,10 +167,12 @@ func TestDocument_UndoRestores(t *testing.T) {
 
 func TestDocument_UndoStaysDirtyMidStack(t *testing.T) {
 	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
-	_ = doc.Insert("image: ubuntu:22.04\n")
-	_ = doc.Insert("remoteUser: vscode\n")
+	doc, _ = doc.Insert("image: ubuntu:22.04\n")
+	doc, _ = doc.Insert("remoteUser: vscode\n")
 	// One undo back: still differs from loaded → dirty stays true.
-	if !doc.Undo() {
+	var ok bool
+	doc, ok = doc.Undo()
+	if !ok {
 		t.Fatal("undo failed")
 	}
 	if !doc.Dirty() {
@@ -176,7 +182,8 @@ func TestDocument_UndoStaysDirtyMidStack(t *testing.T) {
 
 func TestDocument_RedoEmpty(t *testing.T) {
 	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
-	if doc.Redo() {
+	_, ok := doc.Redo()
+	if ok {
 		t.Error("Redo with nothing undone should return false")
 	}
 	if doc.CanRedo() {
@@ -189,18 +196,22 @@ func TestDocument_RedoReappliesUndoneChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Insert("image: ubuntu:22.04\n"); err != nil {
+	doc, err = doc.Insert("image: ubuntu:22.04\n")
+	if err != nil {
 		t.Fatal(err)
 	}
 	withImage := string(doc.Raw())
 
-	if !doc.Undo() {
+	var ok bool
+	doc, ok = doc.Undo()
+	if !ok {
 		t.Fatal("undo failed")
 	}
 	if !doc.CanRedo() {
 		t.Fatal("CanRedo should be true after Undo")
 	}
-	if !doc.Redo() {
+	doc, ok = doc.Redo()
+	if !ok {
 		t.Fatal("redo failed")
 	}
 	if string(doc.Raw()) != withImage {
@@ -210,7 +221,8 @@ func TestDocument_RedoReappliesUndoneChange(t *testing.T) {
 		t.Error("dirty should be true after redo (raw differs from loaded)")
 	}
 	// The redo itself must be undoable.
-	if !doc.Undo() {
+	doc, ok = doc.Undo()
+	if !ok {
 		t.Fatal("undo after redo failed")
 	}
 	if string(doc.Raw()) != "name: mydev\n" {
@@ -220,18 +232,22 @@ func TestDocument_RedoReappliesUndoneChange(t *testing.T) {
 
 func TestDocument_RedoClearedByNewMutation(t *testing.T) {
 	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
-	_ = doc.Insert("image: ubuntu:22.04\n")
-	if !doc.Undo() {
+	doc, _ = doc.Insert("image: ubuntu:22.04\n")
+	var ok bool
+	doc, ok = doc.Undo()
+	if !ok {
 		t.Fatal("undo failed")
 	}
 	// A new mutation forks away from the undone state.
-	if err := doc.Insert("remoteUser: vscode\n"); err != nil {
+	doc, err := doc.Insert("remoteUser: vscode\n")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if doc.CanRedo() {
 		t.Error("redo stack should be cleared by a new mutation")
 	}
-	if doc.Redo() {
+	_, ok = doc.Redo()
+	if ok {
 		t.Error("Redo after a new mutation should return false")
 	}
 }
@@ -244,14 +260,19 @@ func TestDocument_HistoryCapsAt50(t *testing.T) {
 	// Perform 60 mutations: toggle image on and off, alternating.
 	for i := 0; i < 60; i++ {
 		if i%2 == 0 {
-			_ = doc.Insert("image: ubuntu:22.04\n")
+			doc, _ = doc.Insert("image: ubuntu:22.04\n")
 		} else {
-			_ = doc.Remove("image")
+			doc, _ = doc.Remove("image")
 		}
 	}
 	// Drain undo and count steps.
 	count := 0
-	for doc.Undo() {
+	var ok bool
+	for {
+		doc, ok = doc.Undo()
+		if !ok {
+			break
+		}
 		count++
 		if count > 100 {
 			t.Fatal("undo loop did not terminate")
@@ -269,14 +290,17 @@ image: ubuntu:22.04
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Replace("image", "image: alpine:latest\n"); err != nil {
+	doc, err = doc.Replace("image", "image: alpine:latest\n")
+	if err != nil {
 		t.Fatalf("Replace: %v", err)
 	}
 	if !doc.Dirty() {
 		t.Error("expected dirty=true")
 	}
 	// A single Undo should restore the original.
-	if !doc.Undo() {
+	var ok bool
+	doc, ok = doc.Undo()
+	if !ok {
 		t.Fatal("expected Undo to succeed")
 	}
 	if string(doc.Raw()) != `name: mydev
@@ -296,13 +320,15 @@ func TestDocument_Save(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Insert("name: mydev\n"); err != nil {
+	doc, err = doc.Insert("name: mydev\n")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !doc.Dirty() {
 		t.Fatal("doc should be dirty before save")
 	}
-	if err := doc.Save(); err != nil {
+	doc, err = doc.Save()
+	if err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	if doc.Dirty() {
@@ -333,13 +359,16 @@ func TestDocument_DirtyLifecycle(t *testing.T) {
 	if doc.Dirty() {
 		t.Error("freshly loaded missing-file document should not be dirty")
 	}
-	if err := doc.Insert("name: mydev\n"); err != nil {
+	var err error
+	doc, err = doc.Insert("name: mydev\n")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !doc.Dirty() {
 		t.Error("dirty should be true after Insert")
 	}
-	if err := doc.Save(); err != nil {
+	doc, err = doc.Save()
+	if err != nil {
 		t.Fatal(err)
 	}
 	if doc.Dirty() {
@@ -352,7 +381,8 @@ func TestSave_noPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Save(); err == nil {
+	_, err = doc.Save()
+	if err == nil {
 		t.Error("expected error saving in-memory document, got nil")
 	}
 }
@@ -368,10 +398,12 @@ func TestSave_preservesCRLF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Replace("image", "image: ubuntu\n"); err != nil {
+	doc, err = doc.Replace("image", "image: ubuntu\n")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Save(); err != nil {
+	_, err = doc.Save()
+	if err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(path)
@@ -404,10 +436,12 @@ func TestSave_preservesFileMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Replace("name", "name: api\n"); err != nil {
+	doc, err = doc.Replace("name", "name: api\n")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Save(); err != nil {
+	_, err = doc.Save()
+	if err != nil {
 		t.Fatal(err)
 	}
 	info, _ := os.Stat(path)
@@ -425,10 +459,12 @@ func TestSave_noLeftoverTempFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Insert("name: web\n"); err != nil {
+	doc, err = doc.Insert("name: web\n")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Save(); err != nil {
+	_, err = doc.Save()
+	if err != nil {
 		t.Fatal(err)
 	}
 	entries, _ := os.ReadDir(dir)
@@ -463,10 +499,12 @@ func TestExternallyChanged(t *testing.T) {
 	}
 
 	// Saving our own content re-establishes the baseline.
-	if err := doc.Insert("image: ubuntu\n"); err != nil {
+	doc, err = doc.Insert("image: ubuntu\n")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Save(); err != nil {
+	doc, err = doc.Save()
+	if err != nil {
 		t.Fatal(err)
 	}
 	if doc.ExternallyChanged() {
@@ -492,7 +530,8 @@ image: alpine
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Replace("name", "name: api\n"); err != nil {
+	doc, err = doc.Replace("name", "name: api\n")
+	if err != nil {
 		t.Fatal(err)
 	}
 	got := string(doc.Raw())
@@ -563,7 +602,8 @@ image: ubuntu:22.04
 		t.Fatal(err)
 	}
 	snippet := "image: debian:12\n"
-	if err := doc.Replace("image", snippet); err != nil {
+	doc, err = doc.Replace("image", snippet)
+	if err != nil {
 		t.Fatalf("Replace failed: %v", err)
 	}
 	if !doc.Dirty() {
@@ -583,7 +623,8 @@ func TestDocument_InsertRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	snippet := "image: ubuntu:22.04\n"
-	if err := doc.Insert(snippet); err != nil {
+	doc, err = doc.Insert(snippet)
+	if err != nil {
 		t.Fatalf("Insert failed: %v", err)
 	}
 	got := string(doc.Raw())
@@ -626,10 +667,12 @@ func TestLoad_utf8BOM(t *testing.T) {
 	}
 
 	// Editing must work.
-	if err := doc.Replace("name", "name: api\n"); err != nil {
+	doc, err = doc.Replace("name", "name: api\n")
+	if err != nil {
 		t.Fatalf("Replace after BOM load: %v", err)
 	}
-	if err := doc.Save(); err != nil {
+	_, err = doc.Save()
+	if err != nil {
 		t.Fatalf("Save after BOM edit: %v", err)
 	}
 
@@ -699,7 +742,8 @@ func TestDocument_InsertStripsTrailingBlankLines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Insert("image: y\n\n"); err != nil {
+	doc, err = doc.Insert("image: y\n\n")
+	if err != nil {
 		t.Fatalf("Insert: %v", err)
 	}
 	got := string(doc.Raw())
@@ -722,7 +766,8 @@ func TestDocument_Reload(t *testing.T) {
 	}
 
 	// Local edit, then an external rewrite of the file.
-	if err := doc.Insert("image: ubuntu:22.04\n"); err != nil {
+	doc, err = doc.Insert("image: ubuntu:22.04\n")
+	if err != nil {
 		t.Fatalf("Insert: %v", err)
 	}
 	external := "name: rewritten\nremoteUser: root\n"
@@ -730,7 +775,8 @@ func TestDocument_Reload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := doc.Reload(); err != nil {
+	doc, err = doc.Reload()
+	if err != nil {
 		t.Fatalf("Reload: %v", err)
 	}
 	if got := string(doc.Raw()); got != external {
@@ -762,7 +808,8 @@ func TestDocument_Reload_missingFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := doc.Reload(); err != nil {
+	doc, err = doc.Reload()
+	if err != nil {
 		t.Fatalf("Reload after delete: %v", err)
 	}
 	if len(doc.Raw()) != 0 {
@@ -776,7 +823,8 @@ func TestDocument_Reload_noPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := doc.Reload(); err == nil {
+	_, err = doc.Reload()
+	if err == nil {
 		t.Error("Reload without a path should return an error")
 	}
 }

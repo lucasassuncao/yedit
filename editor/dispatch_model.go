@@ -5,7 +5,10 @@ import tea "github.com/charmbracelet/bubbletea"
 // dispatch applies a ModelAction and returns the updated model and any Cmd.
 // All model-level mutations pass through here.
 func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
-	m.actionLog = append(m.actionLog, a)
+	log := make([]ModelAction, len(m.actionLog)+1)
+	copy(log, m.actionLog)
+	log[len(m.actionLog)] = a
+	m.actionLog = log
 	switch act := a.(type) {
 	case OpenBlock:
 		return m.handleOpenItem(m.list.ItemByKey(act.Key))
@@ -14,7 +17,7 @@ func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
 		return m.saveAll()
 
 	case DiscardBlock:
-		m.enterList()
+		m = m.enterList()
 		return m, nil
 
 	case DeleteBlock:
@@ -32,10 +35,10 @@ func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
 		return m.handleDrillOut()
 
 	case DocUndo:
-		return m.undo(), nil
+		return m.undo()
 
 	case DocRedo:
-		return m.redo(), nil
+		return m.redo()
 
 	case Save:
 		return m.execSave()
@@ -45,7 +48,7 @@ func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
 
 	case ToggleHints:
 		m.showHint = !m.showHint
-		m.relayout()
+		m = m.relayout()
 		return m, nil
 	}
 	return m, nil

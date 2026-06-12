@@ -50,7 +50,7 @@ func assertTreeMatchesNode(t *testing.T, be blockEditState) {
 		if n.kind != treeNodeField || !n.isLeaf {
 			continue
 		}
-		want := keyExistsInNode(be.node, n.yamlPath)
+		want := keyExistsInNode(&be.node, n.yamlPath)
 		if n.checked != want {
 			t.Errorf("tree/node disagree for %v: tree.checked=%v node-has-key=%v",
 				n.yamlPath, n.checked, want)
@@ -99,7 +99,7 @@ func TestSOT_ToggleWhileBufferInvalid(t *testing.T) {
 	if n, ok := nodeByLabel(be, "output"); !ok || !n.checked {
 		t.Error("output should be checked after toggling it on")
 	}
-	if !keyExistsInNode(be.node, []string{"output"}) {
+	if !keyExistsInNode(&be.node, []string{"output"}) {
 		t.Error("output key missing from canonical node after toggle")
 	}
 	assertTreeMatchesNode(t, be)
@@ -146,10 +146,10 @@ func assertCollTreeMatchesNode(t *testing.T, be blockEditState) {
 			continue
 		}
 		seqIdx := nodes[i].seqIdx
-		if want := entryLabel(be.node, isMap, seqIdx); nodes[i].label != want {
+		if want := entryLabel(&be.node, isMap, seqIdx); nodes[i].label != want {
 			t.Errorf("entry %d label %q != node label %q", seqIdx, nodes[i].label, want)
 		}
-		entry := entryValueNode(be.node, isMap, seqIdx)
+		entry := entryValueNode(&be.node, isMap, seqIdx)
 		for j := i + 1; j < len(nodes) && nodes[j].depth > 0; j++ {
 			c := nodes[j]
 			if c.kind != treeNodeField || !c.isLeaf || len(c.yamlPath) < 2 {
@@ -185,7 +185,7 @@ func TestSOT_CollectionToggleWhileBufferInvalid(t *testing.T) {
 	be = cursorToLabel(be, "path")
 	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
 
-	entry := entryValueNode(be.node, false, 0)
+	entry := entryValueNode(&be.node, false, 0)
 	if !keyExistsInNode(entry, []string{"source", "path"}) {
 		t.Errorf("source.path not added to entry 0:\n%s", be.yamlEditor.Value())
 	}
@@ -206,7 +206,7 @@ func TestSOT_CollectionAddDeleteConsistency(t *testing.T) {
 `,
 	}, 120, 40)
 
-	if got := entryCount(be.node, false); got != 2 {
+	if got := entryCount(&be.node, false); got != 2 {
 		t.Fatalf("initial entry count = %d, want 2", got)
 	}
 	assertCollTreeMatchesNode(t, be)
@@ -214,17 +214,17 @@ func TestSOT_CollectionAddDeleteConsistency(t *testing.T) {
 	// Add an entry via the [+ add new] row.
 	be = cursorToAddNew(be)
 	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
-	if got := entryCount(be.node, false); got != 3 {
+	if got := entryCount(&be.node, false); got != 3 {
 		t.Fatalf("after add, entry count = %d, want 3", got)
 	}
 	assertCollTreeMatchesNode(t, be)
 
 	// Delete the first entry.
 	be = be.performEntryDelete(0)
-	if got := entryCount(be.node, false); got != 2 {
+	if got := entryCount(&be.node, false); got != 2 {
 		t.Fatalf("after delete, entry count = %d, want 2", got)
 	}
-	if l := entryLabel(be.node, false, 0); l != "b" {
+	if l := entryLabel(&be.node, false, 0); l != "b" {
 		t.Errorf("after deleting entry 0, first label = %q, want b", l)
 	}
 	assertCollTreeMatchesNode(t, be)
@@ -275,7 +275,7 @@ func TestSOT_ToggleRoundTripNode(t *testing.T) {
 
 	be = cursorToLabel(be, "regex")
 	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
-	if !keyExistsInNode(be.node, []string{"source", "filter", "regex"}) {
+	if !keyExistsInNode(&be.node, []string{"source", "filter", "regex"}) {
 		t.Fatalf("regex not created:\n%s", be.yamlEditor.Value())
 	}
 

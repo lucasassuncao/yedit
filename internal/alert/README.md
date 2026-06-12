@@ -19,7 +19,7 @@ Use New for an informational modal with a single OK button, and NewConfirm for a
 - [type Model](<#Model>)
   - [func New\(title, message string, kind Kind, term theme.Size\) Model](<#New>)
   - [func NewConfirm\(title, message string, confirmCmd tea.Cmd, term theme.Size\) Model](<#NewConfirm>)
-  - [func \(a \*Model\) Resize\(term theme.Size\)](<#Model.Resize>)
+  - [func \(a Model\) Resize\(term theme.Size\) Model](<#Model.Resize>)
   - [func \(a Model\) Update\(msg tea.KeyMsg\) \(Model, tea.Cmd\)](<#Model.Update>)
   - [func \(a Model\) View\(\) string](<#Model.View>)
 
@@ -85,16 +85,16 @@ func NewConfirm(title, message string, confirmCmd tea.Cmd, term theme.Size) Mode
 NewConfirm builds a Yes/No modal that runs confirmCmd when the user picks Yes. Yes is the default focus.
 
 <a name="Model.Resize"></a>
-### func \(\*Model\) [Resize](<https://github.com/lucasassuncao/yedit/blob/main/internal/alert/alert.go#L69>)
+### func \(Model\) [Resize](<https://github.com/lucasassuncao/yedit/blob/main/internal/alert/alert.go#L69>)
 
 ```go
-func (a *Model) Resize(term theme.Size)
+func (a Model) Resize(term theme.Size) Model
 ```
 
 Resize updates the centre region the modal is rendered against. Call on tea.WindowSizeMsg if the parent forwards resizes.
 
 <a name="Model.Update"></a>
-### func \(Model\) [Update](<https://github.com/lucasassuncao/yedit/blob/main/internal/alert/alert.go#L88>)
+### func \(Model\) [Update](<https://github.com/lucasassuncao/yedit/blob/main/internal/alert/alert.go#L89>)
 
 ```go
 func (a Model) Update(msg tea.KeyMsg) (Model, tea.Cmd)
@@ -103,7 +103,7 @@ func (a Model) Update(msg tea.KeyMsg) (Model, tea.Cmd)
 Update processes a key event and returns the new model and any command. Non\-key messages are ignored \(the parent decides what reaches the modal\).
 
 <a name="Model.View"></a>
-### func \(Model\) [View](<https://github.com/lucasassuncao/yedit/blob/main/internal/alert/alert.go#L113>)
+### func \(Model\) [View](<https://github.com/lucasassuncao/yedit/blob/main/internal/alert/alert.go#L114>)
 
 ```go
 func (a Model) View() string
