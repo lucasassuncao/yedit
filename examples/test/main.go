@@ -452,8 +452,10 @@ func buildShowDocsCmd() *cobra.Command {
 		Short: "Browse schema documentation in the TUI",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(testHints))
-			docs := gen.GenerateDocsInMemory(TestConfig{})
-			return docgenerator.RenderMarkdownDocsInTerminal(docs, "yedit test")
+			ds := gen.GenerateDocsInMemory([]docgenerator.Entry{
+				{Config: TestConfig{}},
+			})
+			return docgenerator.RenderMarkdownDocsInTerminal(ds, "yedit test")
 		},
 	}
 }
@@ -465,11 +467,13 @@ func buildGenerateDocsCmd() *cobra.Command {
 		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(testHints))
-			names, err := gen.GenerateAllDocs(TestConfig{}, "docs")
+			files, err := gen.GenerateDocsForEach([]docgenerator.Entry{
+				{Config: TestConfig{}, DocsDir: "docs"},
+			})
 			if err != nil {
 				return err
 			}
-			if err := docgenerator.GenerateIndex("docs", names); err != nil {
+			if err := docgenerator.GenerateIndex("docs", files); err != nil {
 				return err
 			}
 			fmt.Println("documentation written to docs/")

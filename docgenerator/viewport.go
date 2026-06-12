@@ -26,14 +26,16 @@ const (
 
 type docTUIModel struct {
 	appName  string
-	names    []string
-	raw      map[string]string
+	names    []string          // ordered display list (parents then their children)
+	indent   map[string]int    // indentation level: 0 = root, 1 = child
+	raw      map[string]string // name → raw markdown
 	rendered map[string]string
 
 	cursor     int
 	listOffset int
 	listH      int
 	listColW   int
+	topicLinks []string // topic names linked from the current page, in order
 
 	vp     viewport.Model
 	vpColW int
@@ -45,18 +47,41 @@ type docTUIModel struct {
 	renderer *glamour.TermRenderer
 }
 
-func newDocTUIModel(docs map[string]string, appName string) docTUIModel {
-	names := make([]string, 0, len(docs))
-	for k := range docs {
-		names = append(names, k)
+// buildOrderedNames returns names in display order: root topics (sorted) each
+// followed by their children (in schema order from ds.Children).
+func buildOrderedNames(ds DocSet) (names []string, indent map[string]int) {
+	indent = map[string]int{}
+	childSet := map[string]bool{}
+	for _, children := range ds.Children {
+		for _, c := range children {
+			childSet[c] = true
+			indent[c] = 1
+		}
 	}
-	sort.Strings(names)
 
+	roots := make([]string, 0, len(ds.Pages))
+	for name := range ds.Pages {
+		if !childSet[name] {
+			roots = append(roots, name)
+		}
+	}
+	sort.Strings(roots)
+
+	for _, root := range roots {
+		names = append(names, root)
+		names = append(names, ds.Children[root]...)
+	}
+	return names, indent
+}
+
+func newDocTUIModel(ds DocSet, appName string) docTUIModel {
+	names, indent := buildOrderedNames(ds)
 	return docTUIModel{
 		appName:  appName,
 		names:    names,
-		raw:      docs,
-		rendered: make(map[string]string, len(docs)),
+		indent:   indent,
+		raw:      ds.Pages,
+		rendered: make(map[string]string, len(ds.Pages)),
 		active:   docPaneList,
 	}
 }
@@ -84,6 +109,9 @@ func (m docTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.handleLinkJump(msg.String()) {
+			return m, nil
+		}
 		if m.active == docPaneList {
 			m.handleListKey(msg.String())
 		} else {
@@ -92,6 +120,21 @@ func (m docTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+// handleLinkJump navigates the left panel to a linked topic when a digit key
+// matching a footnote index is pressed. Returns true if the key was consumed.
+func (m *docTUIModel) handleLinkJump(key string) bool {
+	if len(key) != 1 || key < "1" || key > "9" {
+		return false
+	}
+	idx := int(key[0] - '1')
+	if idx >= len(m.topicLinks) {
+		return false
+	}
+	m.navigateTo(m.topicLinks[idx])
+	m.active = docPaneList
+	return true
 }
 
 func (m *docTUIModel) handleListKey(key string) {
@@ -184,8 +227,52 @@ func (m *docTUIModel) loadCurrent() {
 	if len(m.names) == 0 || m.cursor >= len(m.names) || m.vp.Width == 0 {
 		return
 	}
-	m.vp.SetContent(m.renderDoc(m.names[m.cursor]))
+	name := m.names[m.cursor]
+	m.vp.SetContent(m.renderDoc(name))
 	m.vp.GotoTop()
+	m.topicLinks = extractTopicLinks(m.raw[name], m.raw)
+}
+
+// extractTopicLinks scans raw markdown for (./name.md) links and returns
+// the topic names in appearance order, limited to known pages.
+func extractTopicLinks(raw string, known map[string]string) []string {
+	var topics []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(raw, "\n") {
+		for {
+			i := strings.Index(line, "](./")
+			if i < 0 {
+				break
+			}
+			rest := line[i+4:]
+			j := strings.Index(rest, ".md)")
+			if j < 0 {
+				break
+			}
+			name := rest[:j]
+			if _, ok := known[name]; ok && !seen[name] {
+				topics = append(topics, name)
+				seen[name] = true
+			}
+			line = rest[j+4:]
+		}
+	}
+	return topics
+}
+
+func (m *docTUIModel) navigateTo(name string) {
+	for i, n := range m.names {
+		if n == name {
+			m.cursor = i
+			if m.cursor < m.listOffset {
+				m.listOffset = m.cursor
+			} else if m.cursor >= m.listOffset+m.listH {
+				m.listOffset = m.cursor - m.listH + 1
+			}
+			m.loadCurrent()
+			return
+		}
+	}
 }
 
 func (m docTUIModel) View() string {
@@ -200,10 +287,11 @@ func (m docTUIModel) View() string {
 	}
 	for i := m.listOffset; i < end; i++ {
 		label := m.names[i]
+		pad := strings.Repeat("  ", m.indent[label])
 		if i == m.cursor {
-			listSB.WriteString(theme.SelectedItem.Render("▶ "+label) + "\n")
+			listSB.WriteString(theme.SelectedItem.Render("▶ "+pad+label) + "\n")
 		} else {
-			listSB.WriteString(theme.AvailableItem.Render("  "+label) + "\n")
+			listSB.WriteString(theme.AvailableItem.Render("  "+pad+label) + "\n")
 		}
 	}
 
@@ -215,15 +303,15 @@ func (m docTUIModel) View() string {
 	}
 	rightPanel := theme.RenderTitledPanel(rightTitle, theme.Size{W: m.vpColW, H: m.vpH + 2}, m.active == docPaneView, m.vp.View())
 
-	hint := theme.StatusBar.Render("[Tab] switch panel  [↑/↓ j/k] navigate / scroll  [PgUp/PgDn] half-page  [q] quit")
+	hint := theme.StatusBar.Render("[Tab] switch panel  [↑/↓ j/k] navigate / scroll  [PgUp/PgDn] half-page  [1-9] jump to linked topic  [q] quit")
 	header := theme.RenderHeader(m.appName, "docs", "", m.width)
 	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: "", Hint: hint})
 }
 
 // RenderMarkdownDocsInTerminal launches the two-panel documentation TUI.
 // appName is displayed in the header bar.
-func RenderMarkdownDocsInTerminal(docs map[string]string, appName string) error {
-	if len(docs) == 0 {
+func RenderMarkdownDocsInTerminal(docs DocSet, appName string) error {
+	if len(docs.Pages) == 0 {
 		return fmt.Errorf("no documentation to display")
 	}
 	p := tea.NewProgram(newDocTUIModel(docs, appName), tea.WithAltScreen())

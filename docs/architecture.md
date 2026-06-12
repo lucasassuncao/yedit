@@ -9,7 +9,7 @@ How the yedit packages fit together and why they are split the way they are.
 ```
 yedit/
 ├── editor/             - public API: Config, Run, FieldMeta, MetadataSource, Validator, …
-├── metadata/           - metadata.Build: validates a Node tree against the schema struct
+├── metadata/           - BuildWithTree: validates a Node tree; BuildFromProvider: auto-composes from MetadataProvider structs
 ├── schema/             - schema.Discover: reflects a Go struct into a []FieldDef tree
 ├── document/           - raw YAML bytes, block list, undo/redo history
 ├── presets/            - presets.FromFS: embed.FS-backed PresetSource
@@ -35,7 +35,7 @@ your app
         ├── document  ← raw YAML mutations + undo stack
         └── (internal packages)
 
-  └── metadata        ← Build (Node tree → MetadataSource)
+  └── metadata        ← BuildWithTree / BuildFromProvider (→ MetadataSource)
         └── editor    ← FieldMeta, MetadataSource
 
   └── docgenerator    ← SchemaGenerator, RenderMarkdownDocsInTerminal
@@ -70,7 +70,7 @@ type MetadataSource interface {
 
 `MetadataSource` is the single source of truth for both the hint panel and the `FromMetadata` validator family. Declare constraints once (`Required: true`, `OneOf: [...]`, etc.) - the panel displays them and the validators enforce them.
 
-The recommended implementation is `metadata.Build`, which also validates field names against the struct at startup.
+The recommended implementation is `metadata.BuildFromProvider` (when your struct implements `MetadataProvider`) or `metadata.BuildWithTree` (for manual trees), both of which validate field names against the struct at startup.
 
 ### Validators
 
@@ -83,9 +83,13 @@ Validators implement `editor.Validator` and are called before every save via `Ru
 
 ## metadata
 
-`metadata.Build(schemaPtr, tree)` validates a `map[string]*Node` tree against the Go struct passed as `schemaPtr`. Any key in `tree` with no matching `yaml`-tagged struct field is an error - typos surface at startup, not silently at runtime.
+Two construction paths, both validating field names against the struct at startup:
 
-`metadata.Node` embeds `editor.FieldMeta` and adds `Children map[string]*Node`. Shared pointers in `Children` model recursive types (e.g. `any []Filter` pointing back to the same node) without infinite loops - `Build` tracks visited nodes.
+- **`BuildFromProvider(v any)`** - the recommended path. The struct implements `MetadataProvider` (returns `map[string]*Node` for its direct fields). Nested structs that also implement `MetadataProvider` have their children composed automatically via reflection. Cycles (e.g. `Filter.Any []Filter`) are resolved through shared-pointer caching. Returns an error if any `yaml`-tagged field is undocumented.
+
+- **`BuildWithTree(schemaPtr any, tree map[string]*Node)`** - the manual path. Pass a fully-constructed tree; useful for structs you don't own or when child metadata is built programmatically.
+
+`metadata.Node` embeds `editor.FieldMeta` and adds `Children map[string]*Node`. Shared pointers in `Children` model recursive types without infinite loops.
 
 ---
 
@@ -130,18 +134,32 @@ A round-trip guard validates each `Insert`/`Replace` by re-parsing the stored bl
 Generates Markdown reference tables from a Go struct and a `MetadataSource`. Used for `show-docs` (TUI browser) and `generate-docs` (write files to disk) CLI subcommands.
 
 ```go
+// In-memory TUI browser - struct implements MetadataProvider:
+ds, _ := docgenerator.GenerateInMemory([]docgenerator.Entry{
+    {Config: Config{}, SplitStructs: true},
+})
+docgenerator.RenderMarkdownDocsInTerminal(ds, "myapp")
+
+// In-memory TUI browser - external MetadataSource:
 gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(src))
+ds = gen.GenerateDocsInMemory([]docgenerator.Entry{
+    {Config: Config{}, SplitStructs: true},
+})
+docgenerator.RenderMarkdownDocsInTerminal(ds, "myapp")
 
-// In-memory (for the TUI viewer):
-docs := gen.GenerateDocsInMemory(Config{})       // map[string]string
-docgenerator.RenderMarkdownDocsInTerminal(docs, "myapp")
+// On disk - struct implements MetadataProvider:
+docgenerator.Generate("docs/", []docgenerator.Entry{
+    {Config: Config{}, DocsDir: "docs/reference", SplitStructs: true},
+})
 
-// On disk:
-names, _ := gen.GenerateAllDocs(Config{}, "docs/reference")
-docgenerator.GenerateIndex("docs/reference", names)
+// On disk - external MetadataSource:
+files, _ := gen.GenerateDocsForEach([]docgenerator.Entry{
+    {Config: Config{}, DocsDir: "docs/reference", SplitStructs: true},
+})
+docgenerator.GenerateIndex("docs/", files)
 ```
 
-`GenerateAllDocs` creates one Markdown file per top-level field with children, plus a root index. `GenerateDocsInMemory` produces the same map in memory for the TUI viewer.
+`Entry.SplitStructs` controls the output shape. When `false` (default), one page is produced per entry with all nested sections inline. When `true`, the entry produces a root summary page whose table links to separate per-field pages; `DocSet.Children` records the parent→children relationship so the TUI can display hierarchy and wire `[1-9]` navigation.
 
 `docgenerator` depends on `editor` (for `MetadataSource`) and `schema` (for `Discover`), but not the other way around - no import cycle.
 

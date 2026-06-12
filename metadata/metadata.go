@@ -18,13 +18,42 @@ import (
 // Node is one field's metadata plus its children, keyed by yaml name.
 // Use shared pointers in Children to model recursive schema types (e.g. a
 // filter whose "any"/"all" children are filters again) without duplicating
-// definitions - Build handles the cycle.
+// definitions - BuildWithTree handles the cycle.
 type Node struct {
 	editor.FieldMeta
 	Children map[string]*Node
 }
 
-// Build validates tree against the schema struct (the same pointer handed to
+// MetadataProvider is implemented by any struct that declares its own field metadata.
+// Each struct returns only its direct fields - Children for fields whose types also
+// implement MetadataProvider are composed automatically by BuildFromProvider.
+type MetadataProvider interface {
+	Metadata() map[string]*Node
+}
+
+var metadataProviderType = reflect.TypeOf((*MetadataProvider)(nil)).Elem()
+
+func collectMissing(fields []schema.FieldDef, nodes map[string]*Node, prefix string, missing *[]string) {
+	for _, f := range fields {
+		if f.YAMLName == "" || f.YAMLName == "-" {
+			continue
+		}
+		path := f.YAMLName
+		if prefix != "" {
+			path = prefix + "." + f.YAMLName
+		}
+		node, ok := nodes[f.YAMLName]
+		if !ok {
+			*missing = append(*missing, path)
+			continue
+		}
+		if len(f.Children) > 0 && f.Kind != schema.KindVariant {
+			collectMissing(f.Children, node.Children, path, missing)
+		}
+	}
+}
+
+// BuildWithTree validates tree against the schema struct (the same pointer handed to
 // editor.Config.Schema), fills each node's FieldMeta.Type from the Go type
 // (explicitly set Type values are kept), and returns the MetadataSource.
 //
@@ -32,7 +61,10 @@ type Node struct {
 // offending path, so typos and renames surface at startup instead of becoming
 // silently dead metadata. Children declared under types reflection cannot see
 // into (interfaces, schema.Provider unions) are not validated.
-func Build(schemaPtr any, tree map[string]*Node) (editor.MetadataSource, error) {
+//
+// Use BuildFromProvider when the root struct implements MetadataProvider.
+// BuildWithTree is the escape hatch for third-party structs.
+func BuildWithTree(schemaPtr any, tree map[string]*Node) (editor.MetadataSource, error) {
 	rootType := reflect.TypeOf(schemaPtr)
 	visited := map[*Node]bool{}
 	for blockName, node := range tree {
@@ -45,6 +77,83 @@ func Build(schemaPtr any, tree map[string]*Node) (editor.MetadataSource, error) 
 		}
 	}
 	return &metadataSource{tree: tree}, nil
+}
+
+// BuildFromProvider composes the metadata tree from v, which must implement
+// MetadataProvider. For each field whose type also implements MetadataProvider,
+// Children are populated automatically via reflection. Nodes with Children already
+// set are not overridden (explicit wins). Returns an error if any yaml-tagged field
+// in the struct has no entry in the composed tree (built-in coverage validation).
+func BuildFromProvider(v any) (editor.MetadataSource, error) {
+	p, ok := v.(MetadataProvider)
+	if !ok {
+		return nil, fmt.Errorf("metadata: %T does not implement MetadataProvider", v)
+	}
+	tree := p.Metadata()
+	baseType := reflect.TypeOf(v)
+	for baseType.Kind() == reflect.Ptr {
+		baseType = baseType.Elem()
+	}
+	cache := map[reflect.Type]map[string]*Node{}
+	if err := composeTree(baseType, tree, cache); err != nil {
+		return nil, err
+	}
+	fields := schema.Discover(reflect.New(baseType).Interface())
+	var missing []string
+	collectMissing(fields, tree, "", &missing)
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("metadata: fields have no documentation: %s", strings.Join(missing, ", "))
+	}
+	return BuildWithTree(reflect.New(baseType).Interface(), tree)
+}
+
+// composeTree auto-populates Children for nodes whose field types implement
+// MetadataProvider. Nodes with Children already set are left untouched (explicit wins).
+// cache maps each visited type to its composed child tree so shared-pointer cycles
+// (e.g. CategoryFilter.Any []CategoryFilter) are handled correctly: the second
+// encounter reuses the same map pointer instead of recursing forever.
+func composeTree(t reflect.Type, nodes map[string]*Node, cache map[reflect.Type]map[string]*Node) error {
+	elem := elemType(t)
+	if elem == nil || elem.Kind() != reflect.Struct {
+		return nil
+	}
+	for i := 0; i < elem.NumField(); i++ {
+		f := elem.Field(i)
+		tag := f.Tag.Get("yaml")
+		if tag == "-" {
+			continue
+		}
+		yamlName := strings.SplitN(tag, ",", 2)[0]
+		if yamlName == "" {
+			yamlName = strings.ToLower(f.Name)
+		}
+		node, ok := nodes[yamlName]
+		if !ok {
+			continue
+		}
+		if node.Children != nil {
+			continue // explicit wins
+		}
+		ft := elemType(f.Type)
+		if ft == nil || ft.Kind() != reflect.Struct || isProvider(ft) {
+			continue
+		}
+		if !ft.Implements(metadataProviderType) && !reflect.PointerTo(ft).Implements(metadataProviderType) {
+			continue
+		}
+		if childTree, seen := cache[ft]; seen {
+			node.Children = childTree // reuse shared pointer for cycles
+			continue
+		}
+		prov := reflect.New(ft).Interface().(MetadataProvider)
+		childTree := prov.Metadata()
+		cache[ft] = childTree // register before recursing to break cycles
+		if err := composeTree(ft, childTree, cache); err != nil {
+			return err
+		}
+		node.Children = childTree
+	}
+	return nil
 }
 
 // metadataSource implements editor.MetadataSource backed by a Node tree.
