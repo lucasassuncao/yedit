@@ -2233,3 +2233,112 @@ func TestRequiredFromMetadata_wiredByNewModel(t *testing.T) {
 		t.Errorf("collectErrors should report the hint-required field; got %v", errs)
 	}
 }
+
+func TestFormatFromMetadata(t *testing.T) {
+	type S struct {
+		URL  string `yaml:"url"`
+		Addr string `yaml:"addr"`
+	}
+	defs := schema.Discover(&S{})
+
+	wire := func(formats ...Format) Validator {
+		v := FormatFromMetadata()
+		v.(*metadataRuleValidator).hints = MetadataFunc(func(block, path string) FieldMeta {
+			return FieldMeta{Formats: formats}
+		})
+		v.(*metadataRuleValidator).defs = defs
+		return v
+	}
+
+	validate := func(v Validator, src string) []Violation {
+		return v.Validate(NewValidationInput([]byte(src), nil))
+	}
+
+	// valid URL: no violation
+	v := wire(FormatURL)
+	if errs := validate(v, "url: \"https://example.com\"\n"); len(errs) != 0 {
+		t.Errorf("valid URL: want 0 violations, got %v", errs)
+	}
+	// invalid URL: violation
+	if errs := validate(v, "url: \"not-a-url\"\n"); len(errs) != 1 || errs[0].Path != "url" {
+		t.Errorf("invalid URL: want 1 violation at 'url', got %v", errs)
+	}
+	if errs := validate(v, "url: \"not-a-url\"\n"); !strings.Contains(errs[0].Message, "url") {
+		t.Errorf("message should contain format label 'url': %q", errs[0].Message)
+	}
+	// empty value: no violation
+	if errs := validate(v, "url: \"\"\n"); len(errs) != 0 {
+		t.Errorf("empty value should skip format check, got %v", errs)
+	}
+	// OR semantics: IPv4 matches url|ipv4
+	type Addr struct {
+		Addr string `yaml:"addr"`
+	}
+	vOr := FormatFromMetadata()
+	vOr.(*metadataRuleValidator).hints = MetadataFunc(func(block, path string) FieldMeta {
+		return FieldMeta{Formats: []Format{FormatURL, FormatIPv4}}
+	})
+	vOr.(*metadataRuleValidator).defs = schema.Discover(&Addr{})
+	if errs := vOr.Validate(NewValidationInput([]byte("addr: \"192.168.1.1\"\n"), nil)); len(errs) != 0 {
+		t.Errorf("IPv4 should match url|ipv4, got %v", errs)
+	}
+	if errs := vOr.Validate(NewValidationInput([]byte("addr: \"ftp://bad\"\n"), nil)); len(errs) != 1 {
+		t.Errorf("neither format: want 1 violation, got %v", errs)
+	} else if !strings.Contains(errs[0].Message, "url | ipv4") {
+		t.Errorf("message should list both labels: %q", errs[0].Message)
+	}
+}
+
+func TestLengthFromMetadata(t *testing.T) {
+	type S struct {
+		Name string `yaml:"name"`
+	}
+	defs := schema.Discover(&S{})
+
+	check := func(src string, min, max int, wantViolation bool) {
+		t.Helper()
+		v := LengthFromMetadata()
+		v.(*metadataRuleValidator).hints = MetadataFunc(func(block, path string) FieldMeta {
+			return FieldMeta{MinLength: min, MaxLength: max}
+		})
+		v.(*metadataRuleValidator).defs = defs
+		errs := v.Validate(NewValidationInput([]byte(src), nil))
+		if (len(errs) > 0) != wantViolation {
+			t.Errorf("src=%q min=%d max=%d: wantViolation=%v got %v", src, min, max, wantViolation, errs)
+		}
+	}
+
+	check("name: \"hello\"\n", 3, 10, false)
+	check("name: \"hi\"\n", 3, 10, true)                // too short
+	check("name: \"this is too long!\"\n", 3, 10, true) // too long
+	check("name: \"hello\"\n", 0, 10, false)
+	check("name: \"hello world!\"\n", 0, 10, true) // over max
+	check("name: \"hi\"\n", 3, 0, true)            // under min, no upper bound
+	check("name: \"hello\"\n", 3, 0, false)
+	check("name: \"\"\n", 3, 10, false) // empty value skipped
+}
+
+func TestNotOneOfFromMetadata(t *testing.T) {
+	type S struct {
+		Proto string `yaml:"proto"`
+	}
+	defs := schema.Discover(&S{})
+
+	check := func(src string, denied []string, wantViolation bool) {
+		t.Helper()
+		v := NotOneOfFromMetadata()
+		v.(*metadataRuleValidator).hints = MetadataFunc(func(block, path string) FieldMeta {
+			return FieldMeta{NotOneOf: denied}
+		})
+		v.(*metadataRuleValidator).defs = defs
+		errs := v.Validate(NewValidationInput([]byte(src), nil))
+		if (len(errs) > 0) != wantViolation {
+			t.Errorf("src=%q denied=%v: wantViolation=%v got %v", src, denied, wantViolation, errs)
+		}
+	}
+
+	check("proto: \"ftp\"\n", []string{"ftp", "ws"}, true)
+	check("proto: \"https\"\n", []string{"ftp", "ws"}, false)
+	check("proto: \"FTP\"\n", []string{"ftp"}, false) // case-sensitive
+	check("proto: \"\"\n", []string{"ftp"}, false)    // empty skipped
+}

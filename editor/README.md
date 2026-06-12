@@ -12,15 +12,11 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 
 ## Index
 
+- [Variables](<#variables>)
 - [func DumpBlockActionLog\(log \[\]BlockAction\) string](<#DumpBlockActionLog>)
 - [type AddEntry](<#AddEntry>)
 - [type ApplyPreset](<#ApplyPreset>)
 - [type BlockAction](<#BlockAction>)
-- [type CheckedFieldFunc](<#CheckedFieldFunc>)
-  - [func \(f CheckedFieldFunc\) CheckedFields\(blockKey string\) \[\]string](<#CheckedFieldFunc.CheckedFields>)
-- [type CheckedFieldMap](<#CheckedFieldMap>)
-  - [func \(m CheckedFieldMap\) CheckedFields\(blockKey string\) \[\]string](<#CheckedFieldMap.CheckedFields>)
-- [type CheckedFieldSource](<#CheckedFieldSource>)
 - [type CommitBlock](<#CommitBlock>)
 - [type Config](<#Config>)
 - [type DeleteBlock](<#DeleteBlock>)
@@ -32,11 +28,10 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 - [type DrillOut](<#DrillOut>)
 - [type EditorAction](<#EditorAction>)
 - [type FieldMeta](<#FieldMeta>)
-- [type FieldSnippetFunc](<#FieldSnippetFunc>)
-  - [func \(f FieldSnippetFunc\) FieldSnippet\(blockKey, fieldName string\) string](<#FieldSnippetFunc.FieldSnippet>)
-- [type FieldSnippetMap](<#FieldSnippetMap>)
-  - [func \(m FieldSnippetMap\) FieldSnippet\(blockKey, fieldName string\) string](<#FieldSnippetMap.FieldSnippet>)
-- [type FieldSnippetSource](<#FieldSnippetSource>)
+- [type Format](<#Format>)
+  - [func FormatCustom\(name string, validate func\(string\) bool\) Format](<#FormatCustom>)
+  - [func \(f Format\) IsZero\(\) bool](<#Format.IsZero>)
+  - [func \(f Format\) Label\(\) string](<#Format.Label>)
 - [type MetadataFunc](<#MetadataFunc>)
   - [func \(f MetadataFunc\) FieldMeta\(blockKey, fieldPath string\) FieldMeta](<#MetadataFunc.FieldMeta>)
 - [type MetadataSource](<#MetadataSource>)
@@ -69,9 +64,12 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
   - [func Deprecated\(path, message string\) Validator](<#Deprecated>)
   - [func DeprecatedFromMetadata\(\) Validator](<#DeprecatedFromMetadata>)
   - [func ExactlyOneOf\(keys ...string\) Validator](<#ExactlyOneOf>)
+  - [func FormatFromMetadata\(\) Validator](<#FormatFromMetadata>)
+  - [func LengthFromMetadata\(\) Validator](<#LengthFromMetadata>)
   - [func MutuallyExclusive\(keys ...string\) Validator](<#MutuallyExclusive>)
   - [func MutuallyExclusiveNested\(scopedPath string, keys ...string\) Validator](<#MutuallyExclusiveNested>)
   - [func NoDuplicates\(seqPath, field string\) Validator](<#NoDuplicates>)
+  - [func NotOneOfFromMetadata\(\) Validator](<#NotOneOfFromMetadata>)
   - [func OneOfFromMetadata\(\) Validator](<#OneOfFromMetadata>)
   - [func PatternFromMetadata\(\) Validator](<#PatternFromMetadata>)
   - [func RangeFromMetadata\(\) Validator](<#RangeFromMetadata>)
@@ -92,6 +90,173 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
   - [func RunAll\(validators \[\]Validator, raw \[\]byte, blocks \[\]document.Block\) \[\]Violation](<#RunAll>)
   - [func \(v Violation\) String\(\) string](<#Violation.String>)
 
+
+## Variables
+
+<a name="FormatCIDR"></a>
+
+```go
+var FormatCIDR = FormatCustom("cidr", func(v string) bool {
+    _, _, err := net.ParseCIDR(v)
+    return err == nil
+})
+```
+
+<a name="FormatDate"></a>
+
+```go
+var FormatDate = FormatCustom("date", func(v string) bool {
+    return reDate.MatchString(v)
+})
+```
+
+<a name="FormatDirectoryPath"></a>
+
+```go
+var FormatDirectoryPath = FormatCustom("directory", func(v string) bool {
+    return v != "" && !strings.ContainsRune(v, 0)
+})
+```
+
+<a name="FormatDuration"></a>
+
+```go
+var FormatDuration = FormatCustom("duration", func(v string) bool {
+    return reDuration.MatchString(v)
+})
+```
+
+<a name="FormatEmail"></a>
+
+```go
+var FormatEmail = FormatCustom("email", func(v string) bool {
+    return reEmail.MatchString(v)
+})
+```
+
+<a name="FormatFQDN"></a>
+
+```go
+var FormatFQDN = FormatCustom("fqdn", func(v string) bool {
+    return reFQDN.MatchString(v)
+})
+```
+
+<a name="FormatGitRef"></a>
+
+```go
+var FormatGitRef = FormatCustom("git-ref", func(v string) bool {
+    return reGitRef.MatchString(v)
+})
+```
+
+<a name="FormatHost"></a>
+
+```go
+var FormatHost = FormatCustom("host", func(v string) bool {
+    if net.ParseIP(v) != nil {
+        return true
+    }
+    return reHostname.MatchString(v)
+})
+```
+
+<a name="FormatHostPort"></a>
+
+```go
+var FormatHostPort = FormatCustom("host:port", func(v string) bool {
+    _, p, err := net.SplitHostPort(v)
+    if err != nil {
+        return false
+    }
+    port, err := strconv.Atoi(p)
+    return err == nil && port >= 1 && port <= 65535
+})
+```
+
+<a name="FormatIP"></a>
+
+```go
+var FormatIP = FormatCustom("ip", func(v string) bool {
+    return net.ParseIP(v) != nil
+})
+```
+
+<a name="FormatIPv4"></a>
+
+```go
+var FormatIPv4 = FormatCustom("ipv4", func(v string) bool {
+    ip := net.ParseIP(v)
+    return ip != nil && ip.To4() != nil
+})
+```
+
+<a name="FormatIPv6"></a>
+
+```go
+var FormatIPv6 = FormatCustom("ipv6", func(v string) bool {
+    ip := net.ParseIP(v)
+    return ip != nil && ip.To4() == nil
+})
+```
+
+<a name="FormatPort"></a>
+
+```go
+var FormatPort = FormatCustom("port", func(v string) bool {
+    n, err := strconv.Atoi(v)
+    return err == nil && n >= 1 && n <= 65535
+})
+```
+
+<a name="FormatPrivateKey"></a>
+
+```go
+var FormatPrivateKey = FormatCustom("private-key", func(v string) bool {
+    return rePEMPrivate.MatchString(v)
+})
+```
+
+<a name="FormatPublicKey"></a>
+
+```go
+var FormatPublicKey = FormatCustom("public-key", func(v string) bool {
+    return rePEMPublic.MatchString(v)
+})
+```
+
+<a name="FormatSemver"></a>
+
+```go
+var FormatSemver = FormatCustom("semver", func(v string) bool {
+    return reSemver.MatchString(v)
+})
+```
+
+<a name="FormatTerraformSource"></a>
+
+```go
+var FormatTerraformSource = FormatCustom("terraform-source", func(v string) bool {
+    return reTerraformSource.MatchString(v)
+})
+```
+
+<a name="FormatURL"></a>
+
+```go
+var FormatURL = FormatCustom("url", func(v string) bool {
+    u, err := url.Parse(v)
+    return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+})
+```
+
+<a name="FormatUUID"></a>
+
+```go
+var FormatUUID = FormatCustom("uuid", func(v string) bool {
+    return reUUID.MatchString(v)
+})
+```
 
 <a name="DumpBlockActionLog"></a>
 ## func [DumpBlockActionLog](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L97>)
@@ -131,69 +296,6 @@ type BlockAction interface {
 }
 ```
 
-<a name="CheckedFieldFunc"></a>
-## type [CheckedFieldFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L115>)
-
-CheckedFieldFunc adapts a plain function to the CheckedFieldSource interface:
-
-```
-editor.Run(editor.Config{
-    PreCheckedFields: editor.CheckedFieldFunc(func(blockKey string) []string {
-        return []string{"name", "enabled"}
-    }),
-})
-```
-
-```go
-type CheckedFieldFunc func(blockKey string) []string
-```
-
-<a name="CheckedFieldFunc.CheckedFields"></a>
-### func \(CheckedFieldFunc\) [CheckedFields](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L118>)
-
-```go
-func (f CheckedFieldFunc) CheckedFields(blockKey string) []string
-```
-
-CheckedFields calls f.
-
-<a name="CheckedFieldMap"></a>
-## type [CheckedFieldMap](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L128>)
-
-CheckedFieldMap is a map\-backed CheckedFieldSource. Use it as a drop\-in replacement for map\[string\]\[\]string:
-
-```
-editor.Run(editor.Config{
-    PreCheckedFields: editor.CheckedFieldMap{
-        "categories": {"name", "source", "destination"},
-    },
-})
-```
-
-```go
-type CheckedFieldMap map[string][]string
-```
-
-<a name="CheckedFieldMap.CheckedFields"></a>
-### func \(CheckedFieldMap\) [CheckedFields](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L131>)
-
-```go
-func (m CheckedFieldMap) CheckedFields(blockKey string) []string
-```
-
-CheckedFields returns the pre\-checked field names for blockKey.
-
-<a name="CheckedFieldSource"></a>
-## type [CheckedFieldSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L104-L106>)
-
-CheckedFieldSource returns the sub\-field names that start checked when a block overlay opens for the given block key. Returning nil or an empty slice means "none pre\-checked".
-
-```go
-type CheckedFieldSource interface {
-    CheckedFields(blockKey string) []string
-}
-```
-
 <a name="CommitBlock"></a>
 ## type [CommitBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L67>)
 
@@ -204,7 +306,7 @@ type CommitBlock struct{}
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L247-L265>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L195-L211>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -216,29 +318,25 @@ Validators run before every save and on the explicit "validate" shortcut. Use ed
 
 Hints is optional \- when set, each field's Hint/Example panel is populated from the returned FieldMeta. All FieldMeta fields are used as\-is; YEDIT does not fall back to struct tag values. When Hints is nil, the panel shows only a generated example.
 
-PreCheckedFields lists which sub\-fields of a parent key start checked when the overlay opens \(e.g. "build" → \["dockerfile","context"\]\). Use CheckedFieldMap as a zero\-boilerplate adapter when a static map is enough.
-
-FieldSnippets provides the indented YAML chunk inserted when the user toggles a sub\-field on. Use FieldSnippetMap as a zero\-boilerplate adapter when a static map is enough. When a snippet is missing, the editor falls back to "\<child\>: \\n".
+FieldMeta.PreChecked lists sub\-fields that start checked when a new block overlay opens. FieldMeta.Snippet provides the YAML inserted when a sub\-field is toggled on; falls back to "\<fieldName\>: \\n" when empty.
 
 ```go
 type Config struct {
-    Path                 string             // YAML file to load; also the default save target when SavePath is empty
-    Schema               any                // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
-    Title                string             // label shown in the TUI header
-    Presets              PresetSource       // optional; nil disables the preset picker
-    EnableHints          bool               // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
-    Metadata             MetadataSource     // field metadata displayed in the hint panel and enforced by the FromMetadata validators
-    Validators           []Validator        // rules evaluated before every save and on the validate shortcut
-    PreCheckedFields     CheckedFieldSource // sub-fields that start checked when a block overlay opens; keyed by top-level yaml name
-    FieldSnippets        FieldSnippetSource // YAML inserted when a sub-field is toggled on; keyed by parent key → child yaml name
-    Hidden               []string           // top-level keys to omit from the UI entirely
-    PassthroughKeys      []string           // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
-    Theme                theme.Theme        // zero-value resolves to ThemeDark
-    NoDeleteConfirm      bool               // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
-    NoValidateOnSave     bool               // allow saving even when validators report errors; a warning alert is shown but does not block
-    NoSaveConfirm        bool               // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
-    SavePath             string             // write to this path instead of Path; Path is still used for loading
-    SchemaRecursionDepth int                // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
+    Path                 string         // YAML file to load; also the default save target when SavePath is empty
+    Schema               any            // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
+    Title                string         // label shown in the TUI header
+    Presets              PresetSource   // optional; nil disables the preset picker
+    EnableHints          bool           // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
+    Metadata             MetadataSource // field metadata displayed in the hint panel and enforced by the FromMetadata validators
+    Validators           []Validator    // rules evaluated before every save and on the validate shortcut
+    Hidden               []string       // top-level keys to omit from the UI entirely
+    PassthroughKeys      []string       // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
+    Theme                theme.Theme    // zero-value resolves to ThemeDark
+    NoDeleteConfirm      bool           // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
+    NoValidateOnSave     bool           // allow saving even when validators report errors; a warning alert is shown but does not block
+    NoSaveConfirm        bool           // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
+    SavePath             string         // write to this path instead of Path; Path is still used for loading
+    SchemaRecursionDepth int            // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
 }
 ```
 
@@ -323,7 +421,7 @@ type EditorAction struct {
 ```
 
 <a name="FieldMeta"></a>
-## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L57-L75>)
+## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L57-L99>)
 
 FieldMeta carries a single field's metadata: displayed in the Hint/Example panel and enforced by the FromMetadata validator family. Fields at their zero value declare nothing \- no panel line, no enforcement. MetadataSource is the sole authority: YEDIT never auto\-populates any FieldMeta field from struct tags. If no MetadataSource is configured, the hint panel shows only a generated example.
 
@@ -346,74 +444,80 @@ type FieldMeta struct {
     // Deprecation: non-empty marks the field deprecated; the value is the
     // migration hint shown to the user (DeprecatedFromMetadata).
     Deprecated string
+
+    // Formats lists the acceptable string formats for this field.
+    // FormatFromMetadata validates the field's value against each format
+    // using OR semantics: valid if any format's validator returns true.
+    // Empty means no format rule. Use FormatCustom for app-specific formats.
+    Formats []Format
+    // MinLength and MaxLength constrain string length in Unicode code points.
+    // 0 means no rule. Enforced by LengthFromMetadata.
+    MinLength int
+    MaxLength int
+    // NotOneOf is a case-sensitive denylist. Enforced by NotOneOfFromMetadata.
+    // Skipped when empty or when the field value is empty.
+    NotOneOf []string
+    // Multiline is display-only: sets Type to "multiline string" when Type is
+    // empty, and auto-generates a block-scalar example when Example is empty.
+    // Does not change editor behavior.
+    Multiline bool
+    // Snippet is the YAML inserted when the field is toggled on in the tree
+    // panel. Replaces the old Config.FieldSnippets source. Falls back to
+    // "<fieldName>: \n" when empty.
+    Snippet string
+    // PreChecked marks the field as checked when a new (empty) block is opened.
+    // Replaces the old Config.PreCheckedFields source.
+    PreChecked bool
 }
 ```
 
-<a name="FieldSnippetFunc"></a>
-## type [FieldSnippetFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L148>)
+<a name="Format"></a>
+## type [Format](<https://github.com/lucasassuncao/yedit/blob/main/editor/format.go#L14-L17>)
 
-FieldSnippetFunc adapts a plain function to the FieldSnippetSource interface:
-
-```
-editor.Run(editor.Config{
-    FieldSnippets: editor.FieldSnippetFunc(func(blockKey, fieldName string) string {
-        return ""
-    }),
-})
-```
+Format describes the expected string format for a field. Use built\-in vars \(FormatURL, FormatUUID, ...\) or FormatCustom for app\-specific formats.
 
 ```go
-type FieldSnippetFunc func(blockKey, fieldName string) string
-```
-
-<a name="FieldSnippetFunc.FieldSnippet"></a>
-### func \(FieldSnippetFunc\) [FieldSnippet](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L151>)
-
-```go
-func (f FieldSnippetFunc) FieldSnippet(blockKey, fieldName string) string
-```
-
-FieldSnippet calls f.
-
-<a name="FieldSnippetMap"></a>
-## type [FieldSnippetMap](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L163>)
-
-FieldSnippetMap is a map\-backed FieldSnippetSource. Use it as a drop\-in replacement for map\[string\]map\[string\]string:
-
-```
-editor.Run(editor.Config{
-    FieldSnippets: editor.FieldSnippetMap{
-        "categories": {"source": "source:\n  path: \"\"\n"},
-    },
-})
-```
-
-```go
-type FieldSnippetMap map[string]map[string]string
-```
-
-<a name="FieldSnippetMap.FieldSnippet"></a>
-### func \(FieldSnippetMap\) [FieldSnippet](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L166>)
-
-```go
-func (m FieldSnippetMap) FieldSnippet(blockKey, fieldName string) string
-```
-
-FieldSnippet returns the YAML snippet for \(blockKey, fieldName\).
-
-<a name="FieldSnippetSource"></a>
-## type [FieldSnippetSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L137-L139>)
-
-FieldSnippetSource returns the YAML snippet to insert when a sub\-field is toggled on. Returning an empty string falls back to "\<fieldName\>: \\n".
-
-```go
-type FieldSnippetSource interface {
-    FieldSnippet(blockKey, fieldName string) string
+type Format struct {
+    // contains filtered or unexported fields
 }
 ```
+
+<a name="FormatCustom"></a>
+### func [FormatCustom](<https://github.com/lucasassuncao/yedit/blob/main/editor/format.go#L25>)
+
+```go
+func FormatCustom(name string, validate func(string) bool) Format
+```
+
+FormatCustom creates an app\-specific format with a display name and validator.
+
+```
+var FormatLeanIXID = editor.FormatCustom("leanix-id", func(v string) bool {
+    ok, _ := regexp.MatchString(`^(TEAM|CMP|APP)-[A-Z0-9]+$`, v)
+    return ok
+})
+```
+
+<a name="Format.IsZero"></a>
+### func \(Format\) [IsZero](<https://github.com/lucasassuncao/yedit/blob/main/editor/format.go#L30>)
+
+```go
+func (f Format) IsZero() bool
+```
+
+IsZero reports whether f is the zero value \(not a real format\).
+
+<a name="Format.Label"></a>
+### func \(Format\) [Label](<https://github.com/lucasassuncao/yedit/blob/main/editor/format.go#L33>)
+
+```go
+func (f Format) Label() string
+```
+
+Label returns the display name used in the hint panel and docgenerator.
 
 <a name="MetadataFunc"></a>
-## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L94>)
+## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L118>)
 
 MetadataFunc adapts a plain function to the MetadataSource interface:
 
@@ -431,7 +535,7 @@ type MetadataFunc func(blockKey, fieldPath string) FieldMeta
 ```
 
 <a name="MetadataFunc.FieldMeta"></a>
-### func \(MetadataFunc\) [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L97>)
+### func \(MetadataFunc\) [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L121>)
 
 ```go
 func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta
@@ -440,7 +544,7 @@ func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta
 FieldMeta calls f.
 
 <a name="MetadataSource"></a>
-## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L82-L84>)
+## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L106-L108>)
 
 MetadataSource provides per\-field metadata for the Hint/Example panel and the FromMetadata validator family. It is called with the top\-level block key and the field's dot\-joined path from the block root \(e.g. "source", "source.path"\). For top\-level block entries in the root list, fieldPath is empty \(""\). Returning a zero FieldMeta means "no override".
 
@@ -647,7 +751,7 @@ type Undo struct{}
 ```
 
 <a name="ValidationInput"></a>
-## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L190-L194>)
+## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L143-L147>)
 
 ValidationInput carries the document state inspected by validators. RunAll builds it once per run and shares it across all validators, so the document is parsed a single time instead of once per validator. Build one with NewValidationInput when invoking a validator directly.
 
@@ -669,7 +773,7 @@ func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
 NewValidationInput parses raw once and bundles it with blocks for a validation run. Root is nil when raw is not valid YAML; an empty document yields an empty mapping so unconditional checks still run.
 
 <a name="Validator"></a>
-## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L199-L201>)
+## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L152-L154>)
 
 Validator is a pluggable rule executed at validate/save time. It returns one Violation per problem it finds. Returning an empty slice \(or nil\) means "all good".
 
@@ -680,7 +784,7 @@ type Validator interface {
 ```
 
 <a name="AllOrNone"></a>
-### func [AllOrNone](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1106>)
+### func [AllOrNone](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1191>)
 
 ```go
 func AllOrNone(keys ...string) Validator
@@ -725,7 +829,7 @@ func CountFromMetadata() Validator
 CountFromMetadata enforces FieldMeta.MinCount/MaxCount from the MetadataSource \(CountRange semantics\): sequences count items, mappings count keys. Both zero declares nothing; MinCount \> 0 with MaxCount == 0 means "at least MinCount, no upper bound". Absent fields report nothing \- combine with Required when the collection is mandatory.
 
 <a name="CountRange"></a>
-### func [CountRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1153>)
+### func [CountRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1238>)
 
 ```go
 func CountRange(path string, minCount, maxCount int) Validator
@@ -750,7 +854,7 @@ CrossFieldOrdered reports a violation when both paths are present but the value 
 When the two paths share the same parent prefix, the pair is compared inside every mapping reached by that parent \- sequences and dict\-style mappings are expanded automatically, so each entry's own min/max pair is checked. Paths with unrelated parents are both resolved from the document root.
 
 <a name="Deprecated"></a>
-### func [Deprecated](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1249>)
+### func [Deprecated](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1334>)
 
 ```go
 func Deprecated(path, message string) Validator
@@ -788,6 +892,24 @@ editor.ExactlyOneOf("source.git", "source.local")
 ```
 
 Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
+
+<a name="FormatFromMetadata"></a>
+### func [FormatFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L948>)
+
+```go
+func FormatFromMetadata() Validator
+```
+
+FormatFromMetadata enforces FieldMeta.Formats from the MetadataSource. A present, non\-empty scalar value is valid if it matches any of the declared formats \(OR semantics\). Skips fields where Formats is empty or value is empty.
+
+<a name="LengthFromMetadata"></a>
+### func [LengthFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L977>)
+
+```go
+func LengthFromMetadata() Validator
+```
+
+LengthFromMetadata enforces FieldMeta.MinLength/MaxLength from the MetadataSource. Length is measured in Unicode code points. A zero value for either bound means no rule for that bound.
 
 <a name="MutuallyExclusive"></a>
 ### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L90>)
@@ -857,6 +979,15 @@ NoDuplicates reports a violation when two or more items in the sequence at seqPa
 editor.NoDuplicates("servers", "name")
 editor.NoDuplicates("categories.installers", "meta.name")
 ```
+
+<a name="NotOneOfFromMetadata"></a>
+### func [NotOneOfFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1010>)
+
+```go
+func NotOneOfFromMetadata() Validator
+```
+
+NotOneOfFromMetadata enforces FieldMeta.NotOneOf from the MetadataSource. A present, non\-empty scalar whose value is in the denylist is a violation. Matching is case\-sensitive. Skips fields where NotOneOf is empty or value is empty.
 
 <a name="OneOfFromMetadata"></a>
 ### func [OneOfFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L753>)
@@ -962,7 +1093,7 @@ func UniqueFromMetadata() Validator
 UniqueFromMetadata enforces FieldMeta.Unique from the MetadataSource \(UniqueValues semantics\): scalar items in the sequence must not repeat. Non\-sequence fields and non\-scalar items are skipped.
 
 <a name="UniqueValues"></a>
-### func [UniqueValues](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1198>)
+### func [UniqueValues](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1283>)
 
 ```go
 func UniqueValues(seqPath string) Validator
@@ -975,7 +1106,7 @@ editor.UniqueValues("tags")
 ```
 
 <a name="ValueHasPrefix"></a>
-### func [ValueHasPrefix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1052>)
+### func [ValueHasPrefix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1137>)
 
 ```go
 func ValueHasPrefix(path, prefix string) Validator
@@ -988,7 +1119,7 @@ editor.ValueHasPrefix("image", "registry.example.com/")
 ```
 
 <a name="ValueHasSuffix"></a>
-### func [ValueHasSuffix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1060>)
+### func [ValueHasSuffix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1145>)
 
 ```go
 func ValueHasSuffix(path, suffix string) Validator
@@ -1001,7 +1132,7 @@ editor.ValueHasSuffix("output", ".yaml")
 ```
 
 <a name="ValueInRange"></a>
-### func [ValueInRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L971>)
+### func [ValueInRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1056>)
 
 ```go
 func ValueInRange(path, minVal, maxVal string) Validator
@@ -1015,7 +1146,7 @@ editor.ValueInRange("filter.max-age", "1h", "8760h")
 ```
 
 <a name="ValueMatches"></a>
-### func [ValueMatches](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1017>)
+### func [ValueMatches](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1102>)
 
 ```go
 func ValueMatches(path, pattern string) Validator
@@ -1037,7 +1168,7 @@ func ValueOneOf(path string, allowed ...string) Validator
 ValueOneOf reports a violation when the field at path exists but its value is not in allowed. Sequences and dict\-style mappings along the path are expanded automatically, so every entry in a list or every value in a map is checked.
 
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L214>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L167>)
 
 ValidatorFunc adapts a plain function to the Validator interface, letting callers register inline validators without defining a named type:
 
@@ -1057,7 +1188,7 @@ type ValidatorFunc func(in ValidationInput) []Violation
 ```
 
 <a name="ValidatorFunc.Validate"></a>
-### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L217>)
+### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L170>)
 
 ```go
 func (f ValidatorFunc) Validate(in ValidationInput) []Violation
@@ -1066,7 +1197,7 @@ func (f ValidatorFunc) Validate(in ValidationInput) []Violation
 Validate calls f.
 
 <a name="Violation"></a>
-## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L173-L176>)
+## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L126-L129>)
 
 Violation is a single rule violation reported by a Validator.
 
@@ -1087,7 +1218,7 @@ func RunAll(validators []Validator, raw []byte, blocks []document.Block) []Viola
 RunAll executes all validators against raw/blocks and collects violations. The document is parsed once and shared across validators.
 
 <a name="Violation.String"></a>
-### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L179>)
+### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L132>)
 
 ```go
 func (v Violation) String() string

@@ -31,6 +31,7 @@ type blockEditPanel int
 const (
 	blockEditPanelTree blockEditPanel = iota
 	blockEditPanelYAML
+	blockEditPanelHint // hint panel focused for scrolling
 )
 
 // blockEditMode is the top-level state of the block-edit screen. Exactly one
@@ -81,6 +82,8 @@ type blockEditState struct {
 	yamlEditor      textarea.Model
 	previewRenderer *glamour.TermRenderer // non-nil only for KindObject blocks
 	active          blockEditPanel
+	prevActive      blockEditPanel // panel to return to when leaving hint focus
+	hintScroll      int            // scroll offset in hint panel when active == blockEditPanelHint
 
 	isEdit bool // false = add new block, true = edit existing
 	dirty  bool // uncommitted changes since last ctrl+s
@@ -505,39 +508,33 @@ func (be blockEditState) resyncTreeFromYAML() treeModel {
 	return syncTreeCheckedFromNode(be.tree, be.node)
 }
 
-// snippetsFn returns a lookup function for FieldSnippets scoped to be.key, or
-// nil when no FieldSnippets source is configured.
+// snippetsFn returns a lookup function for snippets scoped to be.key.
+// Reads FieldMeta.Snippet from the MetadataSource when configured.
+// Returns nil when no MetadataSource is configured.
 func (be blockEditState) snippetsFn() func(string) string {
-	if be.cfg.FieldSnippets == nil {
+	if be.cfg.Metadata == nil {
 		return nil
 	}
 	return func(fieldName string) string {
-		return be.cfg.FieldSnippets.FieldSnippet(be.key, fieldName)
+		return be.cfg.Metadata.FieldMeta(be.key, fieldName).Snippet
 	}
 }
 
-// withPreCheckedFields toggles ON the fields listed in cfg.PreCheckedFields for
-// this block, inserting their snippets into the YAML editor. Only called for
-// new (not yet existing) struct blocks so opening an existing block never
-// modifies content.
+// withPreCheckedFields toggles ON fields where FieldMeta.PreChecked is true,
+// inserting their snippets into the YAML editor. Only called for new (not yet
+// existing) struct blocks so opening an existing block never modifies content.
 func (be blockEditState) withPreCheckedFields() blockEditState {
-	var fields []string
-	if be.cfg.PreCheckedFields != nil {
-		fields = be.cfg.PreCheckedFields.CheckedFields(be.key)
-	}
-	if len(fields) == 0 {
+	if be.cfg.Metadata == nil {
 		return be
 	}
 	ctx := toggleCtx{key: be.key, snippets: be.snippetsFn(), childDefs: be.childDefs}
-	nodeByLabel := make(map[string]treeNode, len(be.tree.nodes))
-	for _, n := range be.tree.nodes {
-		if n.kind == treeNodeField && n.depth == 0 {
-			nodeByLabel[n.label] = n
-		}
-	}
 	changed := false
-	for _, fieldName := range fields {
-		if n, ok := nodeByLabel[fieldName]; ok && !n.checked {
+	for _, n := range be.tree.nodes {
+		if n.kind != treeNodeField || n.depth != 0 || n.checked {
+			continue
+		}
+		meta := be.cfg.Metadata.FieldMeta(be.key, n.label)
+		if meta.PreChecked {
 			toggleNodeField(be.node, ctx, n, true)
 			changed = true
 		}
@@ -653,7 +650,8 @@ func (be blockEditState) View(parentSegs []string) string {
 
 	rightPanel := topPanel
 	if be.cfg.EnableHints {
-		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, false, clampLines(be.hintContent(), be.hintH()), be.theme.colors)
+		hintActive := be.active == blockEditPanelHint
+		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, hintActive, be.scrolledHintContent(), be.theme.colors)
 		rightPanel = lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)
 	}
 
@@ -729,6 +727,30 @@ func (be blockEditState) fieldItemView() string {
 }
 
 // hintContent returns the rendered string for the bottom-right hint panel.
+// scrolledHintContent returns the hint content clipped to hintH() lines,
+// starting at hintScroll. Used when hint panel has focus for scrolling.
+func (be blockEditState) scrolledHintContent() string {
+	content := be.hintContent()
+	if content == "" {
+		return ""
+	}
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	h := be.hintH()
+	maxScroll := len(lines) - h
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	scroll := be.hintScroll
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+	end := scroll + h
+	if end > len(lines) {
+		end = len(lines)
+	}
+	return strings.Join(lines[scroll:end], "\n")
+}
+
 func (be blockEditState) hintContent() string {
 	// Tree-less blocks (primitive/enum/free-form collection) have no field nodes;
 	// show the block's own metadata instead of the "select a field" placeholder.
@@ -757,7 +779,15 @@ func (be blockEditState) fieldHintFor(fieldPath string) string {
 		return be.theme.hintDim.Render("  Config.Metadata is not set - no metadata source configured")
 	}
 	meta := be.cfg.Metadata.FieldMeta(be.key, fieldPath)
-	if out := renderFieldHint(be.theme, meta, meta.Example); out != "" {
+	ex := meta.Example
+	if ex == "" && meta.Multiline {
+		fieldName := fieldPath
+		if i := strings.LastIndex(fieldPath, "."); i >= 0 {
+			fieldName = fieldPath[i+1:]
+		}
+		ex = fieldName + ": |\n  line 1\n  line 2\n"
+	}
+	if out := renderFieldHint(be.theme, meta, ex); out != "" {
 		return out
 	}
 	return be.theme.hintDim.Render("  no metadata declared for this field")

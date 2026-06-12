@@ -942,6 +942,91 @@ func checkHintDeprecated(meta FieldMeta, child *yaml.Node, path string, errs *[]
 	*errs = append(*errs, Violation{Path: path, Message: "deprecated - " + meta.Deprecated})
 }
 
+// FormatFromMetadata enforces FieldMeta.Formats from the MetadataSource.
+// A present, non-empty scalar value is valid if it matches any of the declared
+// formats (OR semantics). Skips fields where Formats is empty or value is empty.
+func FormatFromMetadata() Validator { return &metadataRuleValidator{check: checkHintFormat} }
+
+func checkHintFormat(meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
+	if len(meta.Formats) == 0 {
+		return
+	}
+	if child == nil || child.Kind != yaml.ScalarNode || child.Value == "" {
+		return
+	}
+	for _, f := range meta.Formats {
+		if !f.IsZero() && f.validate(child.Value) {
+			return
+		}
+	}
+	labels := make([]string, 0, len(meta.Formats))
+	for _, f := range meta.Formats {
+		if !f.IsZero() {
+			labels = append(labels, f.Label())
+		}
+	}
+	*errs = append(*errs, Violation{
+		Path:    path,
+		Message: "value does not match expected format: " + strings.Join(labels, " | "),
+	})
+}
+
+// LengthFromMetadata enforces FieldMeta.MinLength/MaxLength from the
+// MetadataSource. Length is measured in Unicode code points. A zero value
+// for either bound means no rule for that bound.
+func LengthFromMetadata() Validator { return &metadataRuleValidator{check: checkHintLength} }
+
+func checkHintLength(meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
+	if meta.MinLength == 0 && meta.MaxLength == 0 {
+		return
+	}
+	if child == nil || child.Kind != yaml.ScalarNode || child.Value == "" {
+		return
+	}
+	n := len([]rune(child.Value))
+	switch {
+	case meta.MinLength > 0 && meta.MaxLength > 0 && (n < meta.MinLength || n > meta.MaxLength):
+		*errs = append(*errs, Violation{
+			Path:    path,
+			Message: fmt.Sprintf("must be between %d and %d chars", meta.MinLength, meta.MaxLength),
+		})
+	case meta.MinLength > 0 && n < meta.MinLength:
+		*errs = append(*errs, Violation{
+			Path:    path,
+			Message: fmt.Sprintf("must be at least %d chars", meta.MinLength),
+		})
+	case meta.MaxLength > 0 && n > meta.MaxLength:
+		*errs = append(*errs, Violation{
+			Path:    path,
+			Message: fmt.Sprintf("must be at most %d chars", meta.MaxLength),
+		})
+	}
+}
+
+// NotOneOfFromMetadata enforces FieldMeta.NotOneOf from the MetadataSource.
+// A present, non-empty scalar whose value is in the denylist is a violation.
+// Matching is case-sensitive. Skips fields where NotOneOf is empty or value
+// is empty.
+func NotOneOfFromMetadata() Validator { return &metadataRuleValidator{check: checkHintNotOneOf} }
+
+func checkHintNotOneOf(meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
+	if len(meta.NotOneOf) == 0 {
+		return
+	}
+	if child == nil || child.Kind != yaml.ScalarNode || child.Value == "" {
+		return
+	}
+	for _, denied := range meta.NotOneOf {
+		if child.Value == denied {
+			*errs = append(*errs, Violation{
+				Path:    path,
+				Message: fmt.Sprintf("value %q is not allowed", child.Value),
+			})
+			return
+		}
+	}
+}
+
 // hintScalarValue applies the shared value-rule contract to a hint-checked
 // field: nil or empty children report nothing (combine with Required when the
 // field is mandatory); a non-scalar child is flagged.

@@ -182,7 +182,7 @@ func TestPresetBrowser_updateAndSelection(t *testing.T) {
 		}
 	}
 
-	if action, _ := pb.Update(keyOf("k"), false); action != presetNone || pb.cursor != 0 {
+	if action, _ := pb.Update(tea.KeyMsg{Type: tea.KeyUp}, false); action != presetNone || pb.cursor != 0 {
 		t.Errorf("up should move cursor to 0, got action=%v cursor=%d", action, pb.cursor)
 	}
 	if action, name := pb.Update(keyOf("enter"), false); action != presetApplied || name != pb.names[0] {

@@ -72,6 +72,30 @@ type FieldMeta struct {
 	// Deprecation: non-empty marks the field deprecated; the value is the
 	// migration hint shown to the user (DeprecatedFromMetadata).
 	Deprecated string
+
+	// Formats lists the acceptable string formats for this field.
+	// FormatFromMetadata validates the field's value against each format
+	// using OR semantics: valid if any format's validator returns true.
+	// Empty means no format rule. Use FormatCustom for app-specific formats.
+	Formats []Format
+	// MinLength and MaxLength constrain string length in Unicode code points.
+	// 0 means no rule. Enforced by LengthFromMetadata.
+	MinLength int
+	MaxLength int
+	// NotOneOf is a case-sensitive denylist. Enforced by NotOneOfFromMetadata.
+	// Skipped when empty or when the field value is empty.
+	NotOneOf []string
+	// Multiline is display-only: sets Type to "multiline string" when Type is
+	// empty, and auto-generates a block-scalar example when Example is empty.
+	// Does not change editor behavior.
+	Multiline bool
+	// Snippet is the YAML inserted when the field is toggled on in the tree
+	// panel. Replaces the old Config.FieldSnippets source. Falls back to
+	// "<fieldName>: \n" when empty.
+	Snippet string
+	// PreChecked marks the field as checked when a new (empty) block is opened.
+	// Replaces the old Config.PreCheckedFields source.
+	PreChecked bool
 }
 
 // MetadataSource provides per-field metadata for the Hint/Example panel and
@@ -95,77 +119,6 @@ type MetadataFunc func(blockKey, fieldPath string) FieldMeta
 
 // FieldMeta calls f.
 func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta { return f(blockKey, fieldPath) }
-
-// ─── Checked Fields ──────────────────────────────────────────────────────────
-
-// CheckedFieldSource returns the sub-field names that start checked when a
-// block overlay opens for the given block key. Returning nil or an empty slice
-// means "none pre-checked".
-type CheckedFieldSource interface {
-	CheckedFields(blockKey string) []string
-}
-
-// CheckedFieldFunc adapts a plain function to the CheckedFieldSource interface:
-//
-//	editor.Run(editor.Config{
-//	    PreCheckedFields: editor.CheckedFieldFunc(func(blockKey string) []string {
-//	        return []string{"name", "enabled"}
-//	    }),
-//	})
-type CheckedFieldFunc func(blockKey string) []string
-
-// CheckedFields calls f.
-func (f CheckedFieldFunc) CheckedFields(blockKey string) []string { return f(blockKey) }
-
-// CheckedFieldMap is a map-backed CheckedFieldSource.
-// Use it as a drop-in replacement for map[string][]string:
-//
-//	editor.Run(editor.Config{
-//	    PreCheckedFields: editor.CheckedFieldMap{
-//	        "categories": {"name", "source", "destination"},
-//	    },
-//	})
-type CheckedFieldMap map[string][]string
-
-// CheckedFields returns the pre-checked field names for blockKey.
-func (m CheckedFieldMap) CheckedFields(blockKey string) []string { return m[blockKey] }
-
-// ─── Field Snippets ───────────────────────────────────────────────────────────
-
-// FieldSnippetSource returns the YAML snippet to insert when a sub-field is
-// toggled on. Returning an empty string falls back to "<fieldName>: \n".
-type FieldSnippetSource interface {
-	FieldSnippet(blockKey, fieldName string) string
-}
-
-// FieldSnippetFunc adapts a plain function to the FieldSnippetSource interface:
-//
-//	editor.Run(editor.Config{
-//	    FieldSnippets: editor.FieldSnippetFunc(func(blockKey, fieldName string) string {
-//	        return ""
-//	    }),
-//	})
-type FieldSnippetFunc func(blockKey, fieldName string) string
-
-// FieldSnippet calls f.
-func (f FieldSnippetFunc) FieldSnippet(blockKey, fieldName string) string {
-	return f(blockKey, fieldName)
-}
-
-// FieldSnippetMap is a map-backed FieldSnippetSource.
-// Use it as a drop-in replacement for map[string]map[string]string:
-//
-//	editor.Run(editor.Config{
-//	    FieldSnippets: editor.FieldSnippetMap{
-//	        "categories": {"source": "source:\n  path: \"\"\n"},
-//	    },
-//	})
-type FieldSnippetMap map[string]map[string]string
-
-// FieldSnippet returns the YAML snippet for (blockKey, fieldName).
-func (m FieldSnippetMap) FieldSnippet(blockKey, fieldName string) string {
-	return m[blockKey][fieldName]
-}
 
 // ─── Validators ──────────────────────────────────────────────────────────────
 
@@ -236,30 +189,23 @@ func (f ValidatorFunc) Validate(in ValidationInput) []Violation {
 // does not fall back to struct tag values. When Hints is nil, the panel shows
 // only a generated example.
 //
-// PreCheckedFields lists which sub-fields of a parent key start checked when
-// the overlay opens (e.g. "build" → ["dockerfile","context"]). Use CheckedFieldMap
-// as a zero-boilerplate adapter when a static map is enough.
-//
-// FieldSnippets provides the indented YAML chunk inserted when the user
-// toggles a sub-field on. Use FieldSnippetMap as a zero-boilerplate adapter
-// when a static map is enough. When a snippet is missing, the editor falls
-// back to "<child>: \n".
+// FieldMeta.PreChecked lists sub-fields that start checked when a new block
+// overlay opens. FieldMeta.Snippet provides the YAML inserted when a sub-field
+// is toggled on; falls back to "<fieldName>: \n" when empty.
 type Config struct {
-	Path                 string             // YAML file to load; also the default save target when SavePath is empty
-	Schema               any                // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
-	Title                string             // label shown in the TUI header
-	Presets              PresetSource       // optional; nil disables the preset picker
-	EnableHints          bool               // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
-	Metadata             MetadataSource     // field metadata displayed in the hint panel and enforced by the FromMetadata validators
-	Validators           []Validator        // rules evaluated before every save and on the validate shortcut
-	PreCheckedFields     CheckedFieldSource // sub-fields that start checked when a block overlay opens; keyed by top-level yaml name
-	FieldSnippets        FieldSnippetSource // YAML inserted when a sub-field is toggled on; keyed by parent key → child yaml name
-	Hidden               []string           // top-level keys to omit from the UI entirely
-	PassthroughKeys      []string           // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
-	Theme                theme.Theme        // zero-value resolves to ThemeDark
-	NoDeleteConfirm      bool               // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
-	NoValidateOnSave     bool               // allow saving even when validators report errors; a warning alert is shown but does not block
-	NoSaveConfirm        bool               // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
-	SavePath             string             // write to this path instead of Path; Path is still used for loading
-	SchemaRecursionDepth int                // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
+	Path                 string         // YAML file to load; also the default save target when SavePath is empty
+	Schema               any            // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
+	Title                string         // label shown in the TUI header
+	Presets              PresetSource   // optional; nil disables the preset picker
+	EnableHints          bool           // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
+	Metadata             MetadataSource // field metadata displayed in the hint panel and enforced by the FromMetadata validators
+	Validators           []Validator    // rules evaluated before every save and on the validate shortcut
+	Hidden               []string       // top-level keys to omit from the UI entirely
+	PassthroughKeys      []string       // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
+	Theme                theme.Theme    // zero-value resolves to ThemeDark
+	NoDeleteConfirm      bool           // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
+	NoValidateOnSave     bool           // allow saving even when validators report errors; a warning alert is shown but does not block
+	NoSaveConfirm        bool           // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
+	SavePath             string         // write to this path instead of Path; Path is still used for loading
+	SchemaRecursionDepth int            // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
 }

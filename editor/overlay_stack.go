@@ -201,6 +201,11 @@ func (m model) handleBlockEditKey(top *blockEditState, key tea.KeyMsg) (tea.Mode
 		}
 	}
 
+	// ctrl+h / hint panel scroll.
+	if m2, handled := m.handleHintKey(top, key); handled {
+		return m2, nil
+	}
+
 	// Tab: switch panel focus (pure UI, not dispatched).
 	if key.Type == tea.KeyTab && top.mode == modeEditing {
 		be := top.switchPanel()
@@ -421,4 +426,40 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 	m.enterList()
 	m.statusMsg = "Changes committed (not saved yet) - ctrl+s to save."
 	return m, nil
+}
+
+// handleHintKey handles ctrl+h (toggle hint focus) and navigation keys when
+// the hint panel is focused. Returns (model, cmd, handled); when handled is
+// false the caller should continue with normal key routing.
+func (m model) handleHintKey(top *blockEditState, key tea.KeyMsg) (tea.Model, bool) {
+	if top.mode != modeEditing {
+		return m, false
+	}
+	if key.String() == "ctrl+h" && top.cfg.EnableHints {
+		be := *top
+		if be.active == blockEditPanelHint {
+			be.active = be.prevActive
+		} else {
+			be.prevActive = be.active
+			be.active = blockEditPanelHint
+		}
+		m.setTopBE(&be)
+		return m, true
+	}
+	if top.active != blockEditPanelHint {
+		return m, false
+	}
+	be := *top
+	switch key.String() {
+	case "up":
+		if be.hintScroll > 0 {
+			be.hintScroll--
+		}
+	case "down":
+		be.hintScroll++
+	case "tab", "ctrl+h":
+		be.active = be.prevActive
+	}
+	m.setTopBE(&be)
+	return m, true
 }

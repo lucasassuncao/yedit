@@ -221,14 +221,10 @@ func (lm listModel) Update(msg tea.Msg) (listModel, tea.Cmd) {
 		lm.filter = ""
 		lm.fCursor = 0
 		lm.fOffset = 0
-	case "up", "k":
+	case "up":
 		lm.moveCursor(-1)
-	case "down", "j":
+	case "down":
 		lm.moveCursor(1)
-	case "g":
-		lm.jumpToFirst()
-	case "G":
-		lm.jumpToLast()
 	case "enter":
 		if it := lm.SelectedItem(); it != nil {
 			item := *it
@@ -336,17 +332,6 @@ func (lm *listModel) clampScroll() {
 		lm.offset = lm.cursor - lm.height + 2
 	}
 }
-
-func (lm *listModel) jumpToFirst() {
-	for i, it := range lm.items {
-		if !it.Separator {
-			lm.cursor = i
-			lm.offset = 0
-			return
-		}
-	}
-}
-
 func (lm *listModel) jumpToLast() {
 	for i := len(lm.items) - 1; i >= 0; i-- {
 		if !lm.items[i].Separator {

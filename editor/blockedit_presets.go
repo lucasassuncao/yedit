@@ -73,7 +73,7 @@ func (pb *presetBrowser) Update(key tea.KeyMsg, allowAppend bool) (action preset
 		if !pb.previewFocus && allowAppend {
 			return presetAppended, pb.names[pb.cursor]
 		}
-	case "up", "k":
+	case "up":
 		if pb.previewFocus {
 			if pb.previewScroll > 0 {
 				pb.previewScroll--
@@ -82,7 +82,7 @@ func (pb *presetBrowser) Update(key tea.KeyMsg, allowAppend bool) (action preset
 			pb.cursor--
 			pb.previewScroll = 0
 		}
-	case "down", "j":
+	case "down":
 		if pb.previewFocus {
 			pb.previewScroll++
 		} else if pb.cursor < len(pb.names)-1 {

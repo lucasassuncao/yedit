@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/schema"
 )
 
@@ -20,8 +21,14 @@ func (g *SchemaGenerator) generateRootMarkdown(title string, fields []schema.Fie
 }
 
 func (g *SchemaGenerator) writeFieldsTableLinked(sb *strings.Builder, fields []schema.FieldDef) {
-	sb.WriteString("| Name | Type | Description | Required | Default |\n")
-	sb.WriteString("|------|------|-------------|----------|---------|\n")
+	hasFormat := g.anyHasFormat(fields, nil)
+	if hasFormat {
+		sb.WriteString("| Name | Type | Format | Description | Required | Default |\n")
+		sb.WriteString("|------|------|--------|-------------|----------|---------|\n")
+	} else {
+		sb.WriteString("| Name | Type | Description | Required | Default |\n")
+		sb.WriteString("|------|------|-------------|----------|---------|\n")
+	}
 	for _, f := range fields {
 		name := f.YAMLName
 		if name == "" || name == "-" {
@@ -42,8 +49,13 @@ func (g *SchemaGenerator) writeFieldsTableLinked(sb *strings.Builder, fields []s
 		if len(f.Children) > 0 {
 			displayName = fmt.Sprintf("[%s](./%s.md)", name, name)
 		}
-		fmt.Fprintf(sb, "| %s | %s | %s | %s | %s |\n",
-			displayName, typeLabel(f), description, required, defaultValue)
+		if hasFormat {
+			fmt.Fprintf(sb, "| %s | %s | %s | %s | %s | %s |\n",
+				displayName, docTypeLabel(f, meta), formatLabels(meta), description, required, defaultValue)
+		} else {
+			fmt.Fprintf(sb, "| %s | %s | %s | %s | %s |\n",
+				displayName, docTypeLabel(f, meta), description, required, defaultValue)
+		}
 	}
 	sb.WriteString("\n")
 }
@@ -61,8 +73,14 @@ func (g *SchemaGenerator) generateMarkdown(typeName string, fields []schema.Fiel
 }
 
 func (g *SchemaGenerator) writeFieldsTable(sb *strings.Builder, fields []schema.FieldDef, sectionPath []string) {
-	sb.WriteString("| Name | Type | Description | Required | Default |\n")
-	sb.WriteString("|------|------|-------------|----------|---------|\n")
+	hasFormat := g.anyHasFormat(fields, sectionPath)
+	if hasFormat {
+		sb.WriteString("| Name | Type | Format | Description | Required | Default |\n")
+		sb.WriteString("|------|------|--------|-------------|----------|---------|\n")
+	} else {
+		sb.WriteString("| Name | Type | Description | Required | Default |\n")
+		sb.WriteString("|------|------|-------------|----------|---------|\n")
+	}
 
 	for _, f := range fields {
 		name := f.YAMLName
@@ -87,8 +105,13 @@ func (g *SchemaGenerator) writeFieldsTable(sb *strings.Builder, fields []schema.
 
 		displayName := name
 
-		fmt.Fprintf(sb, "| %s | %s | %s | %s | %s |\n",
-			displayName, typeLabel(f), description, required, defaultValue)
+		if hasFormat {
+			fmt.Fprintf(sb, "| %s | %s | %s | %s | %s | %s |\n",
+				displayName, docTypeLabel(f, meta), formatLabels(meta), description, required, defaultValue)
+		} else {
+			fmt.Fprintf(sb, "| %s | %s | %s | %s | %s |\n",
+				displayName, docTypeLabel(f, meta), description, required, defaultValue)
+		}
 	}
 	sb.WriteString("\n")
 }
@@ -108,6 +131,47 @@ func (g *SchemaGenerator) writeNestedSections(sb *strings.Builder, fields []sche
 		g.writeFieldsTable(sb, f.Children, childPath)
 		g.writeNestedSections(sb, f.Children, childPath, level+1)
 	}
+}
+
+// anyHasFormat reports whether any field in fields has a non-empty Formats slice.
+func (g *SchemaGenerator) anyHasFormat(fields []schema.FieldDef, sectionPath []string) bool {
+	for _, f := range fields {
+		name := f.YAMLName
+		if name == "" || name == "-" {
+			continue
+		}
+		meta := g.fieldMeta(sectionPath, name)
+		if len(meta.Formats) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// formatLabels returns the joined format labels for a field, or "-" when none.
+func formatLabels(meta editor.FieldMeta) string {
+	var labels []string
+	for _, f := range meta.Formats {
+		if !f.IsZero() {
+			labels = append(labels, f.Label())
+		}
+	}
+	if len(labels) == 0 {
+		return "-"
+	}
+	return strings.Join(labels, " | ")
+}
+
+// docTypeLabel returns the type label for the markdown table, honouring
+// FieldMeta.Multiline and FieldMeta.Type overrides.
+func docTypeLabel(f schema.FieldDef, meta editor.FieldMeta) string {
+	if meta.Multiline && meta.Type == "" {
+		return "multiline string"
+	}
+	if meta.Type != "" {
+		return meta.Type
+	}
+	return typeLabel(f)
 }
 
 func typeLabel(f schema.FieldDef) string {

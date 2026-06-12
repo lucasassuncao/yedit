@@ -63,6 +63,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -76,6 +77,11 @@ import (
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
 )
+
+var formatLeanIXID = editor.FormatCustom("leanix-id", func(v string) bool {
+	ok, _ := regexp.MatchString(`^(TEAM|CMP|APP)-[A-Z0-9]+$`, v)
+	return ok
+})
 
 // ── Pattern 1: KindVariant via Provider ──────────────────────────────────────
 
@@ -130,6 +136,43 @@ type DeployConfig struct {
 	Strategy   string `yaml:"strategy"`
 	Replicas   int    `yaml:"replicas"`
 	AutoRevert bool   `yaml:"auto-revert"`
+}
+
+// ── Pattern 6: new FieldMeta capabilities ────────────────────────────────────
+
+// NetworkConfig exercises Formats, MinLength/MaxLength, NotOneOf.
+type NetworkConfig struct {
+	Endpoint  string `yaml:"endpoint"`   // FormatURL
+	Host      string `yaml:"host"`       // FormatHost | FormatIPv4 (OR semantics)
+	CIDR      string `yaml:"cidr"`       // FormatCIDR
+	UUID      string `yaml:"uuid"`       // FormatUUID
+	Tag       string `yaml:"tag"`        // FormatSemver + MinLength=5
+	Protocol  string `yaml:"protocol"`   // NotOneOf=["ftp","telnet"]
+	NoteName  string `yaml:"note-name"`  // MinLength=3, MaxLength=64
+	AnyIP     string `yaml:"any-ip"`     // FormatIP
+	Listen    string `yaml:"listen"`     // FormatHostPort
+	HTTPPort  string `yaml:"http-port"`  // FormatPort
+	Timeout   string `yaml:"timeout"`    // FormatDuration
+	Expiry    string `yaml:"expiry"`     // FormatDate
+	LeanIXID  string `yaml:"leanix-id"`  // FormatCustom example
+}
+
+// SecurityConfig exercises remaining built-in formats.
+type SecurityConfig struct {
+	IPv6Addr   string `yaml:"ipv6-addr"`   // FormatIPv6
+	PublicKey  string `yaml:"public-key"`  // FormatPublicKey
+	PrivateKey string `yaml:"private-key"` // FormatPrivateKey
+	FQDN       string `yaml:"fqdn"`        // FormatFQDN
+	Email      string `yaml:"email"`       // FormatEmail
+}
+
+// DeployExtConfig exercises Multiline, Snippet, PreChecked, FormatTerraformSource, FormatGitRef, FormatDirectoryPath.
+type DeployExtConfig struct {
+	Source    string `yaml:"source"`     // FormatTerraformSource, Snippet, PreChecked
+	Script    string `yaml:"script"`     // Multiline:true, no Example (auto-gen)
+	Readme    string `yaml:"readme"`     // Multiline:true, explicit Example
+	GitRef    string `yaml:"git-ref"`    // FormatGitRef
+	DirPath   string `yaml:"dir-path"`   // FormatDirectoryPath
 }
 
 // ── Pattern 3: KindList with child defs ──────────────────────────────────────
@@ -273,6 +316,11 @@ type TestConfig struct {
 
 	// Pattern 5 - Schema edge cases
 	EdgeCases SchemaEdgeCases `yaml:"edge-cases"`
+
+	// Pattern 6 - new FieldMeta capabilities
+	Network    NetworkConfig    `yaml:"network"`
+	Security   SecurityConfig   `yaml:"security"`
+	DeployExt  DeployExtConfig  `yaml:"deploy-ext"`
 }
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
@@ -419,14 +467,15 @@ func buildEditCmd() *cobra.Command {
 				NoDeleteConfirm:  noDeleteConfirm,
 				NoValidateOnSave: noValidate,
 
-				PreCheckedFields: testPreCheckedFields,
-				FieldSnippets:    testFieldSnippets,
-				Presets:          testPresets,
-				Metadata:         testHints,
+				Presets:  testPresets,
+				Metadata: testHints,
 
 				Validators: []editor.Validator{
 					editor.MutuallyExclusive("server", "proxy"),
 					editor.RequiredWith("routes", "server"),
+					editor.FormatFromMetadata(),
+					editor.LengthFromMetadata(),
+					editor.NotOneOfFromMetadata(),
 				},
 			})
 			if err != nil {
