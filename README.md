@@ -1,4 +1,9 @@
-# yedit
+<!-- markdownlint-disable MD033 -->
+<p align="center">
+  <img src="docs/yedit.png" alt="Movelooper logo" width="300" height="300">
+</p>
+<!-- markdownlint-enable MD033 -->
+
 
 A TUI YAML editor library for Go applications, built on [bubbletea](https://github.com/charmbracelet/bubbletea). Drop it into any CLI tool to give users a structured, schema-aware editor for their configuration files.
 
