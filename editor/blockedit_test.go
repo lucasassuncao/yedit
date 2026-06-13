@@ -10,7 +10,7 @@ import (
 	"github.com/lucasassuncao/yedit/theme"
 )
 
-// stubPresets implements PresetSource for tests.
+// stubPresets implements presets.Source for tests.
 type stubPresets struct {
 	data map[string]string // key: "field/name" → YAML snippet
 }

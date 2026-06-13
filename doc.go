@@ -7,7 +7,7 @@
 //   - hints:      tree-based MetadataSource with strict schema validation
 //   - document:   YAML state with block-level mutations, history, and parsing
 //   - editor:     two-panel bubbletea TUI that ties the pieces together
-//   - presets:    Source interface + fs.FS-backed implementation for per-field YAML snippets
+//   - presets:    Source interface + struct-backed helpers (ForField, Combine) for per-field YAML snippets
 //   - viewer:     read-only TUI to browse a preset Source
 //   - theme:      palette and layout primitives (header, panels, two-column layout)
 //   - internal:   non-public helpers (alert widget, yaml node utilities)

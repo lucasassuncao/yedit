@@ -38,11 +38,6 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 - [type ModelAction](<#ModelAction>)
 - [type NavigateEntry](<#NavigateEntry>)
 - [type OpenBlock](<#OpenBlock>)
-- [type PresetFunc](<#PresetFunc>)
-  - [func \(f PresetFunc\) ListFields\(\) \[\]string](<#PresetFunc.ListFields>)
-  - [func \(f PresetFunc\) ListPresets\(\_ string\) \[\]string](<#PresetFunc.ListPresets>)
-  - [func \(f PresetFunc\) PresetYAML\(field, name string\) \(string, error\)](<#PresetFunc.PresetYAML>)
-- [type PresetSource](<#PresetSource>)
 - [type Redo](<#Redo>)
 - [type Reload](<#Reload>)
 - [type Result](<#Result>)
@@ -306,7 +301,7 @@ type CommitBlock struct{}
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L195-L211>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L159-L175>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -325,7 +320,7 @@ type Config struct {
     Path                 string         // YAML file to load; also the default save target when SavePath is empty
     Schema               any            // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
     Title                string         // label shown in the TUI header
-    Presets              PresetSource   // optional; nil disables the preset picker
+    Presets              presets.Source // optional; nil disables the preset picker
     EnableHints          bool           // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
     Metadata             MetadataSource // field metadata displayed in the hint panel and enforced by the FromMetadata validators
     Validators           []Validator    // rules evaluated before every save and on the validate shortcut
@@ -421,7 +416,7 @@ type EditorAction struct {
 ```
 
 <a name="FieldMeta"></a>
-## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L57-L99>)
+## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L21-L63>)
 
 FieldMeta carries a single field's metadata: displayed in the Hint/Example panel and enforced by the FromMetadata validator family. Fields at their zero value declare nothing \- no panel line, no enforcement. MetadataSource is the sole authority: YEDIT never auto\-populates any FieldMeta field from struct tags. If no MetadataSource is configured, the hint panel shows only a generated example.
 
@@ -517,7 +512,7 @@ func (f Format) Label() string
 Label returns the display name used in the hint panel and docgenerator.
 
 <a name="MetadataFunc"></a>
-## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L118>)
+## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L82>)
 
 MetadataFunc adapts a plain function to the MetadataSource interface:
 
@@ -535,7 +530,7 @@ type MetadataFunc func(blockKey, fieldPath string) FieldMeta
 ```
 
 <a name="MetadataFunc.FieldMeta"></a>
-### func \(MetadataFunc\) [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L121>)
+### func \(MetadataFunc\) [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L85>)
 
 ```go
 func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta
@@ -544,7 +539,7 @@ func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta
 FieldMeta calls f.
 
 <a name="MetadataSource"></a>
-## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L106-L108>)
+## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L70-L72>)
 
 MetadataSource provides per\-field metadata for the Hint/Example panel and the FromMetadata validator family. It is called with the top\-level block key and the field's dot\-joined path from the block root \(e.g. "source", "source.path"\). For top\-level block entries in the root list, fieldPath is empty \(""\). Returning a zero FieldMeta means "no override".
 
@@ -581,73 +576,6 @@ type NavigateEntry struct{ Idx int }
 
 ```go
 type OpenBlock struct{ Key string }
-```
-
-<a name="PresetFunc"></a>
-## type [PresetFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L43>)
-
-PresetFunc adapts a plain function to the PresetSource interface when only a single preset per field is needed and a full struct would be boilerplate:
-
-```
-editor.Run(editor.Config{
-    Presets: editor.PresetFunc(func(field, name string) (string, error) {
-        // return the YAML snippet for (field, name) ...
-        return "", nil
-    }),
-})
-```
-
-ListFields and ListPresets return nil; the picker will not appear. Use a struct implementing PresetSource directly when the picker is needed.
-
-```go
-type PresetFunc func(field, name string) (string, error)
-```
-
-<a name="PresetFunc.ListFields"></a>
-### func \(PresetFunc\) [ListFields](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L45>)
-
-```go
-func (f PresetFunc) ListFields() []string
-```
-
-
-
-<a name="PresetFunc.ListPresets"></a>
-### func \(PresetFunc\) [ListPresets](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L46>)
-
-```go
-func (f PresetFunc) ListPresets(_ string) []string
-```
-
-
-
-<a name="PresetFunc.PresetYAML"></a>
-### func \(PresetFunc\) [PresetYAML](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L47>)
-
-```go
-func (f PresetFunc) PresetYAML(field, name string) (string, error)
-```
-
-
-
-<a name="PresetSource"></a>
-## type [PresetSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L18-L29>)
-
-PresetSource supplies YAML preset snippets keyed by \(field, preset name\). The editor uses it to populate the preset picker and to seed the YAML editor when a block is opened. Returning an empty slice from ListFields disables the preset picker for that session.
-
-```go
-type PresetSource interface {
-    // ListFields returns the field names that have at least one preset.
-    ListFields() []string
-
-    // ListPresets returns the preset names available for the given field,
-    // or an empty slice if the field has no presets.
-    ListPresets(field string) []string
-
-    // PresetYAML returns the YAML snippet for (field, name) or an error if
-    // either is unknown.
-    PresetYAML(field, name string) (string, error)
-}
 ```
 
 <a name="Redo"></a>
@@ -751,7 +679,7 @@ type Undo struct{}
 ```
 
 <a name="ValidationInput"></a>
-## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L143-L147>)
+## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L107-L111>)
 
 ValidationInput carries the document state inspected by validators. RunAll builds it once per run and shares it across all validators, so the document is parsed a single time instead of once per validator. Build one with NewValidationInput when invoking a validator directly.
 
@@ -773,7 +701,7 @@ func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
 NewValidationInput parses raw once and bundles it with blocks for a validation run. Root is nil when raw is not valid YAML; an empty document yields an empty mapping so unconditional checks still run.
 
 <a name="Validator"></a>
-## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L152-L154>)
+## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L116-L118>)
 
 Validator is a pluggable rule executed at validate/save time. It returns one Violation per problem it finds. Returning an empty slice \(or nil\) means "all good".
 
@@ -1168,7 +1096,7 @@ func ValueOneOf(path string, allowed ...string) Validator
 ValueOneOf reports a violation when the field at path exists but its value is not in allowed. Sequences and dict\-style mappings along the path are expanded automatically, so every entry in a list or every value in a map is checked.
 
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L167>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L131>)
 
 ValidatorFunc adapts a plain function to the Validator interface, letting callers register inline validators without defining a named type:
 
@@ -1188,7 +1116,7 @@ type ValidatorFunc func(in ValidationInput) []Violation
 ```
 
 <a name="ValidatorFunc.Validate"></a>
-### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L170>)
+### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L134>)
 
 ```go
 func (f ValidatorFunc) Validate(in ValidationInput) []Violation
@@ -1197,7 +1125,7 @@ func (f ValidatorFunc) Validate(in ValidationInput) []Violation
 Validate calls f.
 
 <a name="Violation"></a>
-## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L126-L129>)
+## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L90-L93>)
 
 Violation is a single rule violation reported by a Validator.
 
@@ -1218,7 +1146,7 @@ func RunAll(validators []Validator, raw []byte, blocks []document.Block) []Viola
 RunAll executes all validators against raw/blocks and collects violations. The document is parsed once and shared across validators.
 
 <a name="Violation.String"></a>
-### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L132>)
+### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L96>)
 
 ```go
 func (v Violation) String() string

@@ -48,8 +48,8 @@
 //	  Hidden           : "internal-id" is never shown in the UI
 //	  PreCheckedFields : opening a new "server" block pre-checks host and port
 //	  FieldSnippets    : toggling a struct field inserts a real default value
-//	  Presets          : struct-backed presets for "server" and "logging" (testPresetSource)
-//	  Hints            : hierarchical hint tree for "server" and "logging" (buildMetadataSource)
+//	  Presets          : struct-backed presets for "server" and "logging" (presets.ForField + Combine)
+//	  Metadata         : each struct implements Metadata() via metadata.MetadataProvider
 //	  Validators       : MutuallyExclusive(server, proxy), RequiredWith(routes, server)
 //	  NoDeleteConfirm  : controlled by --no-delete-confirm flag
 //	  NoSaveConfirm    : controlled by --no-save-confirm flag
@@ -63,25 +63,20 @@ package main
 import (
 	"fmt"
 	"os"
-	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+
+	"github.com/spf13/cobra"
 
 	"github.com/lucasassuncao/yedit/docgenerator"
 	"github.com/lucasassuncao/yedit/editor"
+	"github.com/lucasassuncao/yedit/presets"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
 )
-
-var formatLeanIXID = editor.FormatCustom("leanix-id", func(v string) bool {
-	ok, _ := regexp.MatchString(`^(TEAM|CMP|APP)-[A-Z0-9]+$`, v)
-	return ok
-})
 
 // ── Pattern 1: KindVariant via Provider ──────────────────────────────────────
 
@@ -154,7 +149,6 @@ type NetworkConfig struct {
 	HTTPPort  string `yaml:"http-port"`  // FormatPort
 	Timeout   string `yaml:"timeout"`    // FormatDuration
 	Expiry    string `yaml:"expiry"`     // FormatDate
-	LeanIXID  string `yaml:"leanix-id"`  // FormatCustom example
 }
 
 // SecurityConfig exercises remaining built-in formats.
@@ -335,97 +329,41 @@ func appTheme(name string) theme.Theme {
 
 // ── Presets ───────────────────────────────────────────────────────────────────
 
-// testPresetSource demonstrates struct-backed presets: implement editor.PresetSource
-// inline without embed.FS. Presets are Go structs marshaled to YAML.
-type testPresetSource struct{}
+var testPresets = presets.Combine(
+	presets.ForField("server", serverPresetsMap()),
+	presets.ForField("logging", loggingPresetsMap()),
+)
 
-var serverPresets = map[string]ServerConfig{
-	"minimal":    {Host: "localhost", Port: 8080},
-	"production": {Host: "0.0.0.0", Port: 443, TLS: true, AllowedIPs: []string{"10.0.0.0/8", "172.16.0.0/12"}},
-}
-
-var loggingPresets = map[string]LoggingConfig{
-	"development": {Level: "debug", ShowCaller: true},
-	"production":  {Level: "warn", File: "/var/log/app.log"},
-}
-
-func (testPresetSource) ListFields() []string { return []string{"logging", "server"} }
-
-func (testPresetSource) ListPresets(field string) []string {
-	var names []string
-	switch field {
-	case "server":
-		for name := range serverPresets {
-			names = append(names, name)
-		}
-	case "logging":
-		for name := range loggingPresets {
-			names = append(names, name)
-		}
+func serverPresetsMap() map[string]ServerConfig {
+	return map[string]ServerConfig{
+		"minimal":    {Host: "localhost", Port: 8080},
+		"production": {Host: "0.0.0.0", Port: 443, TLS: true, AllowedIPs: []string{"10.0.0.0/8", "172.16.0.0/12"}},
 	}
-	sort.Strings(names)
-	return names
 }
 
-func (testPresetSource) PresetYAML(field, name string) (string, error) {
-	var val any
-	switch field {
-	case "server":
-		p, ok := serverPresets[name]
-		if !ok {
-			return "", fmt.Errorf("server preset %q not found", name)
-		}
-		val = p
-	case "logging":
-		p, ok := loggingPresets[name]
-		if !ok {
-			return "", fmt.Errorf("logging preset %q not found", name)
-		}
-		val = p
-	default:
-		return "", fmt.Errorf("no presets for field %q", field)
+func ServerPreset(name string) ServerConfig {
+	return serverPresetsMap()[name]
+}
+
+func ListOfServerPresets() []string {
+	field := "server"
+	return presets.ForField(field, serverPresetsMap()).ListPresets(field)
+}
+
+func loggingPresetsMap() map[string]LoggingConfig {
+	return map[string]LoggingConfig{
+		"development": {Level: "debug", ShowCaller: true},
+		"production":  {Level: "warn", File: "/var/log/app.log"},
 	}
-	out, err := yaml.Marshal(map[string]any{field: val})
-	if err != nil {
-		return "", err
-	}
-	return string(out), nil
 }
 
-// ── Hints ─────────────────────────────────────────────────────────────────────
-
-// metadataNode is a local HintNode-style type for building a hierarchical hint
-// tree. Embed FieldMeta for Description, Type, Required, Default, OneOf, Example.
-// Use Children to nest fields; shared pointers handle recursive types.
-type metadataNode struct {
-	editor.FieldMeta
-	Children map[string]*metadataNode
+func LoggingPreset(name string) LoggingConfig {
+	return loggingPresetsMap()[name]
 }
 
-// buildMetadataSource wraps a metadataNode tree as an editor.MetadataSource. The block key
-// maps to top-level nodes; field paths are dot-separated child lookups.
-func buildMetadataSource(tree map[string]*metadataNode) editor.MetadataSource {
-	return editor.MetadataFunc(func(block, fieldPath string) editor.FieldMeta {
-		node, ok := tree[block]
-		if !ok {
-			return editor.FieldMeta{}
-		}
-		if fieldPath == "" {
-			return node.FieldMeta
-		}
-		cur := node
-		for _, seg := range strings.Split(fieldPath, ".") {
-			if cur.Children == nil {
-				return editor.FieldMeta{}
-			}
-			next, ok := cur.Children[seg]
-			if !ok {
-				return editor.FieldMeta{}
-			}
-			cur = next
-		}
-		return cur.FieldMeta
-	})
+func ListOfLoggingPresets() []string {
+	field := "logging"
+	return presets.ForField(field, loggingPresetsMap()).ListPresets(field)
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -468,7 +406,7 @@ func buildEditCmd() *cobra.Command {
 				NoValidateOnSave: noValidate,
 
 				Presets:  testPresets,
-				Metadata: testHints,
+				Metadata: testMetadata,
 
 				Validators: []editor.Validator{
 					editor.MutuallyExclusive("server", "proxy"),
@@ -500,7 +438,7 @@ func buildShowDocsCmd() *cobra.Command {
 		Use:   "show-docs",
 		Short: "Browse schema documentation in the TUI",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(testHints))
+			gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(testMetadata))
 			ds := gen.GenerateDocsInMemory([]docgenerator.Entry{
 				{Config: TestConfig{}},
 			})
@@ -515,7 +453,7 @@ func buildGenerateDocsCmd() *cobra.Command {
 		Short:  "Write markdown documentation to docs/",
 		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(testHints))
+			gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(testMetadata))
 			files, err := gen.GenerateDocsForEach([]docgenerator.Entry{
 				{Config: TestConfig{}, DocsDir: "docs"},
 			})

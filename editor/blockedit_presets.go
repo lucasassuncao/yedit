@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/lucasassuncao/yedit/presets"
 )
 
 // presetBrowser is the preset-picker overlay shown inside a block editor: a
@@ -12,7 +14,7 @@ import (
 // It owns only browsing state (cursor, focus, scroll); applying or appending
 // the chosen preset stays in blockEditState.
 type presetBrowser struct {
-	source PresetSource
+	source presets.Source
 	field  string
 	names  []string
 	cursor int
@@ -24,7 +26,7 @@ type presetBrowser struct {
 // newPresetBrowser builds the overlay for field, pre-selecting current when it
 // is one of the available presets. Returns nil when source is nil or the field
 // has no presets - the picker simply does not open.
-func newPresetBrowser(source PresetSource, field, current string) (presetBrowser, bool) {
+func newPresetBrowser(source presets.Source, field, current string) (presetBrowser, bool) {
 	if source == nil {
 		return presetBrowser{}, false
 	}

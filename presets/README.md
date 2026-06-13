@@ -8,79 +8,117 @@
 import "github.com/lucasassuncao/yedit/presets"
 ```
 
-Package presets defines the Source interface for per\-field YAML presets and provides a filesystem\-backed implementation.
+Package presets provides helpers for building a YAML preset source from Go structs. Each struct value is marshaled via gopkg.in/yaml.v3 when a preset is requested, so the embedding application never hand\-writes YAML.
 
-Clients can either implement Source directly \(e.g. as a thin adapter over an existing preset registry\) or pass an fs.FS to FromFS to get a default implementation that loads presets from a YAML tree.
+See docs/PRESETS\_AND\_HINTS.md for the full usage guide and examples.
 
 ## Index
 
-- [type FSSource](<#FSSource>)
-  - [func FromFS\(fsys fs.FS, root string\) \*FSSource](<#FromFS>)
-  - [func \(s \*FSSource\) ListFields\(\) \[\]string](<#FSSource.ListFields>)
-  - [func \(s \*FSSource\) ListPresets\(field string\) \[\]string](<#FSSource.ListPresets>)
-  - [func \(s \*FSSource\) PresetYAML\(field, name string\) \(string, error\)](<#FSSource.PresetYAML>)
+- [type FieldPresets](<#FieldPresets>)
+  - [func ForField\[T any\]\(field string, m map\[string\]T\) \*FieldPresets\[T\]](<#ForField>)
+  - [func \(p \*FieldPresets\[T\]\) ListFields\(\) \[\]string](<#FieldPresets[T].ListFields>)
+  - [func \(p \*FieldPresets\[T\]\) ListPresets\(field string\) \[\]string](<#FieldPresets[T].ListPresets>)
+  - [func \(p \*FieldPresets\[T\]\) PresetYAML\(field, name string\) \(string, error\)](<#FieldPresets[T].PresetYAML>)
+- [type Func](<#Func>)
+  - [func \(f Func\) ListFields\(\) \[\]string](<#Func.ListFields>)
+  - [func \(f Func\) ListPresets\(\_ string\) \[\]string](<#Func.ListPresets>)
+  - [func \(f Func\) PresetYAML\(field, name string\) \(string, error\)](<#Func.PresetYAML>)
 - [type Source](<#Source>)
+  - [func Combine\(sources ...Source\) Source](<#Combine>)
 
 
-<a name="FSSource"></a>
-## type [FSSource](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L49-L52>)
+<a name="FieldPresets"></a>
+## type [FieldPresets](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L43-L46>)
 
-FSSource is a filesystem\-backed Source. Use FromFS to construct one.
+FieldPresets is a single\-field Source returned by ForField.
 
 ```go
-type FSSource struct {
+type FieldPresets[T any] struct {
     // contains filtered or unexported fields
 }
 ```
 
-<a name="FromFS"></a>
-### func [FromFS](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L44>)
+<a name="ForField"></a>
+### func [ForField](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L38>)
 
 ```go
-func FromFS(fsys fs.FS, root string) *FSSource
+func ForField[T any](field string, m map[string]T) *FieldPresets[T]
 ```
 
-FromFS returns an FSSource backed by an fs.FS rooted at root \(use "." for the whole filesystem\).
-
-Layout convention:
+ForField wraps a map of Go structs as a single\-field Source. Each value is YAML\-marshaled under its field key when PresetYAML is called:
 
 ```
-<root>/<field>/<preset>.yaml
+presets.ForField("server", map[string]ServerConfig{
+    "minimal":    {Host: "localhost", Port: 8080},
+    "production": {Host: "0.0.0.0", Port: 443, TLS: true},
+})
 ```
 
-ListFields enumerates the directories under root; ListPresets enumerates the .yaml files within each field directory \(stripping the extension\).
-
-FromFS is convenient for clients that ship presets as a Go embed.FS.
-
-<a name="FSSource.ListFields"></a>
-### func \(\*FSSource\) [ListFields](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L54>)
+<a name="FieldPresets[T].ListFields"></a>
+### func \(\*FieldPresets\[T\]\) [ListFields](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L48>)
 
 ```go
-func (s *FSSource) ListFields() []string
+func (p *FieldPresets[T]) ListFields() []string
 ```
 
 
 
-<a name="FSSource.ListPresets"></a>
-### func \(\*FSSource\) [ListPresets](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L69>)
+<a name="FieldPresets[T].ListPresets"></a>
+### func \(\*FieldPresets\[T\]\) [ListPresets](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L50>)
 
 ```go
-func (s *FSSource) ListPresets(field string) []string
+func (p *FieldPresets[T]) ListPresets(field string) []string
 ```
 
 
 
-<a name="FSSource.PresetYAML"></a>
-### func \(\*FSSource\) [PresetYAML](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L91>)
+<a name="FieldPresets[T].PresetYAML"></a>
+### func \(\*FieldPresets\[T\]\) [PresetYAML](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L62>)
 
 ```go
-func (s *FSSource) PresetYAML(field, name string) (string, error)
+func (p *FieldPresets[T]) PresetYAML(field, name string) (string, error)
+```
+
+
+
+<a name="Func"></a>
+## type [Func](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L122>)
+
+Func adapts a plain function to the Source interface for dynamic preset lookup without enumeration. ListFields and ListPresets return nil, so the preset picker will not appear; only direct \(field, name\) lookups work.
+
+```go
+type Func func(field, name string) (string, error)
+```
+
+<a name="Func.ListFields"></a>
+### func \(Func\) [ListFields](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L124>)
+
+```go
+func (f Func) ListFields() []string
+```
+
+
+
+<a name="Func.ListPresets"></a>
+### func \(Func\) [ListPresets](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L125>)
+
+```go
+func (f Func) ListPresets(_ string) []string
+```
+
+
+
+<a name="Func.PresetYAML"></a>
+### func \(Func\) [PresetYAML](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L126>)
+
+```go
+func (f Func) PresetYAML(field, name string) (string, error)
 ```
 
 
 
 <a name="Source"></a>
-## type [Source](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L20-L31>)
+## type [Source](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L18-L29>)
 
 Source supplies YAML preset snippets keyed by \(field, preset name\). The editor uses it to populate the preset picker and to seed the YAML editor when a block is opened.
 
@@ -98,6 +136,15 @@ type Source interface {
     PresetYAML(field, name string) (string, error)
 }
 ```
+
+<a name="Combine"></a>
+### func [Combine](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L79>)
+
+```go
+func Combine(sources ...Source) Source
+```
+
+Combine merges multiple Sources into one. Fields are enumerated in declaration order; the first source that owns a field handles its presets.
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)
 

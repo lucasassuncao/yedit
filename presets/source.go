@@ -1,17 +1,15 @@
-// Package presets defines the Source interface for per-field YAML presets and
-// provides a filesystem-backed implementation.
+// Package presets provides helpers for building a YAML preset source from Go
+// structs. Each struct value is marshaled via gopkg.in/yaml.v3 when a preset
+// is requested, so the embedding application never hand-writes YAML.
 //
-// Clients can either implement Source directly (e.g. as a thin adapter over
-// an existing preset registry) or pass an fs.FS to FromFS to get a default
-// implementation that loads presets from a YAML tree.
+// See docs/PRESETS_AND_HINTS.md for the full usage guide and examples.
 package presets
 
 import (
 	"fmt"
-	"io/fs"
-	"path"
 	"sort"
-	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Source supplies YAML preset snippets keyed by (field, preset name). The
@@ -30,71 +28,99 @@ type Source interface {
 	PresetYAML(field, name string) (string, error)
 }
 
-// FromFS returns an FSSource backed by an fs.FS rooted at root (use "." for
-// the whole filesystem).
+// ForField wraps a map of Go structs as a single-field Source. Each value is
+// YAML-marshaled under its field key when PresetYAML is called:
 //
-// Layout convention:
-//
-//	<root>/<field>/<preset>.yaml
-//
-// ListFields enumerates the directories under root; ListPresets enumerates
-// the .yaml files within each field directory (stripping the extension).
-//
-// FromFS is convenient for clients that ship presets as a Go embed.FS.
-func FromFS(fsys fs.FS, root string) *FSSource {
-	return &FSSource{fsys: fsys, root: root}
+//	presets.ForField("server", map[string]ServerConfig{
+//	    "minimal":    {Host: "localhost", Port: 8080},
+//	    "production": {Host: "0.0.0.0", Port: 443, TLS: true},
+//	})
+func ForField[T any](field string, m map[string]T) *FieldPresets[T] {
+	return &FieldPresets[T]{field: field, m: m}
 }
 
-// FSSource is a filesystem-backed Source. Use FromFS to construct one.
-type FSSource struct {
-	fsys fs.FS
-	root string
+// FieldPresets is a single-field Source returned by ForField.
+type FieldPresets[T any] struct {
+	field string
+	m     map[string]T
 }
 
-func (s *FSSource) ListFields() []string {
-	entries, err := fs.ReadDir(s.fsys, s.root)
-	if err != nil {
+func (p *FieldPresets[T]) ListFields() []string { return []string{p.field} }
+
+func (p *FieldPresets[T]) ListPresets(field string) []string {
+	if field != p.field {
 		return nil
 	}
+	keys := make([]string, 0, len(p.m))
+	for k := range p.m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (p *FieldPresets[T]) PresetYAML(field, name string) (string, error) {
+	if field != p.field {
+		return "", fmt.Errorf("presets: unknown field %q", field)
+	}
+	val, ok := p.m[name]
+	if !ok {
+		return "", fmt.Errorf("presets: unknown preset %q for field %q", name, field)
+	}
+	out, err := yaml.Marshal(map[string]any{field: val})
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// Combine merges multiple Sources into one. Fields are enumerated in
+// declaration order; the first source that owns a field handles its presets.
+func Combine(sources ...Source) Source {
+	return &multiPresets{sources: sources}
+}
+
+type multiPresets struct {
+	sources []Source
+}
+
+func (m *multiPresets) ListFields() []string {
+	seen := make(map[string]bool)
 	var fields []string
-	for _, e := range entries {
-		if e.IsDir() {
-			fields = append(fields, e.Name())
+	for _, s := range m.sources {
+		for _, f := range s.ListFields() {
+			if !seen[f] {
+				fields = append(fields, f)
+				seen[f] = true
+			}
 		}
 	}
-	sort.Strings(fields)
 	return fields
 }
 
-func (s *FSSource) ListPresets(field string) []string {
-	dir := path.Join(s.root, field)
-	entries, err := fs.ReadDir(s.fsys, dir)
-	if err != nil {
-		return nil
-	}
-	var presets []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if strings.HasSuffix(name, ".yaml") {
-			presets = append(presets, strings.TrimSuffix(name, ".yaml"))
-		} else if strings.HasSuffix(name, ".yml") {
-			presets = append(presets, strings.TrimSuffix(name, ".yml"))
+func (m *multiPresets) ListPresets(field string) []string {
+	for _, s := range m.sources {
+		if p := s.ListPresets(field); len(p) > 0 {
+			return p
 		}
 	}
-	sort.Strings(presets)
-	return presets
+	return nil
 }
 
-func (s *FSSource) PresetYAML(field, name string) (string, error) {
-	for _, ext := range []string{".yaml", ".yml"} {
-		p := path.Join(s.root, field, name+ext)
-		data, err := fs.ReadFile(s.fsys, p)
-		if err == nil {
-			return string(data), nil
+func (m *multiPresets) PresetYAML(field, name string) (string, error) {
+	for _, s := range m.sources {
+		if len(s.ListPresets(field)) > 0 {
+			return s.PresetYAML(field, name)
 		}
 	}
-	return "", fmt.Errorf("preset %q for field %q: file not found", name, field)
+	return "", fmt.Errorf("presets: unknown field %q", field)
 }
+
+// Func adapts a plain function to the Source interface for dynamic preset
+// lookup without enumeration. ListFields and ListPresets return nil, so the
+// preset picker will not appear; only direct (field, name) lookups work.
+type Func func(field, name string) (string, error)
+
+func (f Func) ListFields() []string                          { return nil }
+func (f Func) ListPresets(_ string) []string                 { return nil }
+func (f Func) PresetYAML(field, name string) (string, error) { return f(field, name) }

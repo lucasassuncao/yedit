@@ -6,45 +6,9 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/document"
+	"github.com/lucasassuncao/yedit/presets"
 	"github.com/lucasassuncao/yedit/theme"
 )
-
-// ─── Presets ─────────────────────────────────────────────────────────────────
-
-// PresetSource supplies YAML preset snippets keyed by (field, preset name).
-// The editor uses it to populate the preset picker and to seed the YAML editor
-// when a block is opened. Returning an empty slice from ListFields disables the
-// preset picker for that session.
-type PresetSource interface {
-	// ListFields returns the field names that have at least one preset.
-	ListFields() []string
-
-	// ListPresets returns the preset names available for the given field,
-	// or an empty slice if the field has no presets.
-	ListPresets(field string) []string
-
-	// PresetYAML returns the YAML snippet for (field, name) or an error if
-	// either is unknown.
-	PresetYAML(field, name string) (string, error)
-}
-
-// PresetFunc adapts a plain function to the PresetSource interface when only
-// a single preset per field is needed and a full struct would be boilerplate:
-//
-//	editor.Run(editor.Config{
-//	    Presets: editor.PresetFunc(func(field, name string) (string, error) {
-//	        // return the YAML snippet for (field, name) ...
-//	        return "", nil
-//	    }),
-//	})
-//
-// ListFields and ListPresets return nil; the picker will not appear.
-// Use a struct implementing PresetSource directly when the picker is needed.
-type PresetFunc func(field, name string) (string, error)
-
-func (f PresetFunc) ListFields() []string                          { return nil }
-func (f PresetFunc) ListPresets(_ string) []string                 { return nil }
-func (f PresetFunc) PresetYAML(field, name string) (string, error) { return f(field, name) }
 
 // ─── Hints ───────────────────────────────────────────────────────────────────
 
@@ -196,7 +160,7 @@ type Config struct {
 	Path                 string         // YAML file to load; also the default save target when SavePath is empty
 	Schema               any            // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
 	Title                string         // label shown in the TUI header
-	Presets              PresetSource   // optional; nil disables the preset picker
+	Presets              presets.Source // optional; nil disables the preset picker
 	EnableHints          bool           // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
 	Metadata             MetadataSource // field metadata displayed in the hint panel and enforced by the FromMetadata validators
 	Validators           []Validator    // rules evaluated before every save and on the validate shortcut
