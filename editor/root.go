@@ -493,7 +493,7 @@ func (m model) relayout() model {
 	if m.innerH < 1 {
 		m.innerH = 1
 	}
-	m.list.SetHeight(m.innerH)
+	m.list = m.list.SetHeight(m.innerH)
 	m.preview.Width = previewW - 2
 	ph := m.innerH
 	if m.showHint {

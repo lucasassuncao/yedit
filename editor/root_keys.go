@@ -5,7 +5,7 @@ import tea "github.com/charmbracelet/bubbletea"
 func (m model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch msg.String() {
 	case "ctrl+s":
-		mo, cmd := m.saveAll()
+		mo, cmd := m.dispatch(CommitBlock{})
 		return mo, cmd, true
 	case "ctrl+l":
 		mo, cmd := m.validateKeys()

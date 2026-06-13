@@ -105,9 +105,9 @@ func buildListItems(knownKeys []string, existing []document.Block, passthrough m
 }
 
 // SetHeight updates the visible row count and re-clamps the scroll offset.
-func (lm *listModel) SetHeight(h int) {
+func (lm listModel) SetHeight(h int) listModel {
 	lm.height = h
-	lm.clampScroll()
+	return lm.clampScroll()
 }
 
 func newListModel(knownKeys []string, existing []document.Block, passthrough map[string]bool, height int) listModel {
@@ -123,7 +123,7 @@ func newListModel(knownKeys []string, existing []document.Block, passthrough map
 }
 
 // Rebuild refreshes the list after blocks change without losing cursor position.
-func (lm *listModel) Rebuild(existing []document.Block) {
+func (lm listModel) Rebuild(existing []document.Block) listModel {
 	prevKey := ""
 	if lm.cursor < len(lm.items) && !lm.items[lm.cursor].Separator {
 		prevKey = lm.items[lm.cursor].Key
@@ -133,8 +133,7 @@ func (lm *listModel) Rebuild(existing []document.Block) {
 		for i, it := range lm.items {
 			if it.Key == prevKey {
 				lm.cursor = i
-				lm.clampScroll()
-				return
+				return lm.clampScroll()
 			}
 		}
 	}
@@ -145,7 +144,7 @@ func (lm *listModel) Rebuild(existing []document.Block) {
 			break
 		}
 	}
-	lm.clampScroll()
+	return lm.clampScroll()
 }
 
 // AddedCount returns how many recognised top-level keys are present in the doc.
@@ -222,9 +221,9 @@ func (lm listModel) Update(msg tea.Msg) (listModel, tea.Cmd) {
 		lm.fCursor = 0
 		lm.fOffset = 0
 	case "up":
-		lm.moveCursor(-1)
+		lm = lm.moveCursor(-1)
 	case "down":
-		lm.moveCursor(1)
+		lm = lm.moveCursor(1)
 	case "enter":
 		if it := lm.SelectedItem(); it != nil {
 			item := *it
@@ -268,9 +267,9 @@ func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
 	// Only the arrow keys navigate while filtering - "j"/"k" must remain
 	// typeable so filters like "unknown" or "worker" can be entered.
 	case "up":
-		lm.moveFCursor(-1)
+		lm = lm.moveFCursor(-1)
 	case "down":
-		lm.moveFCursor(1)
+		lm = lm.moveFCursor(1)
 	default:
 		if r := key.Runes; len(r) == 1 && r[0] >= 32 {
 			lm.filter += string(r)
@@ -281,19 +280,19 @@ func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
 	return lm, nil
 }
 
-func (lm *listModel) moveFCursor(delta int) {
+func (lm listModel) moveFCursor(delta int) listModel {
 	next := lm.fCursor + delta
 	if next < 0 || next >= len(lm.filteredItems()) {
-		return
+		return lm
 	}
 	lm.fCursor = next
-	lm.clampFScroll()
+	return lm.clampFScroll()
 }
 
-func (lm *listModel) clampFScroll() {
+func (lm listModel) clampFScroll() listModel {
 	visH := lm.height - 1
 	if visH <= 0 {
-		return
+		return lm
 	}
 	if lm.fCursor < lm.fOffset {
 		lm.fOffset = lm.fCursor
@@ -301,9 +300,10 @@ func (lm *listModel) clampFScroll() {
 	if lm.fCursor >= lm.fOffset+visH {
 		lm.fOffset = lm.fCursor - visH + 1
 	}
+	return lm
 }
 
-func (lm *listModel) moveCursor(delta int) {
+func (lm listModel) moveCursor(delta int) listModel {
 	// Clamp at the list bounds (no wrap-around), skipping separator rows -
 	// matching the tree and viewer panels.
 	for i := lm.cursor + delta; i >= 0 && i < len(lm.items); i += delta {
@@ -312,12 +312,12 @@ func (lm *listModel) moveCursor(delta int) {
 			break
 		}
 	}
-	lm.clampScroll()
+	return lm.clampScroll()
 }
 
-func (lm *listModel) clampScroll() {
+func (lm listModel) clampScroll() listModel {
 	if lm.height <= 0 {
-		return
+		return lm
 	}
 	if lm.cursor < lm.offset {
 		lm.offset = lm.cursor
@@ -331,15 +331,17 @@ func (lm *listModel) clampScroll() {
 	if lm.offset+lm.height < len(lm.items) && lm.cursor >= lm.offset+lm.height-1 {
 		lm.offset = lm.cursor - lm.height + 2
 	}
+	return lm
 }
-func (lm *listModel) jumpToLast() {
+
+func (lm listModel) jumpToLast() listModel {
 	for i := len(lm.items) - 1; i >= 0; i-- {
 		if !lm.items[i].Separator {
 			lm.cursor = i
-			lm.clampScroll()
-			return
+			return lm.clampScroll()
 		}
 	}
+	return lm
 }
 
 func renderListItem(it listItem, selected bool, th resolvedTheme) string {

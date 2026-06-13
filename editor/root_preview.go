@@ -22,7 +22,7 @@ func (m model) togglePreviewPane() (tea.Model, tea.Cmd) {
 
 func (m model) syncView() model {
 	m = m.refreshPreview()
-	m.list.Rebuild(m.doc.Blocks())
+	m.list = m.list.Rebuild(m.doc.Blocks())
 	m = m.scrollPreviewToSelected()
 	return m
 }

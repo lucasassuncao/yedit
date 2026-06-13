@@ -178,13 +178,13 @@ func TestBuildListItemsAvailableKeepsCanonicalOrder(t *testing.T) {
 func TestListMoveCursorClampsAtBounds(t *testing.T) {
 	lm := newListModel([]string{"a", "b", "c"}, nil, nil, 10)
 	first := lm.cursor
-	lm.moveCursor(-1) // already at the top - must not wrap to the bottom
+	lm = lm.moveCursor(-1) // already at the top - must not wrap to the bottom
 	if lm.cursor != first {
 		t.Errorf("moveCursor(-1) at top moved cursor to %d, want %d (clamp)", lm.cursor, first)
 	}
-	lm.jumpToLast()
+	lm = lm.jumpToLast()
 	last := lm.cursor
-	lm.moveCursor(1) // at the bottom - must not wrap to the top
+	lm = lm.moveCursor(1) // at the bottom - must not wrap to the top
 	if lm.cursor != last {
 		t.Errorf("moveCursor(+1) at bottom moved cursor to %d, want %d (clamp)", lm.cursor, last)
 	}
