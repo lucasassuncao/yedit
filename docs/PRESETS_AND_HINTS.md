@@ -127,9 +127,9 @@ type FieldMeta struct {
 
 Set only the fields that are meaningful for the field being described. Zero values declare nothing.
 
-### metadata.Build (recommended)
+### metadata.New (recommended)
 
-`metadata.Build` validates the field name tree against your Go struct at startup - a typo in a field name is an error at launch, not a silently dead hint:
+Use when the root struct is yours and can implement `MetadataProvider`. Each struct declares its own direct fields via `Metadata()`; nested structs that also implement `MetadataProvider` have their `Children` populated automatically. Full coverage is enforced: adding a yaml-tagged field to the struct without updating `Metadata()` is a startup error.
 
 ```go
 import (
@@ -137,7 +137,53 @@ import (
     "github.com/lucasassuncao/yedit/metadata"
 )
 
-src, err := metadata.Build(&Config{}, map[string]*metadata.Node{
+// Each struct declares only its own direct fields.
+func (ServerConfig) Metadata() map[string]*metadata.Node {
+    return map[string]*metadata.Node{
+        "host": {FieldMeta: editor.FieldMeta{
+            Description: "Address the server binds to.",
+            Default:     "localhost",
+            Example:     "host: 0.0.0.0",
+        }},
+        "port": {FieldMeta: editor.FieldMeta{
+            Description: "TCP port to listen on.",
+            Default:     "8080",
+            Example:     "port: 8080",
+        }},
+    }
+}
+
+// Root struct lists its top-level blocks; Children for nested structs that
+// implement MetadataProvider are populated automatically.
+func (Config) Metadata() map[string]*metadata.Node {
+    return map[string]*metadata.Node{
+        "server": {FieldMeta: editor.FieldMeta{
+            Description: "HTTP server configuration.",
+            Required:    true,
+        }},
+        // no Children needed - ServerConfig.Metadata() is composed automatically
+    }
+}
+
+src, err := metadata.New(Config{})
+if err != nil {
+    log.Fatal(err)
+}
+
+editor.Run(editor.Config{
+    Metadata:    src,
+    EnableHints: true,
+    // ...
+})
+```
+
+### metadata.NewFromTree (escape hatch)
+
+Use when the root struct comes from a third-party package and cannot implement `MetadataProvider`. You assemble the full `Node` tree manually and pass it alongside the struct pointer. `New` calls `NewFromTree` internally as its final step, so both provide the same validation and `Type` inference.
+
+```go
+// ThirdPartyConfig is from an external package - you cannot add methods to it.
+src, err := metadata.NewFromTree(&ThirdPartyConfig{}, map[string]*metadata.Node{
     "server": {
         FieldMeta: editor.FieldMeta{
             Description: "HTTP server configuration.",
@@ -160,12 +206,6 @@ src, err := metadata.Build(&Config{}, map[string]*metadata.Node{
 if err != nil {
     log.Fatal(err)
 }
-
-editor.Run(editor.Config{
-    Metadata:    src,
-    EnableHints: true,
-    // ...
-})
 ```
 
 `metadata.Node` embeds `editor.FieldMeta` and adds `Children map[string]*Node`. The `Type` field is auto-filled from the Go type if left empty.
@@ -207,12 +247,12 @@ filterChildren := map[string]*metadata.Node{
 }
 anyNode.Children = filterChildren // shared pointer - resolves at any depth
 
-src, err := metadata.Build(&Config{}, map[string]*metadata.Node{
+src, err := metadata.NewFromTree(&Config{}, map[string]*metadata.Node{
     "filters": {Children: filterChildren},
 })
 ```
 
-A Go map literal cannot reference itself during construction, so this two-phase pattern is required. `metadata.Build` is cycle-aware and handles shared pointers correctly.
+A Go map literal cannot reference itself during construction, so this two-phase pattern is required. Both `NewFromTree` and `New` are cycle-aware and handle shared pointers correctly.
 
 ### Type labels
 

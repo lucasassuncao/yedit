@@ -18,7 +18,7 @@ import (
 // Node is one field's metadata plus its children, keyed by yaml name.
 // Use shared pointers in Children to model recursive schema types (e.g. a
 // filter whose "any"/"all" children are filters again) without duplicating
-// definitions - BuildWithTree handles the cycle.
+// definitions - NewFromTree handles the cycle.
 type Node struct {
 	editor.FieldMeta
 	Children map[string]*Node
@@ -26,7 +26,7 @@ type Node struct {
 
 // MetadataProvider is implemented by any struct that declares its own field metadata.
 // Each struct returns only its direct fields - Children for fields whose types also
-// implement MetadataProvider are composed automatically by BuildFromProvider.
+// implement MetadataProvider are composed automatically by New.
 type MetadataProvider interface {
 	Metadata() map[string]*Node
 }
@@ -53,18 +53,29 @@ func collectMissing(fields []schema.FieldDef, nodes map[string]*Node, prefix str
 	}
 }
 
-// BuildWithTree validates tree against the schema struct (the same pointer handed to
+// NewFromTree validates tree against the schema struct (the same pointer handed to
 // editor.Config.Schema), fills each node's FieldMeta.Type from the Go type
 // (explicitly set Type values are kept), and returns the MetadataSource.
 //
-// A tree key with no matching yaml-tagged field is an error naming the full
-// offending path, so typos and renames surface at startup instead of becoming
-// silently dead metadata. Children declared under types reflection cannot see
-// into (interfaces, schema.Provider unions) are not validated.
+// When to use NewFromTree vs New:
 //
-// Use BuildFromProvider when the root struct implements MetadataProvider.
-// BuildWithTree is the escape hatch for third-party structs.
-func BuildWithTree(schemaPtr any, tree map[string]*Node) (editor.MetadataSource, error) {
+//   - Use New when the root struct is yours and implements MetadataProvider.
+//     It builds the tree automatically by calling Metadata() on each nested
+//     struct that also implements the interface.
+//
+//   - Use NewFromTree when the root struct is from a third-party package and
+//     cannot implement MetadataProvider. You assemble the Node tree manually
+//     and pass it alongside the struct pointer.
+//
+// New calls NewFromTree internally as its final step - after composing the tree
+// via reflection it delegates validation and Type inference here.
+//
+// Validation: a tree key with no matching yaml-tagged field in the struct is an
+// error naming the full offending path (e.g. "categories.sourc"), so typos and
+// renames surface at startup instead of becoming silently dead metadata. Children
+// declared under types reflection cannot see into (interfaces, schema.Provider
+// unions) are not validated.
+func NewFromTree(schemaPtr any, tree map[string]*Node) (editor.MetadataSource, error) {
 	rootType := reflect.TypeOf(schemaPtr)
 	visited := map[*Node]bool{}
 	for blockName, node := range tree {
@@ -79,45 +90,108 @@ func BuildWithTree(schemaPtr any, tree map[string]*Node) (editor.MetadataSource,
 	return &metadataSource{tree: tree}, nil
 }
 
-// BuildFromProvider composes the metadata tree from v, which must implement
-// MetadataProvider. For each field whose type also implements MetadataProvider,
-// Children are populated automatically via reflection. Nodes with Children already
-// set are not overridden (explicit wins). Returns an error if any yaml-tagged field
-// in the struct has no entry in the composed tree (built-in coverage validation).
-func BuildFromProvider(v any) (editor.MetadataSource, error) {
+// New composes the metadata tree from v, which must implement MetadataProvider.
+// For each field whose type also implements MetadataProvider, Children are populated
+// automatically via reflection. Nodes with Children already set are not overridden
+// (explicit wins). Returns an error if any yaml-tagged field in the struct has no
+// entry in the composed tree (built-in coverage validation).
+//
+// Use NewFromTree instead when the root struct is from a third-party package and
+// cannot implement MetadataProvider.
+//
+// How it works:
+//
+//  1. Assert that v implements MetadataProvider. The root struct must declare its
+//     own top-level fields via Metadata() - there is no way to auto-discover them
+//     without a starting point.
+//
+//  2. Call v.Metadata() to obtain the root tree. At this stage the tree contains
+//     only the nodes the root struct declared; nested structs have no Children yet.
+//
+//  3. Unwrap pointer indirection from the concrete type so reflection over struct
+//     fields works uniformly regardless of whether v was passed as T or *T.
+//
+//  4. Run composeTree to auto-populate Children for every node whose field type
+//     implements MetadataProvider. See composeTree for the full algorithm.
+//
+//  5. Discover all yaml-tagged fields in the struct via schema.Discover, then
+//     walk the composed tree to find any field that has no corresponding node.
+//     This enforces full coverage: adding a new yaml field to the struct without
+//     updating Metadata() is a startup error, not a silent gap in the hint panel.
+//
+//  6. Delegate to NewFromTree to validate tree keys against the schema struct
+//     and fill in each node's Type label from the Go type.
+func New(v any) (editor.MetadataSource, error) {
+	// Step 1: root must declare its own fields.
 	p, ok := v.(MetadataProvider)
 	if !ok {
 		return nil, fmt.Errorf("metadata: %T does not implement MetadataProvider", v)
 	}
+	// Step 2: seed the tree from the root's own Metadata().
 	tree := p.Metadata()
+	// Step 3: unwrap pointer so reflect.Type always refers to a struct.
 	baseType := reflect.TypeOf(v)
 	for baseType.Kind() == reflect.Ptr {
 		baseType = baseType.Elem()
 	}
+	// Step 4: auto-compose Children for nested MetadataProvider fields.
 	cache := map[reflect.Type]map[string]*Node{}
 	if err := composeTree(baseType, tree, cache); err != nil {
 		return nil, err
 	}
+	// Step 5: enforce full coverage - every yaml-tagged field must have a node.
 	fields := schema.Discover(reflect.New(baseType).Interface())
 	var missing []string
 	collectMissing(fields, tree, "", &missing)
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("metadata: fields have no documentation: %s", strings.Join(missing, ", "))
 	}
-	return BuildWithTree(reflect.New(baseType).Interface(), tree)
+	// Step 6: validate keys and fill Type labels.
+	return NewFromTree(reflect.New(baseType).Interface(), tree)
 }
 
 // composeTree auto-populates Children for nodes whose field types implement
 // MetadataProvider. Nodes with Children already set are left untouched (explicit wins).
-// cache maps each visited type to its composed child tree so shared-pointer cycles
-// (e.g. CategoryFilter.Any []CategoryFilter) are handled correctly: the second
-// encounter reuses the same map pointer instead of recursing forever.
+//
+// How it works:
+//
+//  1. Iterate over the Go struct fields of t via reflection to resolve yaml names.
+//     Each field's yaml name is derived from the yaml struct tag (or lowercased field
+//     name as fallback), matching exactly how the YAML library maps keys to fields.
+//
+//  2. For each field, check whether a Node with the same yaml name exists in nodes
+//     (the tree returned by the parent's Metadata()). Fields with no Node entry are
+//     ignored - they are either non-editable or covered by a Provider union.
+//
+//  3. Skip nodes that already have Children set - explicit declaration wins over
+//     auto-composition, allowing callers to override the subtree when needed.
+//
+//  4. Resolve the field's element type (unwrapping ptr/slice/map so that *T, []T,
+//     and []*T all yield T). Skip scalars, maps-without-struct-values, and types
+//     that implement schema.Provider (their children describe variant defs, not
+//     struct fields, so reflection cannot verify them).
+//
+//  5. Check whether T (or *T) implements MetadataProvider. If not, skip - the field
+//     is a plain nested struct with no metadata of its own and its parent is
+//     responsible for declaring any Children manually.
+//
+//  6. Guard against recursive types (e.g. CategoryFilter.Any []CategoryFilter):
+//     before calling Metadata() on T, check the cache. If T was already visited,
+//     reuse the same map pointer instead of recursing - this breaks the cycle while
+//     keeping the shared subtree consistent across all references.
+//
+//  7. Call T.Metadata() to get the child tree, register it in the cache immediately
+//     (before recursing) so that self-referential types encountered deeper in the
+//     tree hit the cache rather than looping, then recurse into T's own fields.
+//
+//  8. Assign the composed child tree to node.Children.
 func composeTree(t reflect.Type, nodes map[string]*Node, cache map[reflect.Type]map[string]*Node) error {
 	elem := elemType(t)
 	if elem == nil || elem.Kind() != reflect.Struct {
 		return nil
 	}
 	for i := 0; i < elem.NumField(); i++ {
+		// Step 1: resolve yaml name for this struct field.
 		f := elem.Field(i)
 		tag := f.Tag.Get("yaml")
 		if tag == "-" {
@@ -127,27 +201,33 @@ func composeTree(t reflect.Type, nodes map[string]*Node, cache map[reflect.Type]
 		if yamlName == "" {
 			yamlName = strings.ToLower(f.Name)
 		}
+		// Step 2: find the matching node in the parent's metadata tree.
 		node, ok := nodes[yamlName]
 		if !ok {
 			continue
 		}
+		// Step 3: explicit Children win - do not overwrite what the caller set.
 		if node.Children != nil {
-			continue // explicit wins
+			continue
 		}
+		// Step 4: unwrap to the element struct type; skip non-struct and Provider fields.
 		ft := elemType(f.Type)
 		if ft == nil || ft.Kind() != reflect.Struct || isProvider(ft) {
 			continue
 		}
+		// Step 5: only compose fields whose type declares its own metadata.
 		if !ft.Implements(metadataProviderType) && !reflect.PointerTo(ft).Implements(metadataProviderType) {
 			continue
 		}
+		// Step 6: cycle guard - reuse the cached tree for recursive types.
 		if childTree, seen := cache[ft]; seen {
-			node.Children = childTree // reuse shared pointer for cycles
+			node.Children = childTree
 			continue
 		}
+		// Steps 7-8: obtain the child tree, cache it before recursing, then attach.
 		prov := reflect.New(ft).Interface().(MetadataProvider)
 		childTree := prov.Metadata()
-		cache[ft] = childTree // register before recursing to break cycles
+		cache[ft] = childTree
 		if err := composeTree(ft, childTree, cache); err != nil {
 			return err
 		}

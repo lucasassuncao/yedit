@@ -10,7 +10,7 @@ import (
 var testMetadata = mustBuildMetadata()
 
 func mustBuildMetadata() editor.MetadataSource {
-	src, err := metadata.BuildWithTree(&TestConfig{}, TestConfig{}.Metadata())
+	src, err := metadata.NewFromTree(&TestConfig{}, TestConfig{}.Metadata())
 	if err != nil {
 		panic(fmt.Sprintf("testMetadata: %v", err))
 	}

@@ -9,7 +9,7 @@ How the yedit packages fit together and why they are split the way they are.
 ```
 yedit/
 ├── editor/             - public API: Config, Run, FieldMeta, MetadataSource, Validator, …
-├── metadata/           - BuildWithTree: validates a Node tree; BuildFromProvider: auto-composes from MetadataProvider structs
+├── metadata/           - NewFromTree: validates a Node tree; New: auto-composes from MetadataProvider structs
 ├── schema/             - schema.Discover: reflects a Go struct into a []FieldDef tree
 ├── document/           - raw YAML bytes, block list, undo/redo history
 ├── presets/            - presets.FromFS: embed.FS-backed PresetSource
@@ -35,7 +35,7 @@ your app
         ├── document  ← raw YAML mutations + undo stack
         └── (internal packages)
 
-  └── metadata        ← BuildWithTree / BuildFromProvider (→ MetadataSource)
+  └── metadata        ← NewFromTree / New (→ MetadataSource)
         └── editor    ← FieldMeta, MetadataSource
 
   └── docgenerator    ← SchemaGenerator, RenderMarkdownDocsInTerminal
@@ -70,7 +70,7 @@ type MetadataSource interface {
 
 `MetadataSource` is the single source of truth for both the hint panel and the `FromMetadata` validator family. Declare constraints once (`Required: true`, `OneOf: [...]`, etc.) - the panel displays them and the validators enforce them.
 
-The recommended implementation is `metadata.BuildFromProvider` (when your struct implements `MetadataProvider`) or `metadata.BuildWithTree` (for manual trees), both of which validate field names against the struct at startup.
+The recommended implementation is `metadata.New` (when your struct implements `MetadataProvider`) or `metadata.NewFromTree` (for manual trees), both of which validate field names against the struct at startup.
 
 ### Validators
 
@@ -85,9 +85,9 @@ Validators implement `editor.Validator` and are called before every save via `Ru
 
 Two construction paths, both validating field names against the struct at startup:
 
-- **`BuildFromProvider(v any)`** - the recommended path. The struct implements `MetadataProvider` (returns `map[string]*Node` for its direct fields). Nested structs that also implement `MetadataProvider` have their children composed automatically via reflection. Cycles (e.g. `Filter.Any []Filter`) are resolved through shared-pointer caching. Returns an error if any `yaml`-tagged field is undocumented.
+- **`New(v any)`** - the recommended path. The struct implements `MetadataProvider` (returns `map[string]*Node` for its direct fields). Nested structs that also implement `MetadataProvider` have their children composed automatically via reflection. Cycles (e.g. `Filter.Any []Filter`) are resolved through shared-pointer caching. Returns an error if any `yaml`-tagged field is undocumented.
 
-- **`BuildWithTree(schemaPtr any, tree map[string]*Node)`** - the manual path. Pass a fully-constructed tree; useful for structs you don't own or when child metadata is built programmatically.
+- **`NewFromTree(schemaPtr any, tree map[string]*Node)`** - the manual path. Pass a fully-constructed tree; useful for structs you don't own or when child metadata is built programmatically.
 
 `metadata.Node` embeds `editor.FieldMeta` and adds `Children map[string]*Node`. Shared pointers in `Children` model recursive types without infinite loops.
 

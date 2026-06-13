@@ -114,7 +114,7 @@ displays it and the save enforces it:
 
 ```go
 editor.Run(editor.Config{
-    Metadata: src, // e.g. built with metadata.Build
+    Metadata: src, // e.g. built with metadata.New or metadata.NewFromTree
     Validators: []editor.Validator{
         editor.RequiredFromMetadata(),
         editor.OneOfFromMetadata(),

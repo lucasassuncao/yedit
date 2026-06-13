@@ -33,7 +33,9 @@ See [Schema Kinds Reference](schema-kinds-reference.md) for how each Go type map
 
 ## 2. Build metadata
 
-`metadata.Build` validates a field-metadata tree against your struct at startup - typos in field names surface immediately instead of silently never showing in the hint panel.
+`metadata.New` validates field metadata against your struct at startup - typos in field names surface immediately instead of silently never showing in the hint panel.
+
+Each struct declares its own fields via a `Metadata()` method. Nested structs that also implement `Metadata()` have their children composed automatically.
 
 ```go
 import (
@@ -41,52 +43,61 @@ import (
     "github.com/lucasassuncao/yedit/metadata"
 )
 
-src, err := metadata.Build(&Config{}, map[string]*metadata.Node{
-    "server": {
-        FieldMeta: editor.FieldMeta{Description: "HTTP server configuration.", Required: true},
-        Children: map[string]*metadata.Node{
-            "host": {FieldMeta: editor.FieldMeta{
-                Description: "Address the server binds to.",
-                Default:     "localhost",
-                Example:     "host: 0.0.0.0",
-            }},
-            "port": {FieldMeta: editor.FieldMeta{
-                Description: "TCP port to listen on.",
-                Default:     "8080",
-                Example:     "port: 8080",
-            }},
-            "tls": {FieldMeta: editor.FieldMeta{
-                Description: "Enable HTTPS. Requires a certificate and key.",
-                Default:     "false",
-            }},
-        },
-    },
-    "logging": {
-        FieldMeta: editor.FieldMeta{Description: "Application logging configuration."},
-        Children: map[string]*metadata.Node{
-            "level": {FieldMeta: editor.FieldMeta{
-                Description: "Minimum log severity to emit.",
-                Required:    true,
-                OneOf:       []string{"debug", "info", "warn", "error"},
-                Default:     "info",
-            }},
-            "file": {FieldMeta: editor.FieldMeta{
-                Description: "Path to the log file.",
-                Example:     "file: /var/log/app.log",
-            }},
-            "show-caller": {FieldMeta: editor.FieldMeta{
-                Description: "Append source file and line to each log entry.",
-                Default:     "false",
-            }},
-        },
-    },
-})
+func (ServerConfig) Metadata() map[string]*metadata.Node {
+    return map[string]*metadata.Node{
+        "host": {FieldMeta: editor.FieldMeta{
+            Description: "Address the server binds to.",
+            Default:     "localhost",
+            Example:     "host: 0.0.0.0",
+        }},
+        "port": {FieldMeta: editor.FieldMeta{
+            Description: "TCP port to listen on.",
+            Default:     "8080",
+            Example:     "port: 8080",
+        }},
+        "tls": {FieldMeta: editor.FieldMeta{
+            Description: "Enable HTTPS. Requires a certificate and key.",
+            Default:     "false",
+        }},
+    }
+}
+
+func (LoggingConfig) Metadata() map[string]*metadata.Node {
+    return map[string]*metadata.Node{
+        "level": {FieldMeta: editor.FieldMeta{
+            Description: "Minimum log severity to emit.",
+            Required:    true,
+            OneOf:       []string{"debug", "info", "warn", "error"},
+            Default:     "info",
+        }},
+        "file": {FieldMeta: editor.FieldMeta{
+            Description: "Path to the log file.",
+            Example:     "file: /var/log/app.log",
+        }},
+        "show-caller": {FieldMeta: editor.FieldMeta{
+            Description: "Append source file and line to each log entry.",
+            Default:     "false",
+        }},
+    }
+}
+
+// Root struct lists its top-level blocks; children are composed automatically.
+func (Config) Metadata() map[string]*metadata.Node {
+    return map[string]*metadata.Node{
+        "server":  {FieldMeta: editor.FieldMeta{Description: "HTTP server configuration.", Required: true}},
+        "logging": {FieldMeta: editor.FieldMeta{Description: "Application logging configuration."}},
+    }
+}
+
+src, err := metadata.New(Config{})
 if err != nil {
     log.Fatal(err) // unknown field name, schema mismatch, etc.
 }
 ```
 
 `metadata.Node` embeds `editor.FieldMeta` for description, type label, default, required flag, allowed values (`OneOf`), and example snippet. The `Type` field is auto-filled from the Go type if left empty.
+
+For structs from third-party packages that cannot implement `Metadata()`, use `metadata.NewFromTree` and pass the full tree manually. See [Presets and Metadata](PRESETS_AND_HINTS.md) for details.
 
 ---
 
@@ -232,12 +243,12 @@ filterChildren := map[string]*metadata.Node{
 }
 anyNode.Children = filterChildren
 
-src, err := metadata.Build(&Config{}, map[string]*metadata.Node{
+src, err := metadata.NewFromTree(&Config{}, map[string]*metadata.Node{
     "filters": {Children: filterChildren},
 })
 ```
 
-`metadata.Build` is cycle-aware and handles shared pointers correctly.
+Both `metadata.New` and `metadata.NewFromTree` are cycle-aware and handle shared pointers correctly.
 
 ---
 

@@ -142,7 +142,7 @@ func (g *SchemaGenerator) generateSplitChildren(docsDir string, fields []schema.
 func GenerateInMemory(entries []Entry) (DocSet, error) {
 	ds := DocSet{Pages: map[string]string{}, Children: map[string][]string{}}
 	for _, e := range entries {
-		src, err := metadata.BuildFromProvider(e.Config)
+		src, err := metadata.New(e.Config)
 		if err != nil {
 			return DocSet{}, fmt.Errorf("build metadata for %T: %w", e.Config, err)
 		}
@@ -163,7 +163,7 @@ func GenerateInMemory(entries []Entry) (DocSet, error) {
 func Generate(indexPath string, entries []Entry) error {
 	var allFiles []GeneratedFile
 	for _, e := range entries {
-		src, err := metadata.BuildFromProvider(e.Config)
+		src, err := metadata.New(e.Config)
 		if err != nil {
 			return fmt.Errorf("build metadata for %T: %w", e.Config, err)
 		}

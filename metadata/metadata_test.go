@@ -58,7 +58,7 @@ func (category) Metadata() map[string]*metadata.Node {
 	return map[string]*metadata.Node{
 		"name":   {FieldMeta: editor.FieldMeta{Required: true}},
 		"source": {FieldMeta: editor.FieldMeta{}},
-		// no Children: source implements MetadataProvider, composed automatically
+		// no Children: source implements MetadataProvider, composed automatically by New
 	}
 }
 
@@ -96,7 +96,7 @@ func tree() map[string]*metadata.Node {
 }
 
 func TestBuild_resolvesFieldHints(t *testing.T) {
-	src, err := metadata.BuildWithTree(&config{}, tree())
+	src, err := metadata.NewFromTree(&config{}, tree())
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestBuild_resolvesFieldHints(t *testing.T) {
 }
 
 func TestBuild_derivesTypes(t *testing.T) {
-	src, err := metadata.BuildWithTree(&config{}, tree())
+	src, err := metadata.NewFromTree(&config{}, tree())
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestBuild_explicitTypeWins(t *testing.T) {
 	tr := map[string]*metadata.Node{
 		"output": {FieldMeta: editor.FieldMeta{Type: "custom-label"}},
 	}
-	src, err := metadata.BuildWithTree(&config{}, tr)
+	src, err := metadata.NewFromTree(&config{}, tr)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestBuild_explicitTypeWins(t *testing.T) {
 
 func TestBuild_unknownTopLevelKey(t *testing.T) {
 	tr := map[string]*metadata.Node{"outptu": {}}
-	if _, err := metadata.BuildWithTree(&config{}, tr); err == nil || !strings.Contains(err.Error(), `"outptu"`) {
+	if _, err := metadata.NewFromTree(&config{}, tr); err == nil || !strings.Contains(err.Error(), `"outptu"`) {
 		t.Fatalf("expected unknown-key error naming the key, got %v", err)
 	}
 }
@@ -163,15 +163,15 @@ func TestBuild_unknownNestedKey(t *testing.T) {
 			"sourc": {},
 		}},
 	}
-	if _, err := metadata.BuildWithTree(&config{}, tr); err == nil || !strings.Contains(err.Error(), "categories.sourc") {
+	if _, err := metadata.NewFromTree(&config{}, tr); err == nil || !strings.Contains(err.Error(), "categories.sourc") {
 		t.Fatalf("expected error naming the full path, got %v", err)
 	}
 }
 
-func TestBuildFromProvider_basic(t *testing.T) {
-	src, err := metadata.BuildFromProvider(config{})
+func TestNew_basic(t *testing.T) {
+	src, err := metadata.New(config{})
 	if err != nil {
-		t.Fatalf("BuildFromProvider: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	if !src.FieldMeta("categories", "").Required {
 		t.Error("block-level meta should resolve")
@@ -187,18 +187,18 @@ func TestBuildFromProvider_basic(t *testing.T) {
 	}
 }
 
-func TestBuildFromProvider_cycleResolved(t *testing.T) {
-	src, err := metadata.BuildFromProvider(config{})
+func TestNew_cycleResolved(t *testing.T) {
+	src, err := metadata.New(config{})
 	if err != nil {
-		t.Fatalf("BuildFromProvider: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	if got := src.FieldMeta("categories", "source.filter.any.min-age").Max; got != "87600h" {
 		t.Errorf("recursive meta Max = %q, want 87600h", got)
 	}
 }
 
-func TestBuildFromProvider_notAProvider(t *testing.T) {
-	_, err := metadata.BuildFromProvider(struct {
+func TestNew_notAProvider(t *testing.T) {
+	_, err := metadata.New(struct {
 		Name string `yaml:"name"`
 	}{})
 	if err == nil || !strings.Contains(err.Error(), "does not implement MetadataProvider") {
@@ -206,19 +206,18 @@ func TestBuildFromProvider_notAProvider(t *testing.T) {
 	}
 }
 
-func TestBuildFromProvider_missingCoverage(t *testing.T) {
+func TestNew_missingCoverage(t *testing.T) {
 	// We need a type to implement MetadataProvider with a missing field.
 	// Use a named local type that wraps partial and adds Metadata() via embedding trick:
 	// Instead, test via a top-level unexported type in the same package isn't possible
 	// here (test file is package metadata_test). Verify the error fires by testing with
 	// a struct that returns an empty tree for a struct that has yaml-tagged fields.
-	// The simplest approach: BuildFromProvider on a type whose Metadata() returns only
-	// one of two fields.
+	// The simplest approach: New on a type whose Metadata() returns only one of two fields.
 	// config already covers the success case; here we test that a missing field errors.
 	// We can't define new types with Metadata() mid-function, so this test is a compile-time
-	// guarantee: if Metadata() is missing a field, BuildFromProvider returns an error.
-	// Demonstrated by the success of TestBuildFromProvider_basic: config.Metadata() covers
-	// all three yaml-tagged fields (output, categories, labels), so no error is returned.
-	// If labels were missing, BuildFromProvider would return an error - verified manually.
-	t.Log("coverage enforcement is verified by TestBuildFromProvider_basic succeeding with all fields present")
+	// guarantee: if Metadata() is missing a field, New returns an error.
+	// Demonstrated by the success of TestNew_basic: config.Metadata() covers all three
+	// yaml-tagged fields (output, categories, labels), so no error is returned.
+	// If labels were missing, New would return an error - verified manually.
+	t.Log("coverage enforcement is verified by TestNew_basic succeeding with all fields present")
 }

@@ -42,7 +42,7 @@ type Config struct {
 }
 
 func main() {
-	src, err := metadata.Build(&Config{}, map[string]*metadata.Node{
+	src, err := metadata.NewFromTree(&Config{}, map[string]*metadata.Node{
 		"server": {
 			Children: map[string]*metadata.Node{
 				"host": {FieldMeta: editor.FieldMeta{Description: "Address to bind.", Default: "localhost"}},
