@@ -46,10 +46,12 @@ and a human-readable `Message`.
 | [`RequiredIf`](#requiredif) | `(key, condPath, condValue string)` | `key` required when `condPath == condValue` |
 | [`MutuallyExclusive`](#mutuallyexclusive) | `(keys ...string)` | at most one of `keys` may be present |
 | [`MutuallyExclusiveNested`](#mutuallyexclusivenested) | `(scopedPath string, keys ...string)` | mutual exclusion at every occurrence of a key, recursively |
+| [`MutuallyExclusiveGroupsNested`](#mutuallyexclusivegroupsnested) | `(scopedPath string, groups ...[]string)` | N groups of fields: no two groups may have keys present at the same mapping, recursively |
 | [`AtLeastOneOf`](#atleastoneof) | `(keys ...string)` | at least one of `keys` must be present |
 | [`ExactlyOneOf`](#exactlyoneof) | `(keys ...string)` | exactly one of `keys` must be present |
 | [`AllOrNone`](#allornone) | `(keys ...string)` | all of `keys` present or none |
 | [`CrossFieldOrdered`](#crossfieldordered) | `(smallerPath, largerPath string)` | `smaller < larger` (numeric/duration/size) |
+| [`CrossFieldOrderedNested`](#crossfieldorderednested) | `(scopedPath, smallerLeaf, largerLeaf string)` | `smaller < larger` at every occurrence of a key, recursively |
 | [`NoDuplicates`](#noduplicates) | `(seqPath, field string)` | field values across a list are unique |
 | [`ValueOneOf`](#valueoneof) | `(path string, allowed ...string)` | value at path must be in `allowed` |
 | [`ValueInRange`](#valueinrange) | `(path, minVal, maxVal string)` | value at path within `[min, max]` |
@@ -219,6 +221,12 @@ Reports a violation when none or more than one of the listed keys is present.
 Supports the same two forms as `MutuallyExclusive` (top-level keys, or dotted
 paths sharing a parent). The rule only fires where the parent mapping exists.
 
+| Variant | Scope | Unit checked | Use when |
+|---|---|---|---|
+| `MutuallyExclusive` | flat: document root or one fixed parent | individual keys | keys conflict at a single, known level |
+| `MutuallyExclusiveNested` | recursive walk from a scoped root | individual keys | the same key repeats at unpredictable depths (recursive schemas) |
+| `MutuallyExclusiveGroupsNested` | recursive walk from a scoped root | two groups of keys | two *families* of fields conflict — any key from groupA with any key from groupB |
+
 ### MutuallyExclusive
 
 ```go
@@ -252,6 +260,41 @@ Walks the YAML tree and fires at every mapping whose direct parent key is the
 last segment of `scopedPath`, checking that at most one of `keys` is present.
 Use this instead of `MutuallyExclusive` for constraints that must hold at every
 occurrence of a key regardless of depth (e.g. recursive schemas).
+
+### MutuallyExclusiveGroupsNested
+
+```go
+// two groups: composite (union/intersect) and leaf (path/name) cannot coexist
+editor.MutuallyExclusiveGroupsNested(
+    "pipeline.rule",
+    []string{"union", "intersect"},
+    []string{"path", "name"},
+)
+
+// three groups: at most one of image / build / compose may be present
+editor.MutuallyExclusiveGroupsNested(
+    "services.container",
+    []string{"image"},
+    []string{"build"},
+    []string{"compose"},
+)
+```
+
+Uses the same recursive walk as `MutuallyExclusiveNested`, but instead of
+checking individual keys it checks N groups: a violation is reported for every
+pair of groups that both have at least one key present in the same mapping.
+With two groups that means one possible violation; with three groups up to
+three (one per pair).
+
+Use this for schemas where families of fields are mutually exclusive at a given
+level. To cover violations at every nesting depth, register one validator per
+scope that can contain violations:
+
+```go
+editor.MutuallyExclusiveGroupsNested("pipeline.rule",           groupA, groupB),
+editor.MutuallyExclusiveGroupsNested("pipeline.rule.union",     groupA, groupB),
+editor.MutuallyExclusiveGroupsNested("pipeline.rule.intersect", groupA, groupB),
+```
 
 ### AllOrNone
 
@@ -318,6 +361,11 @@ when the rule is a fixed affix and no regex is needed.
 
 ## Cross-field
 
+| Variant | Scope | Use when |
+|---|---|---|
+| `CrossFieldOrdered` | explicit sibling paths (flat or one fixed parent) | min/max constraint at a single, known level |
+| `CrossFieldOrderedNested` | recursive walk from a scoped root | the same min/max block repeats at unpredictable depths (recursive schemas) |
+
 ### CrossFieldOrdered
 
 ```go
@@ -332,6 +380,23 @@ must be of the same kind.
 When the two paths share the same parent prefix, the pair is compared inside
 every mapping reached by that parent - each list entry's own min/max pair is
 checked. Unrelated parents are resolved from the document root.
+
+### CrossFieldOrderedNested
+
+```go
+// age.min < age.max at every "age" mapping anywhere in the tree
+editor.CrossFieldOrderedNested("pipeline.rule.age", "min", "max")
+```
+
+Uses the same recursive walk as `MutuallyExclusiveNested` to find every mapping
+whose direct parent key matches the last segment of `scopedPath`, then checks
+that `smallerLeaf < largerLeaf` inside it. Values follow the same comparison
+rules as `CrossFieldOrdered` (numeric, duration, or size).
+
+Use this instead of `CrossFieldOrdered` when the min/max constraint must hold
+at every occurrence of a key regardless of nesting depth - for example, in
+recursive filter schemas where the same `age` block can appear at the root, inside
+`any[i]`, inside `any[i].all[j]`, and so on.
 
 ---
 

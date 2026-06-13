@@ -309,6 +309,165 @@ func (v *mutuallyExclusiveNestedValidator) walk(node *yaml.Node, parentKey, path
 	}
 }
 
+// MutuallyExclusiveGroupsNested walks the YAML tree recursively — same
+// traversal as MutuallyExclusiveNested — and fires at every mapping whose
+// direct parent key is the last segment of scopedPath, reporting a violation
+// for every pair of groups that both have at least one key present simultaneously.
+//
+// Use this when N sets of fields are mutually exclusive as groups: any mapping
+// that contains at least one key from two different groups is a violation.
+//
+//	editor.MutuallyExclusiveGroupsNested(
+//	    "categories.source.filter",
+//	    []string{"any", "all"},
+//	    []string{"match", "age", "size", "not"},
+//	)
+func MutuallyExclusiveGroupsNested(scopedPath string, groups ...[]string) Validator {
+	segs := strings.Split(scopedPath, ".")
+	return &mutuallyExclusiveGroupsNestedValidator{
+		navSegs:   segs[:len(segs)-1],
+		parentKey: segs[len(segs)-1],
+		groups:    groups,
+	}
+}
+
+type mutuallyExclusiveGroupsNestedValidator struct {
+	navSegs   []string
+	parentKey string
+	groups    [][]string
+}
+
+func (v *mutuallyExclusiveGroupsNestedValidator) Validate(in ValidationInput) []Violation {
+	root := in.Root
+	if root == nil {
+		return nil
+	}
+	var errs []Violation
+	yamlnode.Navigate(root, v.navSegs, "", func(n *yaml.Node, p string) {
+		v.walk(n, "", p, &errs)
+	})
+	return errs
+}
+
+func (v *mutuallyExclusiveGroupsNestedValidator) walk(node *yaml.Node, parentKey, path string, errs *[]Violation) {
+	switch node.Kind {
+	case yaml.MappingNode:
+		if parentKey == v.parentKey {
+			where := path
+			if where == "" {
+				where = v.parentKey
+			}
+			v.checkGroups(node, where, errs)
+		}
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i].Value
+			childPath := key
+			if path != "" {
+				childPath = path + "." + key
+			}
+			v.walk(node.Content[i+1], key, childPath, errs)
+		}
+	case yaml.SequenceNode:
+		for i, child := range node.Content {
+			v.walk(child, parentKey, fmt.Sprintf("%s[%d]", path, i), errs)
+		}
+	}
+}
+
+func (v *mutuallyExclusiveGroupsNestedValidator) checkGroups(node *yaml.Node, where string, errs *[]Violation) {
+	found := make([][]string, len(v.groups))
+	for i, group := range v.groups {
+		for _, k := range group {
+			if yamlnode.ChildByKey(node, k) != nil {
+				found[i] = append(found[i], k)
+			}
+		}
+	}
+	for i := 0; i < len(found); i++ {
+		for j := i + 1; j < len(found); j++ {
+			if len(found[i]) > 0 && len(found[j]) > 0 {
+				*errs = append(*errs, Violation{
+					Path: where,
+					Message: fmt.Sprintf(
+						"cannot mix fields (%s) with fields (%s)",
+						strings.Join(found[i], ", "), strings.Join(found[j], ", "),
+					),
+				})
+			}
+		}
+	}
+}
+
+// CrossFieldOrderedNested walks the YAML tree recursively — same traversal as
+// MutuallyExclusiveNested — and fires at every mapping whose direct parent key
+// is the last segment of scopedPath, reporting a violation when both
+// smallerLeaf and largerLeaf are present but their values are not strictly
+// ordered (smaller < larger). Values are compared as plain numbers,
+// time.Duration strings, or size strings (same semantics as CrossFieldOrdered).
+//
+// Use this to enforce min/max ordering at any nesting depth without listing
+// every possible path explicitly:
+//
+//	// catches age.min >= age.max at filter, filter.any[i], filter.any[i].all[j], …
+//	editor.CrossFieldOrderedNested("categories.source.filter.age", "min", "max")
+func CrossFieldOrderedNested(scopedPath, smallerLeaf, largerLeaf string) Validator {
+	segs := strings.Split(scopedPath, ".")
+	return &crossFieldOrderedNestedValidator{
+		navSegs:     segs[:len(segs)-1],
+		parentKey:   segs[len(segs)-1],
+		smallerLeaf: smallerLeaf,
+		largerLeaf:  largerLeaf,
+	}
+}
+
+type crossFieldOrderedNestedValidator struct {
+	navSegs     []string
+	parentKey   string
+	smallerLeaf string
+	largerLeaf  string
+}
+
+func (v *crossFieldOrderedNestedValidator) Validate(in ValidationInput) []Violation {
+	root := in.Root
+	if root == nil {
+		return nil
+	}
+	var errs []Violation
+	yamlnode.Navigate(root, v.navSegs, "", func(n *yaml.Node, p string) {
+		v.walk(n, "", p, &errs)
+	})
+	return errs
+}
+
+func (v *crossFieldOrderedNestedValidator) walk(node *yaml.Node, parentKey, path string, errs *[]Violation) {
+	switch node.Kind {
+	case yaml.MappingNode:
+		if parentKey == v.parentKey {
+			where := path
+			if where == "" {
+				where = v.parentKey
+			}
+			checkOrdered(
+				yamlnode.ScalarChild(node, v.smallerLeaf),
+				yamlnode.ScalarChild(node, v.largerLeaf),
+				v.smallerLeaf, v.largerLeaf, where, errs,
+			)
+		}
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i].Value
+			childPath := key
+			if path != "" {
+				childPath = path + "." + key
+			}
+			v.walk(node.Content[i+1], key, childPath, errs)
+		}
+	case yaml.SequenceNode:
+		for i, child := range node.Content {
+			v.walk(child, parentKey, fmt.Sprintf("%s[%d]", path, i), errs)
+		}
+	}
+}
+
 // checkMutualExclusion appends to errs when more than one of keys appears as a
 // direct child key of node (which must be a MappingNode). where is the
 // dot-separated path reported in the violation.

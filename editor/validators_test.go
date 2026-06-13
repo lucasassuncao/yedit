@@ -56,8 +56,8 @@ func TestMutuallyExclusive(t *testing.T) {
 
 func TestMutuallyExclusive_dottedPath(t *testing.T) {
 	v := MutuallyExclusive(
-		"categories.installers.source.filter.any",
-		"categories.installers.source.filter.all",
+		"apps.workers.config.dispatch.push",
+		"apps.workers.config.dispatch.pull",
 	)
 
 	tests := []struct {
@@ -66,53 +66,47 @@ func TestMutuallyExclusive_dottedPath(t *testing.T) {
 		wantViolation bool
 	}{
 		{
-			name: "both keys in filter - violation",
+			name: "both keys present - violation",
 			raw: `
-categories:
-  foo:
-    installers:
-      - name: bar
-        source:
-          filter:
-            any:
-              - categories: [x]
-            all:
-              - categories: [y]
+apps:
+  backend:
+    workers:
+      - name: alpha
+        config:
+          dispatch:
+            push: [x]
+            pull: [y]
 `,
 			wantViolation: true,
 		},
 		{
 			name: "only one key - ok",
 			raw: `
-categories:
-  foo:
-    installers:
-      - name: bar
-        source:
-          filter:
-            any:
-              - categories: [x]
+apps:
+  backend:
+    workers:
+      - name: alpha
+        config:
+          dispatch:
+            push: [x]
 `,
 			wantViolation: false,
 		},
 		{
-			name: "multiple installers - second violates",
+			name: "multiple workers - second violates",
 			raw: `
-categories:
-  foo:
-    installers:
+apps:
+  backend:
+    workers:
       - name: ok
-        source:
-          filter:
-            any:
-              - categories: [x]
+        config:
+          dispatch:
+            push: [x]
       - name: bad
-        source:
-          filter:
-            any:
-              - categories: [x]
-            all:
-              - categories: [y]
+        config:
+          dispatch:
+            push: [x]
+            pull: [y]
 `,
 			wantViolation: true,
 		},
@@ -577,111 +571,112 @@ func TestCrossFieldOrdered(t *testing.T) {
 	}{
 		{
 			name:      "duration: smaller < larger - ok",
-			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
+			validator: CrossFieldOrdered("limits.start", "limits.end"),
 			raw: `
-filter:
-  min-age: 24h
-  max-age: 168h
+limits:
+  start: 24h
+  end: 168h
 `,
 			wantViolation: false,
 		},
 		{
 			name:      "duration: smaller > larger - violation",
-			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
+			validator: CrossFieldOrdered("limits.start", "limits.end"),
 			raw: `
-filter:
-  min-age: 720h
-  max-age: 24h
+limits:
+  start: 720h
+  end: 24h
 `,
 			wantViolation: true,
-			wantContains:  []string{"min-age", "max-age"},
+			wantContains:  []string{"start", "end"},
 		},
 		{
 			name:      "duration: equal values - violation",
-			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
+			validator: CrossFieldOrdered("limits.start", "limits.end"),
 			raw: `
-filter:
-  min-age: 24h
-  max-age: 24h
+limits:
+  start: 24h
+  end: 24h
 `,
 			wantViolation: true,
 		},
 		{
 			name:      "size: smaller < larger - ok",
-			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
+			validator: CrossFieldOrdered("quota.min", "quota.max"),
 			raw: `
-filter:
-  min-size: 1MB
-  max-size: 100MB
+quota:
+  min: 1MB
+  max: 100MB
 `,
 			wantViolation: false,
 		},
 		{
 			name:      "size: smaller > larger - violation",
-			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
+			validator: CrossFieldOrdered("quota.min", "quota.max"),
 			raw: `
-filter:
-  min-size: 500MB
-  max-size: 100MB
+quota:
+  min: 500MB
+  max: 100MB
 `,
 			wantViolation: true,
-			wantContains:  []string{"min-size", "max-size"},
+			wantContains:  []string{"min", "max"},
 		},
 		{
 			name:      "size: SI suffixes are decimal (999KB < 1MB) - ok",
-			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
+			validator: CrossFieldOrdered("quota.min", "quota.max"),
 			raw: `
-filter:
-  min-size: 999KB
-  max-size: 1MB
+quota:
+  min: 999KB
+  max: 1MB
 `,
 			wantViolation: false,
 		},
 		{
 			name:      "size: IEC suffixes are binary (1023KiB < 1MiB) - ok",
-			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
+			validator: CrossFieldOrdered("quota.min", "quota.max"),
 			raw: `
-filter:
-  min-size: 1023KiB
-  max-size: 1MiB
+quota:
+  min: 1023KiB
+  max: 1MiB
 `,
 			wantViolation: false,
 		},
 		{
 			name:      "size: 1024KiB equals 1MiB - violation",
-			validator: CrossFieldOrdered("filter.min-size", "filter.max-size"),
+			validator: CrossFieldOrdered("quota.min", "quota.max"),
 			raw: `
-filter:
-  min-size: 1024KiB
-  max-size: 1MiB
+quota:
+  min: 1024KiB
+  max: 1MiB
 `,
 			wantViolation: true,
 		},
 		{
 			name:      "one field absent - ok",
-			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
+			validator: CrossFieldOrdered("limits.start", "limits.end"),
 			raw: `
-filter:
-  min-age: 24h
+limits:
+  start: 24h
 `,
 			wantViolation: false,
 		},
 		{
 			name:      "both absent - ok",
-			validator: CrossFieldOrdered("filter.min-age", "filter.max-age"),
+			validator: CrossFieldOrdered("limits.start", "limits.end"),
 			raw: `
-filter:
-  regex: "^foo"
+limits:
+  label: "default"
 `,
 			wantViolation: false,
 		},
 		{
 			name:      "incomparable types (mixed duration and size) - ok",
-			validator: CrossFieldOrdered("filter.min-age", "filter.max-size"),
+			validator: CrossFieldOrdered("limits.start", "quota.max"),
 			raw: `
-filter:
-  min-age: 24h
-  max-size: 100MB
+limits:
+  start: 24h
+quota:
+  max: 100MB
 `,
 			wantViolation: false,
 		},
@@ -706,7 +701,7 @@ filter:
 }
 
 func TestNoDuplicates(t *testing.T) {
-	v := NoDuplicates("categories", "name")
+	v := NoDuplicates("plugins", "name")
 
 	tests := []struct {
 		name         string
@@ -717,54 +712,54 @@ func TestNoDuplicates(t *testing.T) {
 		{
 			name: "no duplicates - ok",
 			raw: `
-categories:
-  - name: images
-  - name: videos
-  - name: documents
+plugins:
+  - name: auth
+  - name: cache
+  - name: logger
 `,
 			wantCount: 0,
 		},
 		{
 			name: "one duplicate - one violation",
 			raw: `
-categories:
-  - name: images
-  - name: videos
-  - name: images
+plugins:
+  - name: auth
+  - name: cache
+  - name: auth
 `,
 			wantCount:    1,
-			wantContains: []string{"categories[2]", "images", "categories[0]"},
+			wantContains: []string{"plugins[2]", "auth", "plugins[0]"},
 		},
 		{
 			name: "two distinct duplicates - two violations",
 			raw: `
-categories:
-  - name: images
-  - name: videos
-  - name: images
-  - name: videos
+plugins:
+  - name: auth
+  - name: cache
+  - name: auth
+  - name: cache
 `,
 			wantCount: 2,
 		},
 		{
 			name: "item without the field - skipped",
 			raw: `
-categories:
-  - name: images
-  - source: /tmp
-  - name: images
+plugins:
+  - name: auth
+  - version: 1
+  - name: auth
 `,
 			wantCount:    1,
-			wantContains: []string{"categories[2]"},
+			wantContains: []string{"plugins[2]"},
 		},
 		{
 			name:      "empty sequence - ok",
-			raw:       `categories: []`,
+			raw:       `plugins: []`,
 			wantCount: 0,
 		},
 		{
 			name:      "path not a sequence - ok",
-			raw:       `categories: images`,
+			raw:       `plugins: auth`,
 			wantCount: 0,
 		},
 		{
@@ -842,18 +837,18 @@ func TestRequired(t *testing.T) {
 		},
 		{
 			name:      "dotted path - parent absent is ok",
-			validator: Required("categories.name"),
+			validator: Required("plugins.name"),
 			raw:       "version: 1.0.0\n",
 		},
 		{
 			name:      "dotted path - every sequence entry checked",
-			validator: Required("categories.name"),
+			validator: Required("plugins.name"),
 			raw: `
-categories:
-  - name: images
-  - source: /tmp
+plugins:
+  - name: auth
+  - version: 1
 `,
-			want: []string{"categories[1].name: required"},
+			want: []string{"plugins[1].name: required"},
 		},
 	}
 
@@ -894,19 +889,19 @@ func TestValueInRange(t *testing.T) {
 		},
 		{
 			name:      "duration within range - ok",
-			validator: ValueInRange("filter.max-age", "1h", "8760h"),
-			raw:       "filter:\n  max-age: 24h\n",
+			validator: ValueInRange("schedule.timeout", "1h", "8760h"),
+			raw:       "schedule:\n  timeout: 24h\n",
 		},
 		{
 			name:          "duration below range - violation",
-			validator:     ValueInRange("filter.max-age", "1h", "8760h"),
-			raw:           "filter:\n  max-age: 30m\n",
+			validator:     ValueInRange("schedule.timeout", "1h", "8760h"),
+			raw:           "schedule:\n  timeout: 30m\n",
 			wantViolation: true,
 		},
 		{
 			name:      "size within range - ok",
-			validator: ValueInRange("filter.max-size", "1MB", "1GB"),
-			raw:       "filter:\n  max-size: 100MB\n",
+			validator: ValueInRange("storage.quota", "1MB", "1GB"),
+			raw:       "storage:\n  quota: 100MB\n",
 		},
 		{
 			name:      "absent path - ok",
@@ -1844,6 +1839,349 @@ some:
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			errs := tc.validator.Validate(NewValidationInput([]byte(tc.raw), nil))
+			if len(errs) != tc.wantCount {
+				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
+			}
+			for _, want := range tc.wantInErr {
+				if len(errs) > 0 && !strings.Contains(errs[0].String(), want) {
+					t.Errorf("first error should contain %q; got %q", want, errs[0].String())
+				}
+			}
+		})
+	}
+}
+
+func TestMutuallyExclusiveGroupsNested(t *testing.T) {
+	// Generic schema: a "rule" block has two groups of mutually exclusive fields.
+	// groupA (composite): "union", "intersect"
+	// groupB (leaf):      "path", "name"
+	v := MutuallyExclusiveGroupsNested(
+		"services.rule",
+		[]string{"union", "intersect"},
+		[]string{"path", "name"},
+	)
+
+	tests := []struct {
+		name      string
+		raw       string
+		wantCount int
+		wantInErr []string
+	}{
+		{
+			name: "groupA with groupB - violation",
+			raw: `
+services:
+  - rule:
+      union:
+        - path: /a
+      path: /b
+`,
+			wantCount: 1,
+			wantInErr: []string{"rule", "union", "path"},
+		},
+		{
+			name: "second groupA key with groupB - violation",
+			raw: `
+services:
+  - rule:
+      intersect:
+        - name: foo
+      name: bar
+`,
+			wantCount: 1,
+			wantInErr: []string{"intersect", "name"},
+		},
+		{
+			name: "only groupA - ok",
+			raw: `
+services:
+  - rule:
+      union:
+        - path: /a
+`,
+			wantCount: 0,
+		},
+		{
+			name: "only groupB - ok",
+			raw: `
+services:
+  - rule:
+      path: /a
+      name: foo
+`,
+			wantCount: 0,
+		},
+		{
+			// The "rule" scoped validator fires only at "rule"-parented mappings.
+			// A violation inside union[i] requires a "rule.union" scoped validator.
+			name: "violation inside union[i] - not caught by rule-scoped validator alone",
+			raw: `
+services:
+  - rule:
+      union:
+        - union:
+            - path: /a
+          path: /b
+`,
+			wantCount: 0,
+		},
+		{
+			name: "outside scope - not caught",
+			raw: `
+other:
+  rule:
+    union:
+      - path: /a
+    path: /b
+services:
+  - rule:
+      path: /a
+`,
+			wantCount: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			if len(errs) != tc.wantCount {
+				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
+			}
+			for _, want := range tc.wantInErr {
+				if len(errs) > 0 && !strings.Contains(errs[0].String(), want) {
+					t.Errorf("first error should contain %q; got %q", want, errs[0].String())
+				}
+			}
+		})
+	}
+}
+
+func TestMutuallyExclusiveGroupsNested_threeGroups(t *testing.T) {
+	// Three mutually exclusive groups: at most one family may appear at a time.
+	v := MutuallyExclusiveGroupsNested(
+		"services.rule",
+		[]string{"image"},
+		[]string{"build"},
+		[]string{"compose"},
+	)
+
+	tests := []struct {
+		name      string
+		raw       string
+		wantCount int
+	}{
+		{
+			name: "only one group - ok",
+			raw: `
+services:
+  - rule:
+      image: ubuntu
+`,
+			wantCount: 0,
+		},
+		{
+			name: "two groups present - one violation",
+			raw: `
+services:
+  - rule:
+      image: ubuntu
+      build: ./app
+`,
+			wantCount: 1,
+		},
+		{
+			name: "all three groups present - three violations (one per pair)",
+			raw: `
+services:
+  - rule:
+      image: ubuntu
+      build: ./app
+      compose: docker-compose.yml
+`,
+			wantCount: 3,
+		},
+		{
+			name:      "empty document - ok",
+			raw:       "",
+			wantCount: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			if len(errs) != tc.wantCount {
+				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
+			}
+		})
+	}
+}
+
+func TestMutuallyExclusiveGroupsNested_allLevels(t *testing.T) {
+	// Two scoped validators together cover violations at any nesting depth:
+	// - "rule" fires at every "rule"-parented mapping
+	// - "rule.union" fires at every "union"-parented mapping (including nested ones)
+	groupA := []string{"union", "intersect"}
+	groupB := []string{"path", "name"}
+	validators := []Validator{
+		MutuallyExclusiveGroupsNested("services.rule", groupA, groupB),
+		MutuallyExclusiveGroupsNested("services.rule.union", groupA, groupB),
+	}
+
+	tests := []struct {
+		name      string
+		raw       string
+		wantCount int
+	}{
+		{
+			name: "violation at root rule level",
+			raw: `
+services:
+  - rule:
+      union:
+        - path: /a
+      path: /b
+`,
+			wantCount: 1,
+		},
+		{
+			name: "violation inside union element",
+			raw: `
+services:
+  - rule:
+      union:
+        - union:
+            - path: /a
+          path: /b
+`,
+			wantCount: 1,
+		},
+		{
+			name: "violation at depth 2 (union inside union)",
+			raw: `
+services:
+  - rule:
+      union:
+        - union:
+            - union:
+                - path: /a
+              path: /b
+`,
+			wantCount: 1,
+		},
+		{
+			name: "no violations",
+			raw: `
+services:
+  - rule:
+      union:
+        - path: /a
+        - name: foo
+`,
+			wantCount: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := RunAll(validators, []byte(tc.raw), nil)
+			if len(errs) != tc.wantCount {
+				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
+			}
+		})
+	}
+}
+
+func TestCrossFieldOrderedNested(t *testing.T) {
+	// Generic schema: a "rule" block has a "range" sub-block with min/max fields.
+	v := CrossFieldOrderedNested("services.rule.range", "min", "max")
+
+	tests := []struct {
+		name      string
+		raw       string
+		wantCount int
+		wantInErr []string
+	}{
+		{
+			name: "violation at root level",
+			raw: `
+services:
+  - rule:
+      range:
+        min: 48
+        max: 24
+`,
+			wantCount: 1,
+			wantInErr: []string{"min", "max", "48", "24"},
+		},
+		{
+			name: "violation inside group element",
+			raw: `
+services:
+  - rule:
+      group:
+        - range:
+            min: 72
+            max: 1
+`,
+			wantCount: 1,
+			wantInErr: []string{"range"},
+		},
+		{
+			name: "violation at depth 2 (group inside group)",
+			raw: `
+services:
+  - rule:
+      group:
+        - group:
+            - range:
+                min: 100
+                max: 10
+`,
+			wantCount: 1,
+		},
+		{
+			name: "properly ordered - ok",
+			raw: `
+services:
+  - rule:
+      range:
+        min: 24
+        max: 48
+`,
+			wantCount: 0,
+		},
+		{
+			name: "only min set - ok",
+			raw: `
+services:
+  - rule:
+      range:
+        min: 24
+`,
+			wantCount: 0,
+		},
+		{
+			name: "outside scope - not caught",
+			raw: `
+other:
+  rule:
+    range:
+      min: 48
+      max: 1
+services:
+  - rule:
+      range:
+        min: 1
+        max: 48
+`,
+			wantCount: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}
