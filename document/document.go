@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 
@@ -216,7 +215,15 @@ func blockSemanticEqual(a, b string) bool {
 	if err := yaml.Unmarshal([]byte(b), &vb); err != nil {
 		return false
 	}
-	return reflect.DeepEqual(va, vb)
+	ra, err := yaml.Marshal(va)
+	if err != nil {
+		return false
+	}
+	rb, err := yaml.Marshal(vb)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(ra, rb)
 }
 
 // ReplaceRaw replaces the document content with raw, normalising CRLF.

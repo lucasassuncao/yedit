@@ -1310,7 +1310,7 @@ func (v *uniqueValuesValidator) Validate(in ValidationInput) []Violation {
 // reportDuplicates appends a violation for every value that repeats an earlier
 // one. Empty values are skipped. The violation path is "<where>[<i>]<suffix>".
 func reportDuplicates(values []string, where, suffix string, errs *[]Violation) {
-	seen := make(map[string]int)
+	seen := make(map[string]int, len(values))
 	for i, val := range values {
 		if val == "" {
 			continue

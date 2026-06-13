@@ -1,7 +1,7 @@
 package presets
 
 import (
-	"reflect"
+	"slices"
 	"testing"
 	"testing/fstest"
 )
@@ -17,15 +17,17 @@ func testFS() fstest.MapFS {
 }
 
 func TestFSSource_ListFields(t *testing.T) {
+	t.Parallel()
 	s := FromFS(testFS(), ".")
 	got := s.ListFields()
 	want := []string{"build", "customizations"}
-	if !reflect.DeepEqual(got, want) {
+	if !slices.Equal(got, want) {
 		t.Errorf("ListFields() = %v, want %v", got, want)
 	}
 }
 
 func TestFSSource_ListFields_missingRoot(t *testing.T) {
+	t.Parallel()
 	s := FromFS(testFS(), "no-such-dir")
 	if got := s.ListFields(); got != nil {
 		t.Errorf("ListFields() on missing root = %v, want nil", got)
@@ -33,11 +35,12 @@ func TestFSSource_ListFields_missingRoot(t *testing.T) {
 }
 
 func TestFSSource_ListPresets(t *testing.T) {
+	t.Parallel()
 	s := FromFS(testFS(), ".")
 
 	got := s.ListPresets("build")
 	want := []string{"base", "multi-stage"} // sorted; .txt files skipped
-	if !reflect.DeepEqual(got, want) {
+	if !slices.Equal(got, want) {
 		t.Errorf("ListPresets(build) = %v, want %v", got, want)
 	}
 
@@ -47,6 +50,7 @@ func TestFSSource_ListPresets(t *testing.T) {
 }
 
 func TestFSSource_PresetYAML(t *testing.T) {
+	t.Parallel()
 	s := FromFS(testFS(), ".")
 
 	got, err := s.PresetYAML("build", "base")
@@ -75,12 +79,13 @@ func TestFSSource_PresetYAML(t *testing.T) {
 }
 
 func TestFSSource_subdirectoryRoot(t *testing.T) {
+	t.Parallel()
 	fsys := fstest.MapFS{
 		"my-presets/build/base.yaml": {Data: []byte("build: {}\n")},
 	}
 	s := FromFS(fsys, "my-presets")
 
-	if got, want := s.ListFields(), []string{"build"}; !reflect.DeepEqual(got, want) {
+	if got, want := s.ListFields(), []string{"build"}; !slices.Equal(got, want) {
 		t.Errorf("ListFields() = %v, want %v", got, want)
 	}
 	if _, err := s.PresetYAML("build", "base"); err != nil {
