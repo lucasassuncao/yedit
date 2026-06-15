@@ -1,9 +1,11 @@
 package metadata_test
 
 import (
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/metadata"
@@ -96,114 +98,88 @@ func tree() map[string]*metadata.Node {
 }
 
 func TestBuild_resolvesFieldHints(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	src, err := metadata.NewFromTree(&config{}, tree())
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	if !src.FieldMeta("categories", "").Required {
-		t.Error("block-level meta should resolve")
-	}
-	if !src.FieldMeta("categories", "source.path").Required {
-		t.Error("nested meta should resolve")
-	}
-	if got := src.FieldMeta("categories", "source.filter.any.min-age").Max; got != "87600h" {
-		t.Errorf("recursive meta Max = %q, want 87600h", got)
-	}
-	if meta := src.FieldMeta("categories", "nope"); meta.Required || meta.Description != "" {
-		t.Error("miss should return zero FieldMeta")
-	}
-	if meta := src.FieldMeta("unknown-block", ""); meta.Required {
-		t.Error("unknown block should return zero FieldMeta")
-	}
+	must.NoError(err, "Build")
+	is.True(src.FieldMeta("categories", "").Required, "block-level meta should resolve")
+	is.True(src.FieldMeta("categories", "source.path").Required, "nested meta should resolve")
+	is.Equal("87600h", src.FieldMeta("categories", "source.filter.any.min-age").Max, "recursive meta Max")
+	meta := src.FieldMeta("categories", "nope")
+	is.False(meta.Required, "miss should return zero FieldMeta")
+	is.Empty(meta.Description, "miss should return zero FieldMeta")
+	is.False(src.FieldMeta("unknown-block", "").Required, "unknown block should return zero FieldMeta")
 }
 
 func TestBuild_derivesTypes(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	src, err := metadata.NewFromTree(&config{}, tree())
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
+	must.NoError(err, "Build")
 	for path, want := range map[string]string{
 		"":                      "[]object", // the "categories" block itself
 		"name":                  "string",
 		"source.extensions":     "[]string",
 		"source.filter.min-age": "duration",
 	} {
-		if got := src.FieldMeta("categories", path).Type; got != want {
-			t.Errorf("Type(categories, %q) = %q, want %q", path, got, want)
-		}
+		is.Equal(want, src.FieldMeta("categories", path).Type, "Type(categories, %q)", path)
 	}
-	if got := src.FieldMeta("output", "").Type; got != "string" {
-		t.Errorf("Type(output) = %q, want string", got)
-	}
+	is.Equal("string", src.FieldMeta("output", "").Type, "Type(output)")
 }
 
 func TestBuild_explicitTypeWins(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	tr := map[string]*metadata.Node{
 		"output": {FieldMeta: editor.FieldMeta{Type: "custom-label"}},
 	}
 	src, err := metadata.NewFromTree(&config{}, tr)
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	if got := src.FieldMeta("output", "").Type; got != "custom-label" {
-		t.Errorf("explicit Type overwritten: got %q", got)
-	}
+	must.NoError(err, "Build")
+	is.Equal("custom-label", src.FieldMeta("output", "").Type, "explicit Type should not be overwritten")
 }
 
 func TestBuild_unknownTopLevelKey(t *testing.T) {
+	must := require.New(t)
 	tr := map[string]*metadata.Node{"outptu": {}}
-	if _, err := metadata.NewFromTree(&config{}, tr); err == nil || !strings.Contains(err.Error(), `"outptu"`) {
-		t.Fatalf("expected unknown-key error naming the key, got %v", err)
-	}
+	_, err := metadata.NewFromTree(&config{}, tr)
+	must.ErrorContains(err, `"outptu"`, "expected unknown-key error naming the key")
 }
 
 func TestBuild_unknownNestedKey(t *testing.T) {
+	must := require.New(t)
 	tr := map[string]*metadata.Node{
 		"categories": {Children: map[string]*metadata.Node{
 			"sourc": {},
 		}},
 	}
-	if _, err := metadata.NewFromTree(&config{}, tr); err == nil || !strings.Contains(err.Error(), "categories.sourc") {
-		t.Fatalf("expected error naming the full path, got %v", err)
-	}
+	_, err := metadata.NewFromTree(&config{}, tr)
+	must.ErrorContains(err, "categories.sourc", "expected error naming the full path")
 }
 
 func TestNew_basic(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	src, err := metadata.New(config{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	if !src.FieldMeta("categories", "").Required {
-		t.Error("block-level meta should resolve")
-	}
-	if !src.FieldMeta("categories", "source.path").Required {
-		t.Error("nested meta should resolve via auto-composition")
-	}
-	if got := src.FieldMeta("output", "").Type; got != "string" {
-		t.Errorf("Type(output) = %q, want string", got)
-	}
-	if got := src.FieldMeta("categories", "").Type; got != "[]object" {
-		t.Errorf("Type(categories) = %q, want []object", got)
-	}
+	must.NoError(err, "New")
+	is.True(src.FieldMeta("categories", "").Required, "block-level meta should resolve")
+	is.True(src.FieldMeta("categories", "source.path").Required, "nested meta should resolve via auto-composition")
+	is.Equal("string", src.FieldMeta("output", "").Type, "Type(output)")
+	is.Equal("[]object", src.FieldMeta("categories", "").Type, "Type(categories)")
 }
 
 func TestNew_cycleResolved(t *testing.T) {
+	must := require.New(t)
 	src, err := metadata.New(config{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	if got := src.FieldMeta("categories", "source.filter.any.min-age").Max; got != "87600h" {
-		t.Errorf("recursive meta Max = %q, want 87600h", got)
-	}
+	must.NoError(err, "New")
+	must.Equal("87600h", src.FieldMeta("categories", "source.filter.any.min-age").Max, "recursive meta Max")
 }
 
 func TestNew_notAProvider(t *testing.T) {
+	must := require.New(t)
 	_, err := metadata.New(struct {
 		Name string `yaml:"name"`
 	}{})
-	if err == nil || !strings.Contains(err.Error(), "does not implement MetadataProvider") {
-		t.Errorf("expected MetadataProvider error, got %v", err)
-	}
+	must.ErrorContains(err, "does not implement MetadataProvider")
 }
 
 func TestNew_missingCoverage(t *testing.T) {

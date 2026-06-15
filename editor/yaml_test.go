@@ -1,12 +1,14 @@
 package editor
 
 import (
-	"github.com/lucasassuncao/yedit/internal/yamlnode"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/lucasassuncao/yedit/internal/yamlnode"
 	"github.com/lucasassuncao/yedit/schema"
 )
 
@@ -126,6 +128,7 @@ func TestAppendFieldFromSnippet_multipleFields(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestForceBlockStyle_preservesFlowSequence(t *testing.T) {
+	is := assert.New(t)
 	input := `config:
   extensions: ["pdf", "txt"]
   name: test
@@ -137,9 +140,8 @@ func TestForceBlockStyle_preservesFlowSequence(t *testing.T) {
 	})
 
 	// The result must NOT have converted [pdf, txt] to block style.
-	if strings.Contains(result, "\n  - pdf") || strings.Contains(result, "\n  - txt") {
-		t.Errorf("forceBlockStyle converted flow sequence to block style:\n%s", result)
-	}
+	is.NotContains(result, "\n  - pdf", "forceBlockStyle converted flow sequence to block style")
+	is.NotContains(result, "\n  - txt", "forceBlockStyle converted flow sequence to block style")
 }
 
 // ---------------------------------------------------------------------------
@@ -147,25 +149,22 @@ func TestForceBlockStyle_preservesFlowSequence(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFlowToBlockSeq_singleEntry(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	seqBase := "categories: [{name: images}]"
 	entries := parseSeqEntries("categories", seqBase)
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 entry from flow-style input, got %d", len(entries))
-	}
-	if entries[0].Label != "images" {
-		t.Errorf("entry label = %q, want %q", entries[0].Label, "images")
-	}
+	must.Len(entries, 1, "expected 1 entry from flow-style input")
+	is.Equal("images", entries[0].Label)
 }
 
 func TestFlowToBlockSeq_multipleEntries(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	seqBase := "categories: [{name: images}, {name: videos}]"
 	entries := parseSeqEntries("categories", seqBase)
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 entries, got %d", len(entries))
-	}
-	if entries[0].Label != "images" || entries[1].Label != "videos" {
-		t.Errorf("labels = %q %q, want images videos", entries[0].Label, entries[1].Label)
-	}
+	must.Len(entries, 2, "expected 2 entries")
+	is.Equal("images", entries[0].Label)
+	is.Equal("videos", entries[1].Label)
 }
 
 // ---------------------------------------------------------------------------
@@ -199,9 +198,7 @@ func TestApplyToggleAt_complexSnippetArray(t *testing.T) {
 	}
 
 	// Verify that "tags" is present with the array value.
-	if !strings.Contains(result, "tags") {
-		t.Error("field 'tags' not found in result")
-	}
+	assert.Contains(t, result, "tags", "field 'tags' not found in result")
 }
 
 // ---------------------------------------------------------------------------
@@ -237,7 +234,5 @@ func TestToggleChildUnderEmptyParent(t *testing.T) {
 	}
 
 	got := applyToggleToSeqItem(ctx, node, true, content)
-	if !strings.Contains(got, "path:") {
-		t.Errorf("toggling source.path did not add the field:\n%s", got)
-	}
+	assert.Contains(t, got, "path:", "toggling source.path did not add the field")
 }

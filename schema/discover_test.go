@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/lucasassuncao/yedit/schema"
 )
 
@@ -19,20 +22,16 @@ type basicConfig struct {
 }
 
 func TestDiscover_topLevelFields(t *testing.T) {
+	is := assert.New(t)
 	fields := schema.Discover(&basicConfig{})
 	got := schema.TopLevelOrder(fields)
 	want := []string{"name", "image", "mode", "build"}
-	if len(got) != len(want) {
-		t.Fatalf("TopLevelOrder = %v, want %v", got, want)
-	}
-	for i, w := range want {
-		if got[i] != w {
-			t.Errorf("TopLevelOrder[%d] = %q, want %q", i, got[i], w)
-		}
-	}
+	is.Equal(want, got)
 }
 
 func TestDiscover_descents(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	fields := schema.Discover(&basicConfig{})
 	var build schema.FieldDef
 	for _, f := range fields {
@@ -40,16 +39,12 @@ func TestDiscover_descents(t *testing.T) {
 			build = f
 		}
 	}
-	if len(build.Children) == 0 {
-		t.Fatal("build should have children discovered from buildConfig")
-	}
+	must.NotEmpty(build.Children, "build should have children discovered from buildConfig")
 	names := make([]string, len(build.Children))
 	for i, c := range build.Children {
 		names[i] = c.YAMLName
 	}
-	if names[0] != "dockerfile" || names[1] != "context" || names[2] != "args" {
-		t.Errorf("build children = %v, want [dockerfile context args]", names)
-	}
+	is.Equal([]string{"dockerfile", "context", "args"}, names)
 }
 
 // unionItem opts into Provider to declare its own schema.
@@ -80,18 +75,12 @@ type minimalNested struct {
 }
 
 func TestDiscover_yamlTagOnly(t *testing.T) {
+	is := assert.New(t)
 	fields := schema.Discover(&minimalConfig{})
 
 	got := schema.TopLevelOrder(fields)
 	want := []string{"name", "port", "nested"}
-	if len(got) != len(want) {
-		t.Fatalf("TopLevelOrder = %v, want %v", got, want)
-	}
-	for i, w := range want {
-		if got[i] != w {
-			t.Errorf("TopLevelOrder[%d] = %q, want %q", i, got[i], w)
-		}
-	}
+	is.Equal(want, got)
 
 	// Nested struct still descends.
 	var nested schema.FieldDef
@@ -100,24 +89,22 @@ func TestDiscover_yamlTagOnly(t *testing.T) {
 			nested = f
 		}
 	}
-	if len(nested.Children) != 2 || nested.Children[0].YAMLName != "host" || nested.Children[1].YAMLName != "tls" {
-		t.Errorf("nested children = %+v, want [host tls]", nested.Children)
+	if is.Len(nested.Children, 2) {
+		is.Equal("host", nested.Children[0].YAMLName)
+		is.Equal("tls", nested.Children[1].YAMLName)
 	}
 }
 
 func TestDiscover_providerOverridesReflection(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	fields := schema.Discover(&configWithUnion{})
-	if len(fields) != 1 || fields[0].YAMLName != "items" {
-		t.Fatalf("expected single field 'items', got %v", fields)
-	}
-	if fields[0].Kind != schema.KindVariant {
-		t.Errorf("items Kind = %v, want KindVariant", fields[0].Kind)
-	}
-	if len(fields[0].Children) != 2 {
-		t.Fatalf("expected 2 children from Provider, got %d", len(fields[0].Children))
-	}
-	if fields[0].Children[0].YAMLName != "type" || fields[0].Children[1].YAMLName != "target" {
-		t.Errorf("Provider children = %+v, want [type target]", fields[0].Children)
+	must.Len(fields, 1, "expected single field 'items'")
+	is.Equal("items", fields[0].YAMLName)
+	is.Equal(schema.KindVariant, fields[0].Kind)
+	if is.Len(fields[0].Children, 2, "expected 2 children from Provider") {
+		is.Equal("type", fields[0].Children[0].YAMLName)
+		is.Equal("target", fields[0].Children[1].YAMLName)
 	}
 }
 
@@ -134,6 +121,7 @@ type scalarConfig struct {
 }
 
 func TestDiscover_scalarType(t *testing.T) {
+	is := assert.New(t)
 	got := map[string]string{}
 	for _, f := range schema.Discover(&scalarConfig{}) {
 		got[f.YAMLName] = f.Scalar
@@ -150,9 +138,7 @@ func TestDiscover_scalarType(t *testing.T) {
 		"tags": "", // a slice is not a scalar
 	}
 	for name, w := range want {
-		if got[name] != w {
-			t.Errorf("%s.Scalar = %q, want %q", name, got[name], w)
-		}
+		is.Equal(w, got[name], "field %q Scalar", name)
 	}
 }
 
@@ -167,52 +153,45 @@ type selfRefRoot struct {
 }
 
 func TestDiscover_recursiveTypeStopsAtCycle(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	// Default limit=1: one extra recursive level beyond the first visit.
 	// tree → selfRefNode (visit 1): has children [name, children]
 	// tree.children → selfRefNode (visit 2, shallow): has children [name, children]
 	// tree.children.children → selfRefNode (visit 3 > limit=1): nil
 	fields := schema.Discover(&selfRefRoot{})
-	if len(fields) != 1 || fields[0].YAMLName != "tree" {
-		t.Fatalf("expected single field 'tree', got %v", fields)
-	}
+	must.Len(fields, 1, "expected single field 'tree'")
+	is.Equal("tree", fields[0].YAMLName)
 	tree := fields[0]
-	if len(tree.Children) != 2 {
-		t.Fatalf("tree.Children = %d, want 2 (name + children)", len(tree.Children))
-	}
+	must.Len(tree.Children, 2, "tree.Children want 2 (name + children)")
 	// The "children" field at the first level has one shallow level of children.
 	childrenField := tree.Children[1]
-	if len(childrenField.Children) != 2 {
-		t.Errorf("children at depth 1 should have 2 children (shallow level), got %d", len(childrenField.Children))
-	}
+	is.Len(childrenField.Children, 2, "children at depth 1 should have 2 children (shallow level)")
 	// The "children" field at the second level (shallow) must be nil - cycle stopped.
 	if len(childrenField.Children) >= 2 {
 		deepChildrenField := childrenField.Children[1]
-		if len(deepChildrenField.Children) != 0 {
-			t.Errorf("children at depth 2 should have no children (cycle blocked), got %d", len(deepChildrenField.Children))
-		}
+		is.Empty(deepChildrenField.Children, "children at depth 2 should have no children (cycle blocked)")
 	}
 }
 
 func TestDiscover_recursiveTypeLimit0(t *testing.T) {
+	is := assert.New(t)
 	// Explicit limit=0: no recursive expansion (original strict cycle detection).
 	fields := schema.Discover(&selfRefRoot{}, 0)
 	tree := fields[0]
 	childrenField := tree.Children[1]
-	if len(childrenField.Children) != 0 {
-		t.Errorf("with limit=0, recursive children should be nil, got %d", len(childrenField.Children))
-	}
+	is.Empty(childrenField.Children, "with limit=0, recursive children should be nil")
 }
 
 func TestDiscover_recursiveTypeLimit2(t *testing.T) {
+	is := assert.New(t)
 	// Explicit limit=2: two extra levels of recursion.
 	fields := schema.Discover(&selfRefRoot{}, 2)
 	tree := fields[0]
 	depth1 := tree.Children[1]   // first "children" field
 	depth2 := depth1.Children[1] // second "children" field (shallow level 1)
 	depth3 := depth2.Children[1] // third "children" field (shallow level 2)
-	if len(depth3.Children) != 0 {
-		t.Errorf("with limit=2, depth-3 children should be nil, got %d", len(depth3.Children))
-	}
+	is.Empty(depth3.Children, "with limit=2, depth-3 children should be nil")
 }
 
 // ── item 6: embedded / inline promotion ──────────────────────────────────────
@@ -238,31 +217,19 @@ type inlineEmbedConfig struct {
 }
 
 func TestDiscover_anonymousEmbed(t *testing.T) {
+	is := assert.New(t)
 	fields := schema.Discover(&anonymousEmbedConfig{})
 	got := schema.TopLevelOrder(fields)
 	want := []string{"created-by", "version-tag", "port"}
-	if len(got) != len(want) {
-		t.Fatalf("TopLevelOrder = %v, want %v", got, want)
-	}
-	for i, w := range want {
-		if got[i] != w {
-			t.Errorf("[%d] = %q, want %q", i, got[i], w)
-		}
-	}
+	is.Equal(want, got)
 }
 
 func TestDiscover_inlineEmbed(t *testing.T) {
+	is := assert.New(t)
 	fields := schema.Discover(&inlineEmbedConfig{})
 	got := schema.TopLevelOrder(fields)
 	want := []string{"team", "contact", "port"}
-	if len(got) != len(want) {
-		t.Fatalf("TopLevelOrder = %v, want %v", got, want)
-	}
-	for i, w := range want {
-		if got[i] != w {
-			t.Errorf("[%d] = %q, want %q", i, got[i], w)
-		}
-	}
+	is.Equal(want, got)
 }
 
 // ── item 7: omitempty / flow flags ───────────────────────────────────────────
@@ -274,37 +241,27 @@ type omitFlowConfig struct {
 }
 
 func TestDiscover_omitEmpty(t *testing.T) {
+	is := assert.New(t)
 	fields := schema.Discover(&omitFlowConfig{})
 	m := map[string]schema.FieldDef{}
 	for _, f := range fields {
 		m[f.YAMLName] = f
 	}
-	if !m["replicas"].OmitEmpty {
-		t.Error("replicas.OmitEmpty should be true")
-	}
-	if m["tags"].OmitEmpty {
-		t.Error("tags.OmitEmpty should be false")
-	}
-	if m["name"].OmitEmpty {
-		t.Error("name.OmitEmpty should be false")
-	}
+	is.True(m["replicas"].OmitEmpty, "replicas.OmitEmpty should be true")
+	is.False(m["tags"].OmitEmpty, "tags.OmitEmpty should be false")
+	is.False(m["name"].OmitEmpty, "name.OmitEmpty should be false")
 }
 
 func TestDiscover_flow(t *testing.T) {
+	is := assert.New(t)
 	fields := schema.Discover(&omitFlowConfig{})
 	m := map[string]schema.FieldDef{}
 	for _, f := range fields {
 		m[f.YAMLName] = f
 	}
-	if !m["tags"].Flow {
-		t.Error("tags.Flow should be true")
-	}
-	if m["replicas"].Flow {
-		t.Error("replicas.Flow should be false")
-	}
-	if m["name"].Flow {
-		t.Error("name.Flow should be false")
-	}
+	is.True(m["tags"].Flow, "tags.Flow should be true")
+	is.False(m["replicas"].Flow, "replicas.Flow should be false")
+	is.False(m["name"].Flow, "name.Flow should be false")
 }
 
 // ── item 8: map key scalar ────────────────────────────────────────────────────
@@ -315,17 +272,14 @@ type intKeyConfig struct {
 }
 
 func TestDiscover_mapKeyScalar(t *testing.T) {
+	is := assert.New(t)
 	fields := schema.Discover(&intKeyConfig{})
 	m := map[string]schema.FieldDef{}
 	for _, f := range fields {
 		m[f.YAMLName] = f
 	}
-	if m["by-port"].MapKeyScalar != "int" {
-		t.Errorf("by-port.MapKeyScalar = %q, want %q", m["by-port"].MapKeyScalar, "int")
-	}
-	if m["labels"].MapKeyScalar != "string" {
-		t.Errorf("labels.MapKeyScalar = %q, want %q", m["labels"].MapKeyScalar, "string")
-	}
+	is.Equal("int", m["by-port"].MapKeyScalar)
+	is.Equal("string", m["labels"].MapKeyScalar)
 }
 
 // ── item 9: MarshalYAML / TextMarshaler → KindPrimitive ──────────────────────
@@ -348,23 +302,16 @@ type marshalerConfig struct {
 }
 
 func TestDiscover_marshalerIsKindPrimitive(t *testing.T) {
+	is := assert.New(t)
 	fields := schema.Discover(&marshalerConfig{})
 	m := map[string]schema.FieldDef{}
 	for _, f := range fields {
 		m[f.YAMLName] = f
 	}
-	if m["background"].Kind != schema.KindPrimitive {
-		t.Errorf("background.Kind = %v, want KindPrimitive", m["background"].Kind)
-	}
-	if len(m["background"].Children) != 0 {
-		t.Errorf("background should have no children, got %d", len(m["background"].Children))
-	}
-	if m["gateway"].Kind != schema.KindPrimitive {
-		t.Errorf("gateway.Kind = %v, want KindPrimitive", m["gateway"].Kind)
-	}
-	if len(m["gateway"].Children) != 0 {
-		t.Errorf("gateway should have no children, got %d", len(m["gateway"].Children))
-	}
+	is.Equal(schema.KindPrimitive, m["background"].Kind)
+	is.Empty(m["background"].Children, "background should have no children")
+	is.Equal(schema.KindPrimitive, m["gateway"].Kind)
+	is.Empty(m["gateway"].Children, "gateway should have no children")
 }
 
 // ── item 10: interface{}/any → KindAny ───────────────────────────────────────
@@ -375,15 +322,12 @@ type anyFieldConfig struct {
 }
 
 func TestDiscover_anyIsKindAny(t *testing.T) {
+	is := assert.New(t)
 	fields := schema.Discover(&anyFieldConfig{})
 	m := map[string]schema.FieldDef{}
 	for _, f := range fields {
 		m[f.YAMLName] = f
 	}
-	if m["extras"].Kind != schema.KindAny {
-		t.Errorf("extras.Kind = %v, want KindAny", m["extras"].Kind)
-	}
-	if m["name"].Kind != schema.KindPrimitive {
-		t.Errorf("name.Kind = %v, want KindPrimitive", m["name"].Kind)
-	}
+	is.Equal(schema.KindAny, m["extras"].Kind)
+	is.Equal(schema.KindPrimitive, m["name"].Kind)
 }

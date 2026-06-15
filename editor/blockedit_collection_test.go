@@ -1,8 +1,10 @@
 package editor
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -136,18 +138,15 @@ func TestMapBlockNoCrossEntryContamination(t *testing.T) {
 }
 
 func TestMapBlockCommitReassembles(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	be2, cmd := be.commit()
-	if cmd == nil {
-		t.Fatalf("commit produced no command; editorErr=%v", be2.editorErr)
-	}
+	must.NotNil(cmd, "commit produced no command; editorErr=%v", be2.editorErr)
 	committed, ok := cmd().(blockEditCommittedMsg)
-	if !ok {
-		t.Fatalf("expected blockEditCommittedMsg")
-	}
-	if !strings.Contains(committed.Snippet, "\"3000\":") || !strings.Contains(committed.Snippet, "\"8080\":") {
-		t.Errorf("committed snippet dropped entries:\n%s", committed.Snippet)
-	}
+	must.True(ok, "expected blockEditCommittedMsg")
+	is.Contains(committed.Snippet, "\"3000\":", "committed snippet dropped entries")
+	is.Contains(committed.Snippet, "\"8080\":", "committed snippet dropped entries")
 }
 
 // TestSeqBlockStillNavigates guards the existing sequence navigator against
@@ -232,6 +231,7 @@ func TestFlushCurrentEntry_missingHeader_setsErrMsg(t *testing.T) {
 }
 
 func TestFlushCurrentEntry_validContent_clearsErrMsg(t *testing.T) {
+	is := assert.New(t)
 	spec := seqSpec("categories:\n  - name: alpha\n")
 	be := newBlockEdit(Config{}, spec, 100, 40)
 	be.editorErr = editorError{kind: errParse, message: "stale error from before"}
@@ -240,12 +240,8 @@ func TestFlushCurrentEntry_validContent_clearsErrMsg(t *testing.T) {
 
 	result := be.flushCurrentEntry()
 
-	if result.editorErr.kind != errNone {
-		t.Errorf("editorErr should be cleared on successful flush, got %q", result.editorErr.message)
-	}
-	if !strings.Contains(result.entryYAML(0), "alpha_edited") {
-		t.Errorf("entry not updated: %q", result.entryYAML(0))
-	}
+	is.Equal(errNone, result.editorErr.kind, "editorErr should be cleared on successful flush, got %q", result.editorErr.message)
+	is.Contains(result.entryYAML(0), "alpha_edited", "entry not updated")
 }
 
 // ---------------------------------------------------------------------------

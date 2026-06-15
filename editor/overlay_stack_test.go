@@ -3,8 +3,10 @@ package editor
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
@@ -112,26 +114,22 @@ func TestDrillInCommitsThroughCanonicalTree(t *testing.T) {
 		ContainerEngine *ceProbe `yaml:"containerengine,omitempty"`
 	}
 
+	is := assert.New(t)
+	must := require.New(t)
 	path := filepath.Join(t.TempDir(), "w.yaml")
-	if err := os.WriteFile(path, []byte(`containerengine:
+	must.NoError(os.WriteFile(path, []byte(`containerengine:
   httproutes:
     web:
       host: example.com
-`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+`), 0o600))
 	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
-	if err != nil {
-		t.Fatalf("newModel: %v", err)
-	}
+	must.NoError(err, "newModel")
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
 	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "containerengine", Existing: true}})
 	m = updated.(model)
-	if len(m.blockEdits) != 1 {
-		t.Fatalf("after open: stack depth %d, want 1", len(m.blockEdits))
-	}
+	must.Len(m.blockEdits, 1, "after open: stack depth should be 1")
 
 	// Drill into httproutes by focus suffix; the model resolves content from editRoot.
 	updated, _ = m.Update(openChildMsg{
@@ -141,31 +139,22 @@ func TestDrillInCommitsThroughCanonicalTree(t *testing.T) {
 		relSegs: []pathSeg{segKey("httproutes")},
 	})
 	m = updated.(model)
-	if len(m.blockEdits) != 2 {
-		t.Fatalf("after drill-in: stack depth %d, want 2", len(m.blockEdits))
-	}
-	if !m.topBE().isMapNav() {
-		t.Error("child editor should be a map navigator")
-	}
-	if got := m.topBE().yamlEditor.Value(); !strings.Contains(got, "web") || !strings.Contains(got, "host: example.com") {
-		t.Errorf("child editor did not receive existing content from canonical tree:\n%s", got)
-	}
+	must.Len(m.blockEdits, 2, "after drill-in: stack depth should be 2")
+	is.True(m.topBE().isMapNav(), "child editor should be a map navigator")
+	got := m.topBE().yamlEditor.Value()
+	assert.Contains(t, got, "web", "child editor did not receive existing content from canonical tree")
+	assert.Contains(t, got, "host: example.com", "child editor did not receive existing content from canonical tree")
 
 	// Ctrl+S commits the whole stack through the canonical tree and returns to list.
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 	m = updated.(model)
-	if len(m.blockEdits) != 0 {
-		t.Fatalf("after ctrl+s: stack depth %d, want 0 (returned to list)", len(m.blockEdits))
-	}
+	must.Empty(m.blockEdits, "after ctrl+s: stack should be empty (returned to list)")
 
 	// The document must still hold a structurally-intact nested mapping.
 	var check rootProbe
-	if err := yaml.Unmarshal(m.doc.Raw(), &check); err != nil {
-		t.Fatalf("committed doc is not structurally valid: %v\n%s", err, m.doc.Raw())
-	}
-	if check.ContainerEngine == nil || check.ContainerEngine.HTTPRoutes["web"].Host != "example.com" {
-		t.Errorf("nested content lost or corrupted:\n%s", m.doc.Raw())
-	}
+	must.NoError(yaml.Unmarshal(m.doc.Raw(), &check), "committed doc is not structurally valid")
+	must.NotNil(check.ContainerEngine, "nested content lost")
+	is.Equal("example.com", check.ContainerEngine.HTTPRoutes["web"].Host, "nested content corrupted")
 }
 
 // TestDrillOutKeepsEdits verifies that Esc inside a nested editor navigates back
@@ -182,18 +171,16 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 		ContainerEngine *ceProbe `yaml:"containerengine,omitempty"`
 	}
 
+	is := assert.New(t)
+	must := require.New(t)
 	path := filepath.Join(t.TempDir(), "w.yaml")
-	if err := os.WriteFile(path, []byte(`containerengine:
+	must.NoError(os.WriteFile(path, []byte(`containerengine:
   httproutes:
     web:
       host: old.com
-`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+`), 0o600))
 	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
-	if err != nil {
-		t.Fatalf("newModel: %v", err)
-	}
+	must.NoError(err, "newModel")
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "containerengine", Existing: true}})
@@ -207,9 +194,7 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 		relSegs: []pathSeg{segKey("httproutes")},
 	})
 	m = updated.(model)
-	if len(m.blockEdits) != 2 {
-		t.Fatalf("after drill-in: stack depth %d, want 2", len(m.blockEdits))
-	}
+	must.Len(m.blockEdits, 2, "after drill-in: stack depth should be 2")
 
 	// Edit the child: change the route host.
 	child := *m.topBE()
@@ -223,28 +208,19 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 	// Esc inside the nested editor → drill out, keeping the edit.
 	updated, _ = m.Update(drillOutMsg{})
 	m = updated.(model)
-	if len(m.blockEdits) != 1 {
-		t.Fatalf("after drill-out: stack depth %d, want 1 (back at parent)", len(m.blockEdits))
-	}
+	must.Len(m.blockEdits, 1, "after drill-out: stack depth should be 1 (back at parent)")
 	// The parent editor must reflect the child's edit (refreshed from canonical tree).
-	if got := m.topBE().yamlEditor.Value(); !strings.Contains(got, "new.com") {
-		t.Errorf("parent did not reflect the child edit after drill-out:\n%s", got)
-	}
+	is.Contains(m.topBE().yamlEditor.Value(), "new.com", "parent did not reflect the child edit after drill-out")
 	// And the block must be dirty so leaving to the list still warns.
-	if !m.topBE().dirty {
-		t.Error("block should be dirty after keeping child edits")
-	}
+	is.True(m.topBE().dirty, "block should be dirty after keeping child edits")
 
 	// Ctrl+S then persists the kept edit through the canonical tree.
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 	m = updated.(model)
 	var check rootProbe
-	if err := yaml.Unmarshal(m.doc.Raw(), &check); err != nil {
-		t.Fatalf("doc invalid after commit: %v\n%s", err, m.doc.Raw())
-	}
-	if check.ContainerEngine == nil || check.ContainerEngine.HTTPRoutes["web"].Host != "new.com" {
-		t.Errorf("kept edit not persisted:\n%s", m.doc.Raw())
-	}
+	must.NoError(yaml.Unmarshal(m.doc.Raw(), &check), "doc invalid after commit")
+	must.NotNil(check.ContainerEngine, "kept edit not persisted: ContainerEngine nil")
+	is.Equal("new.com", check.ContainerEngine.HTTPRoutes["web"].Host, "kept edit not persisted")
 }
 
 // ---------------------------------------------------------------------------

@@ -3,6 +3,8 @@ package editor
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
 
@@ -34,69 +36,58 @@ func checkedFor(be blockEditState, label string) (bool, bool) {
 }
 
 func TestDispatchToggleField_pushesUndoAndLogs(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	be, idx := dispatchTestBE(t)
 
 	be2 := be.dispatch(ToggleField{NodeIdx: idx, Checked: false})
 
-	if len(be2.undoStack) == 0 {
-		t.Fatal("dispatch(ToggleField) must push to undoStack")
-	}
-	if len(be2.actionLog) != 1 {
-		t.Fatalf("actionLog len: want 1, got %d", len(be2.actionLog))
-	}
-	if _, ok := be2.actionLog[0].(ToggleField); !ok {
-		t.Fatal("actionLog[0] must be ToggleField")
-	}
+	must.NotEmpty(be2.undoStack, "dispatch(ToggleField) must push to undoStack")
+	must.Len(be2.actionLog, 1, "actionLog len should be 1")
+	is.IsType(ToggleField{}, be2.actionLog[0], "actionLog[0] must be ToggleField")
 }
 
 func TestDispatchUndoRedo(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	be, idx := dispatchTestBE(t)
 	fieldLabel := be.tree.nodes[idx].label
 	checkedBefore, _ := checkedFor(be, fieldLabel)
 
 	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: !checkedBefore})
-	if after, ok := checkedFor(be, fieldLabel); !ok || after == checkedBefore {
-		t.Fatalf("toggle did not change checked state for %q", fieldLabel)
-	}
+	after, ok := checkedFor(be, fieldLabel)
+	must.True(ok, "field %q not found after toggle", fieldLabel)
+	must.NotEqual(checkedBefore, after, "toggle did not change checked state for %q", fieldLabel)
 
 	be = be.dispatch(Undo{})
-	if after, ok := checkedFor(be, fieldLabel); !ok || after != checkedBefore {
-		t.Fatalf("field %q must return to original state after Undo", fieldLabel)
-	}
-	if be.statusMsg != "Undone." {
-		t.Fatalf("statusMsg after Undo: want 'Undone.', got %q", be.statusMsg)
-	}
+	after, ok = checkedFor(be, fieldLabel)
+	must.True(ok, "field %q not found after Undo", fieldLabel)
+	is.Equal(checkedBefore, after, "field %q must return to original state after Undo", fieldLabel)
+	is.Equal("Undone.", be.statusMsg, "statusMsg after Undo")
 
 	be = be.dispatch(Redo{})
-	if after, ok := checkedFor(be, fieldLabel); !ok || after == checkedBefore {
-		t.Fatalf("field %q must toggle again after Redo", fieldLabel)
-	}
-	if be.statusMsg != "Redone." {
-		t.Fatalf("statusMsg after Redo: want 'Redone.', got %q", be.statusMsg)
-	}
+	after, ok = checkedFor(be, fieldLabel)
+	must.True(ok, "field %q not found after Redo", fieldLabel)
+	is.NotEqual(checkedBefore, after, "field %q must toggle again after Redo", fieldLabel)
+	is.Equal("Redone.", be.statusMsg, "statusMsg after Redo")
 }
 
 func TestDispatchActionLog_accumulates(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	be, idx := dispatchTestBE(t)
 	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: false})
 	be = be.dispatch(Undo{})
 	be = be.dispatch(Redo{})
 
-	if len(be.actionLog) != 3 {
-		t.Fatalf("actionLog: want 3, got %d", len(be.actionLog))
-	}
-	if _, ok := be.actionLog[0].(ToggleField); !ok {
-		t.Error("actionLog[0] must be ToggleField")
-	}
-	if _, ok := be.actionLog[1].(Undo); !ok {
-		t.Error("actionLog[1] must be Undo")
-	}
-	if _, ok := be.actionLog[2].(Redo); !ok {
-		t.Error("actionLog[2] must be Redo")
-	}
+	must.Len(be.actionLog, 3, "actionLog should have 3 entries")
+	is.IsType(ToggleField{}, be.actionLog[0], "actionLog[0] must be ToggleField")
+	is.IsType(Undo{}, be.actionLog[1], "actionLog[1] must be Undo")
+	is.IsType(Redo{}, be.actionLog[2], "actionLog[2] must be Redo")
 }
 
 func TestReplayBlock(t *testing.T) {
+	must := require.New(t)
 	be, idx := dispatchTestBE(t)
 	initial := be
 	fieldLabel := be.tree.nodes[idx].label
@@ -117,20 +108,17 @@ func TestReplayBlock(t *testing.T) {
 
 	finalYAML, _ := yaml.Marshal(final.node)
 	replayedYAML, _ := yaml.Marshal(replayed.node)
-	if string(finalYAML) != string(replayedYAML) {
-		t.Fatalf("replay produced different node:\nwant: %s\ngot:  %s", finalYAML, replayedYAML)
-	}
+	must.Equal(string(finalYAML), string(replayedYAML), "replay produced different node")
 }
 
 func TestDispatchNoEmptySequenceItem(t *testing.T) {
+	must := require.New(t)
 	spec := seqSpec("categories:\n  - name: existing\n")
 	be := newBlockEdit(Config{NoDeleteConfirm: true}, spec, 120, 40)
 
 	// Add a new entry then navigate back (simulates committing with no fields added).
 	be = be.dispatch(AddEntry{})
-	if seqItemCount(be) < 2 {
-		t.Fatal("AddEntry did not add a new entry")
-	}
+	must.GreaterOrEqual(seqItemCount(be), 2, "AddEntry did not add a new entry")
 
 	// Navigate to first entry; this flushes the new (empty) entry.
 	be = be.dispatch(NavigateEntry{Idx: 0})
@@ -138,7 +126,7 @@ func TestDispatchNoEmptySequenceItem(t *testing.T) {
 	// No empty mapping items should remain in be.node.
 	for i, item := range be.node.Content {
 		if item.Kind == yaml.MappingNode && len(item.Content) == 0 {
-			t.Fatalf("empty mapping item at index %d found after AddEntry + NavigateEntry", i)
+			must.Fail("empty mapping item found after AddEntry + NavigateEntry", "index %d", i)
 		}
 	}
 }

@@ -3,6 +3,9 @@ package schema_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/lucasassuncao/yedit/schema"
 )
 
@@ -109,14 +112,12 @@ build:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			is := assert.New(t)
+			must := require.New(t)
 			got := schema.UnknownKeys([]byte(tc.raw), known)
-			if len(got) != len(tc.want) {
-				t.Fatalf("want %v, got %v", tc.want, got)
-			}
+			must.Len(got, len(tc.want), "want %v, got %v", tc.want, got)
 			for i, w := range tc.want {
-				if got[i] != w {
-					t.Errorf("[%d] want %q, got %q", i, w, got[i])
-				}
+				is.Equal(w, got[i], "[%d]", i)
 			}
 		})
 	}
@@ -135,6 +136,7 @@ type mapOfStructConfig struct {
 // map[string]*Struct field are not validated against the value-struct's field
 // names (they are user-chosen, e.g. port specs).
 func TestUnknownKeys_mapOfStructKeysAreFreeForm(t *testing.T) {
+	is := assert.New(t)
 	known := schema.KnownChildren(schema.Discover(&mapOfStructConfig{}))
 	raw := `
 portsAttributes:
@@ -143,7 +145,5 @@ portsAttributes:
   lucas:
     onAutoForward: notify
 `
-	if u := schema.UnknownKeys([]byte(raw), known); len(u) != 0 {
-		t.Errorf("map keys must be free-form; got unknown: %v", u)
-	}
+	is.Empty(schema.UnknownKeys([]byte(raw), known), "map keys must be free-form")
 }

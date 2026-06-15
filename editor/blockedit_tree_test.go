@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucasassuncao/yedit/schema"
@@ -42,20 +44,21 @@ func seqCtx() toggleCtx { return toggleCtx{key: "categories", childDefs: catDefs
 // (source.filter.regex) into an item that has only an empty "source:". Both
 // source and filter must be created/coerced.
 func TestAudit_DeepNestToggleUnderEmptyAncestors(t *testing.T) {
+	is := assert.New(t)
 	content := `categories:
   - name: "a"
     source:
 `
 	node := seqNode("a", "source", "filter", "regex")
 	got := applyToggleToSeqItem(seqCtx(), node, true, content)
-	if !strings.Contains(got, "filter:") || !strings.Contains(got, "regex:") {
-		t.Errorf("deep nested toggle failed:\n%s", got)
-	}
+	is.Contains(got, "filter:", "deep nested toggle failed")
+	is.Contains(got, "regex:", "deep nested toggle failed")
 }
 
 // TestAudit_ToggleOffPrunesEmptyAncestors toggles the only leaf off; the now-empty
 // source mapping should be pruned so we don't leave a dangling "source:".
 func TestAudit_ToggleOffPrunesEmptyAncestors(t *testing.T) {
+	is := assert.New(t)
 	content := `categories:
   - name: "a"
     source:
@@ -63,30 +66,26 @@ func TestAudit_ToggleOffPrunesEmptyAncestors(t *testing.T) {
 `
 	node := seqNode("a", "source", "path")
 	got := applyToggleToSeqItem(seqCtx(), node, false, content)
-	if strings.Contains(got, "path:") {
-		t.Errorf("path not removed:\n%s", got)
-	}
-	if strings.Contains(got, "source:") {
-		t.Errorf("empty source should be pruned:\n%s", got)
-	}
+	is.NotContains(got, "path:", "path not removed")
+	is.NotContains(got, "source:", "empty source should be pruned")
 }
 
 // TestAudit_ToggleRoundTrip ON then OFF should return to the original.
 func TestAudit_ToggleRoundTrip(t *testing.T) {
+	is := assert.New(t)
 	content := `categories:
   - name: "a"
 `
 	node := seqNode("a", "source", "filter", "regex")
 	on := applyToggleToSeqItem(seqCtx(), node, true, content)
 	off := applyToggleToSeqItem(seqCtx(), node, false, on)
-	if strings.TrimSpace(off) != strings.TrimSpace(content) {
-		t.Errorf("round-trip not stable:\nwant:\n%q\ngot:\n%q", content, off)
-	}
+	is.Equal(strings.TrimSpace(content), strings.TrimSpace(off), "round-trip not stable")
 }
 
 // TestAudit_MapEntryDeepNestSymmetry mirrors the deep-nest test for the map
 // navigator: a map entry with an empty nested struct must accept a deep child.
 func TestAudit_MapEntryDeepNestSymmetry(t *testing.T) {
+	is := assert.New(t)
 	ctx := toggleCtx{key: "items", childDefs: catDefs()}
 	content := `items:
   k1:
@@ -94,37 +93,37 @@ func TestAudit_MapEntryDeepNestSymmetry(t *testing.T) {
 `
 	node := seqNode("k1", "source", "filter", "regex")
 	got := applyToggleToMapEntry(ctx, node, true, content)
-	if !strings.Contains(got, "filter:") || !strings.Contains(got, "regex:") {
-		t.Errorf("map entry deep nested toggle failed:\n%s", got)
-	}
+	is.Contains(got, "filter:", "map entry deep nested toggle failed")
+	is.Contains(got, "regex:", "map entry deep nested toggle failed")
 }
 
 // TestAudit_ToggleSecondSiblingKeepsFirst adds path then extensions; both must
 // survive (no clobber of the freshly-created parent).
 func TestAudit_ToggleSecondSiblingKeepsFirst(t *testing.T) {
+	is := assert.New(t)
 	content := `categories:
   - name: "a"
     source:
 `
 	c1 := applyToggleToSeqItem(seqCtx(), seqNode("a", "source", "path"), true, content)
 	c2 := applyToggleToSeqItem(seqCtx(), seqNode("a", "source", "extensions"), true, c1)
-	if !strings.Contains(c2, "path:") || !strings.Contains(c2, "extensions:") {
-		t.Errorf("second sibling clobbered first:\n%s", c2)
-	}
+	is.Contains(c2, "path:", "second sibling clobbered first")
+	is.Contains(c2, "extensions:", "second sibling clobbered first")
 }
 
 // TestAudit_ToggleParentStructOnAddsKey toggling an inline struct parent (hooks)
 // ON via the apply layer should add the key (asStruct=false path) without panic.
 func TestAudit_ToggleParentStructOnThenChild(t *testing.T) {
+	is := assert.New(t)
 	content := `categories:
   - name: "a"
 `
 	// toggle hooks.before.shell directly into an item that has no hooks at all.
 	node := seqNode("a", "hooks", "before", "shell")
 	got := applyToggleToSeqItem(seqCtx(), node, true, content)
-	if !strings.Contains(got, "hooks:") || !strings.Contains(got, "before:") || !strings.Contains(got, "shell:") {
-		t.Errorf("triple-nested struct creation failed:\n%s", got)
-	}
+	is.Contains(got, "hooks:", "triple-nested struct creation failed")
+	is.Contains(got, "before:", "triple-nested struct creation failed")
+	is.Contains(got, "shell:", "triple-nested struct creation failed")
 }
 
 // --- interaction-layer probes (tree <-> blockEditState) ---
@@ -148,6 +147,7 @@ func expandAll(be blockEditState) blockEditState {
 // TestAudit_EnterThenCtrlDOnInlineParent probes the Enter/ctrl+d symmetry on an
 // inline struct parent. Whatever Enter creates, ctrl+d must be able to remove.
 func TestAudit_EnterThenCtrlDOnInlineParent(t *testing.T) {
+	is := assert.New(t)
 	content := `categories:
   - name: "a"
 `
@@ -157,12 +157,10 @@ func TestAudit_EnterThenCtrlDOnInlineParent(t *testing.T) {
 
 	// Enter on an inline parent must expand it, not insert a stray empty "source:".
 	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
-	if strings.Contains(be.yamlEditor.Value(), "source:") {
-		t.Errorf("Enter on inline parent created stray empty key:\n%s", be.yamlEditor.Value())
-	}
+	is.NotContains(be.yamlEditor.Value(), "source:", "Enter on inline parent created stray empty key")
 	// And it must not leave a phantom checked state on the parent node.
-	if n, ok := nodeByLabel(be, "source"); ok && n.checked {
-		t.Error("inline parent left with phantom checked=true after Enter")
+	if n, ok := nodeByLabel(be, "source"); ok {
+		is.False(n.checked, "inline parent left with phantom checked=true after Enter")
 	}
 }
 
@@ -170,6 +168,7 @@ func TestAudit_EnterThenCtrlDOnInlineParent(t *testing.T) {
 // ctrl+u must undo only the second, keeping the first. If coll.entries is stale and
 // restoreUndo reloads from it, both edits are lost.
 func TestAudit_UndoAfterTwoTogglesKeepsFirst(t *testing.T) {
+	is := assert.New(t)
 	content := `categories:
   - name: "a"
     source:
@@ -187,12 +186,8 @@ func TestAudit_UndoAfterTwoTogglesKeepsFirst(t *testing.T) {
 	be = be.restoreUndo()
 	got := be.yamlEditor.Value()
 	t.Logf("after one undo:\n%s", got)
-	if !strings.Contains(got, "path:") {
-		t.Errorf("undo lost the first toggle (path):\n%s", got)
-	}
-	if strings.Contains(got, "extensions:") {
-		t.Errorf("undo did not remove only the second toggle (extensions):\n%s", got)
-	}
+	is.Contains(got, "path:", "undo lost the first toggle (path)")
+	is.NotContains(got, "extensions:", "undo did not remove only the second toggle (extensions)")
 }
 
 // TestAudit_HasCheckedDescendantCountsOpenable: an inline parent whose only
@@ -367,33 +362,24 @@ func TestAudit_RemoveParentResetsDescendantChecks(t *testing.T) {
 		return n.checked
 	}
 
+	is := assert.New(t)
+
 	// Remove hooks: every hooks descendant clears; source descendants survive.
 	be := remove("hooks")
-	if strings.Contains(be.yamlEditor.Value(), "hooks:") {
-		t.Error("hooks not removed from YAML")
-	}
-	if checked(be, "before", "shell") || checked(be, "after", "shell") {
-		t.Error("hooks descendants still checked after parent removal")
-	}
-	if !checked(be, "source", "path") || !checked(be, "source", "filter", "regex") {
-		t.Error("source descendants should survive removing hooks")
-	}
+	is.NotContains(be.yamlEditor.Value(), "hooks:", "hooks not removed from YAML")
+	is.False(checked(be, "before", "shell"), "hooks descendants still checked after parent removal")
+	is.False(checked(be, "after", "shell"), "hooks descendants still checked after parent removal")
+	is.True(checked(be, "source", "path"), "source descendants should survive removing hooks")
+	is.True(checked(be, "source", "filter", "regex"), "source descendants should survive removing hooks")
 
 	// Remove source: deep descendants (path, filter.regex) clear; hooks survives.
 	be = remove("source")
-	if checked(be, "source", "path") || checked(be, "source", "filter", "regex") {
-		t.Error("source descendants still checked after parent removal")
-	}
-	if !checked(be, "before", "shell") {
-		t.Error("hooks.before.shell should survive removing source")
-	}
+	is.False(checked(be, "source", "path"), "source descendants still checked after parent removal")
+	is.False(checked(be, "source", "filter", "regex"), "source descendants still checked after parent removal")
+	is.True(checked(be, "before", "shell"), "hooks.before.shell should survive removing source")
 
 	// Remove only before: before.shell clears, after.shell stays.
 	be = remove("before")
-	if checked(be, "before", "shell") {
-		t.Error("before.shell should clear after removing before")
-	}
-	if !checked(be, "after", "shell") {
-		t.Error("after.shell should stay after removing before")
-	}
+	is.False(checked(be, "before", "shell"), "before.shell should clear after removing before")
+	is.True(checked(be, "after", "shell"), "after.shell should stay after removing before")
 }

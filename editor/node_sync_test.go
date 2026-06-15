@@ -1,13 +1,14 @@
 package editor
 
 import (
-	"github.com/lucasassuncao/yedit/internal/yamlnode"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
 
+	"github.com/lucasassuncao/yedit/internal/yamlnode"
 	"github.com/lucasassuncao/yedit/schema"
 )
 
@@ -258,12 +259,9 @@ func TestSOT_CommitPreservesLeadingComments(t *testing.T) {
 	}
 	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: false})
 
-	if strings.Contains(be.yamlEditor.Value(), "output:") {
-		t.Error("output key still present after removal")
-	}
-	if !strings.Contains(be.yamlEditor.Value(), "# log destination") {
-		t.Errorf("leading comment lost after editing sibling:\n%s", be.yamlEditor.Value())
-	}
+	is := assert.New(t)
+	is.NotContains(be.yamlEditor.Value(), "output:", "output key still present after removal")
+	is.Contains(be.yamlEditor.Value(), "# log destination", "leading comment lost after editing sibling")
 }
 
 // TestSOT_ToggleRoundTripNode toggling a deep leaf on then off returns the node

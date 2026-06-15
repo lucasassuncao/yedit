@@ -1,8 +1,10 @@
 package editor
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -109,6 +111,8 @@ func expectedAction() map[string]map[string]treeAction {
 // TestMatrix_TreeActions validates all 66 (target × action) cells against the
 // ground-truth table. A mismatch means the interaction layer changed behavior.
 func TestMatrix_TreeActions(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
 	targets := matrixTargets()
 	actions := matrixActions()
 	expected := expectedAction()
@@ -117,64 +121,48 @@ func TestMatrix_TreeActions(t *testing.T) {
 	cells := 0
 	for _, tgt := range targets {
 		exp, ok := expected[tgt.name]
-		if !ok {
-			t.Fatalf("no expected row for target %q", tgt.name)
-		}
+		must.True(ok, "no expected row for target %q", tgt.name)
 		for _, act := range actionOrder {
 			tm := mkTree(tgt.nodes, tgt.cursor)
 			_, got := tm.Update(actions[act])
-			if got != exp[act] {
-				t.Errorf("[%s × %s] action = %v, want %v", tgt.name, act, got, exp[act])
-			}
+			is.Equal(exp[act], got, "[%s × %s] action", tgt.name, act)
 			cells++
 		}
 	}
-	if cells != 66 {
-		t.Fatalf("validated %d cells, expected 66", cells)
-	}
+	is.Equal(66, cells, "validated %d cells, expected 66")
 }
 
 // TestMatrix_StateMutations checks that the actions which change tree state
 // actually do so (expand sets expanded, collapse clears it, toggle flips checked).
 func TestMatrix_StateMutations(t *testing.T) {
+	is := assert.New(t)
 	// right on a collapsed inline parent expands it.
 	tm := mkTree([]treeNode{{kind: treeNodeField, label: "par", isLeaf: false, expanded: false}, {kind: treeNodeField, label: "c", depth: 1, isLeaf: true}}, "par")
 	tm, _ = tm.Update(tea.KeyMsg{Type: tea.KeyRight})
-	if !tm.nodes[0].expanded {
-		t.Error("right did not expand the collapsed inline parent")
-	}
+	is.True(tm.nodes[0].expanded, "right did not expand the collapsed inline parent")
 	// left on an expanded inline parent collapses it.
 	tm, _ = tm.Update(tea.KeyMsg{Type: tea.KeyLeft})
-	if tm.nodes[0].expanded {
-		t.Error("left did not collapse the expanded inline parent")
-	}
+	is.False(tm.nodes[0].expanded, "left did not collapse the expanded inline parent")
 	// enter on an unchecked leaf checks it; ctrl+d on a checked leaf unchecks it.
 	tm = mkTree([]treeNode{{kind: treeNodeField, label: "p", isLeaf: true}}, "p")
 	tm, _ = tm.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if !tm.nodes[0].checked {
-		t.Error("enter did not check the leaf")
-	}
+	is.True(tm.nodes[0].checked, "enter did not check the leaf")
 	tm, _ = tm.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
-	if tm.nodes[0].checked {
-		t.Error("ctrl+d did not uncheck the leaf")
-	}
+	is.False(tm.nodes[0].checked, "ctrl+d did not uncheck the leaf")
 }
 
 // TestMatrix_LeftMovesToParent verifies the non-action side effect of left on a
 // nested node: when it can't collapse, it moves the cursor to the parent row.
 func TestMatrix_LeftMovesToParent(t *testing.T) {
+	is := assert.New(t)
 	tm := mkTree([]treeNode{
 		{kind: treeNodeField, label: "par", depth: 0, isLeaf: false, expanded: true},
 		{kind: treeNodeField, label: "c", depth: 1, isLeaf: true},
 	}, "c")
 	vis := tm.visibleNodes()
 	tm, act := tm.Update(tea.KeyMsg{Type: tea.KeyLeft})
-	if act != treeNoAction {
-		t.Errorf("left on nested leaf action = %v, want noAction", act)
-	}
-	if got := tm.nodes[vis[tm.cursor]].label; got != "par" {
-		t.Errorf("left on nested leaf moved cursor to %q, want parent 'par'", got)
-	}
+	is.Equal(treeNoAction, act, "left on nested leaf action should be noAction")
+	is.Equal("par", tm.nodes[vis[tm.cursor]].label, "left on nested leaf should move cursor to parent 'par'")
 }
 
 // TestMatrix_ToggleConsequenceAcrossContexts crosses the most common mutating
@@ -203,26 +191,22 @@ func TestMatrix_ToggleConsequenceAcrossContexts(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			is := assert.New(t)
+			must := require.New(t)
 			be := newBlockEdit(Config{}, tc.spec, 120, 40)
 			be = expandAll(be)
 			be = cursorToLabel(be, tc.leaf)
 
 			// Enter toggles the leaf ON - it must appear in the editor YAML.
 			be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
-			if !strings.Contains(be.yamlEditor.Value(), tc.leaf+":") {
-				t.Fatalf("[%s] toggle ON did not add %q:\n%s", tc.name, tc.leaf, be.yamlEditor.Value())
-			}
+			must.Contains(be.yamlEditor.Value(), tc.leaf+":", "[%s] toggle ON did not add %q", tc.name, tc.leaf)
 
 			// ctrl+d on the now-empty leaf removes it directly (empty value → no confirm).
 			be = expandAll(be)
 			be = cursorToLabel(be, tc.leaf)
 			be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyCtrlD})
-			if be.mode == modeConfirming {
-				t.Fatalf("[%s] empty leaf removal should not confirm", tc.name)
-			}
-			if strings.Contains(be.yamlEditor.Value(), tc.leaf+":") {
-				t.Fatalf("[%s] toggle OFF did not remove %q:\n%s", tc.name, tc.leaf, be.yamlEditor.Value())
-			}
+			must.NotEqual(modeConfirming, be.mode, "[%s] empty leaf removal should not confirm", tc.name)
+			is.NotContains(be.yamlEditor.Value(), tc.leaf+":", "[%s] toggle OFF did not remove %q", tc.name, tc.leaf)
 		})
 	}
 }
