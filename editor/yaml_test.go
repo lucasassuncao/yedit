@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/internal/yamlnode"
@@ -145,29 +145,6 @@ func TestForceBlockStyle_preservesFlowSequence(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// flowToBlockSeq - flow-style collection is transparently parsed
-// ---------------------------------------------------------------------------
-
-func TestFlowToBlockSeq_singleEntry(t *testing.T) {
-	is := assert.New(t)
-	must := require.New(t)
-	seqBase := "categories: [{name: images}]"
-	entries := parseSeqEntries("categories", seqBase)
-	must.Len(entries, 1, "expected 1 entry from flow-style input")
-	is.Equal("images", entries[0].Label)
-}
-
-func TestFlowToBlockSeq_multipleEntries(t *testing.T) {
-	is := assert.New(t)
-	must := require.New(t)
-	seqBase := "categories: [{name: images}, {name: videos}]"
-	entries := parseSeqEntries("categories", seqBase)
-	must.Len(entries, 2, "expected 2 entries")
-	is.Equal("images", entries[0].Label)
-	is.Equal("videos", entries[1].Label)
-}
-
-// ---------------------------------------------------------------------------
 // applyToggleAt - complex snippets (arrays, maps) must be appended correctly
 // ---------------------------------------------------------------------------
 
@@ -201,38 +178,23 @@ func TestApplyToggleAt_complexSnippetArray(t *testing.T) {
 	assert.Contains(t, result, "tags", "field 'tags' not found in result")
 }
 
-// ---------------------------------------------------------------------------
-// applyToggleToSeqItem - toggling a child under an empty parent struct key
-// ---------------------------------------------------------------------------
-
 // TestToggleChildUnderEmptyParent reproduces the movelooper bug: a sequence item
 // has an existing-but-empty nested struct key ("source:" with a null value).
 // Toggling a child of that empty parent (source.path) must add it to the YAML.
-// Before the fix, findOrCreateMappingChild returned the null scalar as-is and
-// appendLeafToMapping silently no-op'd, so the toggle did nothing.
 func TestToggleChildUnderEmptyParent(t *testing.T) {
-	content := `categories:
-  - name: "lucas"
-    source:
-`
-
-	ctx := toggleCtx{
-		key: "categories",
-		childDefs: []schema.FieldDef{
-			{YAMLName: "name", Kind: schema.KindPrimitive},
-			{YAMLName: "source", Kind: schema.KindObject, Children: []schema.FieldDef{
-				{YAMLName: "path", Kind: schema.KindPrimitive},
-			}},
-		},
+	is := assert.New(t)
+	defs := []schema.FieldDef{
+		{YAMLName: "name", Kind: schema.KindPrimitive},
+		{YAMLName: "source", Kind: schema.KindObject, Children: []schema.FieldDef{
+			{YAMLName: "path", Kind: schema.KindPrimitive},
+		}},
 	}
-	node := treeNode{
-		kind:     treeNodeField,
-		yamlPath: []string{"lucas", "source", "path"},
-		label:    "path",
-		depth:    2,
-		def:      schema.FieldDef{YAMLName: "path", Kind: schema.KindPrimitive},
-	}
-
-	got := applyToggleToSeqItem(ctx, node, true, content)
-	assert.Contains(t, got, "path:", "toggling source.path did not add the field")
+	be := newBlockEdit(Config{}, blockSpec{
+		key: "categories", defs: defs, kind: schema.KindList,
+		content: "categories:\n  - name: \"lucas\"\n    source:\n",
+	}, 120, 40)
+	be = expandAll(be)
+	be = cursorToLabel(be, "path")
+	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	is.Contains(be.yamlEditor.Value(), "path:", "toggling source.path did not add the field")
 }

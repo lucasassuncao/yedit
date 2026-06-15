@@ -144,7 +144,7 @@ func (be blockEditState) flushCurrentEntry() blockEditState {
 	kn, vn, ok := parseEntryFromView(view, be.coll.isMap)
 	if !ok {
 		msg := "Invalid YAML - fix this entry before leaving it."
-		if itemContentFrom(be.key, view) == "" {
+		if !strings.HasPrefix(view, be.key+":") {
 			msg = "Missing '" + be.key + ":' header - restore it before navigating."
 		}
 		be.editorErr = editorError{kind: errParse, message: msg}

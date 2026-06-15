@@ -341,29 +341,11 @@ func serverPresetsMap() map[string]ServerConfig {
 	}
 }
 
-func ServerPreset(name string) ServerConfig {
-	return serverPresetsMap()[name]
-}
-
-func ListOfServerPresets() []string {
-	field := "server"
-	return presets.ForField(field, serverPresetsMap()).ListPresets(field)
-}
-
 func loggingPresetsMap() map[string]LoggingConfig {
 	return map[string]LoggingConfig{
 		"development": {Level: "debug", ShowCaller: true},
 		"production":  {Level: "warn", File: "/var/log/app.log"},
 	}
-}
-
-func LoggingPreset(name string) LoggingConfig {
-	return loggingPresetsMap()[name]
-}
-
-func ListOfLoggingPresets() []string {
-	field := "logging"
-	return presets.ForField(field, loggingPresetsMap()).ListPresets(field)
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────

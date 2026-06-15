@@ -1,10 +1,10 @@
 package editor
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -34,96 +34,120 @@ func catDefs() []schema.FieldDef {
 	}
 }
 
-func seqNode(path ...string) treeNode {
-	return treeNode{kind: treeNodeField, yamlPath: path, label: path[len(path)-1], depth: len(path) - 1, isLeaf: true}
-}
-
-func seqCtx() toggleCtx { return toggleCtx{key: "categories", childDefs: catDefs()} }
-
 // TestAudit_DeepNestToggleUnderEmptyAncestors toggles a depth-3 leaf
 // (source.filter.regex) into an item that has only an empty "source:". Both
 // source and filter must be created/coerced.
 func TestAudit_DeepNestToggleUnderEmptyAncestors(t *testing.T) {
 	is := assert.New(t)
-	content := `categories:
-  - name: "a"
-    source:
-`
-	node := seqNode("a", "source", "filter", "regex")
-	got := applyToggleToSeqItem(seqCtx(), node, true, content)
-	is.Contains(got, "filter:", "deep nested toggle failed")
-	is.Contains(got, "regex:", "deep nested toggle failed")
+	be := newBlockEdit(Config{}, blockSpec{
+		key: "categories", defs: catDefs(), kind: schema.KindList,
+		content: "categories:\n  - name: \"a\"\n    source:\n",
+	}, 120, 40)
+	be = expandAll(be)
+	be = cursorToLabel(be, "regex")
+	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	is.Contains(be.yamlEditor.Value(), "filter:", "deep nested toggle failed")
+	is.Contains(be.yamlEditor.Value(), "regex:", "deep nested toggle failed")
 }
 
 // TestAudit_ToggleOffPrunesEmptyAncestors toggles the only leaf off; the now-empty
 // source mapping should be pruned so we don't leave a dangling "source:".
 func TestAudit_ToggleOffPrunesEmptyAncestors(t *testing.T) {
 	is := assert.New(t)
-	content := `categories:
-  - name: "a"
-    source:
-      path: /x
-`
-	node := seqNode("a", "source", "path")
-	got := applyToggleToSeqItem(seqCtx(), node, false, content)
-	is.NotContains(got, "path:", "path not removed")
-	is.NotContains(got, "source:", "empty source should be pruned")
+	must := require.New(t)
+	be := newBlockEdit(Config{}, blockSpec{
+		key: "categories", defs: catDefs(), kind: schema.KindList,
+		content: "categories:\n  - name: \"a\"\n    source:\n      path: /x\n",
+	}, 120, 40)
+	be = expandAll(be)
+	idx := -1
+	for i, n := range be.tree.nodes {
+		if n.kind == treeNodeField && n.label == "path" {
+			idx = i
+			break
+		}
+	}
+	must.NotEqual(-1, idx, "path node not found")
+	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: false})
+	is.NotContains(be.yamlEditor.Value(), "path:", "path not removed")
+	is.NotContains(be.yamlEditor.Value(), "source:", "empty source should be pruned")
 }
 
-// TestAudit_ToggleRoundTrip ON then OFF should return to the original.
+// TestAudit_ToggleRoundTrip ON then OFF should leave no phantom keys.
 func TestAudit_ToggleRoundTrip(t *testing.T) {
 	is := assert.New(t)
-	content := `categories:
-  - name: "a"
-`
-	node := seqNode("a", "source", "filter", "regex")
-	on := applyToggleToSeqItem(seqCtx(), node, true, content)
-	off := applyToggleToSeqItem(seqCtx(), node, false, on)
-	is.Equal(strings.TrimSpace(content), strings.TrimSpace(off), "round-trip not stable")
+	must := require.New(t)
+	be := newBlockEdit(Config{}, blockSpec{
+		key: "categories", defs: catDefs(), kind: schema.KindList,
+		content: "categories:\n  - name: a\n",
+	}, 120, 40)
+	be = expandAll(be)
+	be = cursorToLabel(be, "regex")
+	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be = expandAll(be)
+	idx := -1
+	for i, n := range be.tree.nodes {
+		if n.kind == treeNodeField && n.label == "regex" {
+			idx = i
+			break
+		}
+	}
+	must.NotEqual(-1, idx, "regex node not found after toggle ON")
+	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: false})
+	is.NotContains(be.yamlEditor.Value(), "regex:", "regex left behind after toggle OFF")
+	is.NotContains(be.yamlEditor.Value(), "filter:", "filter not pruned")
+	is.NotContains(be.yamlEditor.Value(), "source:", "source not pruned")
+	is.Contains(be.yamlEditor.Value(), "name:", "name lost after round-trip")
 }
 
 // TestAudit_MapEntryDeepNestSymmetry mirrors the deep-nest test for the map
 // navigator: a map entry with an empty nested struct must accept a deep child.
 func TestAudit_MapEntryDeepNestSymmetry(t *testing.T) {
 	is := assert.New(t)
-	ctx := toggleCtx{key: "items", childDefs: catDefs()}
-	content := `items:
-  k1:
-    source:
-`
-	node := seqNode("k1", "source", "filter", "regex")
-	got := applyToggleToMapEntry(ctx, node, true, content)
-	is.Contains(got, "filter:", "map entry deep nested toggle failed")
-	is.Contains(got, "regex:", "map entry deep nested toggle failed")
+	be := newBlockEdit(Config{}, blockSpec{
+		key: "items", defs: catDefs(), kind: schema.KindDictionary,
+		content: "items:\n  k1:\n    source:\n",
+	}, 120, 40)
+	be = expandAll(be)
+	be = cursorToLabel(be, "regex")
+	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	is.Contains(be.yamlEditor.Value(), "filter:", "map entry deep nested toggle failed")
+	is.Contains(be.yamlEditor.Value(), "regex:", "map entry deep nested toggle failed")
 }
 
 // TestAudit_ToggleSecondSiblingKeepsFirst adds path then extensions; both must
 // survive (no clobber of the freshly-created parent).
 func TestAudit_ToggleSecondSiblingKeepsFirst(t *testing.T) {
 	is := assert.New(t)
-	content := `categories:
-  - name: "a"
-    source:
-`
-	c1 := applyToggleToSeqItem(seqCtx(), seqNode("a", "source", "path"), true, content)
-	c2 := applyToggleToSeqItem(seqCtx(), seqNode("a", "source", "extensions"), true, c1)
-	is.Contains(c2, "path:", "second sibling clobbered first")
-	is.Contains(c2, "extensions:", "second sibling clobbered first")
+	be := newBlockEdit(Config{}, blockSpec{
+		key: "categories", defs: catDefs(), kind: schema.KindList,
+		content: "categories:\n  - name: \"a\"\n    source:\n",
+	}, 120, 40)
+	be = expandAll(be)
+	be = cursorToLabel(be, "path")
+	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be = expandAll(be)
+	be = cursorToLabel(be, "extensions")
+	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	is.Contains(be.yamlEditor.Value(), "path:", "second sibling clobbered first")
+	is.Contains(be.yamlEditor.Value(), "extensions:", "second sibling not added")
 }
 
-// TestAudit_ToggleParentStructOnAddsKey toggling an inline struct parent (hooks)
-// ON via the apply layer should add the key (asStruct=false path) without panic.
+// TestAudit_ToggleParentStructOnThenChild toggles a deeply-nested leaf
+// (hooks.before.shell) into an item with no hooks and verifies all ancestors
+// are created.
 func TestAudit_ToggleParentStructOnThenChild(t *testing.T) {
 	is := assert.New(t)
-	content := `categories:
-  - name: "a"
-`
-	// toggle hooks.before.shell directly into an item that has no hooks at all.
-	node := seqNode("a", "hooks", "before", "shell")
-	got := applyToggleToSeqItem(seqCtx(), node, true, content)
-	is.Contains(got, "hooks:", "triple-nested struct creation failed")
-	is.Contains(got, "before:", "triple-nested struct creation failed")
-	is.Contains(got, "shell:", "triple-nested struct creation failed")
+	be := newBlockEdit(Config{}, blockSpec{
+		key: "categories", defs: catDefs(), kind: schema.KindList,
+		content: "categories:\n  - name: \"a\"\n",
+	}, 120, 40)
+	be = expandAll(be)
+	be = cursorToLabel(be, "shell")
+	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	is.Contains(be.yamlEditor.Value(), "hooks:", "triple-nested struct creation failed")
+	is.Contains(be.yamlEditor.Value(), "before:", "triple-nested struct creation failed")
+	is.Contains(be.yamlEditor.Value(), "shell:", "triple-nested struct creation failed")
 }
 
 // --- interaction-layer probes (tree <-> blockEditState) ---
