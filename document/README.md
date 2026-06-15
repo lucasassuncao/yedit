@@ -186,7 +186,7 @@ func (d Document) Dirty() bool
 
 
 <a name="Document.ExternallyChanged"></a>
-### func \(Document\) [ExternallyChanged](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L354>)
+### func \(Document\) [ExternallyChanged](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L357>)
 
 ```go
 func (d Document) ExternallyChanged() bool
@@ -222,7 +222,7 @@ func (d Document) Raw() []byte
 
 
 <a name="Document.Redo"></a>
-### func \(Document\) [Redo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L276>)
+### func \(Document\) [Redo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L279>)
 
 ```go
 func (d Document) Redo() (Document, bool)
@@ -231,7 +231,7 @@ func (d Document) Redo() (Document, bool)
 Redo re\-applies the most recently undone change. Returns false if there is nothing to redo. The current state is pushed onto the undo history so the redo itself can be undone.
 
 <a name="Document.Reload"></a>
-### func \(Document\) [Reload](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L338>)
+### func \(Document\) [Reload](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L341>)
 
 ```go
 func (d Document) Reload() (Document, error)
@@ -249,7 +249,7 @@ func (d Document) Remove(key string) (Document, error)
 Remove deletes the block with the given key. Returns an error if the key is not present.
 
 <a name="Document.Replace"></a>
-### func \(Document\) [Replace](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L182>)
+### func \(Document\) [Replace](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L185>)
 
 ```go
 func (d Document) Replace(key, snippet string) (Document, error)
@@ -258,7 +258,7 @@ func (d Document) Replace(key, snippet string) (Document, error)
 Replace removes the block at key and inserts snippet in its schema\-ordered position. Records a single history snapshot for the combined operation. Returns an error \(and rolls back\) if a post\-write round\-trip check detects that the stored block diverges from the submitted snippet.
 
 <a name="Document.ReplaceRaw"></a>
-### func \(Document\) [ReplaceRaw](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L241>)
+### func \(Document\) [ReplaceRaw](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L244>)
 
 ```go
 func (d Document) ReplaceRaw(raw []byte) (Document, error)
@@ -267,7 +267,7 @@ func (d Document) ReplaceRaw(raw []byte) (Document, error)
 ReplaceRaw replaces the document content with raw, normalising CRLF. If raw fails to parse, the document is left untouched and the error is returned. Does NOT snapshot \- direct YAML editing is not tracked in the undo history; only committed block operations \(Insert, Replace, Remove\) are undoable.
 
 <a name="Document.Save"></a>
-### func \(Document\) [Save](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L316>)
+### func \(Document\) [Save](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L319>)
 
 ```go
 func (d Document) Save() (Document, error)
@@ -285,7 +285,7 @@ func (d Document) SetPath(path string) Document
 SetPath overrides the path used by Save. Call after Load when the save destination differs from the source \(e.g. writing a template to a new file\).
 
 <a name="Document.Undo"></a>
-### func \(Document\) [Undo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L256>)
+### func \(Document\) [Undo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L259>)
 
 ```go
 func (d Document) Undo() (Document, bool)

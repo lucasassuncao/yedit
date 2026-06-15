@@ -186,12 +186,11 @@ func (be blockEditState) appendPreset(name, y string) blockEditState {
 	if !be.isCollectionNav() {
 		return be
 	}
-	be = be.saveUndo()
-
 	presetNode := collValueNode(y, be.isMapNav())
 	if entryCount(presetNode, be.isMapNav()) == 0 {
 		return be
 	}
+	be = be.saveUndo()
 
 	be = be.flushCurrentEntry()
 	be.editorErr = editorError{} // appending overrides an in-progress invalid entry; don't block

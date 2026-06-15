@@ -164,10 +164,13 @@ func (d Document) Remove(key string) (Document, error) {
 	if err != nil {
 		return d, err
 	}
+	savedFuture := d.future
 	d = d.snapshot()
 	d.raw = newRaw
 	blocks, err := ParseBlocks(newRaw)
 	if err != nil {
+		d = d.rollback()
+		d.future = savedFuture
 		return d, fmt.Errorf("reparsing after remove: %w", err)
 	}
 	d.blocks = blocks
