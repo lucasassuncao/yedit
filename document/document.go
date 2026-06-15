@@ -132,10 +132,13 @@ func (d Document) Insert(snippet string) (Document, error) {
 	if err != nil {
 		return d, err
 	}
+	savedFuture := d.future
 	d = d.snapshot()
 	d.raw = newRaw
 	blocks, err := ParseBlocks(newRaw)
 	if err != nil {
+		d = d.rollback()
+		d.future = savedFuture
 		return d, fmt.Errorf("reparsing after insert: %w", err)
 	}
 	d.blocks = blocks
@@ -146,6 +149,7 @@ func (d Document) Insert(snippet string) (Document, error) {
 		if recovered, err2 := BlockContent(d.raw, d.blocks, key); err2 == nil {
 			if !blockSemanticEqual(snippet, recovered) {
 				d = d.rollback()
+				d.future = savedFuture
 				return d, fmt.Errorf("round-trip verification failed after insert of %q", key)
 			}
 		}
@@ -184,10 +188,13 @@ func (d Document) Replace(key, snippet string) (Document, error) {
 	if err != nil {
 		return d, err
 	}
+	savedFuture := d.future
 	d = d.snapshot()
 	d.raw = inserted
 	blocks, err := ParseBlocks(inserted)
 	if err != nil {
+		d = d.rollback()
+		d.future = savedFuture
 		return d, fmt.Errorf("reparsing after replace: %w", err)
 	}
 	d.blocks = blocks
@@ -196,6 +203,7 @@ func (d Document) Replace(key, snippet string) (Document, error) {
 	if recovered, err2 := BlockContent(d.raw, d.blocks, key); err2 == nil {
 		if !blockSemanticEqual(snippet, recovered) {
 			d = d.rollback()
+			d.future = savedFuture
 			return d, fmt.Errorf("round-trip verification failed after replace of %q", key)
 		}
 	}

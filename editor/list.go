@@ -252,7 +252,7 @@ func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
 			for i, it := range lm.items {
 				if it.Key == sel {
 					lm.cursor = i
-					lm.clampScroll()
+					lm = lm.clampScroll()
 					break
 				}
 			}
