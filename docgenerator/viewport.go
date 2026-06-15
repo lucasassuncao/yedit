@@ -86,9 +86,9 @@ func newDocTUIModel(ds DocSet, appName string) docTUIModel {
 	}
 }
 
-func (m docTUIModel) Init() tea.Cmd { return nil }
+func (m *docTUIModel) Init() tea.Cmd { return nil }
 
-func (m docTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *docTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -275,7 +275,7 @@ func (m *docTUIModel) navigateTo(name string) {
 	}
 }
 
-func (m docTUIModel) View() string {
+func (m *docTUIModel) View() string {
 	if m.width == 0 {
 		return "Loading…"
 	}
@@ -314,7 +314,8 @@ func RenderMarkdownDocsInTerminal(docs DocSet, appName string) error {
 	if len(docs.Pages) == 0 {
 		return fmt.Errorf("no documentation to display")
 	}
-	p := tea.NewProgram(newDocTUIModel(docs, appName), tea.WithAltScreen())
+	m := newDocTUIModel(docs, appName)
+	p := tea.NewProgram(&m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("failed to run docs TUI: %w", err)
 	}

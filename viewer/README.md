@@ -15,9 +15,9 @@ Package viewer is a read\-only TUI that browses the presets exposed by a presets
 - [func Run\(src presets.Source\) error](<#Run>)
 - [type Model](<#Model>)
   - [func NewModel\(src presets.Source\) Model](<#NewModel>)
-  - [func \(m Model\) Init\(\) tea.Cmd](<#Model.Init>)
-  - [func \(m Model\) Update\(msg tea.Msg\) \(tea.Model, tea.Cmd\)](<#Model.Update>)
-  - [func \(m Model\) View\(\) string](<#Model.View>)
+  - [func \(m \*Model\) Init\(\) tea.Cmd](<#Model.Init>)
+  - [func \(m \*Model\) Update\(msg tea.Msg\) \(tea.Model, tea.Cmd\)](<#Model.Update>)
+  - [func \(m \*Model\) View\(\) string](<#Model.View>)
 
 
 <a name="Run"></a>
@@ -50,28 +50,28 @@ func NewModel(src presets.Source) Model
 NewModel constructs the TUI from a presets.Source.
 
 <a name="Model.Init"></a>
-### func \(Model\) [Init](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L55>)
+### func \(\*Model\) [Init](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L55>)
 
 ```go
-func (m Model) Init() tea.Cmd
+func (m *Model) Init() tea.Cmd
 ```
 
 
 
 <a name="Model.Update"></a>
-### func \(Model\) [Update](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L57>)
+### func \(\*Model\) [Update](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L57>)
 
 ```go
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
 ```
 
 
 
 <a name="Model.View"></a>
-### func \(Model\) [View](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L139>)
+### func \(\*Model\) [View](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L139>)
 
 ```go
-func (m Model) View() string
+func (m *Model) View() string
 ```
 
 

@@ -78,7 +78,7 @@ func newPreviewRenderer(wrap int) *glamour.TermRenderer {
 // for syntax-highlighted display. Falls back to the plain text when r is nil or
 // rendering fails.
 func renderPreviewYAML(raw string, r *glamour.TermRenderer) string {
-	raw = strings.TrimRight(raw, "\n")
+	raw = strings.TrimSuffix(raw, "\n")
 	if r == nil || raw == "" {
 		return raw
 	}

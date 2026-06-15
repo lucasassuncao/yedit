@@ -2,10 +2,11 @@ package document
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -43,7 +44,7 @@ type Document struct {
 // knownOrder is the canonical key order for ordered Insert/Replace.
 func Load(path string, knownOrder []string) (Document, error) {
 	raw, err := os.ReadFile(path) // #nosec G304 -- path is supplied by the embedding application
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return Document{}, fmt.Errorf("reading %s: %w", path, err)
 	}
 	if raw == nil {
@@ -51,7 +52,7 @@ func Load(path string, knownOrder []string) (Document, error) {
 	}
 	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}) // strip UTF-8 BOM
 	usedCRLF := bytes.Contains(raw, []byte("\r\n"))
-	raw = []byte(strings.ReplaceAll(string(raw), "\r\n", "\n"))
+	raw = bytes.ReplaceAll(raw, []byte("\r\n"), []byte("\n"))
 
 	blocks, err := ParseBlocks(raw)
 	if err != nil {
@@ -67,7 +68,7 @@ func Load(path string, knownOrder []string) (Document, error) {
 func New(raw []byte, knownOrder []string) (Document, error) {
 	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}) // strip UTF-8 BOM
 	usedCRLF := bytes.Contains(raw, []byte("\r\n"))
-	raw = []byte(strings.ReplaceAll(string(raw), "\r\n", "\n"))
+	raw = bytes.ReplaceAll(raw, []byte("\r\n"), []byte("\n"))
 	blocks, err := ParseBlocks(raw)
 	if err != nil {
 		return Document{}, fmt.Errorf("parsing raw: %w", err)
@@ -242,7 +243,7 @@ func blockSemanticEqual(a, b string) bool {
 // Does NOT snapshot - direct YAML editing is not tracked in the undo history;
 // only committed block operations (Insert, Replace, Remove) are undoable.
 func (d Document) ReplaceRaw(raw []byte) (Document, error) {
-	raw = []byte(strings.ReplaceAll(string(raw), "\r\n", "\n"))
+	raw = bytes.ReplaceAll(raw, []byte("\r\n"), []byte("\n"))
 	blocks, err := ParseBlocks(raw)
 	if err != nil {
 		return d, err

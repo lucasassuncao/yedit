@@ -749,7 +749,7 @@ func (be blockEditState) scrolledHintContent() string {
 	if content == "" {
 		return ""
 	}
-	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	lines := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
 	h := be.hintH()
 	maxScroll := len(lines) - h
 	if maxScroll < 0 {

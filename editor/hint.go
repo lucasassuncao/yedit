@@ -93,7 +93,7 @@ func renderFieldHint(th resolvedTheme, meta FieldMeta, example string) string {
 	}
 	if example != "" {
 		sb.WriteString(label("Example:") + "\n")
-		for _, line := range strings.Split(strings.TrimRight(example, "\n"), "\n") {
+		for _, line := range strings.Split(strings.TrimSuffix(example, "\n"), "\n") {
 			sb.WriteString("  " + line + "\n")
 		}
 	}

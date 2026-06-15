@@ -52,9 +52,9 @@ func NewModel(src presets.Source) Model {
 	}
 }
 
-func (m Model) Init() tea.Cmd { return nil }
+func (m *Model) Init() tea.Cmd { return nil }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -136,7 +136,7 @@ func (m *Model) refreshRendered() {
 	m.renderedPane = renderYAML(yaml, m.renderer)
 }
 
-func (m Model) View() string {
+func (m *Model) View() string {
 	if m.width == 0 {
 		return "Loading..."
 	}
@@ -169,7 +169,7 @@ func (m Model) View() string {
 // Run starts the viewer TUI as a blocking call.
 func Run(src presets.Source) error {
 	m := NewModel(src)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(&m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
 }

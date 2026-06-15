@@ -61,7 +61,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strconv"
 	"strings"
@@ -368,7 +370,7 @@ func buildEditCmd() *cobra.Command {
 		Short: "yedit test - exercises every schema pattern and Config option",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const path = "test.yaml"
-			if _, err := os.Stat(path); os.IsNotExist(err) {
+			if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
 				if err := os.WriteFile(path, []byte(seedYAML), 0600); err != nil {
 					return err
 				}
