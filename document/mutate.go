@@ -24,6 +24,34 @@ func blockContentFromLines(lines []string, blocks []Block, key string) (string, 
 	return "", fmt.Errorf("key %q not found", key)
 }
 
+// ReplaceBlock substitutes the lines belonging to key with snippet, in place.
+// Unlike RemoveBlock+InsertBlock, the block's position and any surrounding
+// blank lines or comments are left untouched - only its own line range changes.
+func ReplaceBlock(raw []byte, blocks []Block, key, snippet string) ([]byte, error) {
+	var target *Block
+	for i := range blocks {
+		if blocks[i].Key == key {
+			target = &blocks[i]
+			break
+		}
+	}
+	if target == nil {
+		return nil, fmt.Errorf("key %q not found in blocks", key)
+	}
+
+	lines := strings.Split(string(raw), "\n")
+	start := target.Line - 1
+	end := target.EndLine // exclusive upper bound (0-based = EndLine)
+	start, end = clampRange(start, end, len(lines))
+
+	snippetLines := strings.Split(strings.TrimRight(snippet, "\n"), "\n")
+	merged := make([]string, 0, len(lines)-(end-start)+len(snippetLines))
+	merged = append(merged, lines[:start]...)
+	merged = append(merged, snippetLines...)
+	merged = append(merged, lines[end:]...)
+	return []byte(strings.Join(merged, "\n")), nil
+}
+
 // RemoveBlock deletes the lines belonging to key from raw YAML bytes.
 func RemoveBlock(raw []byte, blocks []Block, key string) ([]byte, error) {
 	var target *Block

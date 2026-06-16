@@ -16,6 +16,7 @@ Package document provides primitives for editing YAML files structured as a flat
 - [func BlockContent\(raw \[\]byte, blocks \[\]Block, key string\) \(string, error\)](<#BlockContent>)
 - [func InsertBlock\(raw \[\]byte, snippet string, knownOrder \[\]string\) \(\[\]byte, error\)](<#InsertBlock>)
 - [func RemoveBlock\(raw \[\]byte, blocks \[\]Block, key string\) \(\[\]byte, error\)](<#RemoveBlock>)
+- [func ReplaceBlock\(raw \[\]byte, blocks \[\]Block, key, snippet string\) \(\[\]byte, error\)](<#ReplaceBlock>)
 - [func ValidateSnippet\(text string\) error](<#ValidateSnippet>)
 - [type Block](<#Block>)
   - [func ParseBlocks\(raw \[\]byte\) \(\[\]Block, error\)](<#ParseBlocks>)
@@ -59,7 +60,7 @@ func BlockContent(raw []byte, blocks []Block, key string) (string, error)
 BlockContent returns the raw lines for a given block key.
 
 <a name="InsertBlock"></a>
-## func [InsertBlock](<https://github.com/lucasassuncao/yedit/blob/main/document/mutate.go#L69>)
+## func [InsertBlock](<https://github.com/lucasassuncao/yedit/blob/main/document/mutate.go#L97>)
 
 ```go
 func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error)
@@ -68,13 +69,22 @@ func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error
 InsertBlock inserts a YAML snippet into raw, respecting the canonical key order in knownOrder. The snippet is placed before the first existing block whose key follows the new key in knownOrder. If the new key is unknown to knownOrder, or no later block exists, the snippet is appended at the end.
 
 <a name="RemoveBlock"></a>
-## func [RemoveBlock](<https://github.com/lucasassuncao/yedit/blob/main/document/mutate.go#L28>)
+## func [RemoveBlock](<https://github.com/lucasassuncao/yedit/blob/main/document/mutate.go#L56>)
 
 ```go
 func RemoveBlock(raw []byte, blocks []Block, key string) ([]byte, error)
 ```
 
 RemoveBlock deletes the lines belonging to key from raw YAML bytes.
+
+<a name="ReplaceBlock"></a>
+## func [ReplaceBlock](<https://github.com/lucasassuncao/yedit/blob/main/document/mutate.go#L30>)
+
+```go
+func ReplaceBlock(raw []byte, blocks []Block, key, snippet string) ([]byte, error)
+```
+
+ReplaceBlock substitutes the lines belonging to key with snippet, in place. Unlike RemoveBlock\+InsertBlock, the block's position and any surrounding blank lines or comments are left untouched \- only its own line range changes.
 
 <a name="ValidateSnippet"></a>
 ## func [ValidateSnippet](<https://github.com/lucasassuncao/yedit/blob/main/document/block.go#L72>)
@@ -186,7 +196,7 @@ func (d Document) Dirty() bool
 
 
 <a name="Document.ExternallyChanged"></a>
-### func \(Document\) [ExternallyChanged](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L358>)
+### func \(Document\) [ExternallyChanged](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L355>)
 
 ```go
 func (d Document) ExternallyChanged() bool
@@ -222,7 +232,7 @@ func (d Document) Raw() []byte
 
 
 <a name="Document.Redo"></a>
-### func \(Document\) [Redo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L280>)
+### func \(Document\) [Redo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L277>)
 
 ```go
 func (d Document) Redo() (Document, bool)
@@ -231,7 +241,7 @@ func (d Document) Redo() (Document, bool)
 Redo re\-applies the most recently undone change. Returns false if there is nothing to redo. The current state is pushed onto the undo history so the redo itself can be undone.
 
 <a name="Document.Reload"></a>
-### func \(Document\) [Reload](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L342>)
+### func \(Document\) [Reload](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L339>)
 
 ```go
 func (d Document) Reload() (Document, error)
@@ -249,16 +259,16 @@ func (d Document) Remove(key string) (Document, error)
 Remove deletes the block with the given key. Returns an error if the key is not present.
 
 <a name="Document.Replace"></a>
-### func \(Document\) [Replace](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L186>)
+### func \(Document\) [Replace](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L187>)
 
 ```go
 func (d Document) Replace(key, snippet string) (Document, error)
 ```
 
-Replace removes the block at key and inserts snippet in its schema\-ordered position. Records a single history snapshot for the combined operation. Returns an error \(and rolls back\) if a post\-write round\-trip check detects that the stored block diverges from the submitted snippet.
+Replace substitutes the content of the existing block at key with snippet, in place \- the block's position and any surrounding blank lines or comments are left untouched. Records a single history snapshot for the operation. Returns an error \(and rolls back\) if a post\-write round\-trip check detects that the stored block diverges from the submitted snippet.
 
 <a name="Document.ReplaceRaw"></a>
-### func \(Document\) [ReplaceRaw](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L245>)
+### func \(Document\) [ReplaceRaw](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L242>)
 
 ```go
 func (d Document) ReplaceRaw(raw []byte) (Document, error)
@@ -267,7 +277,7 @@ func (d Document) ReplaceRaw(raw []byte) (Document, error)
 ReplaceRaw replaces the document content with raw, normalising CRLF. If raw fails to parse, the document is left untouched and the error is returned. Does NOT snapshot \- direct YAML editing is not tracked in the undo history; only committed block operations \(Insert, Replace, Remove\) are undoable.
 
 <a name="Document.Save"></a>
-### func \(Document\) [Save](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L320>)
+### func \(Document\) [Save](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L317>)
 
 ```go
 func (d Document) Save() (Document, error)
@@ -285,7 +295,7 @@ func (d Document) SetPath(path string) Document
 SetPath overrides the path used by Save. Call after Load when the save destination differs from the source \(e.g. writing a template to a new file\).
 
 <a name="Document.Undo"></a>
-### func \(Document\) [Undo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L260>)
+### func \(Document\) [Undo](<https://github.com/lucasassuncao/yedit/blob/main/document/document.go#L257>)
 
 ```go
 func (d Document) Undo() (Document, bool)

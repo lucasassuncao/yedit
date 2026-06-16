@@ -179,23 +179,20 @@ func (d Document) Remove(key string) (Document, error) {
 	return d, nil
 }
 
-// Replace removes the block at key and inserts snippet in its schema-ordered
-// position. Records a single history snapshot for the combined operation.
+// Replace substitutes the content of the existing block at key with snippet,
+// in place - the block's position and any surrounding blank lines or comments
+// are left untouched. Records a single history snapshot for the operation.
 // Returns an error (and rolls back) if a post-write round-trip check detects
 // that the stored block diverges from the submitted snippet.
 func (d Document) Replace(key, snippet string) (Document, error) {
-	removed, err := RemoveBlock(d.raw, d.blocks, key)
-	if err != nil {
-		return d, err
-	}
-	inserted, err := InsertBlock(removed, snippet, d.knownOrder)
+	replaced, err := ReplaceBlock(d.raw, d.blocks, key, snippet)
 	if err != nil {
 		return d, err
 	}
 	savedFuture := d.future
 	d = d.snapshot()
-	d.raw = inserted
-	blocks, err := ParseBlocks(inserted)
+	d.raw = replaced
+	blocks, err := ParseBlocks(replaced)
 	if err != nil {
 		d = d.rollback()
 		d.future = savedFuture

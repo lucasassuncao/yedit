@@ -350,6 +350,23 @@ func TestExternallyChanged(t *testing.T) {
 
 // TestReplace_preservesSurroundingComments: editing one block must not drop
 // comments and blank lines that live outside the replaced block.
+// TestReplace_preservesPositionAndBlankLines reproduces a real-world bug: a
+// document whose on-disk top-level order doesn't match knownOrder (here,
+// "extra" sits between "name" and "image" but has no rank in knownOrder, like
+// a PassthroughKey). Editing "name" must not relocate it to its canonical
+// position, and the blank lines separating blocks must survive untouched.
+func TestReplace_preservesPositionAndBlankLines(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	src := "name: web\n\nextra:\n  - one\n\nimage: alpine\n"
+	doc, err := document.New([]byte(src), canonicalOrder) // canonicalOrder: []string{"name", "image"}
+	must.NoError(err)
+	doc, err = doc.Replace("name", "name: api\n")
+	must.NoError(err)
+	want := "name: api\n\nextra:\n  - one\n\nimage: alpine\n"
+	is.Equal(want, string(doc.Raw()), "Replace must not reorder blocks or drop blank-line separators")
+}
+
 func TestReplace_preservesSurroundingComments(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
