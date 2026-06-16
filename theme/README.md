@@ -227,7 +227,7 @@ RenderTitledPanelWith is like RenderTitledPanel but derives border and title col
 func RenderTwoColumnView(layout TwoColumnLayout) string
 ```
 
-RenderTwoColumnView assembles the standard two\-panel screen: header, panels side by side, a feedback line, and a hint line.
+RenderTwoColumnView assembles the standard two\-panel screen: header, panels side by side, a feedback line, and a legend line.
 
 <a name="TwoColumnWidths"></a>
 ## func [TwoColumnWidths](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L35>)
@@ -307,7 +307,7 @@ type TwoColumnLayout struct {
     Left     string
     Right    string
     Feedback string // pass "" when there is nothing to report
-    Hint     string
+    Legend   string // key/action legend line
 }
 ```
 

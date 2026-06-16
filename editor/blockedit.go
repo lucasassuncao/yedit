@@ -630,8 +630,7 @@ func (be blockEditState) View(parentSegs []string) string {
 		return be.presetView(parentSegs)
 	}
 
-	segs := append(append(parentSegs, be.key), be.tree.BreadcrumbSegments()...)
-	header := theme.RenderHeaderWith(be.cfg.Title, strings.Join(segs, " › "), "", be.width, be.theme.colors)
+	header := be.breadcrumbHeader(parentSegs)
 
 	treeActive := be.active == blockEditPanelTree
 	leftTitle, leftContent := "Fields", be.tree.View(be.theme)
@@ -658,23 +657,12 @@ func (be blockEditState) View(parentSegs []string) string {
 		rightPanel = lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)
 	}
 
-	hintText := be.currentHint()
+	legendText := be.currentLegend()
 
-	var feedback string
-	switch {
-	case be.editorErr.kind != errNone:
-		feedback = lipgloss.NewStyle().Width(be.width).
-			Render(be.theme.errorText.Render(be.editorErr.message))
-	case be.dirty:
-		feedback = lipgloss.NewStyle().Width(be.width).
-			Render(be.theme.status.Render(msgUncommittedChanges))
-	case be.statusMsg != "":
-		feedback = lipgloss.NewStyle().Width(be.width).
-			Render(be.theme.status.Render(be.statusMsg))
-	}
-	hint := lipgloss.NewStyle().Width(be.width).Render(be.theme.status.Render(hintText))
+	feedback := be.feedbackLine()
+	legend := renderStatusLine(be.width, be.theme.status, legendText)
 
-	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Hint: hint})
+	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legend})
 	if be.height > 0 {
 		if lines := strings.Split(out, "\n"); len(lines) > be.height {
 			out = strings.Join(lines[:be.height], "\n")
@@ -683,40 +671,21 @@ func (be blockEditState) View(parentSegs []string) string {
 	return out
 }
 
-// currentHint returns the hint bar text for the current panel and cursor state.
-func (be blockEditState) currentHint() string {
-	if be.active != blockEditPanelTree {
-		return hintSaveTail
-	}
-	parts := []string{keyNav, keyExpand}
-	if be.cfg.Presets != nil && len(be.cfg.Presets.ListPresets(be.key)) > 0 {
-		parts = append(parts, keyPreset)
-	}
-	if be.isCollectionNav() {
-		parts = append(parts, keyEnterAdd, keyCtrlDDelete)
-	} else {
-		parts = append(parts, keyEnterAdd, keyCtrlDRemove)
-	}
-	parts = append(parts, keyCtrlUUndo, keyCtrlYRedo, keyTabPane, keyCtrlSSaveChg, keyEscBack)
-	return strings.Join(parts, hintSep)
-}
-
 func (be blockEditState) presetView(parentSegs []string) string {
-	segs := append(append(parentSegs, be.key), be.tree.BreadcrumbSegments()...)
-	header := theme.RenderHeaderWith(be.cfg.Title, strings.Join(segs, " › "), "", be.width, be.theme.colors)
+	header := be.breadcrumbHeader(parentSegs)
 
 	leftPanel := theme.RenderTitledPanelWith("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, !be.preset.previewFocus, be.preset.listView(be.theme), be.theme.colors)
 	rightPanel := theme.RenderTitledPanelWith("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, be.preset.previewFocus, be.preset.previewView(be.innerH()), be.theme.colors)
 
-	hintStr := hintPresetListScalar
+	legendStr := legendPresetListScalar
 	if be.preset.previewFocus {
-		hintStr = hintPresetPreviewFocused
+		legendStr = legendPresetPreviewFocused
 	} else if be.isCollectionNav() {
-		hintStr = hintPresetListCollection
+		legendStr = legendPresetListCollection
 	}
-	hint := lipgloss.NewStyle().Width(be.width).Render(be.theme.status.Render(hintStr))
+	legend := renderStatusLine(be.width, be.theme.status, legendStr)
 
-	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Hint: hint})
+	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Legend: legend})
 	if be.height > 0 {
 		if lines := strings.Split(out, "\n"); len(lines) > be.height {
 			out = strings.Join(lines[:be.height], "\n")
@@ -729,81 +698,4 @@ func (be blockEditState) presetView(parentSegs []string) string {
 func validateSnippetText(text string) error {
 	var check any
 	return yaml.Unmarshal([]byte(text), &check)
-}
-
-// --- Hint panel ----------------------------------------------------------
-
-// fieldItemView renders the left panel for a tree-less block (primitive, enum,
-// or free-form collection): a single non-toggleable row naming the field being
-// edited. There are no sub-fields to navigate, so the row is just an anchor -
-// the field's metadata lives in the Hint/Example panel.
-func (be blockEditState) fieldItemView() string {
-	return be.theme.existingItem.Render(" ▸ " + be.key)
-}
-
-// hintContent returns the rendered string for the bottom-right hint panel.
-// scrolledHintContent returns the hint content clipped to hintH() lines,
-// starting at hintScroll. Used when hint panel has focus for scrolling.
-func (be blockEditState) scrolledHintContent() string {
-	content := be.hintContent()
-	if content == "" {
-		return ""
-	}
-	lines := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
-	h := be.hintH()
-	maxScroll := len(lines) - h
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	scroll := be.hintScroll
-	if scroll > maxScroll {
-		scroll = maxScroll
-	}
-	end := scroll + h
-	if end > len(lines) {
-		end = len(lines)
-	}
-	return strings.Join(lines[scroll:end], "\n")
-}
-
-func (be blockEditState) hintContent() string {
-	// Tree-less blocks (primitive/enum/free-form collection) have no field nodes;
-	// show the block's own metadata instead of the "select a field" placeholder.
-	if be.tree.isEmpty() {
-		return be.fieldHintFor(be.def.YAMLName)
-	}
-	idx := be.tree.currentNodeIdx()
-	if idx < 0 {
-		return be.theme.hintDim.Render("  select a field to see hints")
-	}
-	node := be.tree.nodes[idx]
-	if node.kind != treeNodeField {
-		return be.theme.hintDim.Render("  select a field to see hints")
-	}
-	fieldPath := strings.Join(node.yamlPath, ".")
-	if be.isCollectionNav() && len(node.yamlPath) > 0 {
-		fieldPath = strings.Join(node.yamlPath[1:], ".")
-	}
-	return be.fieldHintFor(fieldPath)
-}
-
-// fieldHintFor builds the hint text for a single field definition.
-// fieldPath is the dot-joined path from the block root (e.g. "source.path").
-func (be blockEditState) fieldHintFor(fieldPath string) string {
-	if be.cfg.Metadata == nil {
-		return be.theme.hintDim.Render("  Config.Metadata is not set - no metadata source configured")
-	}
-	meta := be.cfg.Metadata.FieldMeta(be.key, fieldPath)
-	ex := meta.Example
-	if ex == "" && meta.Multiline {
-		fieldName := fieldPath
-		if i := strings.LastIndex(fieldPath, "."); i >= 0 {
-			fieldName = fieldPath[i+1:]
-		}
-		ex = fieldName + ": |\n  line 1\n  line 2\n"
-	}
-	if out := renderFieldHint(be.theme, meta, ex); out != "" {
-		return out
-	}
-	return be.theme.hintDim.Render("  no metadata declared for this field")
 }

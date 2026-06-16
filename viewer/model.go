@@ -158,12 +158,12 @@ func (m *Model) View() string {
 	leftPanel := theme.RenderTitledPanel("Fields", theme.Size{W: m.listW, H: innerH + 2}, m.active == paneList, m.list.View())
 	rightPanel := theme.RenderTitledPanel(rightTitle, theme.Size{W: m.vpW, H: innerH + 2}, m.active == paneViewport, m.renderedPane)
 
-	hintText := "[↑/↓] navigate • [Enter/→] open • [Esc/←] back • [Tab] panel • [q] quit"
+	legendText := "[↑/↓] navigate • [Enter/→] open • [Esc/←] back • [Tab] panel • [q] quit"
 	if m.list.Mode() == modePresets {
-		hintText = "[↑/↓] navigate • [Esc/←] back to fields • [Tab] panel • [q] quit"
+		legendText = "[↑/↓] navigate • [Esc/←] back to fields • [Tab] panel • [q] quit"
 	}
 	header := theme.RenderHeader("yedit", "presets", "", m.width)
-	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: "", Hint: theme.StatusBar.Render(hintText)})
+	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: "", Legend: theme.StatusBar.Render(legendText)})
 }
 
 // Run starts the viewer TUI as a blocking call.

@@ -164,26 +164,6 @@ func (tm treeModel) currentNodeIdx() int {
 	return -1
 }
 
-// BreadcrumbSegments returns the path components from the block root to the
-// current cursor position, suitable for joining with " › ".
-func (tm treeModel) BreadcrumbSegments() []string {
-	idx := tm.currentNodeIdx()
-	if idx < 0 {
-		return nil
-	}
-	n := tm.nodes[idx]
-	switch n.kind {
-	case treeNodeAddNew:
-		return []string{"+ add new"}
-	case treeNodeSeqItem:
-		return []string{n.label}
-	default:
-		// yamlPath already has the full path; for seq-item children path[0] is
-		// the item label, which serves as a breadcrumb segment too.
-		return n.yamlPath
-	}
-}
-
 // NearestSeqItem returns the seqIdx of the treeNodeSeqItem that is an ancestor
 // of the current cursor, or -1 if none.
 func (tm treeModel) NearestSeqItem() int {

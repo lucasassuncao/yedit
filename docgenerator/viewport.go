@@ -303,9 +303,9 @@ func (m *docTUIModel) View() string {
 	}
 	rightPanel := theme.RenderTitledPanel(rightTitle, theme.Size{W: m.vpColW, H: m.vpH + 2}, m.active == docPaneView, m.vp.View())
 
-	hint := theme.StatusBar.Render("[Tab] switch panel  [↑/↓ j/k] navigate / scroll  [PgUp/PgDn] half-page  [1-9] jump to linked topic  [q] quit")
+	legend := theme.StatusBar.Render("[Tab] switch panel  [↑/↓ j/k] navigate / scroll  [PgUp/PgDn] half-page  [1-9] jump to linked topic  [q] quit")
 	header := theme.RenderHeader(m.appName, "docs", "", m.width)
-	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: "", Hint: hint})
+	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: "", Legend: legend})
 }
 
 // RenderMarkdownDocsInTerminal launches the two-panel documentation TUI.

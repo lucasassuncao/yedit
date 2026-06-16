@@ -16,7 +16,7 @@ type TwoColumnLayout struct {
 	Left     string
 	Right    string
 	Feedback string // pass "" when there is nothing to report
-	Hint     string
+	Legend   string // key/action legend line
 }
 
 // RenderHeader returns a single-line header. title is rendered bold on the
@@ -48,10 +48,10 @@ func TwoColumnWidths(totalWidth int) (listW, rightW int) {
 }
 
 // RenderTwoColumnView assembles the standard two-panel screen: header, panels
-// side by side, a feedback line, and a hint line.
+// side by side, a feedback line, and a legend line.
 func RenderTwoColumnView(layout TwoColumnLayout) string {
 	body := lipgloss.JoinHorizontal(lipgloss.Top, layout.Left, layout.Right)
-	return strings.Join([]string{layout.Header, body, layout.Feedback, layout.Hint}, "\n")
+	return strings.Join([]string{layout.Header, body, layout.Feedback, layout.Legend}, "\n")
 }
 
 // RenderTitledPanel renders a rounded-border panel with the title embedded in

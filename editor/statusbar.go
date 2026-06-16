@@ -1,61 +1,46 @@
 package editor
 
-// hintSep is the separator between hint segments.
-const hintSep = " • "
+import (
+	"strings"
 
-// Atomic key hints - one per key or action.
-const (
-	keyNav      = "[↑/↓] nav"
-	keyNavigate = "[↑/↓] navigate"
-	keyScroll   = "[↑/↓] scroll"
-	keyExpand   = "[→/←] expand"
-
-	keyTabPane    = "[Tab] change pane"
-	keyTabPreview = "[Tab] preview"
-	keyTabPresets = "[Tab] presets"
-	keyTabEscList = "[Tab] / [Esc] back to list"
-
-	keyCtrlSSave     = "[ctrl+s] save"
-	keyCtrlSSaveChg  = "[ctrl+s] save changes"
-	keyCtrlDDelete   = "[ctrl+d] delete"
-	keyCtrlDRemove   = "[ctrl+d] remove"
-	keyCtrlUUndo     = "[ctrl+u] undo"
-	keyCtrlYRedo     = "[ctrl+y] redo"
-	keyCtrlRReload   = "[ctrl+r] reload"
-	keyCtrlLValidate = "[ctrl+l] validate"
-
-	keyEscBack   = "[Esc] back"
-	keyEscCancel = "[Esc] cancel"
-	keyEscClear  = "[Esc] clear"
-
-	keyEnterAdd     = "[Enter] add"
-	keyEnterApply   = "[Enter] apply"
-	keyEnterOpen    = "[Enter] open"
-	keyEnterReplace = "[Enter] replace"
-	keyEnterSelect  = "[Enter] select"
-
-	keyAAppend = "[a] append"
-
-	keyFilter     = "[/] filter"
-	keyTypeFilter = "[type] filter"
-	keyPreset     = "[p] preset"
-
-	keyHint     = "[h] hint"
-	keyHintHide = "[h] hide hint"
+	"github.com/charmbracelet/lipgloss"
 )
 
-// Composite hints built by concatenating atoms with hintSep.
-const (
-	hintSaveTail = keyTabPane + hintSep + keyCtrlUUndo + hintSep + keyCtrlYRedo + hintSep + keyCtrlSSaveChg + hintSep + keyEscBack
+// renderStatusLine wraps text in style and constrains it to width - the shape
+// shared by every feedback/legend line at the bottom of a screen.
+func renderStatusLine(width int, style lipgloss.Style, text string) string {
+	return lipgloss.NewStyle().Width(width).Render(style.Render(text))
+}
 
-	hintPresetPreviewFocused = keyScroll + hintSep + keyTabPresets + hintSep + keyEscBack
-	hintPresetListScalar     = keyNavigate + hintSep + keyTabPreview + hintSep + keyEnterApply + hintSep + keyEscCancel
-	hintPresetListCollection = keyNavigate + hintSep + keyTabPreview + hintSep + keyEnterReplace + hintSep + keyAAppend + hintSep + keyEscCancel
+// currentLegend returns the key/action legend line for the block editor's
+// current panel and cursor state.
+func (be blockEditState) currentLegend() string {
+	if be.active != blockEditPanelTree {
+		return legendSaveTail
+	}
+	parts := []string{keyNav, keyExpand}
+	if be.cfg.Presets != nil && len(be.cfg.Presets.ListPresets(be.key)) > 0 {
+		parts = append(parts, keyPreset)
+	}
+	if be.isCollectionNav() {
+		parts = append(parts, keyEnterAdd, keyCtrlDDelete)
+	} else {
+		parts = append(parts, keyEnterAdd, keyCtrlDRemove)
+	}
+	parts = append(parts, keyCtrlUUndo, keyCtrlYRedo, keyTabPane, keyCtrlSSaveChg, keyEscBack)
+	return strings.Join(parts, legendSep)
+}
 
-	hintModelPreviewFocused = keyScroll + hintSep + keyTabEscList
-	hintModelFiltering      = keyTypeFilter + hintSep + keyNavigate + hintSep + keyEnterSelect + hintSep + keyEscClear
-	hintModelExisting       = keyNav + hintSep + keyFilter + hintSep + keyEnterOpen + hintSep + keyCtrlDDelete + hintSep + keyCtrlUUndo + hintSep + keyCtrlYRedo + hintSep + keyCtrlRReload + hintSep + keyCtrlSSave + hintSep + keyCtrlLValidate
-	hintModelNew            = keyNav + hintSep + keyFilter + hintSep + keyEnterAdd + hintSep + keyCtrlUUndo + hintSep + keyCtrlYRedo + hintSep + keyCtrlRReload + hintSep + keyCtrlSSave + hintSep + keyCtrlLValidate
-
-	msgUncommittedChanges = "Uncommitted changes - ctrl+s to commit"
-)
+// feedbackLine picks the block editor's feedback line: an error takes
+// priority, then the unsaved-changes notice, then any transient status message.
+func (be blockEditState) feedbackLine() string {
+	switch {
+	case be.editorErr.kind != errNone:
+		return renderStatusLine(be.width, be.theme.errorText, be.editorErr.message)
+	case be.dirty:
+		return renderStatusLine(be.width, be.theme.status, msgUncommittedChanges)
+	case be.statusMsg != "":
+		return renderStatusLine(be.width, be.theme.status, be.statusMsg)
+	}
+	return ""
+}

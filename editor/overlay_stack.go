@@ -11,21 +11,6 @@ import (
 	"github.com/lucasassuncao/yedit/theme"
 )
 
-// blockBreadcrumbPrefix returns the breadcrumb segments for all editors in the
-// stack except the top one. The top editor appends its own key and tree segments.
-func (m model) blockBreadcrumbPrefix() []string {
-	n := len(m.blockEdits)
-	if n <= 1 {
-		return nil
-	}
-	var segs []string
-	for _, be := range m.blockEdits[:n-1] {
-		segs = append(segs, be.key)
-		segs = append(segs, be.tree.BreadcrumbSegments()...)
-	}
-	return segs
-}
-
 // topBE returns a pointer to the active (deepest) block editor, or nil when none is open.
 func (m *model) topBE() *blockEditState {
 	if len(m.blockEdits) == 0 {
