@@ -53,7 +53,7 @@ type DocSet struct {
 func (g *SchemaGenerator) GenerateDocsInMemory(entries []Entry) DocSet {
 	ds := DocSet{Pages: map[string]string{}, Children: map[string][]string{}}
 	for _, e := range entries {
-		fields := schema.Discover(e.Config)
+		fields := discoverEntry(e)
 		name := typeName(e.Config)
 		if !e.SplitStructs {
 			ds.Pages[name] = g.generateMarkdown(name, fields, nil)
@@ -74,10 +74,23 @@ func (g *SchemaGenerator) GenerateDocsInMemory(entries []Entry) DocSet {
 // Entry pairs a struct with the directory where its documentation should be written.
 // When SplitStructs is true, each field with children gets its own file instead of
 // being inlined. Scalar fields are not split. Default is false.
+//
+// RecursionLimit controls how many extra levels a self-referential type expands
+// beyond the first visit during schema discovery. nil uses the schema.Discover
+// default (1). Set to 0 to stop expansion on the second visit, which prevents
+// recursive structs from generating repeated sub-sections in the output.
 type Entry struct {
-	Config       any
-	DocsDir      string
-	SplitStructs bool
+	Config         any
+	DocsDir        string
+	SplitStructs   bool
+	RecursionLimit *int
+}
+
+func discoverEntry(e Entry) []schema.FieldDef {
+	if e.RecursionLimit != nil {
+		return schema.Discover(e.Config, *e.RecursionLimit)
+	}
+	return schema.Discover(e.Config)
 }
 
 // GeneratedFile records the name and directory of a file produced by GenerateDocsForEach.
@@ -97,7 +110,7 @@ func (g *SchemaGenerator) GenerateDocsForEach(entries []Entry) ([]GeneratedFile,
 		if err := os.MkdirAll(e.DocsDir, 0750); err != nil {
 			return nil, fmt.Errorf("create docs dir: %w", err)
 		}
-		fields := schema.Discover(e.Config)
+		fields := discoverEntry(e)
 		name := typeName(e.Config)
 		if !e.SplitStructs {
 			md := g.generateMarkdown(name, fields, nil)
