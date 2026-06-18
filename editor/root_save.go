@@ -63,22 +63,43 @@ func (m model) collectErrors() []Violation {
 	return errs
 }
 
-func formatErrors(errs []Violation) string {
+// formatErrors formats errs into a bullet list. maxLines caps the total
+// rendered line count; when exceeded the remaining count is appended as a
+// summary line. Pass 0 to disable the cap.
+func formatErrors(errs []Violation, maxLines int) string {
 	var sb strings.Builder
+	usedLines := 0
 	for i, e := range errs {
+		msg := "• " + e.String()
+		cost := strings.Count(msg, "\n") + 1
+		if i > 0 {
+			cost += 2 // blank separator
+		}
+		if maxLines > 0 && usedLines+cost > maxLines {
+			remaining := len(errs) - i
+			if sb.Len() > 0 {
+				sb.WriteString("\n\n")
+			}
+			sb.WriteString(fmt.Sprintf("... and %d more error(s).", remaining))
+			break
+		}
 		if i > 0 {
 			sb.WriteString("\n\n")
 		}
-		sb.WriteString("• ")
-		sb.WriteString(e.String())
+		sb.WriteString(msg)
+		usedLines += cost
 	}
 	return sb.String()
 }
 
 func (m model) save() (tea.Model, tea.Cmd) {
 	errs := m.collectErrors()
+	maxLines := m.height - 12 // reserve space for box border, padding, title, button
+	if maxLines < 6 {
+		maxLines = 6
+	}
 	if len(errs) > 0 && !m.cfg.NoValidateOnSave {
-		return m.showAlert("Cannot save - fix errors first", formatErrors(errs), alert.KindError)
+		return m.showAlert("Cannot save - fix errors first", formatErrors(errs, maxLines), alert.KindError)
 	}
 	doSave := func() tea.Msg { return doSaveMsg{} }
 	// An external edit since open is a substantive data-loss risk - always confirm
@@ -89,7 +110,7 @@ func (m model) save() (tea.Model, tea.Cmd) {
 	}
 	if len(errs) > 0 {
 		// NoValidateOnSave: always confirm - warning is substantive, not routine.
-		msg := fmt.Sprintf("Save to %s?\n\nWarnings:\n%s", m.doc.Path(), formatErrors(errs))
+		msg := fmt.Sprintf("Save to %s?\n\nWarnings:\n%s", m.doc.Path(), formatErrors(errs, maxLines))
 		return m.showConfirmAlert("Save with warnings?", msg, doSave)
 	}
 	if m.cfg.NoSaveConfirm {
@@ -134,8 +155,12 @@ func (m model) execReload() (tea.Model, tea.Cmd) {
 }
 
 func (m model) validateKeys() (tea.Model, tea.Cmd) {
+	maxLines := m.height - 12
+	if maxLines < 6 {
+		maxLines = 6
+	}
 	if errs := m.collectErrors(); len(errs) > 0 {
-		return m.showAlert("Validation errors", formatErrors(errs), alert.KindError)
+		return m.showAlert("Validation errors", formatErrors(errs, maxLines), alert.KindError)
 	}
 	return m.showAlert("Validation passed", "All keys are valid and no conflicts were found.", alert.KindSuccess)
 }

@@ -38,37 +38,27 @@ type Model struct {
 	kind       Kind
 	confirmYes bool
 	confirmCmd tea.Cmd
-	term       theme.Size
 }
 
 // New builds an informational modal with a single OK button.
-func New(title, message string, kind Kind, term theme.Size) Model {
+func New(title, message string, kind Kind) Model {
 	return Model{
 		title: title,
 		lines: strings.Split(message, "\n"),
 		kind:  kind,
-		term:  term,
 	}
 }
 
 // NewConfirm builds a Yes/No modal that runs confirmCmd when the user picks
 // Yes. Yes is the default focus.
-func NewConfirm(title, message string, confirmCmd tea.Cmd, term theme.Size) Model {
+func NewConfirm(title, message string, confirmCmd tea.Cmd) Model {
 	return Model{
 		title:      title,
 		lines:      strings.Split(message, "\n"),
 		kind:       KindConfirm,
 		confirmYes: true,
 		confirmCmd: confirmCmd,
-		term:       term,
 	}
-}
-
-// Resize updates the centre region the modal is rendered against. Call on
-// tea.WindowSizeMsg if the parent forwards resizes.
-func (a Model) Resize(term theme.Size) Model {
-	a.term = term
-	return a
 }
 
 func (a Model) accentColor() lipgloss.Color {
@@ -110,8 +100,9 @@ func (a Model) Update(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return a, nil
 }
 
-// View renders the modal centred against totalW × totalH.
-func (a Model) View() string {
+// Box renders the modal box without any positioning.
+// The caller is responsible for compositing it over the background view.
+func (a Model) Box() string {
 	color := a.accentColor()
 
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(color)
@@ -158,7 +149,5 @@ func (a Model) View() string {
 		BorderForeground(color).
 		Padding(1, 3)
 
-	box := border.Render(strings.Join([]string{title, "", body, "", buttons}, "\n"))
-
-	return theme.CenterBox(box, a.term)
+	return border.Render(strings.Join([]string{title, "", body, "", buttons}, "\n"))
 }

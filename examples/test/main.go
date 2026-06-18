@@ -362,17 +362,20 @@ func main() {
 }
 
 func buildEditCmd() *cobra.Command {
-	var themeName string
+	var themeName, configPath string
 	var noSaveConfirm, noDeleteConfirm, noValidate bool
 
 	cmd := &cobra.Command{
 		Use:   "test",
 		Short: "yedit test - exercises every schema pattern and Config option",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			const path = "test.yaml"
-			if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-				if err := os.WriteFile(path, []byte(seedYAML), 0600); err != nil {
-					return err
+			path := configPath
+			if path == "" {
+				path = "test.yaml"
+				if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+					if err := os.WriteFile(path, []byte(seedYAML), 0600); err != nil {
+						return err
+					}
 				}
 			}
 
@@ -388,6 +391,8 @@ func buildEditCmd() *cobra.Command {
 				NoSaveConfirm:    noSaveConfirm,
 				NoDeleteConfirm:  noDeleteConfirm,
 				NoValidateOnSave: noValidate,
+
+				EnableHints: true,
 
 				Presets:  testPresets,
 				Metadata: testMetadata,
@@ -410,6 +415,7 @@ func buildEditCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&configPath, "config", "c", "", "YAML file to edit (default: test.yaml, seeded on first run)")
 	cmd.Flags().StringVar(&themeName, "theme", "dark", "theme preset (--theme dracula, --theme light, …)")
 	cmd.Flags().BoolVar(&noSaveConfirm, "no-save-confirm", false, "skip save confirmation dialog")
 	cmd.Flags().BoolVar(&noDeleteConfirm, "no-delete-confirm", false, "skip delete confirmation dialog")

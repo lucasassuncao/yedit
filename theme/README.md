@@ -14,7 +14,8 @@ Package theme provides the palette, base lipgloss styles, and shared layout prim
 
 - [Variables](<#variables>)
 - [func All\(\) map\[string\]Theme](<#All>)
-- [func CenterBox\(box string, term Size\) string](<#CenterBox>)
+- [func Composite\(fg, bg string, x, y int\) string](<#Composite>)
+- [func CompositeCenter\(fg, bg string\) string](<#CompositeCenter>)
 - [func RenderHeader\(title, subtitle, right string, width int\) string](<#RenderHeader>)
 - [func RenderHeaderWith\(title, subtitle, right string, width int, c Colors\) string](<#RenderHeaderWith>)
 - [func RenderTitledPanel\(title string, size Size, active bool, content string\) string](<#RenderTitledPanel>)
@@ -176,17 +177,26 @@ func All() map[string]Theme
 
 All returns all built\-in theme presets keyed by their CLI name. Useful for \-\-theme flag validation and \-\-list\-themes output in host CLIs.
 
-<a name="CenterBox"></a>
-## func [CenterBox](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L133>)
+<a name="Composite"></a>
+## func [Composite](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L135>)
 
 ```go
-func CenterBox(box string, term Size) string
+func Composite(fg, bg string, x, y int) string
 ```
 
-CenterBox positions box at the centre of the given terminal Size by adding padding. Used by floating overlay/alert/picker views.
+Composite overlays fg on top of bg at position \(x, y\). For each line in fg, the corresponding bg line has its \(x … x\+fgW\) segment replaced by the fg line, preserving ANSI color sequences in both strings.
+
+<a name="CompositeCenter"></a>
+## func [CompositeCenter](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L162>)
+
+```go
+func CompositeCenter(fg, bg string) string
+```
+
+CompositeCenter centers fg over bg, replacing the bg cells behind it.
 
 <a name="RenderHeader"></a>
-## func [RenderHeader](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L25>)
+## func [RenderHeader](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L26>)
 
 ```go
 func RenderHeader(title, subtitle, right string, width int) string
@@ -195,7 +205,7 @@ func RenderHeader(title, subtitle, right string, width int) string
 RenderHeader returns a single\-line header. title is rendered bold on the left, subtitle \(if non\-empty\) follows after a separator, right \(if non\-empty\) is right\-aligned for context such as filenames.
 
 <a name="RenderHeaderWith"></a>
-## func [RenderHeaderWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L112>)
+## func [RenderHeaderWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L113>)
 
 ```go
 func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string
@@ -204,7 +214,7 @@ func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string
 RenderHeaderWith is like RenderHeader but derives title and info colors from c instead of the package\-level palette vars.
 
 <a name="RenderTitledPanel"></a>
-## func [RenderTitledPanel](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L60>)
+## func [RenderTitledPanel](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L61>)
 
 ```go
 func RenderTitledPanel(title string, size Size, active bool, content string) string
@@ -213,7 +223,7 @@ func RenderTitledPanel(title string, size Size, active bool, content string) str
 RenderTitledPanel renders a rounded\-border panel with the title embedded in the top edge: ╭─ Title ──────╮. size holds the OUTER dimensions \(including the border rows/cols\).
 
 <a name="RenderTitledPanelWith"></a>
-## func [RenderTitledPanelWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L71>)
+## func [RenderTitledPanelWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L72>)
 
 ```go
 func RenderTitledPanelWith(title string, size Size, active bool, content string, c Colors) string
@@ -222,7 +232,7 @@ func RenderTitledPanelWith(title string, size Size, active bool, content string,
 RenderTitledPanelWith is like RenderTitledPanel but derives border and title colors from c instead of the package\-level palette vars.
 
 <a name="RenderTwoColumnView"></a>
-## func [RenderTwoColumnView](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L52>)
+## func [RenderTwoColumnView](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L53>)
 
 ```go
 func RenderTwoColumnView(layout TwoColumnLayout) string
@@ -231,7 +241,7 @@ func RenderTwoColumnView(layout TwoColumnLayout) string
 RenderTwoColumnView assembles the standard two\-panel screen: header, panels side by side, a feedback line, and a legend line.
 
 <a name="TwoColumnWidths"></a>
-## func [TwoColumnWidths](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L35>)
+## func [TwoColumnWidths](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L36>)
 
 ```go
 func TwoColumnWidths(totalWidth int) (listW, rightW int)
@@ -265,9 +275,9 @@ func ResolveColors(t Theme) Colors
 ResolveColors merges t into a concrete Colors value, starting from ThemeDark as the default base. Use this when building a TUI that needs concrete color values without importing the editor package.
 
 <a name="Size"></a>
-## type [Size](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L11>)
+## type [Size](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L12>)
 
-Size holds a width/height pair. Used wherever a terminal or panel dimension is passed as a unit \(alert, picker, RenderTitledPanel, CenterBox\).
+Size holds a width/height pair. Used wherever a terminal or panel dimension is passed as a unit \(picker, RenderTitledPanel\).
 
 ```go
 type Size struct{ W, H int }
@@ -307,7 +317,7 @@ type Theme struct {
 ```
 
 <a name="TwoColumnLayout"></a>
-## type [TwoColumnLayout](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L14-L20>)
+## type [TwoColumnLayout](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L15-L21>)
 
 TwoColumnLayout carries the five sections of the standard two\-panel screen.
 

@@ -314,9 +314,6 @@ func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 	}
-	if m.alertVisible {
-		m.alert = m.alert.Resize(theme.Size{W: m.width, H: m.height})
-	}
 	return m, nil
 }
 
@@ -343,12 +340,12 @@ func (m model) handleDelete(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m model) showAlert(title, message string, kind alert.Kind) (tea.Model, tea.Cmd) {
-	m = m.enterAlert(alert.New(title, message, kind, theme.Size{W: m.width, H: m.height}))
+	m = m.enterAlert(alert.New(title, message, kind))
 	return m, nil
 }
 
 func (m model) showConfirmAlert(title, message string, confirmCmd tea.Cmd) (tea.Model, tea.Cmd) {
-	m = m.enterAlert(alert.NewConfirm(title, message, confirmCmd, theme.Size{W: m.width, H: m.height}))
+	m = m.enterAlert(alert.NewConfirm(title, message, confirmCmd))
 	return m, nil
 }
 
@@ -360,10 +357,7 @@ func (m model) View() string {
 		return "Terminal too small - resize to at least 80×20."
 	}
 
-	switch m.mode {
-	case paneAlert:
-		return m.alert.View()
-	case paneBlockEdit:
+	if m.mode == paneBlockEdit {
 		if top := m.topBE(); top != nil {
 			return top.View(m.blockBreadcrumbPrefix())
 		}
@@ -412,6 +406,9 @@ func (m model) View() string {
 		if lines := strings.Split(out, "\n"); len(lines) > m.height {
 			out = strings.Join(lines[:m.height], "\n")
 		}
+	}
+	if m.alertVisible {
+		out = theme.CompositeCenter(m.alert.Box(), out)
 	}
 	return out
 }

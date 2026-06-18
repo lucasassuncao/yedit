@@ -19,6 +19,50 @@ func mustBuildMetadata() editor.MetadataSource {
 
 func (TestConfig) Metadata() map[string]*metadata.Node {
 	return map[string]*metadata.Node{
+		"app-name": {FieldMeta: editor.FieldMeta{
+			Description: "Application display name.",
+			Required:    true,
+		}},
+		"debug": {FieldMeta: editor.FieldMeta{
+			Description: "Enable debug mode.",
+			Default:     "false",
+		}},
+		"version": {FieldMeta: editor.FieldMeta{
+			Description: "Application version (semver).",
+			Required:    true,
+			Formats:     []editor.Format{editor.FormatSemver},
+		}},
+		"port": {FieldMeta: editor.FieldMeta{
+			Description: "Default listening port.",
+			Default:     "8080",
+		}},
+		"ratio": {FieldMeta: editor.FieldMeta{
+			Description: "Float64 ratio (0.0-1.0).",
+		}},
+		"build-timeout": {FieldMeta: editor.FieldMeta{
+			Description: "Maximum build duration.",
+			Formats:     []editor.Format{editor.FormatDuration},
+			Example:     "build-timeout: 5m",
+		}},
+		"labels": {FieldMeta: editor.FieldMeta{
+			Description: "Arbitrary key-value string labels.",
+		}},
+		"settings": {FieldMeta: editor.FieldMeta{
+			Description: "Free-form settings map.",
+		}},
+		"tags": {FieldMeta: editor.FieldMeta{
+			Description: "String tags (unique).",
+			Unique:      true,
+		}},
+		"ports": {FieldMeta: editor.FieldMeta{
+			Description: "Additional integer ports.",
+		}},
+		"timeout": {
+			FieldMeta: editor.FieldMeta{
+				Description: "Per-operation timeout configuration.",
+			},
+			Children: TimeoutValue{}.Metadata(),
+		},
 		"server": {
 			FieldMeta: editor.FieldMeta{
 				Description: "HTTP server configuration.",
@@ -62,6 +106,56 @@ func (TestConfig) Metadata() map[string]*metadata.Node {
 			},
 			Children: DeployExtConfig{}.Metadata(),
 		},
+		"workers": {
+			FieldMeta: editor.FieldMeta{
+				Description: "Background worker definitions.",
+			},
+			Children: Worker{}.Metadata(),
+		},
+		"routes": {
+			FieldMeta: editor.FieldMeta{
+				Description: "HTTP route definitions.",
+			},
+			Children: Route{}.Metadata(),
+		},
+		"filters": {
+			FieldMeta: editor.FieldMeta{
+				Description: "File filters (recursive via any/all).",
+			},
+			Children: Filter{}.Metadata(),
+		},
+		"port-attrs": {
+			FieldMeta: editor.FieldMeta{
+				Description: "Per-port forwarding attributes (map[string]PortAttr).",
+			},
+			Children: PortAttr{}.Metadata(),
+		},
+		"edge-cases": {
+			FieldMeta: editor.FieldMeta{
+				Description: "Schema edge-case demonstrations.",
+			},
+			Children: SchemaEdgeCases{}.Metadata(),
+		},
+	}
+}
+
+func (TimeoutValue) Metadata() map[string]*metadata.Node {
+	return map[string]*metadata.Node{
+		"connect": {FieldMeta: editor.FieldMeta{
+			Description: "Dial/connect timeout.",
+			Formats:     []editor.Format{editor.FormatDuration},
+			Example:     "connect: 5s",
+		}},
+		"read": {FieldMeta: editor.FieldMeta{
+			Description: "Read timeout.",
+			Formats:     []editor.Format{editor.FormatDuration},
+			Example:     "read: 30s",
+		}},
+		"write": {FieldMeta: editor.FieldMeta{
+			Description: "Write timeout.",
+			Formats:     []editor.Format{editor.FormatDuration},
+			Example:     "write: 30s",
+		}},
 	}
 }
 
@@ -100,6 +194,23 @@ func (ServerConfig) Metadata() map[string]*metadata.Node {
 	}
 }
 
+func (PoolConfig) Metadata() map[string]*metadata.Node {
+	return map[string]*metadata.Node{
+		"min-size": {FieldMeta: editor.FieldMeta{
+			Description: "Minimum number of idle connections.",
+			Default:     "2",
+		}},
+		"max-size": {FieldMeta: editor.FieldMeta{
+			Description: "Maximum number of open connections.",
+			Default:     "10",
+		}},
+		"timeout": {FieldMeta: editor.FieldMeta{
+			Description: "Seconds to wait for an available connection.",
+			Default:     "30",
+		}},
+	}
+}
+
 func (DatabaseConfig) Metadata() map[string]*metadata.Node {
 	return map[string]*metadata.Node{
 		"driver": {FieldMeta: editor.FieldMeta{
@@ -112,9 +223,12 @@ func (DatabaseConfig) Metadata() map[string]*metadata.Node {
 		"max-conns": {FieldMeta: editor.FieldMeta{
 			Snippet: "  max-conns: 10\n",
 		}},
-		"pool": {FieldMeta: editor.FieldMeta{
-			Snippet: "  pool:\n    min-size: 2\n    max-size: 10\n    timeout: 30\n",
-		}},
+		"pool": {
+			FieldMeta: editor.FieldMeta{
+				Snippet: "  pool:\n    min-size: 2\n    max-size: 10\n    timeout: 30\n",
+			},
+			Children: PoolConfig{}.Metadata(),
+		},
 	}
 }
 
@@ -156,6 +270,10 @@ func (DeployConfig) Metadata() map[string]*metadata.Node {
 		}},
 		"enabled": {FieldMeta: editor.FieldMeta{
 			Snippet: "  enabled: true\n",
+		}},
+		"auto-revert": {FieldMeta: editor.FieldMeta{
+			Description: "Roll back automatically on a failed deploy.",
+			Default:     "false",
 		}},
 	}
 }
@@ -265,6 +383,136 @@ func (DeployExtConfig) Metadata() map[string]*metadata.Node {
 			Description: "Cross-platform directory path (no existence check).",
 			Formats:     []editor.Format{editor.FormatDirectoryPath},
 			Example:     "dir-path: /opt/deploy",
+		}},
+	}
+}
+
+func (Worker) Metadata() map[string]*metadata.Node {
+	return map[string]*metadata.Node{
+		"name": {FieldMeta: editor.FieldMeta{
+			Description: "Unique worker name.",
+			Required:    true,
+		}},
+		"concurrency": {FieldMeta: editor.FieldMeta{
+			Description: "Number of parallel goroutines.",
+			Default:     "1",
+		}},
+		"queue": {FieldMeta: editor.FieldMeta{
+			Description: "Queue name this worker drains.",
+		}},
+		"extensions": {FieldMeta: editor.FieldMeta{
+			Description: "File extensions this worker handles (flow-style in seed).",
+		}},
+		"tags": {FieldMeta: editor.FieldMeta{
+			Description: "Arbitrary string tags.",
+		}},
+	}
+}
+
+func (Route) Metadata() map[string]*metadata.Node {
+	return map[string]*metadata.Node{
+		"path": {FieldMeta: editor.FieldMeta{
+			Description: "URL path pattern.",
+			Required:    true,
+			Example:     "path: /api/v1/users",
+		}},
+		"method": {FieldMeta: editor.FieldMeta{
+			Description: "HTTP method.",
+			Required:    true,
+			OneOf:       []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		}},
+		"handler": {FieldMeta: editor.FieldMeta{
+			Description: "Handler function reference.",
+			Required:    true,
+		}},
+		"auth": {FieldMeta: editor.FieldMeta{
+			Description: "Require authentication for this route.",
+			Default:     "false",
+		}},
+	}
+}
+
+func (Filter) Metadata() map[string]*metadata.Node {
+	return map[string]*metadata.Node{
+		"regex": {FieldMeta: editor.FieldMeta{
+			Description: "Regular expression to match against file paths.",
+		}},
+		"glob": {FieldMeta: editor.FieldMeta{
+			Description: "Glob pattern to match against file paths.",
+			Example:     "glob: \"**/*.go\"",
+		}},
+		"include": {FieldMeta: editor.FieldMeta{
+			Description: "Explicit paths to include.",
+		}},
+		"ignore": {FieldMeta: editor.FieldMeta{
+			Description: "Paths to exclude even if matched by other rules.",
+		}},
+		"case-sensitive": {FieldMeta: editor.FieldMeta{
+			Description: "Case-sensitive matching.",
+			Default:     "false",
+		}},
+		"any": {FieldMeta: editor.FieldMeta{
+			Description: "Sub-filters combined with OR semantics (self-referential).",
+		}},
+		"all": {FieldMeta: editor.FieldMeta{
+			Description: "Sub-filters combined with AND semantics (self-referential).",
+		}},
+	}
+}
+
+func (PortAttr) Metadata() map[string]*metadata.Node {
+	return map[string]*metadata.Node{
+		"label": {FieldMeta: editor.FieldMeta{
+			Description: "Human-readable label for the port.",
+		}},
+		"on-auto-forward": {FieldMeta: editor.FieldMeta{
+			Description: "Action when the port is auto-forwarded.",
+			OneOf:       []string{"notify", "openBrowser", "silent", "ignore"},
+			Default:     "notify",
+		}},
+		"protocol": {FieldMeta: editor.FieldMeta{
+			Description: "Network protocol for this port.",
+			OneOf:       []string{"http", "https", "tcp"},
+			Default:     "http",
+		}},
+	}
+}
+
+func (PortRule) Metadata() map[string]*metadata.Node {
+	return map[string]*metadata.Node{
+		"proto": {FieldMeta: editor.FieldMeta{
+			Description: "IP protocol.",
+			OneOf:       []string{"tcp", "udp", "icmp"},
+		}},
+		"allowed": {FieldMeta: editor.FieldMeta{
+			Description: "Whether traffic matching this rule is allowed.",
+			Default:     "false",
+		}},
+	}
+}
+
+func (SchemaEdgeCases) Metadata() map[string]*metadata.Node {
+	return map[string]*metadata.Node{
+		"replicas": {FieldMeta: editor.FieldMeta{
+			Description: "Replica count (omitempty: omitted when 0).",
+			Default:     "0",
+		}},
+		"ips": {FieldMeta: editor.FieldMeta{
+			Description: "IP list serialized in flow style.",
+			Example:     "ips: [10.0.0.1, 10.0.0.2]",
+		}},
+		"firewall-rules": {
+			FieldMeta: editor.FieldMeta{
+				Description: "Firewall rules indexed by priority (integer map key).",
+			},
+			Children: PortRule{}.Metadata(),
+		},
+		"background": {FieldMeta: editor.FieldMeta{
+			Description: "Background color (#rrggbb, marshalled via MarshalYAML).",
+			Example:     "background: \"#1e1e2e\"",
+		}},
+		"extras": {FieldMeta: editor.FieldMeta{
+			Description: "Arbitrary value (interface{} / KindAny).",
 		}},
 	}
 }

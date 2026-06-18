@@ -7,7 +7,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/internal/alert"
-	"github.com/lucasassuncao/yedit/theme"
 )
 
 // fieldHasContent reports whether the field at node.yamlPath has a non-empty
@@ -111,7 +110,6 @@ func (be blockEditState) handleTreeToggleDispatch() blockEditState {
 			"Remove field?",
 			fmt.Sprintf("Remove %q? Its content will be lost.", node.label),
 			func() tea.Msg { return pendingRemoveMsg{nodeIdx: capturedIdx} },
-			theme.Size{W: be.width, H: be.height},
 		)
 		be.confirmAlert = al
 		be.confirmAlertVisible = true
@@ -137,7 +135,6 @@ func (be blockEditState) handleTreeDeleteDispatch() blockEditState {
 		"Remove entry?",
 		fmt.Sprintf("Remove %q? Its content will be lost.", label),
 		func() tea.Msg { return pendingEntryDeleteMsg{seqIdx: seqIdx} },
-		theme.Size{W: be.width, H: be.height},
 	)
 	be.confirmAlert = al
 	be.confirmAlertVisible = true

@@ -1,0 +1,48 @@
+app-name: "errors-demo"
+version: "0.1.0"
+
+server:
+  host: localhost
+  port: 8080
+
+proxy:
+  host: proxy.internal
+  port: 3128
+
+routes:
+  - path: /api/v1
+    method: GET
+    handler: api.Handler
+
+unknown-key: "not in schema"
+
+logging:
+  level: verbose
+
+database:
+  driver: mongodb
+  dsn: "mongodb://localhost/db"
+
+deploy:
+  strategy: destroy-all
+  replicas: 1
+
+network:
+  endpoint: "not-a-url"
+  uuid: "not-a-uuid"
+  protocol: "ftp"
+  note-name: "ab"
+
+security:
+  email: "not-an-email"
+  ipv6-addr: "192.168.1.1"
+
+workers:
+  - name: "default"
+    concurrency: 2
+    queue: "main"
+
+edge-cases:
+  created-by: "alice"
+  team: "platform"
+  background: "#1e1e2e"

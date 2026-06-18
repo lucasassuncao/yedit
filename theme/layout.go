@@ -4,10 +4,11 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Size holds a width/height pair. Used wherever a terminal or panel dimension
-// is passed as a unit (alert, picker, RenderTitledPanel, CenterBox).
+// is passed as a unit (picker, RenderTitledPanel).
 type Size struct{ W, H int }
 
 // TwoColumnLayout carries the five sections of the standard two-panel screen.
@@ -128,18 +129,62 @@ func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string
 	return left + strings.Repeat(" ", spacerW) + rightRendered
 }
 
-// CenterBox positions box at the centre of the given terminal Size by adding
-// padding. Used by floating overlay/alert/picker views.
-func CenterBox(box string, term Size) string {
-	bw := lipgloss.Width(box)
-	bh := lipgloss.Height(box)
-	lp := (term.W - bw) / 2
-	tp := (term.H - bh) / 2
-	if lp < 0 {
-		lp = 0
+// Composite overlays fg on top of bg at position (x, y). For each line in fg,
+// the corresponding bg line has its (x … x+fgW) segment replaced by the fg
+// line, preserving ANSI color sequences in both strings.
+func Composite(fg, bg string, x, y int) string {
+	bgLines := strings.Split(bg, "\n")
+	fgLines := strings.Split(fg, "\n")
+
+	for i, fgLine := range fgLines {
+		bgRow := y + i
+		if bgRow < 0 || bgRow >= len(bgLines) {
+			continue
+		}
+		bgLine := bgLines[bgRow]
+
+		left := ansi.Truncate(bgLine, x, "")
+		leftW := ansi.StringWidth(left)
+		if leftW < x {
+			left += strings.Repeat(" ", x-leftW)
+		}
+
+		fgW := ansi.StringWidth(fgLine)
+		right := ansi.TruncateLeft(bgLine, x+fgW, "")
+
+		bgLines[bgRow] = left + fgLine + right
 	}
-	if tp < 0 {
-		tp = 0
+
+	return strings.Join(bgLines, "\n")
+}
+
+// CompositeCenter centers fg over bg, replacing the bg cells behind it.
+func CompositeCenter(fg, bg string) string {
+	bgLines := strings.Split(bg, "\n")
+	bgH := len(bgLines)
+	bgW := 0
+	for _, l := range bgLines {
+		if w := ansi.StringWidth(l); w > bgW {
+			bgW = w
+		}
 	}
-	return lipgloss.NewStyle().PaddingLeft(lp).PaddingTop(tp).Render(box)
+
+	fgLines := strings.Split(fg, "\n")
+	fgH := len(fgLines)
+	fgW := 0
+	for _, l := range fgLines {
+		if w := ansi.StringWidth(l); w > fgW {
+			fgW = w
+		}
+	}
+
+	x := (bgW - fgW) / 2
+	y := (bgH - fgH) / 2
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	return Composite(fg, bg, x, y)
 }

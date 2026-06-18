@@ -8,7 +8,6 @@ import (
 
 	"github.com/lucasassuncao/yedit/internal/alert"
 	"github.com/lucasassuncao/yedit/internal/yamlnode"
-	"github.com/lucasassuncao/yedit/theme"
 )
 
 // topBE returns a pointer to the active (deepest) block editor, or nil when none is open.
@@ -155,7 +154,6 @@ func (m model) handleBlockEditKey(top *blockEditState, key tea.KeyMsg) (tea.Mode
 			"Discard changes?",
 			"Uncommitted changes will be lost.",
 			func() tea.Msg { return blockEditDiscardedMsg{discarded: true} },
-			theme.Size{W: m.width, H: m.height},
 		)
 		be.confirmAlert = al
 		be.confirmAlertVisible = true

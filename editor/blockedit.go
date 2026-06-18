@@ -252,6 +252,9 @@ func (be blockEditState) hintH() int {
 
 // editorH returns the content height of the top-right panel (editor/preview).
 func (be blockEditState) editorH() int {
+	if !be.cfg.EnableHints {
+		return be.innerH()
+	}
 	h := be.innerH() - 2 - be.hintH()
 	if h < 0 {
 		h = 0
@@ -285,9 +288,6 @@ func (be blockEditState) forwardMsg(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.yamlEditor.SetWidth(be.rightW - 2)
 		be.yamlEditor.SetHeight(be.editorH() - 1)
 		be.tree.height = be.innerH()
-		if be.confirmAlertVisible {
-			be.confirmAlert = be.confirmAlert.Resize(theme.Size{W: m.Width, H: m.Height})
-		}
 		return be, nil
 	}
 	switch be.mode {
@@ -342,9 +342,6 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.yamlEditor.SetWidth(be.rightW - 2)
 		be.yamlEditor.SetHeight(be.editorH() - 1)
 		be.tree.height = be.innerH()
-		if be.confirmAlertVisible {
-			be.confirmAlert = be.confirmAlert.Resize(theme.Size{W: m.Width, H: m.Height})
-		}
 		return be, nil
 	}
 
@@ -434,7 +431,6 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 				"Discard changes?",
 				"Uncommitted changes will be lost.",
 				func() tea.Msg { return blockEditDiscardedMsg{discarded: true} },
-				theme.Size{W: be.width, H: be.height},
 			)
 			be.confirmAlert = al
 			be.confirmAlertVisible = true
@@ -623,10 +619,7 @@ func (be blockEditState) commit() (blockEditState, tea.Cmd) {
 // View renders the block editor. parentSegs is the breadcrumb path from all
 // ancestor editors in the stack, computed by model.blockBreadcrumbPrefix().
 func (be blockEditState) View(parentSegs []string) string {
-	switch be.mode {
-	case modeConfirming:
-		return be.confirmAlert.View()
-	case modePresetBrowser:
+	if be.mode == modePresetBrowser {
 		return be.presetView(parentSegs)
 	}
 
@@ -667,6 +660,9 @@ func (be blockEditState) View(parentSegs []string) string {
 		if lines := strings.Split(out, "\n"); len(lines) > be.height {
 			out = strings.Join(lines[:be.height], "\n")
 		}
+	}
+	if be.confirmAlertVisible {
+		out = theme.CompositeCenter(be.confirmAlert.Box(), out)
 	}
 	return out
 }
