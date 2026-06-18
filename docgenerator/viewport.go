@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lucasassuncao/yedit/theme"
 )
@@ -30,6 +31,7 @@ type docTUIModel struct {
 	indent   map[string]int    // indentation level: 0 = root, 1 = child
 	raw      map[string]string // name → raw markdown
 	rendered map[string]string
+	colors   theme.Colors
 
 	cursor     int
 	listOffset int
@@ -74,7 +76,7 @@ func buildOrderedNames(ds DocSet) (names []string, indent map[string]int) {
 	return names, indent
 }
 
-func newDocTUIModel(ds DocSet, appName string) docTUIModel {
+func newDocTUIModel(ds DocSet, appName string, colors theme.Colors) docTUIModel {
 	names, indent := buildOrderedNames(ds)
 	return docTUIModel{
 		appName:  appName,
@@ -82,6 +84,7 @@ func newDocTUIModel(ds DocSet, appName string) docTUIModel {
 		indent:   indent,
 		raw:      ds.Pages,
 		rendered: make(map[string]string, len(ds.Pages)),
+		colors:   colors,
 		active:   docPaneList,
 	}
 }
@@ -285,36 +288,45 @@ func (m *docTUIModel) View() string {
 	if end > len(m.names) {
 		end = len(m.names)
 	}
+	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.colors.SelectionColor))
+	availableStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.colors.AvailableItemColor))
+	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.colors.InactiveBorderColor)).PaddingLeft(1)
+
 	for i := m.listOffset; i < end; i++ {
 		label := m.names[i]
 		pad := strings.Repeat("  ", m.indent[label])
 		if i == m.cursor {
-			listSB.WriteString(theme.SelectedItem.Render("▶ "+pad+label) + "\n")
+			listSB.WriteString(selectedStyle.Render("▶ "+pad+label) + "\n")
 		} else {
-			listSB.WriteString(theme.AvailableItem.Render("  "+pad+label) + "\n")
+			listSB.WriteString(availableStyle.Render("  "+pad+label) + "\n")
 		}
 	}
 
-	leftPanel := theme.RenderTitledPanel("Topics", theme.Size{W: m.listColW, H: m.listH + 2}, m.active == docPaneList, listSB.String())
+	leftPanel := theme.RenderTitledPanelWith("Topics", theme.Size{W: m.listColW, H: m.listH + 2}, m.active == docPaneList, listSB.String(), m.colors)
 
 	rightTitle := "Documentation"
 	if m.cursor >= 0 && m.cursor < len(m.names) {
 		rightTitle = m.names[m.cursor]
 	}
-	rightPanel := theme.RenderTitledPanel(rightTitle, theme.Size{W: m.vpColW, H: m.vpH + 2}, m.active == docPaneView, m.vp.View())
+	rightPanel := theme.RenderTitledPanelWith(rightTitle, theme.Size{W: m.vpColW, H: m.vpH + 2}, m.active == docPaneView, m.vp.View(), m.colors)
 
-	legend := theme.StatusBar.Render("[Tab] switch panel  [↑/↓ j/k] navigate / scroll  [PgUp/PgDn] half-page  [1-9] jump to linked topic  [q] quit")
-	header := theme.RenderHeader(m.appName, "docs", "", m.width)
+	legend := statusStyle.Render("[Tab] switch panel  [↑/↓ j/k] navigate / scroll  [PgUp/PgDn] half-page  [1-9] jump to linked topic  [q] quit")
+	header := theme.RenderHeaderWith(m.appName, "docs", "", m.width, m.colors)
 	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: "", Legend: legend})
 }
 
 // RenderMarkdownDocsInTerminal launches the two-panel documentation TUI.
-// appName is displayed in the header bar.
-func RenderMarkdownDocsInTerminal(docs DocSet, appName string) error {
+// appName is displayed in the header bar. An optional theme.Theme controls
+// colors; zero value resolves to ThemeDark.
+func RenderMarkdownDocsInTerminal(docs DocSet, appName string, t ...theme.Theme) error {
 	if len(docs.Pages) == 0 {
 		return fmt.Errorf("no documentation to display")
 	}
-	m := newDocTUIModel(docs, appName)
+	th := theme.Theme{}
+	if len(t) > 0 {
+		th = t[0]
+	}
+	m := newDocTUIModel(docs, appName, theme.ResolveColors(th))
 	p := tea.NewProgram(&m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("failed to run docs TUI: %w", err)

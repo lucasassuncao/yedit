@@ -22,6 +22,7 @@ Package theme provides the palette, base lipgloss styles, and shared layout prim
 - [func RenderTwoColumnView\(layout TwoColumnLayout\) string](<#RenderTwoColumnView>)
 - [func TwoColumnWidths\(totalWidth int\) \(listW, rightW int\)](<#TwoColumnWidths>)
 - [type Colors](<#Colors>)
+  - [func ResolveColors\(t Theme\) Colors](<#ResolveColors>)
 - [type Size](<#Size>)
 - [type Styles](<#Styles>)
 - [type Theme](<#Theme>)
@@ -167,7 +168,7 @@ var (
 ```
 
 <a name="All"></a>
-## func [All](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L76>)
+## func [All](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L109>)
 
 ```go
 func All() map[string]Theme
@@ -253,6 +254,15 @@ type Colors struct {
     ErrorColor          string // validation errors, unknown keys
 }
 ```
+
+<a name="ResolveColors"></a>
+### func [ResolveColors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L77>)
+
+```go
+func ResolveColors(t Theme) Colors
+```
+
+ResolveColors merges t into a concrete Colors value, starting from ThemeDark as the default base. Use this when building a TUI that needs concrete color values without importing the editor package.
 
 <a name="Size"></a>
 ## type [Size](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L11>)

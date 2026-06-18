@@ -71,6 +71,39 @@ type Theme struct {
 	Styles Styles
 }
 
+// ResolveColors merges t into a concrete Colors value, starting from ThemeDark
+// as the default base. Use this when building a TUI that needs concrete color
+// values without importing the editor package.
+func ResolveColors(t Theme) Colors {
+	c := ThemeDark.Colors
+	if t.Base != nil {
+		c = mergeColors(c, t.Base.Colors)
+	}
+	return mergeColors(c, t.Colors)
+}
+
+func mergeColors(base, over Colors) Colors {
+	if over.ActiveBorderColor != "" {
+		base.ActiveBorderColor = over.ActiveBorderColor
+	}
+	if over.SelectionColor != "" {
+		base.SelectionColor = over.SelectionColor
+	}
+	if over.InactiveBorderColor != "" {
+		base.InactiveBorderColor = over.InactiveBorderColor
+	}
+	if over.AvailableItemColor != "" {
+		base.AvailableItemColor = over.AvailableItemColor
+	}
+	if over.ExistingItemColor != "" {
+		base.ExistingItemColor = over.ExistingItemColor
+	}
+	if over.ErrorColor != "" {
+		base.ErrorColor = over.ErrorColor
+	}
+	return base
+}
+
 // All returns all built-in theme presets keyed by their CLI name.
 // Useful for --theme flag validation and --list-themes output in host CLIs.
 func All() map[string]Theme {
