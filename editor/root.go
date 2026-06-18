@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
@@ -56,6 +57,7 @@ type model struct {
 	alert        alert.Model
 	alertVisible bool
 	theme        resolvedTheme
+	help         help.Model
 
 	mode                         pane
 	showHint                     bool // root view: split the right column to show the Hint/Example panel
@@ -122,6 +124,7 @@ func newModel(cfg Config) (model, error) {
 		preview:  preview,
 		showHint: cfg.EnableHints,
 		theme:    resolveTheme(cfg.Theme),
+		help:     newHelpModel(resolveTheme(cfg.Theme)),
 	}, nil
 }
 
@@ -300,6 +303,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.width = msg.Width
 	m.height = msg.Height
+	m.help.Width = m.width - 1
 	m = m.relayout()
 	// relayout only sizes the root list/preview; forward the resize to every
 	// stacked sub-model so each editor's panels resize too.
@@ -380,26 +384,8 @@ func (m model) View() string {
 		rightPanel = theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.innerH + 2}, previewFocused, m.preview.View(), m.theme.colors)
 	}
 
-	var legendText string
-	if previewFocused {
-		legendText = legendModelPreviewFocused
-	} else if m.list.IsFiltering() {
-		legendText = legendModelFiltering
-	} else if it := m.list.SelectedItem(); it != nil && it.Existing {
-		legendText = legendModelExisting
-	} else {
-		legendText = legendModelNew
-	}
-	if !previewFocused && !m.list.IsFiltering() && m.cfg.EnableHints {
-		if m.showHint {
-			legendText += legendSep + keyHintHide
-		} else {
-			legendText += legendSep + keyHint
-		}
-	}
-
 	feedback := renderStatusLine(m.width, m.theme.status, m.statusMsg)
-	legend := renderStatusLine(m.width, m.theme.status, legendText)
+	legend := renderHelpLine(m.width, m.help, listKeyMapFor(m, previewFocused))
 
 	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legend})
 	if m.height > 0 {

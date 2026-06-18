@@ -833,3 +833,32 @@ func TestRestoreRedo_emptyStackIsNoOp(t *testing.T) {
 	got := be.restoreRedo() // must not panic with an empty stack
 	is.Empty(got.redoStack, "restoreRedo on an empty stack should leave it empty")
 }
+
+// TestInnerH_AdjustsForLegendLines verifies that innerH() shrinks by one for
+// each extra legend line beyond the first.
+func TestInnerH_AdjustsForLegendLines(t *testing.T) {
+	base := blockEditState{width: 80, height: 30}
+
+	base.legendLines = 1
+	h1 := base.innerH()
+
+	base.legendLines = 2
+	h2 := base.innerH()
+	if h2 != h1-1 {
+		t.Errorf("legendLines=2 want innerH=%d, got %d", h1-1, h2)
+	}
+
+	base.legendLines = 3
+	h3 := base.innerH()
+	if h3 != h1-2 {
+		t.Errorf("legendLines=3 want innerH=%d, got %d", h1-2, h3)
+	}
+}
+
+// TestInnerH_MinimumOne ensures innerH never returns less than 1.
+func TestInnerH_MinimumOne(t *testing.T) {
+	be := blockEditState{width: 80, height: 4, legendLines: 10}
+	if h := be.innerH(); h < 1 {
+		t.Errorf("innerH must be at least 1, got %d", h)
+	}
+}

@@ -3,14 +3,21 @@ package editor
 import "github.com/lucasassuncao/yedit/theme"
 
 const (
-	headerLines    = 1
-	statusBarLines = 2
+	headerLines   = 1
+	feedbackLines = 1
 )
 
 func (m model) relayout() model {
 	var previewW int
 	m.listW, previewW = theme.TwoColumnWidths(m.width)
-	m.innerH = m.height - headerLines - statusBarLines - 2
+
+	previewFocused := m.mode == panePreview
+	_, legendLines := renderLegend(m.help, listKeyMapFor(m, previewFocused), m.width-1)
+	if legendLines < 1 {
+		legendLines = 1
+	}
+
+	m.innerH = m.height - headerLines - feedbackLines - legendLines - 2
 	if m.innerH < 1 {
 		m.innerH = 1
 	}

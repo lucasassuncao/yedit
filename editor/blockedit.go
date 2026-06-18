@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
@@ -107,10 +108,12 @@ type blockEditState struct {
 	confirmAlert        alert.Model
 	confirmAlertVisible bool
 
-	undoStack []blockEditUndoSnap // undo history; each mutating op pushes a snapshot
-	redoStack []blockEditUndoSnap // redo history; populated by restoreUndo, discarded on new mutations
-	actionLog []BlockAction       // in-memory log for debug and replay
-	theme     resolvedTheme
+	undoStack   []blockEditUndoSnap // undo history; each mutating op pushes a snapshot
+	redoStack   []blockEditUndoSnap // redo history; populated by restoreUndo, discarded on new mutations
+	actionLog   []BlockAction       // in-memory log for debug and replay
+	theme       resolvedTheme
+	help        help.Model
+	legendLines int // lines consumed by the legend bar; updated on resize and init
 }
 
 // blockOwnDef returns the block's own field definition. When the caller did not
@@ -137,6 +140,9 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 		height:        h,
 		theme:         resolveTheme(cfg.Theme),
 	}
+	be.help = newHelpModel(be.theme)
+	be.help.Width = w - 1
+	_, be.legendLines = renderLegend(be.help, be.currentKeyMap(), w-1)
 	be.relayout()
 
 	be.tree = newTreeModel(spec, be.innerH())
@@ -222,7 +228,11 @@ func (be *blockEditState) relayout() {
 }
 
 func (be blockEditState) innerH() int {
-	h := be.height - headerLines - statusBarLines - 2
+	legendLines := be.legendLines
+	if legendLines < 1 {
+		legendLines = 1
+	}
+	h := be.height - headerLines - feedbackLines - legendLines - 2
 	if h < 1 {
 		h = 1
 	}
@@ -284,6 +294,8 @@ func (be blockEditState) forwardMsg(msg tea.Msg) (blockEditState, tea.Cmd) {
 	if m, ok := msg.(tea.WindowSizeMsg); ok {
 		be.width = m.Width
 		be.height = m.Height
+		be.help.Width = be.width - 1
+		_, be.legendLines = renderLegend(be.help, be.currentKeyMap(), be.width-1)
 		be.relayout()
 		be.yamlEditor.SetWidth(be.rightW - 2)
 		be.yamlEditor.SetHeight(be.editorH() - 1)
@@ -338,6 +350,8 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	if m, ok := msg.(tea.WindowSizeMsg); ok {
 		be.width = m.Width
 		be.height = m.Height
+		be.help.Width = be.width - 1
+		_, be.legendLines = renderLegend(be.help, be.currentKeyMap(), be.width-1)
 		be.relayout()
 		be.yamlEditor.SetWidth(be.rightW - 2)
 		be.yamlEditor.SetHeight(be.editorH() - 1)
@@ -650,10 +664,8 @@ func (be blockEditState) View(parentSegs []string) string {
 		rightPanel = lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)
 	}
 
-	legendText := be.currentLegend()
-
 	feedback := be.feedbackLine()
-	legend := renderStatusLine(be.width, be.theme.status, legendText)
+	legend := renderHelpLine(be.width, be.help, be.currentKeyMap())
 
 	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legend})
 	if be.height > 0 {
@@ -673,13 +685,16 @@ func (be blockEditState) presetView(parentSegs []string) string {
 	leftPanel := theme.RenderTitledPanelWith("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, !be.preset.previewFocus, be.preset.listView(be.theme), be.theme.colors)
 	rightPanel := theme.RenderTitledPanelWith("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, be.preset.previewFocus, be.preset.previewView(be.innerH()), be.theme.colors)
 
-	legendStr := legendPresetListScalar
-	if be.preset.previewFocus {
-		legendStr = legendPresetPreviewFocused
-	} else if be.isCollectionNav() {
-		legendStr = legendPresetListCollection
+	var presetKM help.KeyMap
+	switch {
+	case be.preset.previewFocus:
+		presetKM = presetPreviewMap{}
+	case be.isCollectionNav():
+		presetKM = presetListCollectionMap{}
+	default:
+		presetKM = presetListScalarMap{}
 	}
-	legend := renderStatusLine(be.width, be.theme.status, legendStr)
+	legend := renderHelpLine(be.width, be.help, presetKM)
 
 	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Legend: legend})
 	if be.height > 0 {

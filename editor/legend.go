@@ -1,61 +1,111 @@
 package editor
 
-// legendSep is the separator between legend segments.
-const legendSep = " • "
+import "github.com/charmbracelet/bubbles/key"
 
-// Atomic key legend pieces - one per key or action.
-const (
-	keyNav      = "[↑/↓] nav"
-	keyNavigate = "[↑/↓] navigate"
-	keyScroll   = "[↑/↓] scroll"
-	keyExpand   = "[→/←] expand"
+// msgUncommittedChanges is shown in the feedback line when there are uncommitted changes.
+const msgUncommittedChanges = "Uncommitted changes - ctrl+s to commit"
 
-	keyTabPane    = "[Tab] change pane"
-	keyTabPreview = "[Tab] preview"
-	keyTabPresets = "[Tab] presets"
-	keyTabEscList = "[Tab] / [Esc] back to list"
+// Key bindings — one var per distinct key/description pair.
+var (
+	kbNav      = key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "nav"))
+	kbNavigate = key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "navigate"))
+	kbScroll   = key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "scroll"))
+	kbExpand   = key.NewBinding(key.WithKeys("right", "left"), key.WithHelp("→/←", "expand"))
 
-	keyCtrlSSave     = "[ctrl+s] save"
-	keyCtrlSSaveChg  = "[ctrl+s] save changes"
-	keyCtrlDDelete   = "[ctrl+d] delete"
-	keyCtrlDRemove   = "[ctrl+d] remove"
-	keyCtrlUUndo     = "[ctrl+u] undo"
-	keyCtrlYRedo     = "[ctrl+y] redo"
-	keyCtrlRReload   = "[ctrl+r] reload"
-	keyCtrlLValidate = "[ctrl+l] validate"
+	kbTab        = key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "change pane"))
+	kbTabPreview = key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "preview"))
+	kbTabPresets = key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "presets"))
+	kbTabEscList = key.NewBinding(key.WithKeys("tab", "esc"), key.WithHelp("tab/esc", "back to list"))
 
-	keyEscBack   = "[Esc] back"
-	keyEscCancel = "[Esc] cancel"
-	keyEscClear  = "[Esc] clear"
+	kbCtrlSSave   = key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "save"))
+	kbCtrlSSaveCh = key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "save changes"))
+	kbCtrlDDelete = key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "delete"))
+	kbCtrlDRemove = key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "remove"))
+	kbCtrlUUndo   = key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "undo"))
+	kbCtrlYRedo   = key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("ctrl+y", "redo"))
+	kbCtrlRReload = key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "reload"))
+	kbCtrlLValid  = key.NewBinding(key.WithKeys("ctrl+l"), key.WithHelp("ctrl+l", "validate"))
 
-	keyEnterAdd     = "[Enter] add"
-	keyEnterApply   = "[Enter] apply"
-	keyEnterOpen    = "[Enter] open"
-	keyEnterReplace = "[Enter] replace"
-	keyEnterSelect  = "[Enter] select"
+	kbEscBack   = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back"))
+	kbEscCancel = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel"))
+	kbEscClear  = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear"))
 
-	keyAAppend = "[a] append"
+	kbEnterAdd     = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "add"))
+	kbEnterApply   = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "apply"))
+	kbEnterOpen    = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open"))
+	kbEnterReplace = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "replace"))
+	kbEnterSelect  = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select"))
 
-	keyFilter     = "[/] filter"
-	keyTypeFilter = "[type] filter"
-	keyPreset     = "[p] preset"
+	kbAAppend = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "append"))
 
-	keyHint     = "[h] hint"
-	keyHintHide = "[h] hide hint"
+	kbFilter     = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter"))
+	kbTypeFilter = key.NewBinding(key.WithHelp("type", "filter"))
+	kbPreset     = key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "preset"))
+
+	kbHint     = key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "hint"))
+	kbHintHide = key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "hide hint"))
 )
 
-// Composite legends built by concatenating atoms with legendSep.
-const (
-	legendSaveTail = keyTabPane + legendSep + keyCtrlUUndo + legendSep + keyCtrlYRedo + legendSep + keyCtrlSSaveChg + legendSep + keyEscBack
+// KeyMap types implement help.KeyMap (short mode only — FullHelp is unused).
 
-	legendPresetPreviewFocused = keyScroll + legendSep + keyTabPresets + legendSep + keyEscBack
-	legendPresetListScalar     = keyNavigate + legendSep + keyTabPreview + legendSep + keyEnterApply + legendSep + keyEscCancel
-	legendPresetListCollection = keyNavigate + legendSep + keyTabPreview + legendSep + keyEnterReplace + legendSep + keyAAppend + legendSep + keyEscCancel
+// dynamicKeyMap is used for modes whose binding list varies at runtime.
+type dynamicKeyMap []key.Binding
 
-	legendModelPreviewFocused = keyScroll + legendSep + keyTabEscList
-	legendModelFiltering      = keyTypeFilter + legendSep + keyNavigate + legendSep + keyEnterSelect + legendSep + keyEscClear
-	legendModelExisting       = keyNav + legendSep + keyFilter + legendSep + keyEnterOpen + legendSep + keyCtrlDDelete + legendSep + keyCtrlUUndo + legendSep + keyCtrlYRedo + legendSep + keyCtrlRReload + legendSep + keyCtrlSSave + legendSep + keyCtrlLValidate
-	legendModelNew            = keyNav + legendSep + keyFilter + legendSep + keyEnterAdd + legendSep + keyCtrlUUndo + legendSep + keyCtrlYRedo + legendSep + keyCtrlRReload + legendSep + keyCtrlSSave + legendSep + keyCtrlLValidate
+func (d dynamicKeyMap) ShortHelp() []key.Binding  { return []key.Binding(d) }
+func (d dynamicKeyMap) FullHelp() [][]key.Binding { return nil }
 
-	msgUncommittedChanges = "Uncommitted changes - ctrl+s to commit"
-)
+type saveTailMap struct{}
+
+func (saveTailMap) ShortHelp() []key.Binding {
+	return []key.Binding{kbTab, kbCtrlUUndo, kbCtrlYRedo, kbCtrlSSaveCh, kbEscBack}
+}
+func (saveTailMap) FullHelp() [][]key.Binding { return nil }
+
+type listPreviewMap struct{}
+
+func (listPreviewMap) ShortHelp() []key.Binding {
+	return []key.Binding{kbScroll, kbTabEscList}
+}
+func (listPreviewMap) FullHelp() [][]key.Binding { return nil }
+
+type listFilteringMap struct{}
+
+func (listFilteringMap) ShortHelp() []key.Binding {
+	return []key.Binding{kbTypeFilter, kbNavigate, kbEnterSelect, kbEscClear}
+}
+func (listFilteringMap) FullHelp() [][]key.Binding { return nil }
+
+type listExistingMap struct{ hint key.Binding }
+
+func (k listExistingMap) ShortHelp() []key.Binding {
+	return []key.Binding{kbNav, kbFilter, kbEnterOpen, kbCtrlDDelete, kbCtrlUUndo, kbCtrlYRedo, kbCtrlRReload, kbCtrlSSave, kbCtrlLValid, k.hint}
+}
+func (k listExistingMap) FullHelp() [][]key.Binding { return nil }
+
+type listNewMap struct{ hint key.Binding }
+
+func (k listNewMap) ShortHelp() []key.Binding {
+	return []key.Binding{kbNav, kbFilter, kbEnterAdd, kbCtrlUUndo, kbCtrlYRedo, kbCtrlRReload, kbCtrlSSave, kbCtrlLValid, k.hint}
+}
+func (k listNewMap) FullHelp() [][]key.Binding { return nil }
+
+type presetPreviewMap struct{}
+
+func (presetPreviewMap) ShortHelp() []key.Binding {
+	return []key.Binding{kbScroll, kbTabPresets, kbEscBack}
+}
+func (presetPreviewMap) FullHelp() [][]key.Binding { return nil }
+
+type presetListScalarMap struct{}
+
+func (presetListScalarMap) ShortHelp() []key.Binding {
+	return []key.Binding{kbNavigate, kbTabPreview, kbEnterApply, kbEscCancel}
+}
+func (presetListScalarMap) FullHelp() [][]key.Binding { return nil }
+
+type presetListCollectionMap struct{}
+
+func (presetListCollectionMap) ShortHelp() []key.Binding {
+	return []key.Binding{kbNavigate, kbTabPreview, kbEnterReplace, kbAAppend, kbEscCancel}
+}
+func (presetListCollectionMap) FullHelp() [][]key.Binding { return nil }
