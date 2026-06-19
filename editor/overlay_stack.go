@@ -6,7 +6,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
 
-	"github.com/lucasassuncao/yedit/internal/alert"
 	"github.com/lucasassuncao/yedit/internal/yamlnode"
 )
 
@@ -132,124 +131,10 @@ func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.enterList()
 		return m, nil
 	}
-
-	if key, ok := msg.(tea.KeyMsg); ok {
-		return m.handleBlockEditKey(top, key)
-	}
-
-	// Non-key messages (window resize, pending confirms, etc.): forward to sub-components.
-	prevYAML := top.yamlEditor.Value()
-	be, cmd := top.forwardMsg(msg)
-
-	// After forwarding, sync the node if the YAML content changed.
-	if be.active == blockEditPanelYAML && be.yamlEditor.Value() != prevYAML {
-		be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value()})
-	}
-
-	m.setTopBE(be)
-	return m, cmd
-}
-
-func (m model) handleBlockEditKey(top *blockEditState, key tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// A sub-modal (confirm dialog / preset browser) owns the keyboard: route the
-	// key into it and suppress editing keybinds so they cannot fire while the
-	// modal is up.
-	if top.mode != modeEditing {
-		return m.forwardBlockKey(top, key)
-	}
-
-	// Esc at root with dirty state: show discard-changes confirmation.
-	if key.Type == tea.KeyEsc && len(top.focus) == 0 && top.dirty {
-		be := *top
-		al := alert.NewConfirm(
-			"Discard changes?",
-			"Uncommitted changes will be lost.",
-			func() tea.Msg { return blockEditDiscardedMsg{discarded: true} },
-		)
-		be.confirmAlert = al
-		be.confirmAlertVisible = true
-		be.mode = modeConfirming
-		m.setTopBE(be)
-		return m, nil
-	}
-
-	// ctrl+u / ctrl+y with empty stacks: show status, never fall through to doc-level undo.
-	if key.String() == "ctrl+u" && len(top.undoStack) == 0 {
-		top.statusMsg = "Nothing to undo."
-		m.setTopBE(*top)
-		return m, nil
-	}
-	if key.String() == "ctrl+y" && len(top.redoStack) == 0 {
-		top.statusMsg = "Nothing to redo."
-		m.setTopBE(*top)
-		return m, nil
-	}
-
-	// Semantic keys: resolved by keymap → dispatch.
-	if ea, ok := blockKeymap(top, key); ok {
-		if ea.Block != nil {
-			be := top.dispatch(ea.Block)
-			m.setTopBE(be)
-			return m, nil
-		}
-		if ea.Model != nil {
-			return m.dispatch(ea.Model)
-		}
-	}
-
-	// ctrl+h / hint panel scroll.
-	if m2, handled := m.handleHintKey(top, key); handled {
-		return m2, nil
-	}
-
-	// Tab: switch panel focus (pure UI, not dispatched).
-	if key.Type == tea.KeyTab && top.mode == modeEditing {
-		be := top.switchPanel()
-		m.setTopBE(be)
-		return m, nil
-	}
-
-	// p: open preset picker (pure UI mode change, not dispatched).
-	if key.String() == "p" && top.active == blockEditPanelTree && top.mode == modeEditing {
-		be := top.openPresetPicker()
-		m.setTopBE(be)
-		return m, nil
-	}
-
-	// Tree panel: semantic tree actions go through updateTreePanel.
-	if top.active == blockEditPanelTree && top.mode == modeEditing {
-		be, cmd := top.updateTreePanel(key)
-		m.setTopBE(be)
-		return m, cmd
-	}
-
-	// modeEditing + YAML panel active: forward key directly to the textarea.
-	// forwardMsg filters out key messages in modeEditing, so it cannot be used here.
-	if top.mode == modeEditing && top.active == blockEditPanelYAML {
-		prevYAML := top.yamlEditor.Value()
-		be := *top
-		var cmd tea.Cmd
-		be.yamlEditor, cmd = be.yamlEditor.Update(key)
-		if be.yamlEditor.Value() != prevYAML {
-			be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value()})
-		}
-		m.setTopBE(be)
-		return m, cmd
-	}
-
-	// Fallthrough (modeEditing, no panel consumed the key): forward to sub-components.
-	return m.forwardBlockKey(top, key)
-}
-
-// forwardBlockKey forwards a key to the active editor's sub-components and
-// re-syncs the canonical node when the YAML buffer changed. Used both for the
-// modeEditing fallthrough and for routing keys into a sub-modal.
-func (m model) forwardBlockKey(top *blockEditState, key tea.KeyMsg) (tea.Model, tea.Cmd) {
-	prevYAML := top.yamlEditor.Value()
-	be, cmd := top.forwardMsg(key)
-	if be.active == blockEditPanelYAML && be.yamlEditor.Value() != prevYAML {
-		be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value()})
-	}
+	// One router: the block editor's own Update handles every message (mode
+	// switch, keys, resize) and emits model-level concerns (commit, drill,
+	// discard) as messages that the root Update routes.
+	be, cmd := top.Update(msg)
 	m.setTopBE(be)
 	return m, cmd
 }
@@ -390,40 +275,4 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 	m = m.syncView()
 	m = m.enterList()
 	return m.withStatus("Changes committed (not saved yet) - ctrl+s to save.")
-}
-
-// handleHintKey handles ctrl+h (toggle hint focus) and navigation keys when
-// the hint panel is focused. Returns (model, cmd, handled); when handled is
-// false the caller should continue with normal key routing.
-func (m model) handleHintKey(top *blockEditState, key tea.KeyMsg) (tea.Model, bool) {
-	if top.mode != modeEditing {
-		return m, false
-	}
-	if key.String() == "ctrl+h" && top.cfg.EnableHints {
-		be := *top
-		if be.active == blockEditPanelHint {
-			be.active = be.prevActive
-		} else {
-			be.prevActive = be.active
-			be.active = blockEditPanelHint
-		}
-		m.setTopBE(be)
-		return m, true
-	}
-	if top.active != blockEditPanelHint {
-		return m, false
-	}
-	be := *top
-	switch key.String() {
-	case "up":
-		if be.hintScroll > 0 {
-			be.hintScroll--
-		}
-	case "down":
-		be.hintScroll++
-	case "tab", "ctrl+h":
-		be.active = be.prevActive
-	}
-	m.setTopBE(be)
-	return m, true
 }

@@ -12,10 +12,6 @@ func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
 	case CommitBlock:
 		return m.saveAll()
 
-	case DiscardBlock:
-		m = m.enterList()
-		return m, nil
-
 	case DeleteBlock:
 		return m.handleDelete(act.Key)
 

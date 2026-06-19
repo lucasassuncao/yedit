@@ -12,13 +12,6 @@ type BlockAction interface{ blockAction() }
 // May produce tea.Cmd only for tea.Quit.
 type ModelAction interface{ modelAction() }
 
-// EditorAction is a discriminated union returned by blockKeymap.
-// Exactly one field is non-nil.
-type EditorAction struct {
-	Block BlockAction
-	Model ModelAction
-}
-
 // ── BlockAction types ────────────────────────────────────────────────────────
 
 // ToggleField checks or unchecks the field at NodeIdx in the tree.
@@ -62,7 +55,6 @@ func (Redo) blockAction()          {}
 
 type OpenBlock struct{ Key string }
 type CommitBlock struct{}
-type DiscardBlock struct{}
 type DeleteBlock struct{ Key string }
 type DrillIn struct {
 	Key     string
@@ -77,14 +69,13 @@ type Save struct{}
 type Reload struct{}
 type ToggleHints struct{}
 
-func (OpenBlock) modelAction()    {}
-func (CommitBlock) modelAction()  {}
-func (DiscardBlock) modelAction() {}
-func (DeleteBlock) modelAction()  {}
-func (DrillIn) modelAction()      {}
-func (DrillOut) modelAction()     {}
-func (DocUndo) modelAction()      {}
-func (DocRedo) modelAction()      {}
-func (Save) modelAction()         {}
-func (Reload) modelAction()       {}
-func (ToggleHints) modelAction()  {}
+func (OpenBlock) modelAction()   {}
+func (CommitBlock) modelAction() {}
+func (DeleteBlock) modelAction() {}
+func (DrillIn) modelAction()     {}
+func (DrillOut) modelAction()    {}
+func (DocUndo) modelAction()     {}
+func (DocRedo) modelAction()     {}
+func (Save) modelAction()        {}
+func (Reload) modelAction()      {}
+func (ToggleHints) modelAction() {}

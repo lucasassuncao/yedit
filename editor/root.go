@@ -233,6 +233,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleBlockEditDiscarded(msg)
 	case drillOutMsg:
 		return m.dispatch(DrillOut{})
+	case commitRequestedMsg:
+		return m.saveAll()
 	case deleteItemMsg:
 		return m.handleDeleteItemMsg(msg)
 	case confirmedDeleteMsg:

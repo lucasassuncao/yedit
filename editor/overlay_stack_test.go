@@ -145,8 +145,12 @@ func TestDrillInCommitsThroughCanonicalTree(t *testing.T) {
 	assert.Contains(t, got, "web", "child editor did not receive existing content from canonical tree")
 	assert.Contains(t, got, "host: example.com", "child editor did not receive existing content from canonical tree")
 
-	// Ctrl+S commits the whole stack through the canonical tree and returns to list.
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	// Ctrl+S emits a commit request; the model commits the whole stack through the
+	// canonical tree and returns to the list.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = updated.(model)
+	must.NotNil(cmd, "ctrl+s should emit a commit request")
+	updated, _ = m.Update(cmd())
 	m = updated.(model)
 	must.Empty(m.blockEdits, "after ctrl+s: stack should be empty (returned to list)")
 
@@ -215,7 +219,10 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 	is.True(m.topBE().dirty, "block should be dirty after keeping child edits")
 
 	// Ctrl+S then persists the kept edit through the canonical tree.
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = updated.(model)
+	must.NotNil(cmd, "ctrl+s should emit a commit request")
+	updated, _ = m.Update(cmd())
 	m = updated.(model)
 	var check rootProbe
 	must.NoError(yaml.Unmarshal(m.doc.Raw(), &check), "doc invalid after commit")

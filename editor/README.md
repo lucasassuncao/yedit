@@ -20,12 +20,10 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 - [type Config](<#Config>)
 - [type DeleteBlock](<#DeleteBlock>)
 - [type DeleteEntry](<#DeleteEntry>)
-- [type DiscardBlock](<#DiscardBlock>)
 - [type DocRedo](<#DocRedo>)
 - [type DocUndo](<#DocUndo>)
 - [type DrillIn](<#DrillIn>)
 - [type DrillOut](<#DrillOut>)
-- [type EditorAction](<#EditorAction>)
 - [type FieldMeta](<#FieldMeta>)
 - [type Format](<#Format>)
   - [func FormatCustom\(name string, validate func\(string\) bool\) Format](<#FormatCustom>)
@@ -255,7 +253,7 @@ var FormatUUID = FormatCustom("uuid", func(v string) bool {
 ```
 
 <a name="AddEntry"></a>
-## type [AddEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L34>)
+## type [AddEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L27>)
 
 AddEntry appends a new entry to a collection\-nav block.
 
@@ -264,7 +262,7 @@ type AddEntry struct{}
 ```
 
 <a name="ApplyPreset"></a>
-## type [ApplyPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L44>)
+## type [ApplyPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L37>)
 
 ApplyPreset replaces the block content with the named preset. Content is the already\-fetched YAML so dispatch stays pure.
 
@@ -284,7 +282,7 @@ type BlockAction interface {
 ```
 
 <a name="CommitBlock"></a>
-## type [CommitBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L64>)
+## type [CommitBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L57>)
 
 
 
@@ -328,7 +326,7 @@ type Config struct {
 ```
 
 <a name="DeleteBlock"></a>
-## type [DeleteBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L66>)
+## type [DeleteBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L58>)
 
 
 
@@ -337,7 +335,7 @@ type DeleteBlock struct{ Key string }
 ```
 
 <a name="DeleteEntry"></a>
-## type [DeleteEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L37>)
+## type [DeleteEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L30>)
 
 DeleteEntry removes the collection entry at SeqIdx.
 
@@ -345,17 +343,8 @@ DeleteEntry removes the collection entry at SeqIdx.
 type DeleteEntry struct{ SeqIdx int }
 ```
 
-<a name="DiscardBlock"></a>
-## type [DiscardBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L65>)
-
-
-
-```go
-type DiscardBlock struct{}
-```
-
 <a name="DocRedo"></a>
-## type [DocRedo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L75>)
+## type [DocRedo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L67>)
 
 
 
@@ -364,7 +353,7 @@ type DocRedo struct{}
 ```
 
 <a name="DocUndo"></a>
-## type [DocUndo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L74>)
+## type [DocUndo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L66>)
 
 
 
@@ -373,7 +362,7 @@ type DocUndo struct{}
 ```
 
 <a name="DrillIn"></a>
-## type [DrillIn](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L67-L72>)
+## type [DrillIn](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L59-L64>)
 
 
 
@@ -387,24 +376,12 @@ type DrillIn struct {
 ```
 
 <a name="DrillOut"></a>
-## type [DrillOut](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L73>)
+## type [DrillOut](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L65>)
 
 
 
 ```go
 type DrillOut struct{}
-```
-
-<a name="EditorAction"></a>
-## type [EditorAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L17-L20>)
-
-EditorAction is a discriminated union returned by blockKeymap. Exactly one field is non\-nil.
-
-```go
-type EditorAction struct {
-    Block BlockAction
-    Model ModelAction
-}
 ```
 
 <a name="FieldMeta"></a>
@@ -553,7 +530,7 @@ type ModelAction interface {
 ```
 
 <a name="NavigateEntry"></a>
-## type [NavigateEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L40>)
+## type [NavigateEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L33>)
 
 NavigateEntry moves the collection cursor to Idx \(flush \+ load\).
 
@@ -562,7 +539,7 @@ type NavigateEntry struct{ Idx int }
 ```
 
 <a name="OpenBlock"></a>
-## type [OpenBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L63>)
+## type [OpenBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L56>)
 
 
 
@@ -571,7 +548,7 @@ type OpenBlock struct{ Key string }
 ```
 
 <a name="Redo"></a>
-## type [Redo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L50>)
+## type [Redo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L43>)
 
 Redo re\-applies the most recently undone block snapshot.
 
@@ -580,7 +557,7 @@ type Redo struct{}
 ```
 
 <a name="Reload"></a>
-## type [Reload](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L77>)
+## type [Reload](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L69>)
 
 
 
@@ -623,7 +600,7 @@ func RunContext(ctx context.Context, cfg Config) (res Result, err error)
 RunContext is Run with a context: cancelling ctx shuts the editor down and makes RunContext return the context's error. Unsaved changes are discarded on cancellation, but Result.Saved still reports any save that completed before it.
 
 <a name="Save"></a>
-## type [Save](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L76>)
+## type [Save](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L68>)
 
 
 
@@ -632,7 +609,7 @@ type Save struct{}
 ```
 
 <a name="SyncYAML"></a>
-## type [SyncYAML](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L31>)
+## type [SyncYAML](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L24>)
 
 SyncYAML advances be.node from new YAML content \(parse\-gated\).
 
@@ -641,7 +618,7 @@ type SyncYAML struct{ Content string }
 ```
 
 <a name="ToggleField"></a>
-## type [ToggleField](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L25-L28>)
+## type [ToggleField](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L18-L21>)
 
 ToggleField checks or unchecks the field at NodeIdx in the tree.
 
@@ -653,7 +630,7 @@ type ToggleField struct {
 ```
 
 <a name="ToggleHints"></a>
-## type [ToggleHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L78>)
+## type [ToggleHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L70>)
 
 
 
@@ -662,7 +639,7 @@ type ToggleHints struct{}
 ```
 
 <a name="Undo"></a>
-## type [Undo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L47>)
+## type [Undo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L40>)
 
 Undo restores the previous block snapshot.
 

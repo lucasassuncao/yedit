@@ -29,6 +29,11 @@ type openChildMsg struct {
 	relSegs []pathSeg
 }
 
+// commitRequestedMsg is emitted by the block editor (Ctrl+S) to ask the model
+// to commit the editor stack into the document. The block layer has no model
+// access, so it requests the commit as a message the root Update handles.
+type commitRequestedMsg struct{}
+
 // drillOutMsg is sent when the user presses Esc inside a nested editor. Unlike
 // blockEditDiscardedMsg (which abandons the whole block edit), it navigates up
 // one level while KEEPING edits: the current level is flushed into the canonical

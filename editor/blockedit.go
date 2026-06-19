@@ -420,8 +420,12 @@ func (be blockEditState) updateEditing(msg tea.Msg) (blockEditState, tea.Cmd) {
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
 		if be.active == blockEditPanelYAML {
+			prev := be.yamlEditor.Value()
 			var cmd tea.Cmd
 			be.yamlEditor, cmd = be.yamlEditor.Update(msg)
+			if be.yamlEditor.Value() != prev {
+				be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value()})
+			}
 			return be, cmd
 		}
 		return be, nil
@@ -429,9 +433,36 @@ func (be blockEditState) updateEditing(msg tea.Msg) (blockEditState, tea.Cmd) {
 	return be.updateKey(key)
 }
 
+// handleHintKey handles ctrl+h (toggle hint focus) and navigation when the hint
+// panel is focused. Returns (state, true) when it consumed the key.
+func (be blockEditState) handleHintKey(key tea.KeyMsg) (blockEditState, bool) {
+	if key.String() == "ctrl+h" && be.cfg.EnableHints {
+		if be.active == blockEditPanelHint {
+			be.active = be.prevActive
+		} else {
+			be.prevActive = be.active
+			be.active = blockEditPanelHint
+		}
+		return be, true
+	}
+	if be.active != blockEditPanelHint {
+		return be, false
+	}
+	switch key.String() {
+	case "up":
+		if be.hintScroll > 0 {
+			be.hintScroll--
+		}
+	case "down":
+		be.hintScroll++
+	case "tab", "ctrl+h":
+		be.active = be.prevActive
+	}
+	return be, true
+}
+
 func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEsc:
+	if msg.Type == tea.KeyEsc {
 		// Nested editor: Esc navigates up one level, keeping edits (they are
 		// flushed into the canonical tree by the model). Nothing is lost, so no
 		// discard prompt - that only guards leaving the block edit entirely.
@@ -451,8 +482,36 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 			return be, nil
 		}
 		return be, func() tea.Msg { return blockEditDiscardedMsg{discarded: false} }
+	}
 
-	case tea.KeyTab:
+	// Ctrl+S commits the editor stack into the document. That needs model access,
+	// so the block layer requests it as a message the root Update handles.
+	if msg.String() == "ctrl+s" {
+		return be, func() tea.Msg { return commitRequestedMsg{} }
+	}
+
+	// Ctrl+U / Ctrl+Y: block-level undo/redo. Empty stacks only report status.
+	if msg.String() == "ctrl+u" {
+		if len(be.undoStack) == 0 {
+			be.statusMsg = "Nothing to undo."
+			return be, nil
+		}
+		return be.dispatch(Undo{}), nil
+	}
+	if msg.String() == "ctrl+y" {
+		if len(be.redoStack) == 0 {
+			be.statusMsg = "Nothing to redo."
+			return be, nil
+		}
+		return be.dispatch(Redo{}), nil
+	}
+
+	// Ctrl+H toggles the hint panel; when focused it also captures navigation.
+	if be2, handled := be.handleHintKey(msg); handled {
+		return be2, nil
+	}
+
+	if msg.Type == tea.KeyTab {
 		return be.switchPanel(), nil
 	}
 
