@@ -31,10 +31,7 @@ var (
 
 // Common item styles. Each TUI is free to compose its own variants on top.
 var (
-	SelectedItem  = lipgloss.NewStyle().Bold(true).Foreground(AccentBright)
-	ExistingItem  = lipgloss.NewStyle().Foreground(Success)
-	AvailableItem = lipgloss.NewStyle().Foreground(Dim)
-	StatusBar     = lipgloss.NewStyle().Foreground(Muted).PaddingLeft(1)
+	StatusBar = lipgloss.NewStyle().Foreground(Muted).PaddingLeft(1)
 )
 
 // Colors holds the six palette values that drive all editor styling.
@@ -53,12 +50,9 @@ type Colors struct {
 // Styles holds optional per-element lipgloss overrides. Nil fields are ignored
 // during theme resolution and the default derived from Colors is used instead.
 type Styles struct {
-	ActiveBorder   *lipgloss.Style
-	InactiveBorder *lipgloss.Style
-	CursorLine     *lipgloss.Style
-	Header         *lipgloss.Style
-	HintText       *lipgloss.Style
-	ErrorText      *lipgloss.Style
+	CursorLine *lipgloss.Style
+	HintText   *lipgloss.Style
+	ErrorText  *lipgloss.Style
 }
 
 // Theme is a three-layer appearance configuration:

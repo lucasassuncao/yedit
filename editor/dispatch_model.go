@@ -5,10 +5,6 @@ import tea "github.com/charmbracelet/bubbletea"
 // dispatch applies a ModelAction and returns the updated model and any Cmd.
 // All model-level mutations pass through here.
 func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
-	log := make([]ModelAction, len(m.actionLog)+1)
-	copy(log, m.actionLog)
-	log[len(m.actionLog)] = a
-	m.actionLog = log
 	switch act := a.(type) {
 	case OpenBlock:
 		return m.handleOpenItem(m.list.ItemByKey(act.Key))

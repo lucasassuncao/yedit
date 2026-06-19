@@ -155,7 +155,6 @@ func (be blockEditState) openPresetPicker() blockEditState {
 		return be
 	}
 	be.preset = pb
-	be.presetVisible = true
 	be.mode = modePresetBrowser
 	return be
 }

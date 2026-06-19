@@ -63,8 +63,7 @@ type model struct {
 	showHint                     bool // root view: split the right column to show the Hint/Example panel
 	saved                        bool // at least one save succeeded this session; reported via Result
 	statusMsg                    string
-	statusSeq                    uint          // incremented with each new status; used to cancel stale clear ticks
-	actionLog                    []ModelAction // in-memory log for debug and replay
+	statusSeq                    uint // incremented with each new status; used to cancel stale clear ticks
 	width, height, listW, innerH int
 }
 

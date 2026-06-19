@@ -400,6 +400,7 @@ func buildEditCmd() *cobra.Command {
 				Validators: []editor.Validator{
 					editor.MutuallyExclusive("server", "proxy"),
 					editor.RequiredWith("routes", "server"),
+					editor.MutuallyExclusiveNested("filters", "any", "all"),
 					editor.FormatFromMetadata(),
 					editor.LengthFromMetadata(),
 					editor.NotOneOfFromMetadata(),

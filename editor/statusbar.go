@@ -100,8 +100,13 @@ func listKeyMapFor(m model, previewFocused bool) help.KeyMap {
 	if !m.cfg.EnableHints {
 		hint.SetEnabled(false)
 	}
-	if it := m.list.SelectedItem(); it != nil && it.Existing {
-		return listExistingMap{hint: hint}
+	if it := m.list.SelectedItem(); it != nil {
+		if it.Unknown {
+			return listUnknownMap{hint: hint}
+		}
+		if it.Existing {
+			return listExistingMap{hint: hint}
+		}
 	}
 	return listNewMap{hint: hint}
 }

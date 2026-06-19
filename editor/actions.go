@@ -1,9 +1,6 @@
 package editor
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/lucasassuncao/yedit/schema"
 )
 
@@ -91,35 +88,3 @@ func (DocRedo) modelAction()      {}
 func (Save) modelAction()         {}
 func (Reload) modelAction()       {}
 func (ToggleHints) modelAction()  {}
-
-// DumpBlockActionLog returns a Go-syntax representation of the action log,
-// suitable for pasting into a test or bug report.
-func DumpBlockActionLog(log []BlockAction) string {
-	if len(log) == 0 {
-		return "[]BlockAction{}"
-	}
-	var b strings.Builder
-	b.WriteString("[]BlockAction{\n")
-	for _, a := range log {
-		switch act := a.(type) {
-		case ToggleField:
-			fmt.Fprintf(&b, "\tToggleField{NodeIdx: %d, Checked: %v},\n", act.NodeIdx, act.Checked)
-		case SyncYAML:
-			fmt.Fprintf(&b, "\tSyncYAML{Content: %q},\n", act.Content)
-		case AddEntry:
-			b.WriteString("\tAddEntry{},\n")
-		case DeleteEntry:
-			fmt.Fprintf(&b, "\tDeleteEntry{SeqIdx: %d},\n", act.SeqIdx)
-		case NavigateEntry:
-			fmt.Fprintf(&b, "\tNavigateEntry{Idx: %d},\n", act.Idx)
-		case ApplyPreset:
-			fmt.Fprintf(&b, "\tApplyPreset{Name: %q, Content: %q},\n", act.Name, act.Content)
-		case Undo:
-			b.WriteString("\tUndo{},\n")
-		case Redo:
-			b.WriteString("\tRedo{},\n")
-		}
-	}
-	b.WriteString("}")
-	return b.String()
-}

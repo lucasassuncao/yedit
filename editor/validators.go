@@ -488,11 +488,9 @@ func mutualExclusionViolation(keys []string, has func(string) bool, where string
 		return nil
 	}
 	return []Violation{{
-		Path: where,
-		Message: fmt.Sprintf(
-			"mutually exclusive - use only one of: %s",
-			joinQuoted(found),
-		),
+		Path:    where,
+		Group:   GroupMutuallyExclusive,
+		Message: fmt.Sprintf("use only one of: %s", joinQuoted(found)),
 	}}
 }
 

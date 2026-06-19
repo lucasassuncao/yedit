@@ -225,7 +225,7 @@ func (lm listModel) Update(msg tea.Msg) (listModel, tea.Cmd) {
 	case "down":
 		lm = lm.moveCursor(1)
 	case "enter":
-		if it := lm.SelectedItem(); it != nil {
+		if it := lm.SelectedItem(); it != nil && !it.Unknown {
 			item := *it
 			return lm, func() tea.Msg { return openItemMsg{Item: item} }
 		}

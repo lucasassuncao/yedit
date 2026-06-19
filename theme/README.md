@@ -46,17 +46,6 @@ var (
 )
 ```
 
-<a name="SelectedItem"></a>Common item styles. Each TUI is free to compose its own variants on top.
-
-```go
-var (
-    SelectedItem  = lipgloss.NewStyle().Bold(true).Foreground(AccentBright)
-    ExistingItem  = lipgloss.NewStyle().Foreground(Success)
-    AvailableItem = lipgloss.NewStyle().Foreground(Dim)
-    StatusBar     = lipgloss.NewStyle().Foreground(Muted).PaddingLeft(1)
-)
-```
-
 <a name="ThemeDark"></a>Built\-in theme presets. Use directly or as a Base for partial overrides.
 
 ```go
@@ -168,8 +157,16 @@ var (
 )
 ```
 
+<a name="StatusBar"></a>Common item styles. Each TUI is free to compose its own variants on top.
+
+```go
+var (
+    StatusBar = lipgloss.NewStyle().Foreground(Muted).PaddingLeft(1)
+)
+```
+
 <a name="All"></a>
-## func [All](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L109>)
+## func [All](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L103>)
 
 ```go
 func All() map[string]Theme
@@ -250,7 +247,7 @@ func TwoColumnWidths(totalWidth int) (listW, rightW int)
 TwoColumnWidths computes left and right column widths for the standard two\-panel layout: left is totalWidth/3, clamped to \[30, 60\]; right gets the remainder minus 4 chars for the two border pairs.
 
 <a name="Colors"></a>
-## type [Colors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L44-L51>)
+## type [Colors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L41-L48>)
 
 Colors holds the six palette values that drive all editor styling. Each field is a lipgloss\-compatible color string: a hex value \("\#7C3AED"\), an ANSI 256\-color code \("63"\), or a named terminal color. Empty string means "inherit from Base" during theme resolution.
 
@@ -266,7 +263,7 @@ type Colors struct {
 ```
 
 <a name="ResolveColors"></a>
-### func [ResolveColors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L77>)
+### func [ResolveColors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L71>)
 
 ```go
 func ResolveColors(t Theme) Colors
@@ -284,23 +281,20 @@ type Size struct{ W, H int }
 ```
 
 <a name="Styles"></a>
-## type [Styles](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L55-L62>)
+## type [Styles](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L52-L56>)
 
 Styles holds optional per\-element lipgloss overrides. Nil fields are ignored during theme resolution and the default derived from Colors is used instead.
 
 ```go
 type Styles struct {
-    ActiveBorder   *lipgloss.Style
-    InactiveBorder *lipgloss.Style
-    CursorLine     *lipgloss.Style
-    Header         *lipgloss.Style
-    HintText       *lipgloss.Style
-    ErrorText      *lipgloss.Style
+    CursorLine *lipgloss.Style
+    HintText   *lipgloss.Style
+    ErrorText  *lipgloss.Style
 }
 ```
 
 <a name="Theme"></a>
-## type [Theme](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L68-L72>)
+## type [Theme](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L62-L66>)
 
 Theme is a three\-layer appearance configuration:
 

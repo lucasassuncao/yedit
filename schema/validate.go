@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"fmt"
 	"sort"
 
 	"gopkg.in/yaml.v3"
@@ -50,7 +51,7 @@ func UnknownKeys(raw []byte, known map[string]map[string]bool) []string {
 		return nil
 	}
 	var unknown []string
-	walkKnown(doc, "", known, &unknown)
+	walkKnown(doc, "", "", known, &unknown)
 	sort.Strings(unknown)
 	return unknown
 }
@@ -61,30 +62,38 @@ var reservedTopLevelKeys = map[string]bool{
 	"import": true,
 }
 
-func walkKnown(obj map[string]any, prefix string, known map[string]map[string]bool, unknown *[]string) {
-	allowed, validated := known[prefix]
+// walkKnown validates obj against known using schemaPath for lookups and
+// displayPath for error reporting. The two paths diverge when a sequence is
+// encountered: the schema path stays as "categories" (the registered key)
+// while the display path becomes "categories[0]", "categories[1]", etc.
+func walkKnown(obj map[string]any, schemaPath, displayPath string, known map[string]map[string]bool, unknown *[]string) {
+	allowed, validated := known[schemaPath]
 	if !validated {
 		return
 	}
 	for key, val := range obj {
-		if prefix == "" && reservedTopLevelKeys[key] {
+		if schemaPath == "" && reservedTopLevelKeys[key] {
 			continue
 		}
-		path := key
-		if prefix != "" {
-			path = prefix + "." + key
+		var schemaKey, displayKey string
+		if schemaPath == "" {
+			schemaKey = key
+			displayKey = key
+		} else {
+			schemaKey = schemaPath + "." + key
+			displayKey = displayPath + "." + key
 		}
 		if !allowed[key] {
-			*unknown = append(*unknown, path)
+			*unknown = append(*unknown, displayKey)
 			continue
 		}
 		switch v := val.(type) {
 		case map[string]any:
-			walkKnown(v, path, known, unknown)
+			walkKnown(v, schemaKey, displayKey, known, unknown)
 		case []any:
-			for _, item := range v {
+			for i, item := range v {
 				if nested, ok := item.(map[string]any); ok {
-					walkKnown(nested, path, known, unknown)
+					walkKnown(nested, schemaKey, fmt.Sprintf("%s[%d]", displayKey, i), known, unknown)
 				}
 			}
 		}

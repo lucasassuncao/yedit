@@ -86,10 +86,21 @@ func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta { return f
 
 // ─── Validators ──────────────────────────────────────────────────────────────
 
+// group is the display-grouping key for Violation. Violations sharing the same
+// Group are merged under a single bullet in the error modal.
+type group string
+
+const (
+	GroupMutuallyExclusive group = "Mutually Exclusive"
+	GroupUnknownKeys       group = "Unknown Key(s)"
+	GroupRules             group = "Rules"
+)
+
 // Violation is a single rule violation reported by a Validator.
 type Violation struct {
 	Path    string // dot-separated YAML path to the offending node; empty for document-wide rules
 	Message string // human-readable description, without the path prefix
+	Group   group  // when non-empty, violations with the same Group are merged under one bullet in the error display
 }
 
 // String renders "<path>: <message>", or just the message when Path is empty.

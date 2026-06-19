@@ -12,7 +12,6 @@ import (
 // instance. Built once in newModel; never mutated after that.
 type resolvedTheme struct {
 	colors theme.Colors
-	styles theme.Styles
 
 	// internal derived styles - computed from colors, not user-configurable
 	existingItem  lipgloss.Style
@@ -52,7 +51,6 @@ func resolveTheme(t theme.Theme) resolvedTheme {
 	if t.Styles.CursorLine != nil {
 		rt.selectedItem = *t.Styles.CursorLine
 	}
-	rt.styles = t.Styles
 	return rt
 }
 

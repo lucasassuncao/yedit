@@ -39,7 +39,7 @@ func TestResolveThemeStyleOverride(t *testing.T) {
 	rt := resolveTheme(theme.Theme{
 		Styles: theme.Styles{ErrorText: &custom},
 	})
-	must.Equal(&custom, rt.styles.ErrorText, "Styles.ErrorText pointer should be stored in resolved theme")
+	must.Equal(custom, rt.errorText, "Styles.ErrorText should be applied to rt.errorText")
 }
 
 func TestResolveThemeDerivedColorsSet(t *testing.T) {

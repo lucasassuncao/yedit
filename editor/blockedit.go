@@ -104,7 +104,6 @@ type blockEditState struct {
 
 	mode                blockEditMode
 	preset              presetBrowser
-	presetVisible       bool
 	confirmAlert        alert.Model
 	confirmAlertVisible bool
 
@@ -413,7 +412,6 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 	}
 	// presetDismissed, presetApplied, presetAppended all close the browser.
 	be.mode = modeEditing
-	be.presetVisible = false
 	return be, nil
 }
 

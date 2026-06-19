@@ -75,6 +75,13 @@ func (listFilteringMap) ShortHelp() []key.Binding {
 }
 func (listFilteringMap) FullHelp() [][]key.Binding { return nil }
 
+type listUnknownMap struct{ hint key.Binding }
+
+func (k listUnknownMap) ShortHelp() []key.Binding {
+	return []key.Binding{kbNav, kbFilter, kbCtrlDDelete, kbCtrlUUndo, kbCtrlYRedo, kbCtrlRReload, kbCtrlSSave, kbCtrlLValid, k.hint}
+}
+func (k listUnknownMap) FullHelp() [][]key.Binding { return nil }
+
 type listExistingMap struct{ hint key.Binding }
 
 func (k listExistingMap) ShortHelp() []key.Binding {

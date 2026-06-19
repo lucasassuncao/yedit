@@ -1,21 +1,19 @@
 app-name: "errors-demo"
 version: "0.1.0"
 
+# ── UNKNOWN: top-level keys absent from schema ────────────────────────────────
+proxy:
+  host: proxy.internal
+  port: 3128
+unknown-key: "not in schema"
+another-unknown: 42
+
+# ── Triggers MutuallyExclusive(server, proxy) ─────────────────────────────────
 server:
   host: localhost
   port: 8080
 
-proxy:
-  host: proxy.internal
-  port: 3128
-
-routes:
-  - path: /api/v1
-    method: GET
-    handler: api.Handler
-
-unknown-key: "not in schema"
-
+# ── OneOf violations ──────────────────────────────────────────────────────────
 logging:
   level: verbose
 
@@ -27,20 +25,51 @@ deploy:
   strategy: destroy-all
   replicas: 1
 
+# ── Format / length / notOneOf violations ─────────────────────────────────────
 network:
   endpoint: "not-a-url"
   uuid: "not-a-uuid"
   protocol: "ftp"
   note-name: "ab"
+  listen: "not-a-hostport"
+  http-port: "99999"
+  timeout: "not-a-duration"
+  expiry: "not-a-date"
 
 security:
   email: "not-an-email"
   ipv6-addr: "192.168.1.1"
+  fqdn: "not valid fqdn!"
 
+# ── Unknown fields inside sequence items (tests [i] path in error messages) ───
 workers:
   - name: "default"
     concurrency: 2
     queue: "main"
+    ghost-field: "unknown in workers[0]"
+  - name: "background"
+    concurrency: 1
+    queue: "low"
+  - name: "heavy"
+    concurrency: 4
+    queue: "batch"
+    phantom: "unknown in workers[2]"
+
+# ── Valid blocks ───────────────────────────────────────────────────────────────
+routes:
+  - path: /api/v1
+    method: GET
+    handler: api.Handler
+
+# ── MutuallyExclusiveNested: any + all in the same filter item ────────────────
+filters:
+  - glob: "*.go"
+    case-sensitive: true
+  - regex: ".*_test\\.go$"
+    any:
+      - glob: "*.go"
+    all:
+      - regex: ".*\\.go$"
 
 edge-cases:
   created-by: "alice"

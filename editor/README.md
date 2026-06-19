@@ -13,7 +13,6 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 ## Index
 
 - [Variables](<#variables>)
-- [func DumpBlockActionLog\(log \[\]BlockAction\) string](<#DumpBlockActionLog>)
 - [type AddEntry](<#AddEntry>)
 - [type ApplyPreset](<#ApplyPreset>)
 - [type BlockAction](<#BlockAction>)
@@ -255,17 +254,8 @@ var FormatUUID = FormatCustom("uuid", func(v string) bool {
 })
 ```
 
-<a name="DumpBlockActionLog"></a>
-## func [DumpBlockActionLog](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L97>)
-
-```go
-func DumpBlockActionLog(log []BlockAction) string
-```
-
-DumpBlockActionLog returns a Go\-syntax representation of the action log, suitable for pasting into a test or bug report.
-
 <a name="AddEntry"></a>
-## type [AddEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L37>)
+## type [AddEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L34>)
 
 AddEntry appends a new entry to a collection\-nav block.
 
@@ -274,7 +264,7 @@ type AddEntry struct{}
 ```
 
 <a name="ApplyPreset"></a>
-## type [ApplyPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L47>)
+## type [ApplyPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L44>)
 
 ApplyPreset replaces the block content with the named preset. Content is the already\-fetched YAML so dispatch stays pure.
 
@@ -283,7 +273,7 @@ type ApplyPreset struct{ Name, Content string }
 ```
 
 <a name="BlockAction"></a>
-## type [BlockAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L12>)
+## type [BlockAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L9>)
 
 BlockAction is a pure synchronous mutation of blockEditState. All block\-editor mutations pass through blockEditState.dispatch.
 
@@ -294,7 +284,7 @@ type BlockAction interface {
 ```
 
 <a name="CommitBlock"></a>
-## type [CommitBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L67>)
+## type [CommitBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L64>)
 
 
 
@@ -303,7 +293,7 @@ type CommitBlock struct{}
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L159-L175>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L170-L186>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -338,7 +328,7 @@ type Config struct {
 ```
 
 <a name="DeleteBlock"></a>
-## type [DeleteBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L69>)
+## type [DeleteBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L66>)
 
 
 
@@ -347,7 +337,7 @@ type DeleteBlock struct{ Key string }
 ```
 
 <a name="DeleteEntry"></a>
-## type [DeleteEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L40>)
+## type [DeleteEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L37>)
 
 DeleteEntry removes the collection entry at SeqIdx.
 
@@ -356,7 +346,7 @@ type DeleteEntry struct{ SeqIdx int }
 ```
 
 <a name="DiscardBlock"></a>
-## type [DiscardBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L68>)
+## type [DiscardBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L65>)
 
 
 
@@ -365,7 +355,7 @@ type DiscardBlock struct{}
 ```
 
 <a name="DocRedo"></a>
-## type [DocRedo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L78>)
+## type [DocRedo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L75>)
 
 
 
@@ -374,7 +364,7 @@ type DocRedo struct{}
 ```
 
 <a name="DocUndo"></a>
-## type [DocUndo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L77>)
+## type [DocUndo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L74>)
 
 
 
@@ -383,7 +373,7 @@ type DocUndo struct{}
 ```
 
 <a name="DrillIn"></a>
-## type [DrillIn](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L70-L75>)
+## type [DrillIn](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L67-L72>)
 
 
 
@@ -397,7 +387,7 @@ type DrillIn struct {
 ```
 
 <a name="DrillOut"></a>
-## type [DrillOut](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L76>)
+## type [DrillOut](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L73>)
 
 
 
@@ -406,7 +396,7 @@ type DrillOut struct{}
 ```
 
 <a name="EditorAction"></a>
-## type [EditorAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L20-L23>)
+## type [EditorAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L17-L20>)
 
 EditorAction is a discriminated union returned by blockKeymap. Exactly one field is non\-nil.
 
@@ -552,7 +542,7 @@ type MetadataSource interface {
 ```
 
 <a name="ModelAction"></a>
-## type [ModelAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L16>)
+## type [ModelAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L13>)
 
 ModelAction is handled by model.dispatch. May produce tea.Cmd only for tea.Quit.
 
@@ -563,7 +553,7 @@ type ModelAction interface {
 ```
 
 <a name="NavigateEntry"></a>
-## type [NavigateEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L43>)
+## type [NavigateEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L40>)
 
 NavigateEntry moves the collection cursor to Idx \(flush \+ load\).
 
@@ -572,7 +562,7 @@ type NavigateEntry struct{ Idx int }
 ```
 
 <a name="OpenBlock"></a>
-## type [OpenBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L66>)
+## type [OpenBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L63>)
 
 
 
@@ -581,7 +571,7 @@ type OpenBlock struct{ Key string }
 ```
 
 <a name="Redo"></a>
-## type [Redo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L53>)
+## type [Redo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L50>)
 
 Redo re\-applies the most recently undone block snapshot.
 
@@ -590,7 +580,7 @@ type Redo struct{}
 ```
 
 <a name="Reload"></a>
-## type [Reload](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L80>)
+## type [Reload](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L77>)
 
 
 
@@ -633,7 +623,7 @@ func RunContext(ctx context.Context, cfg Config) (res Result, err error)
 RunContext is Run with a context: cancelling ctx shuts the editor down and makes RunContext return the context's error. Unsaved changes are discarded on cancellation, but Result.Saved still reports any save that completed before it.
 
 <a name="Save"></a>
-## type [Save](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L79>)
+## type [Save](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L76>)
 
 
 
@@ -642,7 +632,7 @@ type Save struct{}
 ```
 
 <a name="SyncYAML"></a>
-## type [SyncYAML](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L34>)
+## type [SyncYAML](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L31>)
 
 SyncYAML advances be.node from new YAML content \(parse\-gated\).
 
@@ -651,7 +641,7 @@ type SyncYAML struct{ Content string }
 ```
 
 <a name="ToggleField"></a>
-## type [ToggleField](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L28-L31>)
+## type [ToggleField](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L25-L28>)
 
 ToggleField checks or unchecks the field at NodeIdx in the tree.
 
@@ -663,7 +653,7 @@ type ToggleField struct {
 ```
 
 <a name="ToggleHints"></a>
-## type [ToggleHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L81>)
+## type [ToggleHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L78>)
 
 
 
@@ -672,7 +662,7 @@ type ToggleHints struct{}
 ```
 
 <a name="Undo"></a>
-## type [Undo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L50>)
+## type [Undo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L47>)
 
 Undo restores the previous block snapshot.
 
@@ -681,7 +671,7 @@ type Undo struct{}
 ```
 
 <a name="ValidationInput"></a>
-## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L107-L111>)
+## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L118-L122>)
 
 ValidationInput carries the document state inspected by validators. RunAll builds it once per run and shares it across all validators, so the document is parsed a single time instead of once per validator. Build one with NewValidationInput when invoking a validator directly.
 
@@ -703,7 +693,7 @@ func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
 NewValidationInput parses raw once and bundles it with blocks for a validation run. Root is nil when raw is not valid YAML; an empty document yields an empty mapping so unconditional checks still run.
 
 <a name="Validator"></a>
-## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L116-L118>)
+## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L127-L129>)
 
 Validator is a pluggable rule executed at validate/save time. It returns one Violation per problem it finds. Returning an empty slice \(or nil\) means "all good".
 
@@ -714,7 +704,7 @@ type Validator interface {
 ```
 
 <a name="AllOrNone"></a>
-### func [AllOrNone](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L955>)
+### func [AllOrNone](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L953>)
 
 ```go
 func AllOrNone(keys ...string) Validator
@@ -732,7 +722,7 @@ editor.AllOrNone("server.tls-cert", "server.tls-key")
 Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
 
 <a name="AtLeastOneOf"></a>
-### func [AtLeastOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L513>)
+### func [AtLeastOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L511>)
 
 ```go
 func AtLeastOneOf(keys ...string) Validator
@@ -759,7 +749,7 @@ func CountFromMetadata() Validator
 CountFromMetadata enforces FieldMeta.MinCount/MaxCount from the MetadataSource \(CountRange semantics\): sequences count items, mappings count keys. Both zero declares nothing; MinCount \> 0 with MaxCount == 0 means "at least MinCount, no upper bound". Absent fields report nothing \- combine with Required when the collection is mandatory.
 
 <a name="CountRange"></a>
-### func [CountRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1002>)
+### func [CountRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1000>)
 
 ```go
 func CountRange(path string, minCount, maxCount int) Validator
@@ -773,7 +763,7 @@ editor.CountRange("categories", 1, -1) // at least one, no upper bound
 ```
 
 <a name="CrossFieldOrdered"></a>
-### func [CrossFieldOrdered](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L694>)
+### func [CrossFieldOrdered](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L692>)
 
 ```go
 func CrossFieldOrdered(smallerPath, largerPath string) Validator
@@ -800,7 +790,7 @@ editor.CrossFieldOrderedNested("categories.source.filter.age", "min", "max")
 ```
 
 <a name="Deprecated"></a>
-### func [Deprecated](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1098>)
+### func [Deprecated](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1096>)
 
 ```go
 func Deprecated(path, message string) Validator
@@ -822,7 +812,7 @@ func DeprecatedFromMetadata() Validator
 DeprecatedFromMetadata enforces FieldMeta.Deprecated from the MetadataSource \(Deprecated semantics\): every present occurrence of the field is reported, carrying the hint's migration message. Combine with Config.NoValidateOnSave to make it a non\-blocking warning.
 
 <a name="ExactlyOneOf"></a>
-### func [ExactlyOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L557>)
+### func [ExactlyOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L555>)
 
 ```go
 func ExactlyOneOf(keys ...string) Validator
@@ -932,7 +922,7 @@ editor.MutuallyExclusiveNested("categories.installers.source.filter", "any", "al
 The scoped form is preferred when the constraint applies to a specific filter type and not to every mapping named "filter" in the document.
 
 <a name="NoDuplicates"></a>
-### func [NoDuplicates](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L747>)
+### func [NoDuplicates](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L745>)
 
 ```go
 func NoDuplicates(seqPath, field string) Validator
@@ -982,7 +972,7 @@ func RangeFromMetadata() Validator
 RangeFromMetadata enforces FieldMeta.Min/Max from the MetadataSource \(ValueInRange semantics\): bounds and value may be plain numbers, durations, or sizes, and must be of the same kind. One\-sided bounds are allowed \- only Min means "at least Min", only Max means "at most Max". Malformed or mixed\-kind bounds in a hint are reported as a misconfiguration violation on every run.
 
 <a name="Required"></a>
-### func [Required](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L788>)
+### func [Required](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L786>)
 
 ```go
 func Required(paths ...string) Validator
@@ -1013,7 +1003,7 @@ The walk is guided by the discovered schema: for every schema path the validator
 The editor wires the discovered schema and the configured MetadataSource into this validator when the session starts; outside editor.Run, or when no MetadataSource is configured, it reports nothing.
 
 <a name="RequiredIf"></a>
-### func [RequiredIf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L612>)
+### func [RequiredIf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L610>)
 
 ```go
 func RequiredIf(key, condPath, condValue string) Validator
@@ -1058,7 +1048,7 @@ func UniqueFromMetadata() Validator
 UniqueFromMetadata enforces FieldMeta.Unique from the MetadataSource \(UniqueValues semantics\): scalar items in the sequence must not repeat. Non\-sequence fields and non\-scalar items are skipped.
 
 <a name="UniqueValues"></a>
-### func [UniqueValues](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1047>)
+### func [UniqueValues](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1045>)
 
 ```go
 func UniqueValues(seqPath string) Validator
@@ -1071,7 +1061,7 @@ editor.UniqueValues("tags")
 ```
 
 <a name="ValueHasPrefix"></a>
-### func [ValueHasPrefix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L901>)
+### func [ValueHasPrefix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L899>)
 
 ```go
 func ValueHasPrefix(path, prefix string) Validator
@@ -1084,7 +1074,7 @@ editor.ValueHasPrefix("image", "registry.example.com/")
 ```
 
 <a name="ValueHasSuffix"></a>
-### func [ValueHasSuffix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L909>)
+### func [ValueHasSuffix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L907>)
 
 ```go
 func ValueHasSuffix(path, suffix string) Validator
@@ -1097,7 +1087,7 @@ editor.ValueHasSuffix("output", ".yaml")
 ```
 
 <a name="ValueInRange"></a>
-### func [ValueInRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L820>)
+### func [ValueInRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L818>)
 
 ```go
 func ValueInRange(path, minVal, maxVal string) Validator
@@ -1111,7 +1101,7 @@ editor.ValueInRange("filter.max-age", "1h", "8760h")
 ```
 
 <a name="ValueMatches"></a>
-### func [ValueMatches](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L866>)
+### func [ValueMatches](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L864>)
 
 ```go
 func ValueMatches(path, pattern string) Validator
@@ -1124,7 +1114,7 @@ editor.ValueMatches("version", `^\d+\.\d+\.\d+$`)
 ```
 
 <a name="ValueOneOf"></a>
-### func [ValueOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L658>)
+### func [ValueOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L656>)
 
 ```go
 func ValueOneOf(path string, allowed ...string) Validator
@@ -1133,7 +1123,7 @@ func ValueOneOf(path string, allowed ...string) Validator
 ValueOneOf reports a violation when the field at path exists but its value is not in allowed. Sequences and dict\-style mappings along the path are expanded automatically, so every entry in a list or every value in a map is checked.
 
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L131>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L142>)
 
 ValidatorFunc adapts a plain function to the Validator interface, letting callers register inline validators without defining a named type:
 
@@ -1153,7 +1143,7 @@ type ValidatorFunc func(in ValidationInput) []Violation
 ```
 
 <a name="ValidatorFunc.Validate"></a>
-### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L134>)
+### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L145>)
 
 ```go
 func (f ValidatorFunc) Validate(in ValidationInput) []Violation
@@ -1162,7 +1152,7 @@ func (f ValidatorFunc) Validate(in ValidationInput) []Violation
 Validate calls f.
 
 <a name="Violation"></a>
-## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L90-L93>)
+## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L100-L104>)
 
 Violation is a single rule violation reported by a Validator.
 
@@ -1170,6 +1160,7 @@ Violation is a single rule violation reported by a Validator.
 type Violation struct {
     Path    string // dot-separated YAML path to the offending node; empty for document-wide rules
     Message string // human-readable description, without the path prefix
+    Group   group  // when non-empty, violations with the same Group are merged under one bullet in the error display
 }
 ```
 
@@ -1183,7 +1174,7 @@ func RunAll(validators []Validator, raw []byte, blocks []document.Block) []Viola
 RunAll executes all validators against raw/blocks and collects violations. The document is parsed once and shared across validators.
 
 <a name="Violation.String"></a>
-### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L96>)
+### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L107>)
 
 ```go
 func (v Violation) String() string
