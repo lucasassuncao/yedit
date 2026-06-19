@@ -330,8 +330,8 @@ func (be blockEditState) forwardMsg(msg tea.Msg) (blockEditState, tea.Cmd) {
 
 // Update is the blockEditState message router used by unit tests. At runtime
 // the model routes all messages through handlePaneBlockEdit/handleBlockEditKey
-// (overlay_stack.go), which handles model-level concerns (commitAll, drill
-// navigation, doc writes). New logic belongs there, not here.
+// (overlay_stack.go), which handles model-level concerns (Ctrl+S save/commit,
+// drill navigation, doc writes). New logic belongs there, not here.
 func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	// pendingRemoveMsg fires from the "Remove field?" confirm alert as it
 	// dismisses, so it crosses the mode boundary and is handled up front.
@@ -387,7 +387,8 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 	if !ok {
 		return be, nil
 	}
-	action, name := be.preset.Update(key, be.isCollectionNav())
+	pb, action, name := be.preset.Update(key, be.isCollectionNav())
+	be.preset = pb
 	switch action {
 	case presetApplied:
 		if be.cfg.Presets != nil {
@@ -450,9 +451,6 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 			return be, nil
 		}
 		return be, func() tea.Msg { return blockEditDiscardedMsg{discarded: false} }
-
-	case tea.KeyCtrlS:
-		return be.commit()
 
 	case tea.KeyTab:
 		return be.switchPanel(), nil
@@ -597,12 +595,17 @@ func (be blockEditState) switchPanel() blockEditState {
 	return be
 }
 
-func (be blockEditState) commit() (blockEditState, tea.Cmd) {
+// commit validates and serializes the editor's current content into a YAML
+// snippet. It returns (newState, snippet, true) on success; on a validation
+// error it returns (newState, "", false) with the detail in be.editorErr. The
+// snippet is plain data - the caller decides what to do with it (write into the
+// canonical tree, hand it to the document), so commit performs no effect itself.
+func (be blockEditState) commit() (blockEditState, string, bool) {
 	var snippet string
 	if be.isCollectionNav() {
 		be = be.flushCurrentEntry()
 		if be.editorErr.kind != errNone {
-			return be, nil
+			return be, "", false
 		}
 		snippet = nodeToContent(be.key, &be.node)
 	} else {
@@ -612,12 +615,12 @@ func (be blockEditState) commit() (blockEditState, tea.Cmd) {
 
 	if err := validateSnippetText(snippet); err != nil {
 		be.editorErr = editorError{kind: errCommit, message: fmt.Sprintf("Invalid YAML: %v", err)}
-		return be, nil
+		return be, "", false
 	}
 	if be.knownByPath != nil {
 		if unknown := schema.UnknownKeys([]byte(snippet), be.knownByPath); len(unknown) > 0 {
 			be.editorErr = editorError{kind: errCommit, message: fmt.Sprintf("Unknown keys: %s", strings.Join(unknown, ", "))}
-			return be, nil
+			return be, "", false
 		}
 	}
 	if !strings.HasSuffix(snippet, "\n") {
@@ -625,7 +628,7 @@ func (be blockEditState) commit() (blockEditState, tea.Cmd) {
 	}
 	be.dirty = false
 
-	return be, func() tea.Msg { return blockEditCommittedMsg{Snippet: snippet} }
+	return be, snippet, true
 }
 
 // View renders the block editor. parentSegs is the breadcrumb path from all

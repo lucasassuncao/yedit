@@ -229,8 +229,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleOpenItem(msg.Item)
 	case openChildMsg:
 		return m.dispatch(DrillIn{Key: msg.key, Defs: msg.defs, Kind: msg.kind, RelSegs: msg.relSegs})
-	case blockEditCommittedMsg:
-		return m.handleOverlayConfirmed(msg.Snippet)
 	case blockEditDiscardedMsg:
 		return m.handleBlockEditDiscarded(msg)
 	case drillOutMsg:

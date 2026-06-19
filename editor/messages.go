@@ -29,9 +29,6 @@ type openChildMsg struct {
 	relSegs []pathSeg
 }
 
-// blockEditCommittedMsg is sent when the user commits a block edit (Ctrl+S).
-type blockEditCommittedMsg struct{ Snippet string }
-
 // drillOutMsg is sent when the user presses Esc inside a nested editor. Unlike
 // blockEditDiscardedMsg (which abandons the whole block edit), it navigates up
 // one level while KEEPING edits: the current level is flushed into the canonical

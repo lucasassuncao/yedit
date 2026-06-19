@@ -54,26 +54,26 @@ const (
 	presetAppended               // append the selection's entries (collections only)
 )
 
-// Update handles one key press, mutating the browser in place. allowAppend
+// Update handles one key press and returns the updated browser. allowAppend
 // enables the "a" append action (collection-nav blocks only). name carries the
 // selected preset for presetApplied/presetAppended.
-func (pb *presetBrowser) Update(key tea.KeyMsg, allowAppend bool) (action presetAction, name string) {
+func (pb presetBrowser) Update(key tea.KeyMsg, allowAppend bool) (presetBrowser, presetAction, string) {
 	switch key.String() {
 	case "esc":
 		if pb.previewFocus {
 			pb.previewFocus = false
-			return presetNone, ""
+			return pb, presetNone, ""
 		}
-		return presetDismissed, ""
+		return pb, presetDismissed, ""
 	case "tab":
 		pb.previewFocus = !pb.previewFocus
 	case "enter":
 		if !pb.previewFocus {
-			return presetApplied, pb.names[pb.cursor]
+			return pb, presetApplied, pb.names[pb.cursor]
 		}
 	case "a":
 		if !pb.previewFocus && allowAppend {
-			return presetAppended, pb.names[pb.cursor]
+			return pb, presetAppended, pb.names[pb.cursor]
 		}
 	case "up":
 		if pb.previewFocus {
@@ -92,7 +92,7 @@ func (pb *presetBrowser) Update(key tea.KeyMsg, allowAppend bool) (action preset
 			pb.previewScroll = 0
 		}
 	}
-	return presetNone, ""
+	return pb, presetNone, ""
 }
 
 // listView renders the preset name list with the cursor row highlighted.

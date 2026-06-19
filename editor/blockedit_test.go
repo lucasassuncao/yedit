@@ -181,33 +181,37 @@ func TestPresetBrowser_updateAndSelection(t *testing.T) {
 		}
 	}
 
-	action, _ := pb.Update(tea.KeyMsg{Type: tea.KeyUp}, false)
+	var (
+		action presetAction
+		name   string
+	)
+	pb, action, _ = pb.Update(tea.KeyMsg{Type: tea.KeyUp}, false)
 	is.Equal(presetNone, action, "up should not trigger action")
 	is.Equal(0, pb.cursor, "up should move cursor to 0")
 
-	action, name := pb.Update(keyOf("enter"), false)
+	pb, action, name = pb.Update(keyOf("enter"), false)
 	is.Equal(presetApplied, action, "enter should apply preset")
 	is.Equal(pb.names[0], name, "enter should apply first preset name")
 
-	action, name = pb.Update(keyOf("a"), true)
+	pb, action, name = pb.Update(keyOf("a"), true)
 	is.Equal(presetAppended, action, "a with allowAppend should append")
 	is.Equal(pb.names[0], name, "a should append first preset name")
 
-	action, _ = pb.Update(keyOf("a"), false)
+	pb, action, _ = pb.Update(keyOf("a"), false)
 	is.Equal(presetNone, action, "a without allowAppend should be a no-op")
 
 	// Tab moves focus to the preview; esc first returns focus, then dismisses.
-	pb.Update(keyOf("tab"), false)
+	pb, _, _ = pb.Update(keyOf("tab"), false)
 	must.True(pb.previewFocus, "tab should focus the preview")
 
-	action, _ = pb.Update(keyOf("enter"), false)
+	pb, action, _ = pb.Update(keyOf("enter"), false)
 	is.Equal(presetNone, action, "enter with preview focused should be a no-op")
 
-	action, _ = pb.Update(keyOf("esc"), false)
+	pb, action, _ = pb.Update(keyOf("esc"), false)
 	is.Equal(presetNone, action, "first esc should only return focus to the list")
 	is.False(pb.previewFocus, "first esc should clear previewFocus")
 
-	action, _ = pb.Update(keyOf("esc"), false)
+	pb, action, _ = pb.Update(keyOf("esc"), false)
 	is.Equal(presetDismissed, action, "second esc should dismiss")
 }
 
@@ -483,11 +487,11 @@ func TestCollectionNav_CommitFlushesAndSerializesAll(t *testing.T) {
 	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
 	be.dirty = true
 
-	_, cmd := be.commit()
-	msg := cmd().(blockEditCommittedMsg)
+	_, snippet, ok := be.commit()
+	must.True(ok, "commit failed")
 
-	must.Contains(msg.Snippet, "name: alpha_edited", "snippet missing edited entry")
-	must.Contains(msg.Snippet, "name: beta", "snippet missing second entry")
+	must.Contains(snippet, "name: alpha_edited", "snippet missing edited entry")
+	must.Contains(snippet, "name: beta", "snippet missing second entry")
 }
 
 // TestCollectionNav_DoubleCommitIdempotent is a regression test for the
@@ -502,14 +506,14 @@ func TestCollectionNav_DoubleCommitIdempotent(t *testing.T) {
 	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
 	be.dirty = true
 
-	be, cmd := be.commit()
-	snippet1 := cmd().(blockEditCommittedMsg).Snippet
+	be, snippet1, ok := be.commit()
+	must.True(ok, "first commit failed")
 
-	// Simulate handleOverlayConfirmed re-sync (new architecture)
+	// Re-sync after commit (mirrors the live flush path).
 	be = be.resyncAfterCommit(snippet1)
 
-	_, cmd2 := be.commit()
-	snippet2 := cmd2().(blockEditCommittedMsg).Snippet
+	_, snippet2, ok := be.commit()
+	must.True(ok, "second commit failed")
 
 	must.Equal(snippet1, snippet2, "double commit diverged")
 	is.Equal(1, strings.Count(snippet2, "name: beta"), "duplication detected")

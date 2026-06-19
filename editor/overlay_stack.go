@@ -10,12 +10,16 @@ import (
 	"github.com/lucasassuncao/yedit/internal/yamlnode"
 )
 
-// topBE returns a pointer to the active (deepest) block editor, or nil when none is open.
+// topBE returns a copy of the active (deepest) block editor, or nil when none
+// is open. The pointer addresses a copy, not the live stack element: callers
+// read or mutate it freely and persist changes via setTopBE, so every write to
+// the stack funnels through one place instead of aliasing into m.blockEdits.
 func (m *model) topBE() *blockEditState {
 	if len(m.blockEdits) == 0 {
 		return nil
 	}
-	return &m.blockEdits[len(m.blockEdits)-1]
+	be := m.blockEdits[len(m.blockEdits)-1]
+	return &be
 }
 
 // setTopBE replaces the active block editor in place.
@@ -27,11 +31,11 @@ func (m *model) setTopBE(be blockEditState) {
 
 // --- Screen transitions ---
 //
-// These are the ONLY functions that assign m.mode. Each one sets the active
-// pane together with the data that pane owns, so the two invariants
+// The enter* helpers (root.go) are the only functions that assign m.mode. Each
+// sets the active pane together with the data that pane owns, so the invariants
 //
-//	m.alert != nil        ⟺  m.mode == paneAlert
-//	len(m.blockEdits) > 0  ⟺  m.mode == paneBlockEdit
+//	alertVisible           ⟺  mode == paneAlert
+//	len(blockEdits) > 0     ⟺  mode == paneBlockEdit
 //
 // cannot be violated by a caller that forgets to clear a sibling field. The
 func (m model) handleBlockEditDiscarded(msg blockEditDiscardedMsg) (tea.Model, tea.Cmd) {
@@ -147,6 +151,13 @@ func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleBlockEditKey(top *blockEditState, key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// A sub-modal (confirm dialog / preset browser) owns the keyboard: route the
+	// key into it and suppress editing keybinds so they cannot fire while the
+	// modal is up.
+	if top.mode != modeEditing {
+		return m.forwardBlockKey(top, key)
+	}
+
 	// Esc at root with dirty state: show discard-changes confirmation.
 	if key.Type == tea.KeyEsc && len(top.focus) == 0 && top.dirty {
 		be := *top
@@ -226,7 +237,14 @@ func (m model) handleBlockEditKey(top *blockEditState, key tea.KeyMsg) (tea.Mode
 		return m, cmd
 	}
 
-	// Other modes (modeConfirming, modePresetBrowser): forward through forwardMsg.
+	// Fallthrough (modeEditing, no panel consumed the key): forward to sub-components.
+	return m.forwardBlockKey(top, key)
+}
+
+// forwardBlockKey forwards a key to the active editor's sub-components and
+// re-syncs the canonical node when the YAML buffer changed. Used both for the
+// modeEditing fallthrough and for routing keys into a sub-modal.
+func (m model) forwardBlockKey(top *blockEditState, key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	prevYAML := top.yamlEditor.Value()
 	be, cmd := top.forwardMsg(key)
 	if be.active == blockEditPanelYAML && be.yamlEditor.Value() != prevYAML {
@@ -274,13 +292,12 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 // caller aborts the navigation/commit.
 func (m model) flushTopToRoot() (model, bool) {
 	top := m.topBE()
-	committed, cmd := top.commit()
+	committed, snippet, ok := top.commit()
 	m.setTopBE(committed)
-	if cmd == nil {
+	if !ok {
 		m.statusMsg = committed.editorErr.message
 		return m, false
 	}
-	snippet := cmd().(blockEditCommittedMsg).Snippet
 	val := valueNodeOfSnippet(snippet)
 	if val == nil || !setNodeAt(m.editRoot, committed.focus, val) {
 		m.statusMsg = "internal error: could not write editor into canonical tree"
@@ -321,46 +338,6 @@ func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
 	m.blockEdits = append(m.blockEdits, be)
 	m = m.enterBlockEdit()
 	return m, be.Init()
-}
-
-// handleOverlayConfirmed handles a blockEditCommittedMsg: the editor committing
-// itself to the document while staying open. The live Ctrl+S flow uses commitAll
-// (canonical-tree flush) instead; this path remains for direct top-level commits
-// such as tests seeding content. Nested commits are never produced this way.
-func (m model) handleOverlayConfirmed(snippet string) (tea.Model, tea.Cmd) {
-	if len(m.blockEdits) != 1 {
-		return m, nil
-	}
-
-	// Top-level block commit → write to the document.
-	be := m.blockEdits[0]
-	isEdit := be.isEdit
-	var err error
-	if isEdit {
-		m.doc, err = m.doc.Replace(be.key, snippet)
-	} else {
-		m.doc, err = m.doc.Insert(snippet)
-	}
-	if err != nil {
-		m.statusMsg = fmt.Sprintf("Apply error: %v", err)
-		return m, nil
-	}
-	m = m.syncView()
-	// Re-sync after commit so repeated Ctrl+S is idempotent.
-	if fresh, err := m.doc.BlockContent(be.key); err == nil {
-		be = be.resyncAfterCommit(fresh)
-	}
-	// Keep blockEdit open - user stays in editing mode after commit.
-	var statusCmd tea.Cmd
-	if isEdit {
-		m, statusCmd = m.withStatus("Block updated (not saved yet) - Esc to return.")
-	} else {
-		// First commit transitions the block edit to edit mode.
-		be.isEdit = true
-		m, statusCmd = m.withStatus("Block added (not saved yet) - Esc to return.")
-	}
-	m.blockEdits[0] = be
-	return m, statusCmd
 }
 
 // saveAll is the Ctrl+S handler. When block editors are open it commits all

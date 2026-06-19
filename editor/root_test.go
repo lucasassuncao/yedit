@@ -61,24 +61,14 @@ func TestWindowSizeReachesBlockEdit(t *testing.T) {
 func TestPreviewIsReadOnly(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
-	m, err := newModel(Config{
-		Path:   filepath.Join(t.TempDir(), "ro.yaml"),
-		Schema: &sizeProbeConfig{},
-	})
+	path := filepath.Join(t.TempDir(), "ro.yaml")
+	must.NoError(os.WriteFile(path, []byte("server:\n  host: localhost\n"), 0o600))
+	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}})
 	must.NoError(err, "newModel")
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	// Seed some content, then enter the preview pane via Tab.
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "server"}})
-	m = updated.(model)
-	updated, _ = m.Update(blockEditCommittedMsg{Snippet: `server:
-  host: localhost
-`})
-	m = updated.(model)
-	updated, _ = m.Update(blockEditDiscardedMsg{})
-	m = updated.(model)
-
+	// Enter the read-only preview pane via Tab.
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(model)
 	must.Equal(panePreview, m.mode, "expected panePreview after Tab")

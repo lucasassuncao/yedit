@@ -141,12 +141,10 @@ func TestMapBlockCommitReassembles(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
-	be2, cmd := be.commit()
-	must.NotNil(cmd, "commit produced no command; editorErr=%v", be2.editorErr)
-	committed, ok := cmd().(blockEditCommittedMsg)
-	must.True(ok, "expected blockEditCommittedMsg")
-	is.Contains(committed.Snippet, "\"3000\":", "committed snippet dropped entries")
-	is.Contains(committed.Snippet, "\"8080\":", "committed snippet dropped entries")
+	be2, snippet, ok := be.commit()
+	must.True(ok, "commit failed; editorErr=%v", be2.editorErr)
+	is.Contains(snippet, "\"3000\":", "committed snippet dropped entries")
+	is.Contains(snippet, "\"8080\":", "committed snippet dropped entries")
 }
 
 // TestSeqBlockStillNavigates guards the existing sequence navigator against
