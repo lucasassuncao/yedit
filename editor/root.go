@@ -246,9 +246,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case alert.DismissedMsg:
 		// Forward to the active blockEdit first so its confirmAlert is cleared.
 		if top := m.topBE(); top != nil {
-			be, cmd := top.forwardMsg(msg)
-			m.setTopBE(be)
-			return m, cmd
+			be, cmd := top.Update(msg)
+			return m.withTopBE(be), cmd
 		}
 		m = m.enterList()
 		return m, nil
@@ -309,7 +308,7 @@ func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	if len(m.blockEdits) > 0 {
 		var cmd tea.Cmd
 		for i := range m.blockEdits {
-			be, c := m.blockEdits[i].forwardMsg(msg)
+			be, c := m.blockEdits[i].Update(msg)
 			m.blockEdits[i] = be
 			if i == len(m.blockEdits)-1 {
 				cmd = c

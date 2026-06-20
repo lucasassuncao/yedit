@@ -1,13 +1,19 @@
 package editor
 
+import "fmt"
+
 // dispatch applies a BlockAction to be and returns the updated state.
 // Every block-editor mutation passes through here; side effects
 // (pruneEmptyMappings, saveUndo) are guaranteed per-case.
+const maxActionLog = 512
+
 func (be blockEditState) dispatch(a BlockAction) blockEditState {
-	log := make([]BlockAction, len(be.actionLog)+1)
-	copy(log, be.actionLog)
-	log[len(be.actionLog)] = a
-	be.actionLog = log
+	if len(be.actionLog) < maxActionLog {
+		log := make([]BlockAction, len(be.actionLog)+1)
+		copy(log, be.actionLog)
+		log[len(be.actionLog)] = a
+		be.actionLog = log
+	}
 	switch act := a.(type) {
 	case ToggleField:
 		if act.NodeIdx < 0 || act.NodeIdx >= len(be.tree.nodes) {
@@ -48,6 +54,9 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 	case Redo:
 		be = be.restoreRedo()
 		be.statusMsg = "Redone."
+
+	default:
+		panic(fmt.Sprintf("editor: unhandled BlockAction %T", a))
 	}
 	return be
 }

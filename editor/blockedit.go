@@ -273,61 +273,6 @@ func (be blockEditState) editorH() int {
 
 func (be blockEditState) Init() tea.Cmd { return textarea.Blink }
 
-// forwardMsg passes bubbletea messages to sub-components (textarea, alert,
-// preset browser, resize). Contains no editor logic - all semantic mutations go
-// through dispatch. pendingRemoveMsg and pendingEntryDeleteMsg are converted to
-// dispatch calls here because they arrive after a confirmation dialog clears.
-func (be blockEditState) forwardMsg(msg tea.Msg) (blockEditState, tea.Cmd) {
-	if m, ok := msg.(pendingRemoveMsg); ok {
-		be.mode = modeEditing
-		be.confirmAlertVisible = false
-		be = be.dispatch(ToggleField{NodeIdx: m.nodeIdx, Checked: false})
-		return be, nil
-	}
-	if m, ok := msg.(pendingEntryDeleteMsg); ok {
-		be.mode = modeEditing
-		be.confirmAlertVisible = false
-		be = be.dispatch(DeleteEntry{SeqIdx: m.seqIdx})
-		return be, nil
-	}
-	if m, ok := msg.(tea.WindowSizeMsg); ok {
-		be.width = m.Width
-		be.height = m.Height
-		be.help.Width = be.width - 1
-		_, be.legendLines = renderLegend(be.help, be.currentKeyMap(), be.width-1)
-		be.relayout()
-		be.yamlEditor.SetWidth(be.rightW - 2)
-		be.yamlEditor.SetHeight(be.editorH() - 1)
-		be.tree.height = be.innerH()
-		return be, nil
-	}
-	switch be.mode {
-	case modeConfirming:
-		if _, ok := msg.(alert.DismissedMsg); ok {
-			be.mode = modeEditing
-			be.confirmAlertVisible = false
-			return be, nil
-		}
-		if key, ok := msg.(tea.KeyMsg); ok {
-			al, cmd := be.confirmAlert.Update(key)
-			be.confirmAlert = al
-			return be, cmd
-		}
-	case modePresetBrowser:
-		return be.updatePresetBrowser(msg)
-	default:
-		// modeEditing: forward non-key messages to the textarea when it has focus.
-		if be.active == blockEditPanelYAML {
-			if _, ok := msg.(tea.KeyMsg); !ok {
-				var cmd tea.Cmd
-				be.yamlEditor, cmd = be.yamlEditor.Update(msg)
-				return be, cmd
-			}
-		}
-	}
-	return be, nil
-}
-
 // Update is the blockEditState message router used by unit tests. At runtime
 // the model routes all messages through handlePaneBlockEdit/handleBlockEditKey
 // (overlay_stack.go), which handles model-level concerns (Ctrl+S save/commit,

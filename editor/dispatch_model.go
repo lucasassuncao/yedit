@@ -1,6 +1,10 @@
 package editor
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"fmt"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 // dispatch applies a ModelAction and returns the updated model and any Cmd.
 // All model-level mutations pass through here.
@@ -42,6 +46,7 @@ func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
 		m.showHint = !m.showHint
 		m = m.relayout()
 		return m, nil
+	default:
+		panic(fmt.Sprintf("editor: unhandled ModelAction %T", a))
 	}
-	return m, nil
 }

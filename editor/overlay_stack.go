@@ -10,10 +10,8 @@ import (
 )
 
 // topBE returns a copy of the active (deepest) block editor, or nil when none
-// is open. The pointer addresses a copy, not the live stack element: callers
-// read or mutate it freely and persist changes via setTopBE, so every write to
-// the stack funnels through one place instead of aliasing into m.blockEdits.
-func (m *model) topBE() *blockEditState {
+// is open. Callers read or mutate it freely and persist changes via withTopBE.
+func (m model) topBE() *blockEditState {
 	if len(m.blockEdits) == 0 {
 		return nil
 	}
@@ -21,11 +19,18 @@ func (m *model) topBE() *blockEditState {
 	return &be
 }
 
-// setTopBE replaces the active block editor in place.
-func (m *model) setTopBE(be blockEditState) {
-	if len(m.blockEdits) > 0 {
-		m.blockEdits[len(m.blockEdits)-1] = be
+// withTopBE returns a new model with be replacing the active block editor.
+// It allocates a new slice so the caller's model and any prior copies do not
+// share the same backing array.
+func (m model) withTopBE(be blockEditState) model {
+	if len(m.blockEdits) == 0 {
+		return m
 	}
+	updated := make([]blockEditState, len(m.blockEdits))
+	copy(updated, m.blockEdits)
+	updated[len(updated)-1] = be
+	m.blockEdits = updated
+	return m
 }
 
 // --- Screen transitions ---
@@ -78,7 +83,7 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 	if childWasDirty {
 		if top := m.topBE(); top != nil {
 			be := top.saveUndo()
-			m.setTopBE(be)
+			m = m.withTopBE(be)
 		}
 	}
 	m = m.refreshTopFromRoot(childWasDirty)
@@ -121,8 +126,7 @@ func (m model) refreshTopFromRoot(markDirty bool) model {
 	if markDirty {
 		be.dirty = true
 	}
-	m.setTopBE(be)
-	return m
+	return m.withTopBE(be)
 }
 
 func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -135,8 +139,7 @@ func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// switch, keys, resize) and emits model-level concerns (commit, drill,
 	// discard) as messages that the root Update routes.
 	be, cmd := top.Update(msg)
-	m.setTopBE(be)
-	return m, cmd
+	return m.withTopBE(be), cmd
 }
 
 func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
@@ -178,7 +181,7 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 func (m model) flushTopToRoot() (model, bool) {
 	top := m.topBE()
 	committed, snippet, ok := top.commit()
-	m.setTopBE(committed)
+	m = m.withTopBE(committed)
 	if !ok {
 		m.statusMsg = committed.editorErr.message
 		return m, false
