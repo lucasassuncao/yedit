@@ -48,11 +48,7 @@ version: "0.1.0"
 **Notes:**
 - `time.Duration` is stored as a plain string (`"30s"`, `"2m30s"`) - YAML does not have a duration type
 - Pointer variants (`*string`, `*int`, `*bool`) behave identically; nil = field absent from the file
-- Field metadata (required, defaults, allowed values, ranges) is declared
-  through the `MetadataSource` (`FieldMeta`), not struct tags - see the
-  `yedit/metadata` package. Enum-like fields are plain strings whose
-  `FieldMeta.OneOf` lists the allowed values, shown in the hint panel and
-  enforced by `editor.OneOfFromMetadata()`.
+- Field metadata (required, defaults, allowed values, ranges) is declared through the `MetadataSource` (`FieldMeta`), not struct tags - see the `yedit/metadata` package. Enum-like fields are plain strings whose `FieldMeta.OneOf` lists the allowed values, shown in the hint panel and enforced by `editor.OneOfFromMetadata()`.
 
 ---
 
@@ -225,8 +221,7 @@ annotations:
     region: eu-west-1
 ```
 
-**Editor behavior:** YAML pane only - no `[N]` navigator because `map[string]string`
-has no fixed keys to discover.
+**Editor behavior:** YAML pane only - no `[N]` navigator because `map[string]string` has no fixed keys to discover.
 
 **To get the `[N]` navigator**, define a concrete struct:
 ```go
@@ -374,11 +369,7 @@ timeout:
 | `yaml:"name,omitempty"` | Sets `FieldDef.OmitEmpty = true`; zero value not written to disk |
 | `yaml:"name,flow"` | Sets `FieldDef.Flow = true`; serialised inline (e.g. `[a, b, c]`) |
 
-The `yaml` tag is the only tag yedit reads. Field metadata - description,
-required, defaults, allowed values, ranges, patterns - is declared through the
-`MetadataSource` (`editor.FieldMeta`), typically built with the `yedit/metadata`
-package, and enforced by the FromMetadata validator family (see
-`docs/validators.md`).
+The `yaml` tag is the only tag yedit reads. Field metadata - description, required, defaults, allowed values, ranges, patterns - is declared through the `MetadataSource` (`editor.FieldMeta`), typically built with the `yedit/metadata` package, and enforced by the FromMetadata validator family (see `docs/validators.md`).
 
 ---
 
@@ -396,17 +387,13 @@ map[string]string     → KindDictionary + no child defs → YAML pane   ✗
 map[string]any        → KindDictionary + no child defs → YAML pane   ✗
 ```
 
-yedit uses `reflect` to discover children. `map` types have no fixed keys at
-the type level, so no child defs can be derived - regardless of the value type.
+yedit uses `reflect` to discover children. `map` types have no fixed keys at the type level, so no child defs can be derived - regardless of the value type.
 
 ---
 
 ## Depth limit and cycle detection
 
-Schema discovery uses a **visit-count cycle guard**: each type may be visited at
-most `1 + recursionLimit` times (default limit = 1). This allows one extra
-recursive level for self-referential types (e.g. `any []Filter` is navigable)
-while preventing infinite loops. The hard depth ceiling is 20.
+Schema discovery uses a **visit-count cycle guard**: each type may be visited at most `1 + recursionLimit` times (default limit = 1). This allows one extra recursive level for self-referential types (e.g. `any []Filter` is navigable) while preventing infinite loops. The hard depth ceiling is 20.
 
 ```
 Config                depth 0
@@ -415,12 +402,9 @@ Config                depth 0
             └─ ...    depth 3+  ← discovered up to depth 20
 ```
 
-Fields beyond the depth ceiling or the recursion limit are silently omitted from
-the editor UI but are preserved in the YAML file (the editor never deletes
-unknown content it can't render).
+Fields beyond the depth ceiling or the recursion limit are silently omitted from the editor UI but are preserved in the YAML file (the editor never deletes unknown content it can't render).
 
-To increase the recursion depth for a deeply self-referential type, pass
-`Config.SchemaRecursionDepth`:
+To increase the recursion depth for a deeply self-referential type, pass `Config.SchemaRecursionDepth`:
 
 ```go
 editor.Run(editor.Config{
@@ -433,8 +417,7 @@ editor.Run(editor.Config{
 
 ## Anonymous embeds and yaml:",inline"
 
-Exported fields promoted by anonymous embedding or `yaml:",inline"` are
-discovered as if they were declared directly on the parent struct:
+Exported fields promoted by anonymous embedding or `yaml:",inline"` are discovered as if they were declared directly on the parent struct:
 
 ```go
 type BaseMeta struct {
@@ -455,17 +438,13 @@ type Config struct {
 // Discovers: created-by, version-tag, team, contact, port
 ```
 
-Unexported anonymous embeds are also promoted (their exported fields surface at
-the parent level).
+Unexported anonymous embeds are also promoted (their exported fields surface at the parent level).
 
 ---
 
 ## Types that serialise as scalars (yaml.Marshaler / encoding.TextMarshaler)
 
-If a struct type implements `yaml.Marshaler` or `encoding.TextMarshaler`, yedit
-classifies it as `KindPrimitive` and **does not** expose its internal struct
-fields in the editor. The user edits the serialised form (e.g. `"#1e1e2e"` for
-a color type, `"192.168.1.1"` for an IP type):
+If a struct type implements `yaml.Marshaler` or `encoding.TextMarshaler`, yedit classifies it as `KindPrimitive` and **does not** expose its internal struct fields in the editor. The user edits the serialised form (e.g. `"#1e1e2e"` for a color type, `"192.168.1.1"` for an IP type):
 
 ```go
 type Color struct{ R, G, B uint8 }
@@ -483,9 +462,7 @@ type Config struct {
 
 ## interface{} / any → KindAny
 
-Fields typed `interface{}` or `any` are classified as `KindAny`. The editor
-shows the YAML pane with no tree. To provide a typed schema for a union field,
-implement `schema.Provider` on a concrete wrapper type.
+Fields typed `interface{}` or `any` are classified as `KindAny`. The editor shows the YAML pane with no tree. To provide a typed schema for a union field, implement `schema.Provider` on a concrete wrapper type.
 
 ---
 
@@ -511,9 +488,7 @@ enabled: true
 # "enabled" key is simply not written
 ```
 
-In the editor, a nil pointer corresponds to the field being absent - shown as
-unchecked (`○`) in the tree. Toggling it ON inserts the field with its default
-or snippet value.
+In the editor, a nil pointer corresponds to the field being absent - shown as unchecked (`○`) in the tree. Toggling it ON inserts the field with its default or snippet value.
 
 ---
 

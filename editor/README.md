@@ -674,7 +674,7 @@ type ValidationInput struct {
 ```
 
 <a name="NewValidationInput"></a>
-### func [NewValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L51>)
+### func [NewValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L41>)
 
 ```go
 func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
@@ -694,7 +694,7 @@ type Validator interface {
 ```
 
 <a name="AllOrNone"></a>
-### func [AllOrNone](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L946>)
+### func [AllOrNone](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L936>)
 
 ```go
 func AllOrNone(keys ...string) Validator
@@ -712,7 +712,7 @@ editor.AllOrNone("server.tls-cert", "server.tls-key")
 Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
 
 <a name="AtLeastOneOf"></a>
-### func [AtLeastOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L517>)
+### func [AtLeastOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L507>)
 
 ```go
 func AtLeastOneOf(keys ...string) Validator
@@ -739,7 +739,7 @@ func CountFromMetadata() Validator
 CountFromMetadata enforces FieldMeta.MinCount/MaxCount from the MetadataSource \(CountRange semantics\): sequences count items, mappings count keys. Both zero declares nothing; MinCount \> 0 with MaxCount == 0 means "at least MinCount, no upper bound". Absent fields report nothing \- combine with Required when the collection is mandatory.
 
 <a name="CountRange"></a>
-### func [CountRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L993>)
+### func [CountRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L983>)
 
 ```go
 func CountRange(path string, minCount, maxCount int) Validator
@@ -753,7 +753,7 @@ editor.CountRange("categories", 1, -1) // at least one, no upper bound
 ```
 
 <a name="CrossFieldOrdered"></a>
-### func [CrossFieldOrdered](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L690>)
+### func [CrossFieldOrdered](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L680>)
 
 ```go
 func CrossFieldOrdered(smallerPath, largerPath string) Validator
@@ -764,7 +764,7 @@ CrossFieldOrdered reports a violation when both paths are present but the value 
 When the two paths share the same parent prefix, the pair is compared inside every mapping reached by that parent \- sequences and dict\-style mappings are expanded automatically, so each entry's own min/max pair is checked. Paths with unrelated parents are both resolved from the document root.
 
 <a name="CrossFieldOrderedNested"></a>
-### func [CrossFieldOrderedNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L404>)
+### func [CrossFieldOrderedNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L394>)
 
 ```go
 func CrossFieldOrderedNested(scopedPath, smallerLeaf, largerLeaf string) Validator
@@ -780,7 +780,7 @@ editor.CrossFieldOrderedNested("categories.source.filter.age", "min", "max")
 ```
 
 <a name="Deprecated"></a>
-### func [Deprecated](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1136>)
+### func [Deprecated](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1126>)
 
 ```go
 func Deprecated(path, message string) Validator
@@ -802,7 +802,7 @@ func DeprecatedFromMetadata() Validator
 DeprecatedFromMetadata enforces FieldMeta.Deprecated from the MetadataSource \(Deprecated semantics\): every present occurrence of the field is reported, carrying the hint's migration message. Combine with Config.NoValidateOnSave to make it a non\-blocking warning.
 
 <a name="ExactlyOneOf"></a>
-### func [ExactlyOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L561>)
+### func [ExactlyOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L551>)
 
 ```go
 func ExactlyOneOf(keys ...string) Validator
@@ -838,7 +838,7 @@ func LengthFromMetadata() Validator
 LengthFromMetadata enforces FieldMeta.MinLength/MaxLength from the MetadataSource. Length is measured in Unicode code points. A zero value for either bound means no rule for that bound.
 
 <a name="MutuallyExclusive"></a>
-### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L141>)
+### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L131>)
 
 ```go
 func MutuallyExclusive(keys ...string) Validator
@@ -868,7 +868,7 @@ Dotted paths that do not share the same parent prefix \(or have different depths
 For constraints that must hold at every occurrence of a key regardless of depth \(e.g. recursive schemas\), use MutuallyExclusiveNested instead.
 
 <a name="MutuallyExclusiveGroupsNested"></a>
-### func [MutuallyExclusiveGroupsNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L345>)
+### func [MutuallyExclusiveGroupsNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L335>)
 
 ```go
 func MutuallyExclusiveGroupsNested(scopedPath string, groups ...[]string) Validator
@@ -887,7 +887,7 @@ editor.MutuallyExclusiveGroupsNested(
 ```
 
 <a name="MutuallyExclusiveNested"></a>
-### func [MutuallyExclusiveNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L309>)
+### func [MutuallyExclusiveNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L299>)
 
 ```go
 func MutuallyExclusiveNested(scopedPath string, keys ...string) Validator
@@ -912,7 +912,7 @@ editor.MutuallyExclusiveNested("categories.installers.source.filter", "any", "al
 The scoped form is preferred when the constraint applies to a specific filter type and not to every mapping named "filter" in the document.
 
 <a name="NoDuplicates"></a>
-### func [NoDuplicates](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L743>)
+### func [NoDuplicates](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L733>)
 
 ```go
 func NoDuplicates(seqPath, field string) Validator
@@ -962,7 +962,7 @@ func RangeFromMetadata() Validator
 RangeFromMetadata enforces FieldMeta.Min/Max from the MetadataSource \(ValueInRange semantics\): bounds and value may be plain numbers, durations, or sizes, and must be of the same kind. One\-sided bounds are allowed \- only Min means "at least Min", only Max means "at most Max". Malformed or mixed\-kind bounds in a hint are reported as a misconfiguration violation on every run.
 
 <a name="Required"></a>
-### func [Required](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L784>)
+### func [Required](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L774>)
 
 ```go
 func Required(paths ...string) Validator
@@ -993,7 +993,7 @@ The walk is guided by the discovered schema: for every schema path the validator
 The editor wires the discovered schema and the configured MetadataSource into this validator when the session starts; outside editor.Run, or when no MetadataSource is configured, it reports nothing.
 
 <a name="RequiredIf"></a>
-### func [RequiredIf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L616>)
+### func [RequiredIf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L606>)
 
 ```go
 func RequiredIf(key, condPath, condValue string) Validator
@@ -1011,7 +1011,7 @@ editor.RequiredIf("servers.tls-cert", "servers.protocol", "https")
 Paths with unrelated parents are both resolved from the document root.
 
 <a name="RequiredWith"></a>
-### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L242>)
+### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L232>)
 
 ```go
 func RequiredWith(key, parent string) Validator
@@ -1038,7 +1038,7 @@ func UniqueFromMetadata() Validator
 UniqueFromMetadata enforces FieldMeta.Unique from the MetadataSource \(UniqueValues semantics\): scalar items in the sequence must not repeat. Non\-sequence fields and non\-scalar items are skipped.
 
 <a name="UniqueValues"></a>
-### func [UniqueValues](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1024>)
+### func [UniqueValues](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1014>)
 
 ```go
 func UniqueValues(seqPath string) Validator
@@ -1051,7 +1051,7 @@ editor.UniqueValues("tags")
 ```
 
 <a name="ValueHasPrefix"></a>
-### func [ValueHasPrefix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L892>)
+### func [ValueHasPrefix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L882>)
 
 ```go
 func ValueHasPrefix(path, prefix string) Validator
@@ -1064,7 +1064,7 @@ editor.ValueHasPrefix("image", "registry.example.com/")
 ```
 
 <a name="ValueHasSuffix"></a>
-### func [ValueHasSuffix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L900>)
+### func [ValueHasSuffix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L890>)
 
 ```go
 func ValueHasSuffix(path, suffix string) Validator
@@ -1077,7 +1077,7 @@ editor.ValueHasSuffix("output", ".yaml")
 ```
 
 <a name="ValueInRange"></a>
-### func [ValueInRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L816>)
+### func [ValueInRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L806>)
 
 ```go
 func ValueInRange(path, minVal, maxVal string) Validator
@@ -1091,7 +1091,7 @@ editor.ValueInRange("filter.max-age", "1h", "8760h")
 ```
 
 <a name="ValueMatches"></a>
-### func [ValueMatches](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L862>)
+### func [ValueMatches](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L852>)
 
 ```go
 func ValueMatches(path, pattern string) Validator
@@ -1104,7 +1104,7 @@ editor.ValueMatches("version", `^\d+\.\d+\.\d+$`)
 ```
 
 <a name="ValueOneOf"></a>
-### func [ValueOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L662>)
+### func [ValueOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L652>)
 
 ```go
 func ValueOneOf(path string, allowed ...string) Validator
@@ -1155,7 +1155,7 @@ type Violation struct {
 ```
 
 <a name="RunAll"></a>
-### func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L60>)
+### func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L50>)
 
 ```go
 func RunAll(w WiredValidators, raw []byte, blocks []document.Block) []Violation
@@ -1173,7 +1173,7 @@ func (v Violation) String() string
 String renders "\<path\>: \<message\>", or just the message when Path is empty.
 
 <a name="WiredValidators"></a>
-## type [WiredValidators](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L46>)
+## type [WiredValidators](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L36>)
 
 WiredValidators is an opaque handle produced by Wire. RunAll only accepts this type, which guarantees that FromMetadata validators have been wired before any validation run. The zero value is valid and produces no violations.
 
@@ -1184,7 +1184,7 @@ type WiredValidators struct {
 ```
 
 <a name="Wire"></a>
-### func [Wire](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L93>)
+### func [Wire](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L83>)
 
 ```go
 func Wire(validators []Validator, cfg Config) WiredValidators

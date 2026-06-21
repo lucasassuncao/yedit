@@ -17,28 +17,18 @@ import (
 
 // # Validator families
 //
-// There are two families of validators. Choose based on whether you have a
-// MetadataSource configured in editor.Config.Metadata:
+// FromMetadata family (RequiredFromMetadata, OneOfFromMetadata, etc.):
+// requires a MetadataSource in editor.Config.Metadata, built via metadata.New
+// (structs implement MetadataProvider) or metadata.NewFromTree (third-party
+// structs). Inert until wired — editor.Run wires automatically; for standalone
+// use call Wire before RunAll.
 //
-// FromMetadata family - RequiredFromMetadata, OneOfFromMetadata,
-// RangeFromMetadata, PatternFromMetadata, CountFromMetadata,
-// UniqueFromMetadata, DeprecatedFromMetadata:
-//   - Use when you have a MetadataSource (e.g. metadata.Build).
-//   - Constraints are declared once in the metadata tree and reused by both
-//     the hint panel and the validators - no duplication.
-//   - These validators are inert until wired. editor.Run wires them
-//     automatically; for standalone use outside a session, call Wire before
-//     RunAll and use the returned WiredValidators.
+// Explicit family (Required, ValueOneOf, MutuallyExclusive, etc.):
+// operates directly on raw YAML via path strings. No MetadataSource or
+// MetadataProvider needed — the only option for apps whose structs cannot
+// implement MetadataProvider, and the right choice for cross-field rules.
 //
-// Explicit family - Required, ValueOneOf, ValueInRange, ValueMatches,
-// CountRange, UniqueValues, Deprecated:
-//   - Use for one-off rules that do not need a metadata tree, or for
-//     cross-field rules that cannot live in per-field metadata
-//     (MutuallyExclusive, RequiredWith, CrossFieldOrdered, etc.).
-//   - Work standalone: pass raw YAML to RunAll and they evaluate immediately.
-//
-// Mixing both families is valid. A typical setup uses FromMetadata for all
-// per-field constraints and explicit validators only for cross-field rules.
+// Both families can be mixed in the same Validators slice.
 
 // WiredValidators is an opaque handle produced by Wire. RunAll only accepts
 // this type, which guarantees that FromMetadata validators have been wired

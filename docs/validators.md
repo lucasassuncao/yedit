@@ -70,6 +70,20 @@ and a human-readable `Message`.
 
 ---
 
+## Choosing a family
+
+**FromMetadata** requires a `MetadataSource` in `editor.Config.Metadata`. Build one with `metadata.New(v)` when your structs implement `metadata.MetadataProvider` (the `Metadata()` method), or `metadata.NewFromTree(schemaPtr, tree)` when the root struct is from a third-party package that cannot implement the interface.
+
+**Explicit** validators need nothing — no `MetadataSource`, no `Metadata()` method, no wiring step. They are the only option when structs cannot implement `MetadataProvider`.
+
+Several explicit validators are per-field equivalents of their `FromMetadata` counterparts: `Required` ↔ `RequiredFromMetadata`, `ValueOneOf` ↔ `OneOfFromMetadata`, `ValueInRange` ↔ `RangeFromMetadata`, `ValueMatches` ↔ `PatternFromMetadata`, `CountRange` ↔ `CountFromMetadata`, `UniqueValues` ↔ `UniqueFromMetadata`, `Deprecated` ↔ `DeprecatedFromMetadata`. Use `FromMetadata` when you have a `MetadataSource`; use the explicit form otherwise.
+
+`ValueHasPrefix` and `ValueHasSuffix` have no `FromMetadata` equivalent because `PatternFromMetadata` already covers them (`Pattern: "^prefix"` / `"suffix$"`).
+
+`AtLeastOneOf`, `ExactlyOneOf`, `RequiredIf`, `AllOrNone`, and the `MutuallyExclusive*`/`CrossFieldOrdered*` family have no `FromMetadata` equivalent — they are inherently cross-field rules and cannot be expressed in per-field metadata.
+
+---
+
 ## Path semantics
 
 Most validators take dot-separated YAML paths (`server.tls.cert`). Three rules
