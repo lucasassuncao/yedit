@@ -59,7 +59,7 @@ func (m model) collectErrors() []Violation {
 			errs = append(errs, Violation{Path: k, Group: GroupUnknownKeys})
 		}
 	}
-	for _, v := range RunAll(m.cfg.Validators, m.doc.Raw(), m.doc.Blocks()) {
+	for _, v := range RunAll(m.wiredValidators, m.doc.Raw(), m.doc.Blocks()) {
 		if v.Group == "" {
 			v.Group = GroupRules
 		}

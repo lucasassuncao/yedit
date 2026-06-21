@@ -2084,7 +2084,7 @@ services:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := RunAll(validators, []byte(tc.raw), nil)
+			errs := RunAll(Wire(validators, Config{}), []byte(tc.raw), nil)
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}

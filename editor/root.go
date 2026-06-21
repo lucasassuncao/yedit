@@ -32,11 +32,12 @@ const (
 // hold per-mode data: alert is non-nil iff mode == paneAlert, blockEdits is
 // non-empty iff mode == paneBlockEdit (its last element is the visible editor).
 type model struct {
-	cfg         Config
-	doc         document.Document
-	schemaTree  []schema.FieldDef
-	knownByPath map[string]map[string]bool
-	childrenOf  map[string][]schema.FieldDef
+	cfg             Config
+	doc             document.Document
+	schemaTree      []schema.FieldDef
+	knownByPath     map[string]map[string]bool
+	childrenOf      map[string][]schema.FieldDef
+	wiredValidators WiredValidators // produced once in newModel; reused on every save/validate
 
 	list            listModel
 	preview         viewport.Model
@@ -81,15 +82,6 @@ func newModel(cfg Config) (model, error) {
 		tree = schema.Discover(cfg.Schema) // use schema default (1 extra recursive level)
 	}
 	tree = applyHidden(tree, cfg.Hidden)
-	// FromMetadata validators cannot see the schema or the MetadataSource at
-	// construction time; wire the discovered (and Hidden-filtered) tree into
-	// them here.
-	for _, v := range cfg.Validators {
-		if rv, ok := v.(*metadataRuleValidator); ok {
-			rv.defs = tree
-			rv.hints = cfg.Metadata
-		}
-	}
 	known := schema.KnownChildren(tree)
 	childrenOf := buildChildrenMap(tree)
 	knownOrder := schema.TopLevelOrder(tree)
@@ -113,11 +105,12 @@ func newModel(cfg Config) (model, error) {
 	preview.SetContent(renderPreviewYAML(string(doc.Raw()), nil))
 
 	return model{
-		cfg:         cfg,
-		doc:         doc,
-		schemaTree:  tree,
-		knownByPath: known,
-		childrenOf:  childrenOf,
+		cfg:             cfg,
+		doc:             doc,
+		schemaTree:      tree,
+		knownByPath:     known,
+		childrenOf:      childrenOf,
+		wiredValidators: Wire(cfg.Validators, cfg),
 
 		list:     list,
 		preview:  preview,

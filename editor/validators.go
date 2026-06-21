@@ -27,8 +27,8 @@ import (
 //   - Constraints are declared once in the metadata tree and reused by both
 //     the hint panel and the validators - no duplication.
 //   - These validators are inert until wired. editor.Run wires them
-//     automatically; for standalone use outside a session, call WireValidators
-//     once before RunAll.
+//     automatically; for standalone use outside a session, call Wire before
+//     RunAll and use the returned WiredValidators.
 //
 // Explicit family - Required, ValueOneOf, ValueInRange, ValueMatches,
 // CountRange, UniqueValues, Deprecated:
@@ -40,6 +40,11 @@ import (
 // Mixing both families is valid. A typical setup uses FromMetadata for all
 // per-field constraints and explicit validators only for cross-field rules.
 
+// WiredValidators is an opaque handle produced by Wire. RunAll only accepts
+// this type, which guarantees that FromMetadata validators have been wired
+// before any validation run. The zero value is valid and produces no violations.
+type WiredValidators struct{ validators []Validator }
+
 // NewValidationInput parses raw once and bundles it with blocks for a
 // validation run. Root is nil when raw is not valid YAML; an empty document
 // yields an empty mapping so unconditional checks still run.
@@ -50,47 +55,62 @@ func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput {
 
 // RunAll executes all validators against raw/blocks and collects violations.
 // The document is parsed once and shared across validators.
-func RunAll(validators []Validator, raw []byte, blocks []document.Block) []Violation {
-	if len(validators) == 0 {
+// w must be produced by Wire; passing a zero WiredValidators is valid and
+// always returns nil.
+func RunAll(w WiredValidators, raw []byte, blocks []document.Block) []Violation {
+	if len(w.validators) == 0 {
 		return nil
 	}
 	in := NewValidationInput(raw, blocks)
 	var errs []Violation
-	for _, v := range validators {
+	for _, v := range w.validators {
 		errs = append(errs, v.Validate(in)...)
 	}
 	return errs
 }
 
-// WireValidators prepares FromMetadata validators so they can be used with
-// RunAll outside a TUI session. It discovers the schema from cfg.Schema,
-// applies any Hidden filters, and injects both the schema tree and
-// cfg.Metadata into every FromMetadata validator in the slice.
+// Wire prepares a validator slice for use with RunAll. It returns a
+// WiredValidators where every FromMetadata validator (*metadataRuleValidator)
+// is replaced by a shallow copy with the schema tree and MetadataSource
+// injected. Explicit validators (MutuallyExclusive, Required, ValidatorFunc,
+// etc.) are included as-is.
 //
-// Call WireValidators once before RunAll when you need the full validator
-// set (including RequiredFromMetadata, OneOfFromMetadata, etc.) without
-// starting an editor session via Run. The validators are mutated in place,
-// so the same slice can be passed to RunAll directly afterwards.
+// The original slice is never modified, so the same global validator slice
+// can be passed safely from multiple call sites or goroutines without
+// interference. Wire is cheap to call repeatedly — schema discovery only
+// runs when cfg.Schema is non-nil.
 //
-// cfg.Schema must be non-nil; cfg.Metadata may be nil (FromMetadata
-// validators will be no-ops if Metadata is not provided).
-func WireValidators(validators []Validator, cfg Config) {
-	if cfg.Schema == nil {
-		return
-	}
-	var tree []schema.FieldDef
-	if cfg.SchemaRecursionDepth > 0 {
-		tree = schema.Discover(cfg.Schema, cfg.SchemaRecursionDepth)
-	} else {
-		tree = schema.Discover(cfg.Schema)
-	}
-	tree = applyHidden(tree, cfg.Hidden)
-	for _, v := range validators {
-		if rv, ok := v.(*metadataRuleValidator); ok {
-			rv.defs = tree
-			rv.hints = cfg.Metadata
+// Typical usage:
+//
+//	wired := editor.Wire(MyValidators, editor.Config{
+//	    Schema:   &MySchema{},
+//	    Metadata: hints,
+//	})
+//	violations := editor.RunAll(wired, raw, blocks)
+//
+// cfg.Schema must be non-nil for FromMetadata validators to fire; cfg.Metadata
+// may be nil (FromMetadata validators will report nothing without a source).
+func Wire(validators []Validator, cfg Config) WiredValidators {
+	out := make([]Validator, len(validators))
+	copy(out, validators)
+	if cfg.Schema != nil {
+		var tree []schema.FieldDef
+		if cfg.SchemaRecursionDepth > 0 {
+			tree = schema.Discover(cfg.Schema, cfg.SchemaRecursionDepth)
+		} else {
+			tree = schema.Discover(cfg.Schema)
+		}
+		tree = applyHidden(tree, cfg.Hidden)
+		for i, v := range out {
+			if rv, ok := v.(*metadataRuleValidator); ok {
+				wired := *rv
+				wired.defs = tree
+				wired.hints = cfg.Metadata
+				out[i] = &wired
+			}
 		}
 	}
+	return WiredValidators{validators: out}
 }
 
 // MutuallyExclusive reports a violation when more than one of the listed keys

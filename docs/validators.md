@@ -470,6 +470,46 @@ editor.Run(editor.Config{
 })
 ```
 
-Outside the editor, `editor.RunAll(validators, raw, blocks)` executes a set of
-validators against a document and collects the violations - useful for CLI
-`lint`-style commands that reuse the same rules.
+---
+
+## Using validators outside the TUI (`Wire` + `RunAll`)
+
+For CLI lint-style commands that reuse the same rules without opening the
+editor, use `Wire` followed by `RunAll`:
+
+```go
+wired := editor.Wire(MyValidators, editor.Config{
+    Schema:   &MySchema{},
+    Metadata: hints,
+})
+violations := editor.RunAll(wired, raw, blocks)
+```
+
+### Why `Wire` exists — and why `RunAll` requires `WiredValidators`
+
+`RunAll` accepts `WiredValidators`, not `[]Validator` directly. This is
+intentional: FromMetadata validators (`RequiredFromMetadata`, `OneOfFromMetadata`,
+etc.) hold unexported `defs` and `hints` fields that must be populated before
+they can run. Without `Wire`, they silently return zero violations.
+
+By requiring `WiredValidators` as the argument type, the compiler prevents
+the "forgot to wire" mistake at compile time rather than letting it manifest
+as a silent test gap at runtime.
+
+Inside `editor.Run`, wiring happens automatically — `newModel` calls `Wire`
+once and stores the result in the model. You only need `Wire` explicitly when
+operating outside a TUI session.
+
+### Safety properties of `Wire`
+
+- **The original slice is never modified.** `Wire` allocates a new slice and
+  copies each `*metadataRuleValidator` struct before injecting `defs`/`hints`.
+  The same global validator slice can be passed to `Wire` from multiple call
+  sites or goroutines without data races.
+- **Calling `Wire` with `Config{Schema: nil}` is safe** — it wraps the slice
+  as-is and explicit validators run normally. Only FromMetadata validators
+  remain inert (same behaviour as before wiring).
+- **`Wire` is cheap to call repeatedly** — schema discovery (`schema.Discover`)
+  runs once per `Wire` call, not once per `RunAll` call. For high-frequency
+  paths (e.g. inside a loop), call `Wire` once outside the loop and reuse the
+  `WiredValidators` handle.
