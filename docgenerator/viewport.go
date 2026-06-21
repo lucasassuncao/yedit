@@ -146,17 +146,13 @@ func (m *docTUIModel) handleListKey(key string) {
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
-			if m.cursor < m.listOffset {
-				m.listOffset = m.cursor
-			}
+			m.listOffset = theme.ClampScroll(m.cursor, m.listOffset, m.listH)
 			m.loadCurrent()
 		}
 	case "down", "j":
 		if m.cursor < n-1 {
 			m.cursor++
-			if m.cursor >= m.listOffset+m.listH {
-				m.listOffset = m.cursor - m.listH + 1
-			}
+			m.listOffset = theme.ClampScroll(m.cursor, m.listOffset, m.listH)
 			m.loadCurrent()
 		}
 	}
@@ -188,12 +184,7 @@ func (m *docTUIModel) relayout() {
 	m.vp.Width = m.vpColW - 2
 	m.vp.Height = m.vpH
 
-	if m.listOffset+m.listH <= m.cursor {
-		m.listOffset = m.cursor - m.listH + 1
-	}
-	if m.listOffset < 0 {
-		m.listOffset = 0
-	}
+	m.listOffset = theme.ClampScroll(m.cursor, m.listOffset, m.listH)
 
 	r, err := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
@@ -267,11 +258,7 @@ func (m *docTUIModel) navigateTo(name string) {
 	for i, n := range m.names {
 		if n == name {
 			m.cursor = i
-			if m.cursor < m.listOffset {
-				m.listOffset = m.cursor
-			} else if m.cursor >= m.listOffset+m.listH {
-				m.listOffset = m.cursor - m.listH + 1
-			}
+			m.listOffset = theme.ClampScroll(m.cursor, m.listOffset, m.listH)
 			m.loadCurrent()
 			return
 		}

@@ -139,15 +139,7 @@ func (l *listModel) ensureCursorVisible() {
 	if l.mode == modePresets {
 		cur = l.presetCursor
 	}
-	if cur < l.scroll {
-		l.scroll = cur
-	}
-	if l.height > 0 && cur >= l.scroll+l.height {
-		l.scroll = cur - l.height + 1
-	}
-	if l.scroll < 0 {
-		l.scroll = 0
-	}
+	l.scroll = theme.ClampScroll(cur, l.scroll, l.height)
 }
 
 func (l *listModel) View() string {

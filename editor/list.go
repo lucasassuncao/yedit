@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucasassuncao/yedit/document"
+	"github.com/lucasassuncao/yedit/theme"
 )
 
 // listItem represents one row in the left panel of the root editor view.
@@ -319,12 +320,7 @@ func (lm listModel) clampScroll() listModel {
 	if lm.height <= 0 {
 		return lm
 	}
-	if lm.cursor < lm.offset {
-		lm.offset = lm.cursor
-	}
-	if lm.cursor >= lm.offset+lm.height {
-		lm.offset = lm.cursor - lm.height + 1
-	}
+	lm.offset = theme.ClampScroll(lm.cursor, lm.offset, lm.height)
 	// The last visible row is replaced by the "↓ N more" indicator when items
 	// overflow below the view. If the cursor lands on that row, advance offset
 	// by one so the cursor remains visible.

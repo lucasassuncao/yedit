@@ -269,42 +269,11 @@ type mutuallyExclusiveNestedValidator struct {
 }
 
 func (v *mutuallyExclusiveNestedValidator) Validate(in ValidationInput) []Violation {
-	root := in.Root
-	if root == nil {
-		return nil
-	}
 	var errs []Violation
-	yamlnode.Navigate(root, v.navSegs, "", func(n *yaml.Node, p string) {
-		v.walk(n, "", p, &errs)
+	walkScopedMappings(in.Root, v.navSegs, v.parentKey, func(n *yaml.Node, where string) {
+		checkMutualExclusion(n, v.keys, where, &errs)
 	})
 	return errs
-}
-
-// walk visits node recursively. parentKey is the mapping key whose value is
-// node; path is the dot-separated YAML path to node (for error messages).
-func (v *mutuallyExclusiveNestedValidator) walk(node *yaml.Node, parentKey, path string, errs *[]Violation) {
-	switch node.Kind {
-	case yaml.MappingNode:
-		if parentKey == v.parentKey {
-			where := path
-			if where == "" {
-				where = v.parentKey
-			}
-			checkMutualExclusion(node, v.keys, where, errs)
-		}
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			key := node.Content[i].Value
-			childPath := key
-			if path != "" {
-				childPath = path + "." + key
-			}
-			v.walk(node.Content[i+1], key, childPath, errs)
-		}
-	case yaml.SequenceNode:
-		for i, child := range node.Content {
-			v.walk(child, parentKey, fmt.Sprintf("%s[%d]", path, i), errs)
-		}
-	}
 }
 
 // MutuallyExclusiveGroupsNested walks the YAML tree recursively — same
@@ -336,40 +305,11 @@ type mutuallyExclusiveGroupsNestedValidator struct {
 }
 
 func (v *mutuallyExclusiveGroupsNestedValidator) Validate(in ValidationInput) []Violation {
-	root := in.Root
-	if root == nil {
-		return nil
-	}
 	var errs []Violation
-	yamlnode.Navigate(root, v.navSegs, "", func(n *yaml.Node, p string) {
-		v.walk(n, "", p, &errs)
+	walkScopedMappings(in.Root, v.navSegs, v.parentKey, func(n *yaml.Node, where string) {
+		v.checkGroups(n, where, &errs)
 	})
 	return errs
-}
-
-func (v *mutuallyExclusiveGroupsNestedValidator) walk(node *yaml.Node, parentKey, path string, errs *[]Violation) {
-	switch node.Kind {
-	case yaml.MappingNode:
-		if parentKey == v.parentKey {
-			where := path
-			if where == "" {
-				where = v.parentKey
-			}
-			v.checkGroups(node, where, errs)
-		}
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			key := node.Content[i].Value
-			childPath := key
-			if path != "" {
-				childPath = path + "." + key
-			}
-			v.walk(node.Content[i+1], key, childPath, errs)
-		}
-	case yaml.SequenceNode:
-		for i, child := range node.Content {
-			v.walk(child, parentKey, fmt.Sprintf("%s[%d]", path, i), errs)
-		}
-	}
 }
 
 func (v *mutuallyExclusiveGroupsNestedValidator) checkGroups(node *yaml.Node, where string, errs *[]Violation) {
@@ -426,30 +366,43 @@ type crossFieldOrderedNestedValidator struct {
 }
 
 func (v *crossFieldOrderedNestedValidator) Validate(in ValidationInput) []Violation {
-	root := in.Root
-	if root == nil {
-		return nil
-	}
 	var errs []Violation
-	yamlnode.Navigate(root, v.navSegs, "", func(n *yaml.Node, p string) {
-		v.walk(n, "", p, &errs)
+	walkScopedMappings(in.Root, v.navSegs, v.parentKey, func(n *yaml.Node, where string) {
+		checkOrdered(
+			yamlnode.ScalarChild(n, v.smallerLeaf),
+			yamlnode.ScalarChild(n, v.largerLeaf),
+			v.smallerLeaf, v.largerLeaf, where, &errs,
+		)
 	})
 	return errs
 }
 
-func (v *crossFieldOrderedNestedValidator) walk(node *yaml.Node, parentKey, path string, errs *[]Violation) {
+// walkScopedMappings navigates root to navSegs, then recursively visits every
+// mapping whose direct parent key equals parentKey, calling onMatch with that
+// mapping and its violation path (parentKey itself when the match is the
+// navigated root). Sequences are expanded at every level. A nil root visits
+// nothing. This is the shared traversal behind the three *Nested validators.
+func walkScopedMappings(root *yaml.Node, navSegs []string, parentKey string, onMatch func(n *yaml.Node, where string)) {
+	if root == nil {
+		return
+	}
+	yamlnode.Navigate(root, navSegs, "", func(n *yaml.Node, p string) {
+		walkScopedRec(n, "", p, parentKey, onMatch)
+	})
+}
+
+// walkScopedRec is the recursion behind walkScopedMappings. curParentKey is the
+// mapping key whose value is node; path is node's dot/index YAML path; target is
+// the parent key that triggers onMatch.
+func walkScopedRec(node *yaml.Node, curParentKey, path, target string, onMatch func(n *yaml.Node, where string)) {
 	switch node.Kind {
 	case yaml.MappingNode:
-		if parentKey == v.parentKey {
+		if curParentKey == target {
 			where := path
 			if where == "" {
-				where = v.parentKey
+				where = target
 			}
-			checkOrdered(
-				yamlnode.ScalarChild(node, v.smallerLeaf),
-				yamlnode.ScalarChild(node, v.largerLeaf),
-				v.smallerLeaf, v.largerLeaf, where, errs,
-			)
+			onMatch(node, where)
 		}
 		for i := 0; i+1 < len(node.Content); i += 2 {
 			key := node.Content[i].Value
@@ -457,11 +410,11 @@ func (v *crossFieldOrderedNestedValidator) walk(node *yaml.Node, parentKey, path
 			if path != "" {
 				childPath = path + "." + key
 			}
-			v.walk(node.Content[i+1], key, childPath, errs)
+			walkScopedRec(node.Content[i+1], key, childPath, target, onMatch)
 		}
 	case yaml.SequenceNode:
 		for i, child := range node.Content {
-			v.walk(child, parentKey, fmt.Sprintf("%s[%d]", path, i), errs)
+			walkScopedRec(child, curParentKey, fmt.Sprintf("%s[%d]", path, i), target, onMatch)
 		}
 	}
 }
@@ -665,15 +618,7 @@ type valueOneOfValidator struct {
 func (v *valueOneOfValidator) Validate(in ValidationInput) []Violation {
 	var errs []Violation
 	forEachScalar(in.Root, v.path, &errs, func(value, where string) {
-		for _, a := range v.allowed {
-			if value == a {
-				return
-			}
-		}
-		errs = append(errs, Violation{
-			Path:    where,
-			Message: fmt.Sprintf("value %q is not allowed - use one of: %s", value, joinQuoted(v.allowed)),
-		})
+		oneOfViolation(value, where, v.allowed, &errs)
 	})
 	return errs
 }
@@ -879,12 +824,7 @@ func (v *valueMatchesValidator) Validate(in ValidationInput) []Violation {
 	}
 	var errs []Violation
 	forEachScalar(in.Root, v.path, &errs, func(value, where string) {
-		if !v.re.MatchString(value) {
-			errs = append(errs, Violation{
-				Path:    where,
-				Message: fmt.Sprintf("value %q does not match pattern %q", value, v.pattern),
-			})
-		}
+		patternMatchViolation(value, v.pattern, where, v.re, &errs)
 	})
 	return errs
 }
@@ -1013,26 +953,12 @@ func (v *countRangeValidator) Validate(in ValidationInput) []Violation {
 	}
 	var errs []Violation
 	yamlnode.ForEachLeaf(root, v.path, func(node *yaml.Node, where string) {
-		var count int
-		switch node.Kind {
-		case yaml.SequenceNode:
-			count = len(node.Content)
-		case yaml.MappingNode:
-			count = len(node.Content) / 2
-		default:
+		count, ok := collectionCount(node)
+		if !ok {
 			errs = append(errs, Violation{Path: where, Message: "expected a list or mapping"})
 			return
 		}
-		if count < v.min || (v.max >= 0 && count > v.max) {
-			want := fmt.Sprintf("between %d and %d", v.min, v.max)
-			if v.max < 0 {
-				want = fmt.Sprintf("at least %d", v.min)
-			}
-			errs = append(errs, Violation{
-				Path:    where,
-				Message: fmt.Sprintf("has %d entries - expected %s", count, want),
-			})
-		}
+		countRangeViolation(count, v.min, v.max, where, &errs)
 	})
 	return errs
 }
@@ -1058,13 +984,7 @@ func (v *uniqueValuesValidator) Validate(in ValidationInput) []Violation {
 		if seqNode.Kind != yaml.SequenceNode {
 			return
 		}
-		values := make([]string, len(seqNode.Content))
-		for i, item := range seqNode.Content {
-			if item.Kind == yaml.ScalarNode {
-				values[i] = item.Value
-			}
-		}
-		reportDuplicates(values, where, "", &errs)
+		reportDuplicateScalars(seqNode, where, "", &errs)
 	})
 	return errs
 }
@@ -1085,6 +1005,73 @@ func reportDuplicates(values []string, where, suffix string, errs *[]Violation) 
 		} else {
 			seen[val] = i
 		}
+	}
+}
+
+// reportDuplicateScalars collects the scalar values of seq (non-scalar items
+// yield empty entries, which reportDuplicates skips) and reports duplicates at
+// where+suffix. Shared by UniqueValues and UniqueFromMetadata.
+func reportDuplicateScalars(seq *yaml.Node, where, suffix string, errs *[]Violation) {
+	values := make([]string, len(seq.Content))
+	for i, item := range seq.Content {
+		if item.Kind == yaml.ScalarNode {
+			values[i] = item.Value
+		}
+	}
+	reportDuplicates(values, where, suffix, errs)
+}
+
+// oneOfViolation appends a "value not allowed" violation when value is not
+// among allowed. Shared by ValueOneOf and OneOfFromMetadata.
+func oneOfViolation(value, where string, allowed []string, errs *[]Violation) {
+	for _, a := range allowed {
+		if value == a {
+			return
+		}
+	}
+	*errs = append(*errs, Violation{
+		Path:    where,
+		Message: fmt.Sprintf("value %q is not allowed - use one of: %s", value, joinQuoted(allowed)),
+	})
+}
+
+// patternMatchViolation appends a "does not match pattern" violation when value
+// fails re. Shared by ValueMatches and PatternFromMetadata; each family handles
+// pattern compilation and invalid-pattern reporting on its own.
+func patternMatchViolation(value, pattern, where string, re *regexp.Regexp, errs *[]Violation) {
+	if !re.MatchString(value) {
+		*errs = append(*errs, Violation{
+			Path:    where,
+			Message: fmt.Sprintf("value %q does not match pattern %q", value, pattern),
+		})
+	}
+}
+
+// collectionCount returns the entry count of a sequence (items) or mapping
+// (keys). ok is false for any other node kind.
+func collectionCount(node *yaml.Node) (int, bool) {
+	switch node.Kind {
+	case yaml.SequenceNode:
+		return len(node.Content), true
+	case yaml.MappingNode:
+		return len(node.Content) / 2, true
+	}
+	return 0, false
+}
+
+// countRangeViolation appends a violation when count is below minCount or above
+// maxCount. maxCount < 0 means no upper bound. Shared by CountRange and
+// CountFromMetadata (the latter maps its MaxCount==0 sentinel to -1).
+func countRangeViolation(count, minCount, maxCount int, where string, errs *[]Violation) {
+	if count < minCount || (maxCount >= 0 && count > maxCount) {
+		want := fmt.Sprintf("between %d and %d", minCount, maxCount)
+		if maxCount < 0 {
+			want = fmt.Sprintf("at least %d", minCount)
+		}
+		*errs = append(*errs, Violation{
+			Path:    where,
+			Message: fmt.Sprintf("has %d entries - expected %s", count, want),
+		})
 	}
 }
 

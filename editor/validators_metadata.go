@@ -122,15 +122,7 @@ func checkHintOneOf(meta FieldMeta, child *yaml.Node, path string, errs *[]Viola
 	if !ok {
 		return
 	}
-	for _, a := range meta.OneOf {
-		if val == a {
-			return
-		}
-	}
-	*errs = append(*errs, Violation{
-		Path:    path,
-		Message: fmt.Sprintf("value %q is not allowed - use one of: %s", val, joinQuoted(meta.OneOf)),
-	})
+	oneOfViolation(val, path, meta.OneOf, errs)
 }
 
 // RangeFromMetadata enforces FieldMeta.Min/Max from the MetadataSource (ValueInRange
@@ -229,12 +221,7 @@ func checkHintPattern(cache map[string]*regexp.Regexp, meta FieldMeta, child *ya
 	if !ok {
 		return
 	}
-	if !re.MatchString(val) {
-		*errs = append(*errs, Violation{
-			Path:    path,
-			Message: fmt.Sprintf("value %q does not match pattern %q", val, meta.Pattern),
-		})
-	}
+	patternMatchViolation(val, meta.Pattern, path, re, errs)
 }
 
 // CountFromMetadata enforces FieldMeta.MinCount/MaxCount from the MetadataSource
@@ -248,29 +235,19 @@ func checkHintCount(meta FieldMeta, child *yaml.Node, path string, errs *[]Viola
 	if (meta.MinCount == 0 && meta.MaxCount == 0) || child == nil {
 		return
 	}
-	var count int
-	switch child.Kind {
-	case yaml.SequenceNode:
-		count = len(child.Content)
-	case yaml.MappingNode:
-		count = len(child.Content) / 2
-	default:
-		if child.Value == "" { // null scalar: an empty collection
-			break
+	count, ok := collectionCount(child)
+	if !ok {
+		if child.Value != "" { // a non-null scalar is not a collection
+			*errs = append(*errs, Violation{Path: path, Message: "expected a list or mapping"})
+			return
 		}
-		*errs = append(*errs, Violation{Path: path, Message: "expected a list or mapping"})
-		return
+		// null scalar: an empty collection - count stays 0
 	}
-	if count < meta.MinCount || (meta.MaxCount > 0 && count > meta.MaxCount) {
-		want := fmt.Sprintf("between %d and %d", meta.MinCount, meta.MaxCount)
-		if meta.MaxCount == 0 {
-			want = fmt.Sprintf("at least %d", meta.MinCount)
-		}
-		*errs = append(*errs, Violation{
-			Path:    path,
-			Message: fmt.Sprintf("has %d entries - expected %s", count, want),
-		})
+	maxCount := meta.MaxCount
+	if maxCount == 0 {
+		maxCount = -1 // MaxCount 0 means no upper bound
 	}
+	countRangeViolation(count, meta.MinCount, maxCount, path, errs)
 }
 
 // UniqueFromMetadata enforces FieldMeta.Unique from the MetadataSource (UniqueValues
@@ -282,13 +259,7 @@ func checkHintUnique(meta FieldMeta, child *yaml.Node, path string, errs *[]Viol
 	if !meta.Unique || child == nil || child.Kind != yaml.SequenceNode {
 		return
 	}
-	values := make([]string, len(child.Content))
-	for i, item := range child.Content {
-		if item.Kind == yaml.ScalarNode {
-			values[i] = item.Value
-		}
-	}
-	reportDuplicates(values, path, "", errs)
+	reportDuplicateScalars(child, path, "", errs)
 }
 
 // DeprecatedFromMetadata enforces FieldMeta.Deprecated from the MetadataSource

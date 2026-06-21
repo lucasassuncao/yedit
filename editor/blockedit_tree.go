@@ -101,10 +101,7 @@ func (be blockEditState) handleTreeToggleDispatch() blockEditState {
 	node := be.tree.nodes[idx]
 	if !node.checked && be.fieldHasContent(node) && !be.cfg.NoDeleteConfirm {
 		// Revert the visual toggle while waiting for the user to confirm.
-		nodes := make([]treeNode, len(be.tree.nodes))
-		copy(nodes, be.tree.nodes)
-		nodes[idx].checked = true
-		be.tree.nodes = nodes
+		be.tree = be.tree.withNodeMutated(idx, func(n *treeNode) { n.checked = true })
 		capturedIdx := idx
 		al := alert.NewConfirm(
 			"Remove field?",

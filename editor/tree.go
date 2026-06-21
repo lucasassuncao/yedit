@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/theme"
 )
 
 // treeNodeKind classifies each row in the tree-view left panel.
@@ -164,6 +165,17 @@ func (tm treeModel) currentNodeIdx() int {
 	return -1
 }
 
+// withNodeMutated returns tm with a freshly cloned nodes slice in which
+// nodes[idx] has been modified by mut. It keeps the tree's copy-on-write
+// discipline: callers never mutate the shared backing array in place.
+func (tm treeModel) withNodeMutated(idx int, mut func(*treeNode)) treeModel {
+	nodes := make([]treeNode, len(tm.nodes))
+	copy(nodes, tm.nodes)
+	mut(&nodes[idx])
+	tm.nodes = nodes
+	return tm
+}
+
 // NearestSeqItem returns the seqIdx of the treeNodeSeqItem that is an ancestor
 // of the current cursor, or -1 if none.
 func (tm treeModel) NearestSeqItem() int {
@@ -313,9 +325,7 @@ func (tm treeModel) moveUp() treeModel {
 	if tm.nodes[vis[tm.cursor]].kind == treeNodeSeparator {
 		tm.cursor = start
 	}
-	if tm.cursor < tm.offset {
-		tm.offset = tm.cursor
-	}
+	tm.offset = theme.ClampScroll(tm.cursor, tm.offset, tm.height)
 	return tm
 }
 
@@ -333,20 +343,13 @@ func (tm treeModel) moveDown() treeModel {
 	if tm.cursor < len(vis) && tm.nodes[vis[tm.cursor]].kind == treeNodeSeparator {
 		tm.cursor = start
 	}
-	if tm.cursor >= tm.offset+tm.height {
-		tm.offset = tm.cursor - tm.height + 1
-	}
+	tm.offset = theme.ClampScroll(tm.cursor, tm.offset, tm.height)
 	return tm
 }
 
 // clampOffset scrolls the viewport so the current cursor row stays visible.
 func (tm treeModel) clampOffset() treeModel {
-	if tm.cursor < tm.offset {
-		tm.offset = tm.cursor
-	}
-	if tm.height > 0 && tm.cursor >= tm.offset+tm.height {
-		tm.offset = tm.cursor - tm.height + 1
-	}
+	tm.offset = theme.ClampScroll(tm.cursor, tm.offset, tm.height)
 	return tm
 }
 
@@ -360,10 +363,7 @@ func (tm treeModel) handleRight() (treeModel, treeAction) {
 	}
 	if idx >= 0 && !tm.nodes[idx].isLeaf && !tm.nodes[idx].expanded &&
 		tm.nodes[idx].kind != treeNodeAddNew {
-		nodes := make([]treeNode, len(tm.nodes))
-		copy(nodes, tm.nodes)
-		nodes[idx].expanded = true
-		tm.nodes = nodes
+		tm = tm.withNodeMutated(idx, func(n *treeNode) { n.expanded = true })
 		return tm, treeExpanded
 	}
 	return tm, treeNoAction
@@ -376,10 +376,7 @@ func (tm treeModel) handleLeft(vis []int) (treeModel, treeAction) {
 	}
 	nd := tm.nodes[idx]
 	if !nd.isLeaf && nd.expanded {
-		nodes := make([]treeNode, len(tm.nodes))
-		copy(nodes, tm.nodes)
-		nodes[idx].expanded = false
-		tm.nodes = nodes
+		tm = tm.withNodeMutated(idx, func(n *treeNode) { n.expanded = false })
 		return tm, treeCollapsed
 	}
 	if nd.depth > 0 {
@@ -416,19 +413,13 @@ func (tm treeModel) handleEnter() (treeModel, treeAction) {
 			// like → rather than inserting a stray empty key with a phantom checked
 			// state that sync never clears.
 			if !nd.expanded {
-				nodes := make([]treeNode, len(tm.nodes))
-				copy(nodes, tm.nodes)
-				nodes[idx].expanded = true
-				tm.nodes = nodes
+				tm = tm.withNodeMutated(idx, func(n *treeNode) { n.expanded = true })
 				return tm, treeExpanded
 			}
 			return tm, treeNoAction
 		}
 		if !nd.checked {
-			nodes := make([]treeNode, len(tm.nodes))
-			copy(nodes, tm.nodes)
-			nodes[idx].checked = true
-			tm.nodes = nodes
+			tm = tm.withNodeMutated(idx, func(n *treeNode) { n.checked = true })
 			return tm, treeToggled
 		}
 	}
@@ -450,10 +441,7 @@ func (tm treeModel) handleRemove() (treeModel, treeAction) {
 		return tm, treeDeleted
 	case treeNodeField:
 		if nd.checked {
-			nodes := make([]treeNode, len(tm.nodes))
-			copy(nodes, tm.nodes)
-			nodes[idx].checked = false
-			tm.nodes = nodes
+			tm = tm.withNodeMutated(idx, func(n *treeNode) { n.checked = false })
 			return tm, treeToggled
 		}
 		// A non-leaf parent struct (e.g. hooks.before) carries no checkbox of its
@@ -489,11 +477,7 @@ func (tm treeModel) restoreCursorToPath(path []string) treeModel {
 	for vi, ni := range tm.visibleNodes() {
 		if pathEqual(tm.nodes[ni].yamlPath, path) {
 			tm.cursor = vi
-			if tm.cursor < tm.offset {
-				tm.offset = tm.cursor
-			} else if tm.height > 0 && tm.cursor >= tm.offset+tm.height {
-				tm.offset = tm.cursor - tm.height + 1
-			}
+			tm.offset = theme.ClampScroll(tm.cursor, tm.offset, tm.height)
 			return tm
 		}
 	}

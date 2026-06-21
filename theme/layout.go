@@ -11,6 +11,24 @@ import (
 // is passed as a unit (picker, RenderTitledPanel).
 type Size struct{ W, H int }
 
+// ClampScroll adjusts a scroll offset so that the cursor row stays within the
+// visible window of height rows, and returns the corrected offset. It scrolls
+// up when the cursor sits above the window and down when it sits below, and
+// never returns a negative offset. A non-positive height leaves the offset
+// untouched (apart from the floor at zero).
+func ClampScroll(cursor, offset, height int) int {
+	if cursor < offset {
+		offset = cursor
+	}
+	if height > 0 && cursor >= offset+height {
+		offset = cursor - height + 1
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return offset
+}
+
 // TwoColumnLayout carries the five sections of the standard two-panel screen.
 type TwoColumnLayout struct {
 	Header   string

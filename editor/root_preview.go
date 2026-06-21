@@ -8,6 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/glamour/styles"
+
+	"github.com/lucasassuncao/yedit/internal/render"
 )
 
 func (m model) togglePreviewPane() (tea.Model, tea.Cmd) {
@@ -82,9 +84,9 @@ func renderPreviewYAML(raw string, r *glamour.TermRenderer) string {
 	if r == nil || raw == "" {
 		return raw
 	}
-	out, err := r.Render("```yaml\n" + raw + "\n```")
-	if err != nil {
-		return raw
+	out := render.YAMLFence(raw, r)
+	if out == raw {
+		return raw // rendering failed - YAMLFence returned the input unchanged
 	}
 	return trimBlankLines(out)
 }
