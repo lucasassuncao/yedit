@@ -24,6 +24,7 @@ const (
 	panePreview
 	paneBlockEdit
 	paneAlert
+	paneDocPreset
 )
 
 // model is the root bubbletea model.
@@ -57,6 +58,7 @@ type model struct {
 	editBlockKey string // top-level YAML key of editRoot
 	alert        alert.Model
 	alertVisible bool
+	docPreset    presetBrowser
 	theme        resolvedTheme
 	help         help.Model
 
@@ -154,6 +156,40 @@ func (m model) enterAlert(al alert.Model) model {
 	m.alert = al
 	m.alertVisible = true
 	return m
+}
+
+// enterDocPreset switches to the document-level template picker.
+func (m model) enterDocPreset(pb presetBrowser) model {
+	m.mode = paneDocPreset
+	m.docPreset = pb
+	m.alertVisible = false
+	return m
+}
+
+func (m model) viewDocPreset() string {
+	header := renderHeader(m.cfg.Title, m.doc.Path(), m.doc.Dirty(), m.width, m.theme)
+
+	leftPanel := theme.RenderTitledPanelWith("Templates", theme.Size{W: m.listW, H: m.innerH + 2}, !m.docPreset.previewFocus, m.docPreset.listView(m.theme), m.theme.colors)
+
+	_, rightW := theme.TwoColumnWidths(m.width)
+	rightPanel := theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.innerH + 2}, m.docPreset.previewFocus, m.docPreset.previewView(m.innerH), m.theme.colors)
+
+	feedback := renderStatusLine(m.width, m.theme.status, m.statusMsg)
+	var km help.KeyMap
+	if m.docPreset.previewFocus {
+		km = docPresetPreviewKeyMap{}
+	} else {
+		km = docPresetListKeyMap{}
+	}
+	legend := renderHelpLine(m.width, m.help, km)
+
+	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legend})
+	if m.height > 0 {
+		if lines := strings.Split(out, "\n"); len(lines) > m.height {
+			out = strings.Join(lines[:m.height], "\n")
+		}
+	}
+	return out
 }
 
 func applyHidden(fields []schema.FieldDef, hidden []string) []schema.FieldDef {
@@ -287,6 +323,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key, ok := msg.(tea.KeyMsg); ok {
 			return m.handleListKey(key)
 		}
+	case paneDocPreset:
+		if key, ok := msg.(tea.KeyMsg); ok {
+			return m.handleDocPresetKey(key)
+		}
 	}
 	return m, nil
 }
@@ -356,6 +396,10 @@ func (m model) View() string {
 		if top := m.topBE(); top != nil {
 			return top.View(m.blockBreadcrumbPrefix())
 		}
+	}
+
+	if m.mode == paneDocPreset {
+		return m.viewDocPreset()
 	}
 
 	previewFocused := m.mode == panePreview

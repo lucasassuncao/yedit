@@ -150,7 +150,7 @@ func (pb *presetBrowser) previewYAML() string {
 // openPresetPicker enters preset-browser mode if there are any presets for
 // this block. It's a no-op when Presets is nil or the field has none.
 func (be blockEditState) openPresetPicker() blockEditState {
-	pb, ok := newPresetBrowser(be.cfg.Presets, be.key, be.currentPreset)
+	pb, ok := newPresetBrowser(be.cfg.BlockPresets, be.key, be.currentPreset)
 	if !ok {
 		return be
 	}

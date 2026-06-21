@@ -163,8 +163,8 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	content := spec.content
 	trivial := spec.key + ":\n"
 	if (content == "" || content == trivial) && !structured {
-		if cfg.Presets != nil {
-			if y, err := cfg.Presets.PresetYAML(spec.key, "base"); err == nil {
+		if cfg.BlockPresets != nil {
+			if y, err := cfg.BlockPresets.PresetYAML(spec.key, "base"); err == nil {
 				content = y
 				be.currentPreset = "base"
 			}
@@ -336,8 +336,8 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 	be.preset = pb
 	switch action {
 	case presetApplied:
-		if be.cfg.Presets != nil {
-			y, err := be.cfg.Presets.PresetYAML(be.key, name)
+		if be.cfg.BlockPresets != nil {
+			y, err := be.cfg.BlockPresets.PresetYAML(be.key, name)
 			if err != nil {
 				be.editorErr = editorError{kind: errPreset, message: fmt.Sprintf("preset error: %v", err)}
 			} else {
@@ -345,8 +345,8 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 			}
 		}
 	case presetAppended:
-		if be.cfg.Presets != nil {
-			y, err := be.cfg.Presets.PresetYAML(be.key, name)
+		if be.cfg.BlockPresets != nil {
+			y, err := be.cfg.BlockPresets.PresetYAML(be.key, name)
 			if err != nil {
 				be.editorErr = editorError{kind: errPreset, message: fmt.Sprintf("preset error: %v", err)}
 			} else {

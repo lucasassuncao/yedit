@@ -1,6 +1,10 @@
 package editor
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"fmt"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 func (m model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch msg.String() {
@@ -25,6 +29,10 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.togglePreviewPane()
 		case "ctrl+r":
 			return m.reload()
+		case "ctrl+p":
+			if pb, ok := newPresetBrowser(m.cfg.DocPresets, "", ""); ok {
+				return m.enterDocPreset(pb), nil
+			}
 		case "esc", "ctrl+c":
 			if m.doc.Dirty() {
 				return m.showConfirmAlert("Quit without saving?",
@@ -41,6 +49,23 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.list, cmd = m.list.Update(msg)
 	m = m.scrollPreviewToSelected()
 	return m, cmd
+}
+
+func (m model) handleDocPresetKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	pb, action, name := m.docPreset.Update(msg, false)
+	m.docPreset = pb
+	switch action {
+	case presetDismissed:
+		return m.enterList(), nil
+	case presetApplied:
+		y, err := m.cfg.DocPresets.PresetYAML("", name)
+		if err != nil {
+			return m.withStatus(fmt.Sprintf("preset error: %v", err))
+		}
+		m = m.enterList()
+		return m.dispatch(ApplyDocPreset{Name: name, Content: y})
+	}
+	return m, nil
 }
 
 func (m model) handlePreviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

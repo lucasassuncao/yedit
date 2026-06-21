@@ -68,14 +68,16 @@ type DocRedo struct{}
 type Save struct{}
 type Reload struct{}
 type ToggleHints struct{}
+type ApplyDocPreset struct{ Name, Content string }
 
-func (OpenBlock) modelAction()   {}
-func (CommitBlock) modelAction() {}
-func (DeleteBlock) modelAction() {}
-func (DrillIn) modelAction()     {}
-func (DrillOut) modelAction()    {}
-func (DocUndo) modelAction()     {}
-func (DocRedo) modelAction()     {}
-func (Save) modelAction()        {}
-func (Reload) modelAction()      {}
-func (ToggleHints) modelAction() {}
+func (OpenBlock) modelAction()      {}
+func (CommitBlock) modelAction()    {}
+func (DeleteBlock) modelAction()    {}
+func (DrillIn) modelAction()        {}
+func (DrillOut) modelAction()       {}
+func (DocUndo) modelAction()        {}
+func (DocRedo) modelAction()        {}
+func (Save) modelAction()           {}
+func (Reload) modelAction()         {}
+func (ToggleHints) modelAction()    {}
+func (ApplyDocPreset) modelAction() {}

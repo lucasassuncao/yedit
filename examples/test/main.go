@@ -394,7 +394,7 @@ func buildEditCmd() *cobra.Command {
 
 				EnableHints: true,
 
-				Presets:  testPresets,
+				BlockPresets: testPresets,
 				Metadata: testMetadata,
 
 				Validators: []editor.Validator{

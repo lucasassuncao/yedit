@@ -224,7 +224,7 @@ func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
 		"categories/extra": "categories:\n  - name: appended\n",
 	}}
 	spec := seqSpec("categories:\n  - name: existing\n")
-	be := newBlockEdit(Config{Presets: stub}, spec, 100, 40)
+	be := newBlockEdit(Config{BlockPresets: stub}, spec, 100, 40)
 
 	be = be.openPresetPicker()
 	y, _ := stub.PresetYAML("categories", "extra")
@@ -263,7 +263,7 @@ func TestAppendPreset_indentMismatch(t *testing.T) {
       enabled: true
 `,
 	}
-	be := newBlockEdit(Config{Presets: stub}, spec, 100, 40)
+	be := newBlockEdit(Config{BlockPresets: stub}, spec, 100, 40)
 	be = be.openPresetPicker()
 	y, _ := stub.PresetYAML("categories", "extra")
 	be = be.appendPreset("extra", y)
@@ -282,7 +282,7 @@ func TestAppendPreset_multiEntryPreset(t *testing.T) {
 		"categories/multi": "categories:\n  - name: alpha\n  - name: beta\n",
 	}}
 	spec := seqSpec("categories:\n  - name: existing\n")
-	be := newBlockEdit(Config{Presets: stub}, spec, 100, 40)
+	be := newBlockEdit(Config{BlockPresets: stub}, spec, 100, 40)
 	be = be.openPresetPicker()
 	y, _ := stub.PresetYAML("categories", "multi")
 	be = be.appendPreset("multi", y)

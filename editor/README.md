@@ -14,6 +14,7 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 
 - [Variables](<#variables>)
 - [type AddEntry](<#AddEntry>)
+- [type ApplyDocPreset](<#ApplyDocPreset>)
 - [type ApplyPreset](<#ApplyPreset>)
 - [type BlockAction](<#BlockAction>)
 - [type CommitBlock](<#CommitBlock>)
@@ -263,6 +264,15 @@ AddEntry appends a new entry to a collection\-nav block.
 type AddEntry struct{}
 ```
 
+<a name="ApplyDocPreset"></a>
+## type [ApplyDocPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L71>)
+
+
+
+```go
+type ApplyDocPreset struct{ Name, Content string }
+```
+
 <a name="ApplyPreset"></a>
 ## type [ApplyPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L37>)
 
@@ -293,7 +303,7 @@ type CommitBlock struct{}
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L170-L186>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L170-L187>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -312,7 +322,8 @@ type Config struct {
     Path                 string         // YAML file to load; also the default save target when SavePath is empty
     Schema               any            // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
     Title                string         // label shown in the TUI header
-    Presets              presets.Source // optional; nil disables the preset picker
+    BlockPresets         presets.Source // optional; nil disables the preset picker inside block editors
+    DocPresets           presets.Source // optional; when set, ctrl+p on the root list opens a whole-document template picker
     EnableHints          bool           // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
     Metadata             MetadataSource // field metadata displayed in the hint panel and enforced by the FromMetadata validators
     Validators           []Validator    // rules evaluated before every save and on the validate shortcut

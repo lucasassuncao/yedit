@@ -44,6 +44,8 @@ var (
 
 	kbHint     = key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "hint"))
 	kbHintHide = key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "hide hint"))
+
+	kbCtrlPTemplates = key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "templates"))
 )
 
 // KeyMap types implement help.KeyMap (short mode only — FullHelp is unused).
@@ -116,3 +118,17 @@ func (presetListCollectionMap) ShortHelp() []key.Binding {
 	return []key.Binding{kbNavigate, kbTabPreview, kbEnterReplace, kbAAppend, kbEscCancel}
 }
 func (presetListCollectionMap) FullHelp() [][]key.Binding { return nil }
+
+type docPresetListKeyMap struct{}
+
+func (docPresetListKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{kbNavigate, kbTabPreview, kbEnterApply, kbEscCancel}
+}
+func (docPresetListKeyMap) FullHelp() [][]key.Binding { return nil }
+
+type docPresetPreviewKeyMap struct{}
+
+func (docPresetPreviewKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{kbScroll, kbTabPresets, kbEscBack}
+}
+func (docPresetPreviewKeyMap) FullHelp() [][]key.Binding { return nil }

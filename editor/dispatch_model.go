@@ -46,6 +46,14 @@ func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
 		m.showHint = !m.showHint
 		m = m.relayout()
 		return m, nil
+	case ApplyDocPreset:
+		newDoc, err := m.doc.ReplaceRaw([]byte(act.Content))
+		if err != nil {
+			return m.withStatus(fmt.Sprintf("Failed to apply preset %q: %v", act.Name, err))
+		}
+		m.doc = newDoc
+		m = m.syncView()
+		return m.withStatus(fmt.Sprintf("Applied preset %q — ctrl+s to save.", act.Name))
 	default:
 		panic(fmt.Sprintf("editor: unhandled ModelAction %T", a))
 	}

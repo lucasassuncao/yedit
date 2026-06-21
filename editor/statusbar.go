@@ -100,15 +100,28 @@ func listKeyMapFor(m model, previewFocused bool) help.KeyMap {
 	if !m.cfg.EnableHints {
 		hint.SetEnabled(false)
 	}
-	if it := m.list.SelectedItem(); it != nil {
-		if it.Unknown {
-			return listUnknownMap{hint: hint}
-		}
-		if it.Existing {
-			return listExistingMap{hint: hint}
-		}
+
+	var km help.KeyMap
+	it := m.list.SelectedItem()
+	switch {
+	case it != nil && it.Unknown:
+		km = listUnknownMap{hint: hint}
+	case it != nil && it.Existing:
+		km = listExistingMap{hint: hint}
+	default:
+		km = listNewMap{hint: hint}
 	}
-	return listNewMap{hint: hint}
+
+	if m.cfg.DocPresets == nil {
+		return km
+	}
+	base := km.ShortHelp()
+	extended := make([]key.Binding, 0, len(base)+1)
+	extended = append(extended, base[0], kbCtrlPTemplates)
+	if len(base) > 1 {
+		extended = append(extended, base[1:]...)
+	}
+	return dynamicKeyMap(extended)
 }
 
 // currentKeyMap returns the help.KeyMap for the block editor's current state.
@@ -117,7 +130,7 @@ func (be blockEditState) currentKeyMap() help.KeyMap {
 		return saveTailMap{}
 	}
 	parts := []key.Binding{kbNav, kbExpand}
-	if be.cfg.Presets != nil && len(be.cfg.Presets.ListPresets(be.key)) > 0 {
+	if be.cfg.BlockPresets != nil && len(be.cfg.BlockPresets.ListPresets(be.key)) > 0 {
 		parts = append(parts, kbPreset)
 	}
 	if be.isCollectionNav() {
