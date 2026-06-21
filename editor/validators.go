@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lucasassuncao/yedit/internal/yamlnode"
+	"github.com/lucasassuncao/yedit/schema"
 
 	"gopkg.in/yaml.v3"
 
@@ -25,8 +26,9 @@ import (
 //   - Use when you have a MetadataSource (e.g. metadata.Build).
 //   - Constraints are declared once in the metadata tree and reused by both
 //     the hint panel and the validators - no duplication.
-//   - These validators are inert until editor.Run wires them; they cannot be
-//     used standalone outside a session.
+//   - These validators are inert until wired. editor.Run wires them
+//     automatically; for standalone use outside a session, call WireValidators
+//     once before RunAll.
 //
 // Explicit family - Required, ValueOneOf, ValueInRange, ValueMatches,
 // CountRange, UniqueValues, Deprecated:
@@ -58,6 +60,37 @@ func RunAll(validators []Validator, raw []byte, blocks []document.Block) []Viola
 		errs = append(errs, v.Validate(in)...)
 	}
 	return errs
+}
+
+// WireValidators prepares FromMetadata validators so they can be used with
+// RunAll outside a TUI session. It discovers the schema from cfg.Schema,
+// applies any Hidden filters, and injects both the schema tree and
+// cfg.Metadata into every FromMetadata validator in the slice.
+//
+// Call WireValidators once before RunAll when you need the full validator
+// set (including RequiredFromMetadata, OneOfFromMetadata, etc.) without
+// starting an editor session via Run. The validators are mutated in place,
+// so the same slice can be passed to RunAll directly afterwards.
+//
+// cfg.Schema must be non-nil; cfg.Metadata may be nil (FromMetadata
+// validators will be no-ops if Metadata is not provided).
+func WireValidators(validators []Validator, cfg Config) {
+	if cfg.Schema == nil {
+		return
+	}
+	var tree []schema.FieldDef
+	if cfg.SchemaRecursionDepth > 0 {
+		tree = schema.Discover(cfg.Schema, cfg.SchemaRecursionDepth)
+	} else {
+		tree = schema.Discover(cfg.Schema)
+	}
+	tree = applyHidden(tree, cfg.Hidden)
+	for _, v := range validators {
+		if rv, ok := v.(*metadataRuleValidator); ok {
+			rv.defs = tree
+			rv.hints = cfg.Metadata
+		}
+	}
 }
 
 // MutuallyExclusive reports a violation when more than one of the listed keys
