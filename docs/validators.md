@@ -1,6 +1,6 @@
 # Validators
 
-This document describes every built-in validator in `yedit/editor`, how paths are
+This document describes every built-in validator in `yamltui/editor`, how paths are
 resolved, and how to write custom rules. Validators are pluggable rules executed
 at validate/save time, registered through `editor.Config`:
 

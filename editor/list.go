@@ -102,6 +102,22 @@ func buildListItems(knownKeys []string, existing []document.Block, passthrough m
 		items = append(items, unknownItems...)
 	}
 
+	// PASSTHROUGH: keys declared as passthrough that exist in the file AND are
+	// not already shown under ADDED (i.e. not in the schema). Keys that appear
+	// in both the schema and the passthrough list are handled by ADDED/AVAILABLE
+	// and must not be duplicated here.
+	var passthroughItems []listItem
+	for _, b := range existing {
+		if passthrough[b.Key] && !knownSet[b.Key] {
+			passthroughItems = append(passthroughItems, listItem{Key: b.Key, Existing: true, Unknown: true})
+		}
+	}
+	if len(passthroughItems) > 0 {
+		items = append(items, listItem{Separator: true, Key: ""})
+		items = append(items, listItem{Separator: true, Key: "PASSTHROUGH"})
+		items = append(items, passthroughItems...)
+	}
+
 	return items
 }
 
@@ -123,6 +139,25 @@ func newListModel(knownKeys []string, existing []document.Block, passthrough map
 	return listModel{knownKeys: knownKeys, passthrough: passthrough, items: items, cursor: cursor, height: height}
 }
 
+// clampFCursorToFiltered ensures fCursor is within [0, len(filteredItems)-1]
+// after a rebuild that changes the filtered item count. No-op when not filtering.
+func (lm listModel) clampFCursorToFiltered() listModel {
+	if !lm.filtering {
+		return lm
+	}
+	filtered := lm.filteredItems()
+	if lm.fCursor < len(filtered) {
+		return lm
+	}
+	if len(filtered) == 0 {
+		lm.fCursor = 0
+	} else {
+		lm.fCursor = len(filtered) - 1
+	}
+	lm.fOffset = 0
+	return lm
+}
+
 // Rebuild refreshes the list after blocks change without losing cursor position.
 func (lm listModel) Rebuild(existing []document.Block) listModel {
 	prevKey := ""
@@ -134,7 +169,7 @@ func (lm listModel) Rebuild(existing []document.Block) listModel {
 		for i, it := range lm.items {
 			if it.Key == prevKey {
 				lm.cursor = i
-				return lm.clampScroll()
+				return lm.clampScroll().clampFCursorToFiltered()
 			}
 		}
 	}
@@ -145,7 +180,7 @@ func (lm listModel) Rebuild(existing []document.Block) listModel {
 			break
 		}
 	}
-	return lm.clampScroll()
+	return lm.clampScroll().clampFCursorToFiltered()
 }
 
 // AddedCount returns how many recognised top-level keys are present in the doc.
@@ -248,6 +283,7 @@ func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
 		lm.fOffset = 0
 	case "enter":
 		items := lm.filteredItems()
+		var selCmd tea.Cmd
 		if lm.fCursor < len(items) {
 			sel := items[lm.fCursor].Key
 			for i, it := range lm.items {
@@ -257,8 +293,16 @@ func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
 					break
 				}
 			}
+			// Emit openItemMsg for the selected item, mirroring normal-mode Enter.
+			// Guard against separators: filteredItems() skips them, but be
+			// defensive in case the list is rebuilt concurrently with a keypress.
+			item := items[lm.fCursor]
+			if !item.Separator && !item.Unknown {
+				selCmd = func() tea.Msg { return openItemMsg{Item: item} }
+			}
 		}
 		lm.filtering = false
+		return lm, selCmd
 	case "backspace", "ctrl+h":
 		if len(lm.filter) > 0 {
 			lm.filter = lm.filter[:len(lm.filter)-1]

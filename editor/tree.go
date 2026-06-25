@@ -102,7 +102,14 @@ func (tm treeModel) isEmpty() bool {
 
 // flattenDefsAsTree converts a []schema.FieldDef into a flat DFS list of
 // treeNodes, mirroring composeListModel.flattenDefs but producing treeNode.
+const maxTreeDepth = 20
+
 func flattenDefsAsTree(defs []schema.FieldDef, prefix []string, depth int) []treeNode {
+	if depth > maxTreeDepth {
+		// Schema depth limit reached — stop recursing to prevent a stack
+		// overflow from circular or pathologically deep schema definitions.
+		return nil
+	}
 	var out []treeNode
 	for _, d := range defs {
 		path := make([]string, len(prefix)+1)
@@ -184,6 +191,9 @@ func (tm treeModel) currentNodeIdx() int {
 // nodes[idx] has been modified by mut. It keeps the tree's copy-on-write
 // discipline: callers never mutate the shared backing array in place.
 func (tm treeModel) withNodeMutated(idx int, mut func(*treeNode)) treeModel {
+	if idx < 0 || idx >= len(tm.nodes) {
+		return tm // stale index; no-op instead of panic
+	}
 	nodes := make([]treeNode, len(tm.nodes))
 	copy(nodes, tm.nodes)
 	mut(&nodes[idx])
@@ -493,6 +503,31 @@ func (tm treeModel) restoreCursorToPath(path []string) treeModel {
 	if len(path) == 0 {
 		return tm
 	}
+	// First pass: try the visible nodes directly (common case — already expanded).
+	for vi, ni := range tm.visibleNodes() {
+		if pathEqual(tm.nodes[ni].yamlPath, path) {
+			tm.cursor = vi
+			tm.offset = theme.ClampScroll(tm.cursor, tm.offset, tm.height)
+			return tm
+		}
+	}
+	// Second pass: the target node may be hidden under a collapsed ancestor.
+	// Expand any ancestor whose path is a prefix of the target path so the
+	// node becomes visible, then retry.
+	expanded := false
+	for i := range tm.nodes {
+		n := &tm.nodes[i]
+		if n.kind != treeNodeField || n.isLeaf || n.expanded {
+			continue
+		}
+		if isPathPrefix(n.yamlPath, path) {
+			n.expanded = true
+			expanded = true
+		}
+	}
+	if !expanded {
+		return tm // node is not in the tree at all; leave cursor unchanged
+	}
 	for vi, ni := range tm.visibleNodes() {
 		if pathEqual(tm.nodes[ni].yamlPath, path) {
 			tm.cursor = vi
@@ -501,6 +536,20 @@ func (tm treeModel) restoreCursorToPath(path []string) treeModel {
 		}
 	}
 	return tm
+}
+
+// isPathPrefix reports whether prefix is a strict prefix of path (i.e. prefix
+// has fewer elements and every element matches).
+func isPathPrefix(prefix, path []string) bool {
+	if len(prefix) == 0 || len(prefix) >= len(path) {
+		return false
+	}
+	for i, p := range prefix {
+		if path[i] != p {
+			return false
+		}
+	}
+	return true
 }
 
 // hasCheckedDescendant reports whether any leaf descendant of nodes[parentIdx]

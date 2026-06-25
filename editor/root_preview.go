@@ -32,6 +32,8 @@ func (m model) syncView() model {
 // scrollPreviewToSelected scrolls the read-only preview so the YAML for the
 // selected top-level block sits near the top, letting list navigation track the
 // document. Applies only in the list pane and only for keys present in the file.
+// AVAILABLE items (not yet in the file) are silently skipped — do not reset the
+// scroll to 0 when the selected item is absent from the document.
 // The scroll is line-based, so it can drift slightly when long lines above the
 // block wrap.
 func (m model) scrollPreviewToSelected() model {
@@ -40,6 +42,7 @@ func (m model) scrollPreviewToSelected() model {
 	}
 	it := m.list.SelectedItem()
 	if it == nil || !it.Existing {
+		// AVAILABLE or separator item — leave scroll unchanged.
 		return m
 	}
 	for _, b := range m.doc.Blocks() {
@@ -48,6 +51,8 @@ func (m model) scrollPreviewToSelected() model {
 			return m
 		}
 	}
+	// Key not found in doc.Blocks() (e.g. passthrough or stale list) — leave
+	// scroll unchanged rather than snapping to offset 0.
 	return m
 }
 

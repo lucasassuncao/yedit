@@ -54,9 +54,9 @@ func (m model) handleBlockEditDiscarded(msg blockEditDiscardedMsg) (tea.Model, t
 		}
 		// else: clean Esc after a commit - preserve the existing status message
 		// (e.g. "Block updated (not saved yet)").
-	} else {
-		m.statusMsg = ""
 	}
+	// Intermediate pops (returning to a parent editor) intentionally preserve
+	// any status message the child may have set so the user can read it.
 	return m, nil
 }
 
@@ -70,6 +70,8 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	childWasDirty := m.topBE().dirty
+	// Capture child focus before the stack is popped so we can scope pruning.
+	childFocus := append([]pathSeg(nil), m.topBE().focus...)
 
 	var ok bool
 	if m, ok = m.flushTopToRoot(); !ok {
@@ -77,17 +79,25 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 		// The error is already shown; stay so the user can fix it.
 		return m, nil
 	}
+	// Narrow prune: target the child's own node first so we don't accidentally
+	// remove empty placeholders the user left in sibling fields, then prune the
+	// root level for any top-level empties the flush may have introduced.
+	if childNode := nodeAt(m.editRoot, childFocus); childNode != nil {
+		pruneEmptyMappings(childNode)
+	}
+	pruneEmptyMappings(m.editRoot)
+
 	m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
-	// Capture the parent's pre-drill-in state before applying the child's
-	// changes, so Ctrl+U on the parent can undo the drill-in as one step.
+
+	// Refresh the parent FIRST, then snapshot the refreshed state so Ctrl+U
+	// restores the post-drill-out content (not the stale pre-refresh snapshot).
+	m = m.refreshTopFromRoot(childWasDirty)
 	if childWasDirty {
 		if top := m.topBE(); top != nil {
 			be := top.saveUndo()
 			m = m.withTopBE(be)
 		}
 	}
-	m = m.refreshTopFromRoot(childWasDirty)
-	m.statusMsg = ""
 	return m, nil
 }
 
@@ -134,6 +144,7 @@ func (m model) refreshTopFromRoot(markDirty bool) model {
 	}
 	node := nodeAt(m.editRoot, top.focus)
 	if node == nil {
+		m.statusMsg = "internal: focus path lost after drill-out; editor may show stale content"
 		return m
 	}
 	be := *top
@@ -164,6 +175,9 @@ func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
+	if m.mode == paneBlockEdit {
+		return m, nil // stale Cmd: editor is already open, discard
+	}
 	var initial string
 	if it.Existing {
 		current, err := m.doc.BlockContent(it.Key)
@@ -233,8 +247,14 @@ func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Guard against stale openChildMsg arriving with an empty blockEdits stack.
+	top := m.topBE()
+	if top == nil {
+		return m, nil
+	}
+
 	// Flush the parent into editRoot so the child reads the parent's live state.
-	parentFocus := append([]pathSeg(nil), m.topBE().focus...)
+	parentFocus := append([]pathSeg(nil), top.focus...)
 	var ok bool
 	if m, ok = m.flushTopToRoot(); !ok {
 		return m, nil
@@ -295,6 +315,11 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 	switch {
 	case blockIsEmpty && isEdit:
 		m.doc, err = m.doc.Remove(m.editBlockKey)
+	case blockIsEmpty && !isEdit:
+		// Nothing was added — return to list without dirtying the document.
+		m = m.syncView()
+		m = m.enterList()
+		return m.withStatus("Nothing added.")
 	case !blockIsEmpty:
 		final := nodeToContent(m.editBlockKey, m.editRoot)
 		if isEdit {

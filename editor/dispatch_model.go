@@ -47,13 +47,11 @@ func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
 		m = m.relayout()
 		return m, nil
 	case ApplyDocPreset:
-		newDoc, err := m.doc.ReplaceRaw([]byte(act.Content))
-		if err != nil {
-			return m.withStatus(fmt.Sprintf("Failed to apply preset %q: %v", act.Name, err))
-		}
-		m.doc = newDoc
-		m = m.syncView()
-		return m.withStatus(fmt.Sprintf("Applied preset %q — ctrl+s to save.", act.Name))
+		// Show a confirmation dialog before replacing the entire document.
+		// The actual replace is performed when confirmedDocPresetMsg is received.
+		msg := fmt.Sprintf("Apply preset %q? This will replace the entire document — all unsaved changes will be lost.", act.Name)
+		return m.showConfirmAlert("Apply document preset?", msg,
+			func() tea.Msg { return confirmedDocPresetMsg(act) })
 	default:
 		panic(fmt.Sprintf("editor: unhandled ModelAction %T", a))
 	}

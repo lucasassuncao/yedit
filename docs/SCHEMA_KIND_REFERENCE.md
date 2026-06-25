@@ -1,6 +1,6 @@
 # Schema Kinds Reference
 
-How Go types map to yedit editor behavior, with complete code examples.
+How Go types map to yamltui editor behavior, with complete code examples.
 
 ---
 
@@ -17,7 +17,7 @@ How Go types map to yedit editor behavior, with complete code examples.
 | `[]map[string]T` | `KindList` (no child defs) | YAML pane only |
 | `map[string]string`, `map[string]any` | `KindDictionary` (no child defs) | YAML pane only |
 | `map[string]SomeStruct` | `KindDictionary` with child defs | `[N]` navigator keyed by map key |
-| Implements `schema.Provider` | `KindVariant` | Delegates to `YeditSchema()` return |
+| Implements `schema.Provider` | `KindVariant` | Delegates to `YamltuiSchema()` return |
 
 ---
 
@@ -48,7 +48,7 @@ version: "0.1.0"
 **Notes:**
 - `time.Duration` is stored as a plain string (`"30s"`, `"2m30s"`) - YAML does not have a duration type
 - Pointer variants (`*string`, `*int`, `*bool`) behave identically; nil = field absent from the file
-- Field metadata (required, defaults, allowed values, ranges) is declared through the `MetadataSource` (`FieldMeta`), not struct tags - see the `yedit/metadata` package. Enum-like fields are plain strings whose `FieldMeta.OneOf` lists the allowed values, shown in the hint panel and enforced by `editor.OneOfFromMetadata()`.
+- Field metadata (required, defaults, allowed values, ranges) is declared through the `MetadataSource` (`FieldMeta`), not struct tags - see the `yamltui/metadata` package. Enum-like fields are plain strings whose `FieldMeta.OneOf` lists the allowed values, shown in the hint panel and enforced by `editor.OneOfFromMetadata()`.
 
 ---
 
@@ -324,7 +324,7 @@ For fields that can be either a scalar **or** a struct in YAML:
 // Implement schema.Provider to bypass reflection and declare the schema manually.
 type TimeoutValue struct{}
 
-func (TimeoutValue) YeditSchema() []schema.FieldDef {
+func (TimeoutValue) YamltuiSchema() []schema.FieldDef {
     return []schema.FieldDef{
         {YAMLName: "connect", Kind: schema.KindPrimitive, Default: "5s",
             Description: "TCP connection timeout"},
@@ -354,7 +354,7 @@ timeout:
 ```
 
 **Notes:**
-- yedit renders the schema from `YeditSchema()` - reflection is skipped entirely
+- yamltui renders the schema from `YamltuiSchema()` - reflection is skipped entirely
 - Useful for types that don't have a clean Go representation (union types, custom DSLs)
 - `schema.Provider` can also be implemented on a pointer receiver
 
@@ -362,14 +362,14 @@ timeout:
 
 ## Struct tags reference
 
-| Tag | Effect in yedit |
+| Tag | Effect in yamltui |
 |---|---|
 | `yaml:"name"` | YAML key used in the file and displayed in the editor |
 | `yaml:"-"` | Field excluded from discovery (never shown) |
 | `yaml:"name,omitempty"` | Sets `FieldDef.OmitEmpty = true`; zero value not written to disk |
 | `yaml:"name,flow"` | Sets `FieldDef.Flow = true`; serialised inline (e.g. `[a, b, c]`) |
 
-The `yaml` tag is the only tag yedit reads. Field metadata - description, required, defaults, allowed values, ranges, patterns - is declared through the `MetadataSource` (`editor.FieldMeta`), typically built with the `yedit/metadata` package, and enforced by the FromMetadata validator family (see `docs/validators.md`).
+The `yaml` tag is the only tag yamltui reads. Field metadata - description, required, defaults, allowed values, ranges, patterns - is declared through the `MetadataSource` (`editor.FieldMeta`), typically built with the `yamltui/metadata` package, and enforced by the FromMetadata validator family (see `docs/validators.md`).
 
 ---
 
@@ -387,7 +387,7 @@ map[string]string     → KindDictionary + no child defs → YAML pane   ✗
 map[string]any        → KindDictionary + no child defs → YAML pane   ✗
 ```
 
-yedit uses `reflect` to discover children. `map` types have no fixed keys at the type level, so no child defs can be derived - regardless of the value type.
+yamltui uses `reflect` to discover children. `map` types have no fixed keys at the type level, so no child defs can be derived - regardless of the value type.
 
 ---
 
@@ -444,7 +444,7 @@ Unexported anonymous embeds are also promoted (their exported fields surface at 
 
 ## Types that serialise as scalars (yaml.Marshaler / encoding.TextMarshaler)
 
-If a struct type implements `yaml.Marshaler` or `encoding.TextMarshaler`, yedit classifies it as `KindPrimitive` and **does not** expose its internal struct fields in the editor. The user edits the serialised form (e.g. `"#1e1e2e"` for a color type, `"192.168.1.1"` for an IP type):
+If a struct type implements `yaml.Marshaler` or `encoding.TextMarshaler`, yamltui classifies it as `KindPrimitive` and **does not** expose its internal struct fields in the editor. The user edits the serialised form (e.g. `"#1e1e2e"` for a color type, `"192.168.1.1"` for an IP type):
 
 ```go
 type Color struct{ R, G, B uint8 }

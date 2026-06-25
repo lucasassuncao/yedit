@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/presets"
 )
@@ -176,7 +177,14 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 	}
 
 	be.yamlEditor.SetValue(y)
-	be.node = *blockValueNode(y)
+	if v := blockValueNodeOrNil(y); v != nil {
+		be.node = *v
+	} else {
+		// The preset YAML is unparseable; reset to an empty mapping and tell
+		// the user so the block is not silently cleared without explanation.
+		be.node = yaml.Node{Kind: yaml.MappingNode}
+		be.editorErr = editorError{kind: errPreset, message: "Preset YAML is invalid — block reset to empty."}
+	}
 	be.tree = syncTreeCheckedFromNode(be.tree, &be.node)
 	return be
 }

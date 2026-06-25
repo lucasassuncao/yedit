@@ -171,7 +171,12 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	// above, from the full entry list.) Derive the tree once here so it reflects
 	// be.node even when content came from a preset rather than spec.content.
 	if !structured {
-		be.node = *blockValueNode(content)
+		if v := blockValueNodeOrNil(content); v != nil {
+			be.node = *v
+		} else {
+			be.editorErr = editorError{kind: errParse, message: "Could not parse block content."}
+			be.node = yaml.Node{Kind: yaml.MappingNode}
+		}
 		be.tree = syncTreeCheckedFromNode(be.tree, &be.node)
 	}
 
@@ -310,6 +315,14 @@ func (be blockEditState) updateConfirming(msg tea.Msg) (blockEditState, tea.Cmd)
 		return be, nil
 	}
 	if key, ok := msg.(tea.KeyMsg); ok {
+		// Allow global shortcuts even while the confirm overlay is active so
+		// the user is not surprised that Ctrl+S / Ctrl+L are unavailable.
+		switch key.String() {
+		case "ctrl+s":
+			return be, func() tea.Msg { return commitRequestedMsg{} }
+		case "ctrl+l":
+			return be, func() tea.Msg { return validateRequestedMsg{} }
+		}
 		al, cmd := be.confirmAlert.Update(key)
 		be.confirmAlert = al
 		return be, cmd
@@ -389,7 +402,13 @@ func (be blockEditState) handleHintKey(key tea.KeyMsg) (blockEditState, bool) {
 			be.hintScroll--
 		}
 	case "down":
-		be.hintScroll++
+		maxScroll := be.hintH() - 1
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if be.hintScroll < maxScroll {
+			be.hintScroll++
+		}
 	case "tab", "ctrl+h":
 		be.active = be.prevActive
 	}
@@ -423,6 +442,10 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	// so the block layer requests it as a message the root Update handles.
 	if msg.String() == "ctrl+s" {
 		return be, func() tea.Msg { return commitRequestedMsg{} }
+	}
+	// Ctrl+L triggers doc-level validation (available in every mode).
+	if msg.String() == "ctrl+l" {
+		return be, func() tea.Msg { return validateRequestedMsg{} }
 	}
 
 	// Ctrl+U / Ctrl+Y: block-level undo/redo. Empty stacks only report status.
@@ -485,9 +508,7 @@ func (be blockEditState) syncParsedNode(content string) (blockEditState, bool) {
 		if !ok {
 			return be, false
 		}
-		if cur := be.coll.current; cur >= 0 && cur < entryCount(&be.node, be.coll.isMap) {
-			setEntry(&be.node, be.coll.isMap, cur, kn, vn)
-		}
+		be = be.applyParsedEntry(kn, vn)
 		be.tree = be.collectionDeriveTree()
 		return be, true
 	}
@@ -497,6 +518,29 @@ func (be blockEditState) syncParsedNode(content string) (blockEditState, bool) {
 		return be, true
 	}
 	return be, false
+}
+
+// applyParsedEntry writes kn/vn into be.node at the current cursor position.
+// When the cursor is valid it updates the existing entry; when the collection
+// is empty it appends the first entry so the user's direct YAML edit is
+// persisted rather than silently discarded.
+func (be blockEditState) applyParsedEntry(kn, vn *yaml.Node) blockEditState {
+	cur := be.coll.current
+	count := entryCount(&be.node, be.coll.isMap)
+	if cur >= 0 && cur < count {
+		setEntry(&be.node, be.coll.isMap, cur, kn, vn)
+		return be
+	}
+	if count == 0 {
+		if be.coll.isMap {
+			be.node.Content = append(be.node.Content, kn, vn)
+		} else {
+			be.node.Content = append(be.node.Content, vn)
+		}
+		be.coll.current = 0
+		be.tree.nodes = be.collectionTreeNodes()
+	}
+	return be
 }
 
 // resyncTreeFromYAML re-derives the tree's checked states from the canonical
@@ -556,7 +600,11 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 // YAML. Clears the dirty flag either way.
 func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 	if !be.isCollectionNav() {
-		be.node = *blockValueNode(fresh)
+		if v := blockValueNodeOrNil(fresh); v != nil {
+			be.node = *v
+		} else {
+			be.node = yaml.Node{Kind: yaml.MappingNode}
+		}
 		be.yamlEditor.SetValue(fresh)
 		be.dirty = false
 		return be
@@ -620,7 +668,12 @@ func (be blockEditState) commit() (blockEditState, string, bool) {
 	if !strings.HasSuffix(snippet, "\n") {
 		snippet += "\n"
 	}
-	be.dirty = false
+	// NOTE: dirty is intentionally NOT cleared here. commit() is called by
+	// flushTopToRoot during drill-in/out, where the edits have only reached
+	// editRoot — not the document. Clearing dirty here would bypass the
+	// "Discard changes?" guard if the user later Escs from the parent editor.
+	// dirty is cleared only by resyncAfterCommit, which runs after the content
+	// has been successfully committed to the document.
 
 	return be, snippet, true
 }

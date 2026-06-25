@@ -327,13 +327,13 @@ type CommitBlock struct{}
 
 Config bundles everything the editor needs from the embedding application.
 
-Schema must be a pointer to the Go type describing the YAML document's top level \(e.g. &MyConfig\{\}\). The editor introspects it through yedit/schema.
+Schema must be a pointer to the Go type describing the YAML document's top level \(e.g. &MyConfig\{\}\). The editor introspects it through yamltui/schema.
 
 Presets is optional \- when nil the editor opens fresh blocks with a minimal "\<key\>:\\n" template and the preset picker is disabled.
 
 Validators run before every save and on the explicit "validate" shortcut. Use editor.MutuallyExclusive and editor.RequiredWith for the common cases.
 
-Hints is optional \- when set, each field's Hint/Example panel is populated from the returned FieldMeta. All FieldMeta fields are used as\-is; YEDIT does not fall back to struct tag values. When Hints is nil, the panel shows only a generated example.
+Hints is optional \- when set, each field's Hint/Example panel is populated from the returned FieldMeta. All FieldMeta fields are used as\-is; YAMLTUI does not fall back to struct tag values. When Hints is nil, the panel shows only a generated example.
 
 FieldMeta.PreChecked lists sub\-fields that start checked when a new block overlay opens. FieldMeta.Snippet provides the YAML inserted when a sub\-field is toggled on; falls back to "\<fieldName\>: \\n" when empty.
 
@@ -420,7 +420,7 @@ type DrillOut struct{}
 <a name="FieldMeta"></a>
 ## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L22-L70>)
 
-FieldMeta carries a single field's metadata: displayed in the Hint/Example panel and enforced by the FromMetadata validator family. Fields at their zero value declare nothing \- no panel line, no enforcement. MetadataSource is the sole authority: YEDIT never auto\-populates any FieldMeta field from struct tags. If no MetadataSource is configured, the hint panel shows only a generated example.
+FieldMeta carries a single field's metadata: displayed in the Hint/Example panel and enforced by the FromMetadata validator family. Fields at their zero value declare nothing \- no panel line, no enforcement. MetadataSource is the sole authority: YAMLTUI never auto\-populates any FieldMeta field from struct tags. If no MetadataSource is configured, the hint panel shows only a generated example.
 
 ```go
 type FieldMeta struct {

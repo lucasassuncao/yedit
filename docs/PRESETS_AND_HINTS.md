@@ -104,7 +104,7 @@ type MetadataSource interface {
 - `blockKey` - the top-level YAML key (e.g. `"server"`).
 - `fieldPath` - dot-separated path within the block (e.g. `"pool.timeout"`), or `""` for the block-level entry.
 
-`MetadataSource` is the sole authority for all hint display data and `FromMetadata` validator constraints. yedit does not derive metadata from struct tags.
+`MetadataSource` is the sole authority for all hint display data and `FromMetadata` validator constraints. yamltui does not derive metadata from struct tags.
 
 ### FieldMeta
 
@@ -271,7 +271,7 @@ A Go map literal cannot reference itself during construction, so this two-phase 
 | struct          | `"object"`       |
 | `interface{}`   | `"any"`          |
 
-yedit displays the `Type` label as-is; any string meaningful to your users is valid.
+yamltui displays the `Type` label as-is; any string meaningful to your users is valid.
 
 ---
 

@@ -33,6 +33,15 @@ func (m model) relayout() model {
 	m.preview.Height = ph
 	m.previewRenderer = newPreviewRenderer(m.preview.Width)
 	m = m.refreshPreview()
+	// After a resize the viewport height may have shrunk; clamp the scroll so
+	// it cannot exceed the new view boundary.
+	if m.preview.YOffset > m.preview.TotalLineCount()-m.preview.Height {
+		maxOffset := m.preview.TotalLineCount() - m.preview.Height
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		m.preview.SetYOffset(maxOffset)
+	}
 	return m
 }
 

@@ -452,6 +452,57 @@ func TestFlushTopToRoot_rollbackOnSetNodeAtFailure(t *testing.T) {
 	must.Equal(string(snapBefore), string(snapAfter), "editRoot must be identical after a failed flush (rollback)")
 }
 
+// TestDrillOutFromEmptyList verifies that drilling into an empty list child and
+// immediately back out does not leave a phantom empty mapping in editRoot.
+func TestDrillOutFromEmptyList(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	must.NoError(os.WriteFile(path, []byte("gateway:\n"), 0o600))
+
+	type serversDef struct {
+		Host string `yaml:"host,omitempty"`
+	}
+	type gatewayDef struct {
+		Servers []serversDef `yaml:"servers,omitempty"`
+	}
+	type rootProbe struct {
+		Gateway *gatewayDef `yaml:"gateway,omitempty"`
+	}
+
+	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
+	must.NoError(err)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "gateway", Existing: true}})
+	m = updated.(model)
+
+	serversDefs := []schema.FieldDef{{YAMLName: "host", Kind: schema.KindPrimitive}}
+
+	// Drill into "servers" (empty list) without adding anything.
+	updated, _ = m.Update(openChildMsg{
+		key:     "servers",
+		defs:    serversDefs,
+		kind:    schema.KindList,
+		relSegs: []pathSeg{segKey("servers")},
+	})
+	m = updated.(model)
+	must.Len(m.blockEdits, 2)
+
+	// Drill back out immediately.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	must.NotNil(cmd)
+	updated, _ = m.Update(cmd())
+	m = updated.(model)
+	must.Len(m.blockEdits, 1, "back at gateway editor")
+
+	// editRoot must not contain a "servers" key with empty content.
+	snap, _ := yaml.Marshal(m.editRoot)
+	is.NotContains(string(snap), "servers", "empty servers list must be pruned on drill-out")
+}
+
 // ---------------------------------------------------------------------------
 // Nested toggle combinations - deep nesting, pruning, and interaction probes
 // ---------------------------------------------------------------------------

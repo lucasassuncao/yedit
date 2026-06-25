@@ -1,26 +1,23 @@
 # Architecture
 
-How the yedit packages fit together and why they are split the way they are.
+How the yamltui packages fit together and why they are split the way they are.
 
 ---
 
 ## Folder structure
 
 ```
-yedit/
+yamltui/
 ├── editor/             - public API: Config, Run, FieldMeta, MetadataSource, Validator, …
 ├── metadata/           - NewFromTree: validates a Node tree; New: auto-composes from MetadataProvider structs
 ├── schema/             - schema.Discover: reflects a Go struct into a []FieldDef tree
 ├── document/           - raw YAML bytes, block list, undo/redo history
-├── presets/            - presets.FromFS: embed.FS-backed PresetSource
+├── presets/            - ForField, Combine, Func: struct-backed and ad-hoc preset sources
 ├── docgenerator/       - generates Markdown reference tables; TUI doc browser
 ├── theme/              - color palette, layout helpers
 ├── viewer/             - reusable list+viewport model (used by docgenerator TUI)
-├── internal/
-│   ├── alert/          - modal alert overlay (bubbletea component)
-│   └── yamlnode/       - *yaml.Node helpers shared by editor sub-packages
-├── examples/
-│   └── test/           - runnable example exercising every schema pattern and Config option
+├── alert/              - modal alert overlay (bubbletea component)
+├── yamlnode/           - *yaml.Node helpers shared by editor sub-packages
 └── docs/               - reference documentation
 ```
 
@@ -42,7 +39,7 @@ your app
         ├── editor    ← MetadataSource
         └── schema    ← Discover
 
-  └── presets         ← FromFS (embed.FS-backed PresetSource)
+  └── presets         ← ForField, Combine, Func (struct-backed and ad-hoc preset sources)
 ```
 
 `docgenerator` imports `editor` (for `MetadataSource`) but `editor` does not import `docgenerator` - the dependency is one-way, so wiring doc commands does not add weight to the editor itself.
@@ -167,22 +164,19 @@ docgenerator.GenerateIndex("docs/", files)
 
 ## presets
 
-`presets.FromFS(fs, dir)` returns a `PresetSource` backed by an `embed.FS`. Expected layout:
+Three construction paths, each returning a `presets.Source` that the editor uses to populate the preset picker (Ctrl+P):
 
-```
-presets/
-  server/
-    minimal.yaml
-    production.yaml
-```
+- **`ForField[T](presetMap)`** - the recommended path. Takes a `map[string]T` where each value is marshaled to YAML at runtime. Type-safe and diff-friendly since presets live as Go values next to the structs they configure.
+- **`Combine(sources...)`** - merges multiple `Source` values into one. Use to aggregate presets from several resource types into a single block preset picker.
+- **`Func(listFields, listPresets, presetYAML)`** - ad-hoc lookup for cases where presets are built dynamically or loaded from an external store.
 
-Each file is a YAML mapping keyed by the block name. For struct-backed presets (marshaled at runtime), implement `editor.PresetSource` directly - see [Presets & Metadata](presets-hints.md).
+See [Presets & Metadata](presets-hints.md) for configuration details.
 
 ---
 
 ## Two-level undo
 
-yedit maintains two independent undo stacks:
+yamltui maintains two independent undo stacks:
 
 | Level | Scope | Keys |
 |---|---|---|

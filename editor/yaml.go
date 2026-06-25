@@ -1,9 +1,10 @@
 package editor
 
 import (
-	"github.com/lucasassuncao/yedit/yamlnode"
 	"sort"
 	"strings"
+
+	"github.com/lucasassuncao/yedit/yamlnode"
 
 	"gopkg.in/yaml.v3"
 
@@ -39,7 +40,9 @@ func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked 
 	case hasMappingKey(cur, leafName):
 		// already present - keep as is
 	case asStruct:
-		if snippet == "" || !appendFieldFromSnippet(cur, ctx.key, snippet) {
+		// Use leafName (not ctx.key) as the parent key so the snippet is parsed
+		// as "leafName:\n  <snippet>" — the correct wrapping for depth-0 struct fields.
+		if snippet == "" || !appendFieldFromSnippet(cur, leafName, snippet) {
 			appendLeafToMapping(cur, leafName, "")
 		}
 	default:
@@ -289,6 +292,8 @@ func findOrCreateMappingChild(mapping *yaml.Node, key string) *yaml.Node {
 				child.Value = ""
 				child.Content = nil
 			}
+			// Non-empty scalars are returned unchanged; applyToggleAt returns false
+			// when it tries to navigate further into them, which is the correct behavior.
 			return child
 		}
 	}
@@ -313,8 +318,16 @@ func removeMappingKey(mapping *yaml.Node, key string) {
 }
 
 // pruneEmptyMappings removes key-value pairs whose value is an empty mapping
-// ({}) or empty sequence ([]), and removes empty mapping items from sequences,
-// recursing into nested nodes first so the cleanup propagates upward.
+// ({}), empty sequence ([]), or null scalar (key with no value, Tag=="!!null"),
+// and removes empty mapping items from sequences, recursing into nested nodes
+// first so the cleanup propagates upward.
+//
+// Null scalars arise when drilling into an object field that does not yet exist
+// in the YAML: the child editor serializes "<key>:\n" which parses back as a
+// null scalar value. Without pruning them here, drilling out would leave the
+// parent's YAML with a phantom "<key>:" line even though no content was added.
+// Toggle operations use Tag=="" for freshly-added empty values, so they are
+// not affected by this check.
 func pruneEmptyMappings(node *yaml.Node) {
 	if node == nil {
 		return
@@ -327,7 +340,8 @@ func pruneEmptyMappings(node *yaml.Node) {
 		i := 0
 		for i < len(node.Content)-1 {
 			val := node.Content[i+1]
-			empty := (val.Kind == yaml.MappingNode || val.Kind == yaml.SequenceNode) && len(val.Content) == 0
+			empty := (val.Kind == yaml.MappingNode || val.Kind == yaml.SequenceNode) && len(val.Content) == 0 ||
+				val.Kind == yaml.ScalarNode && val.Tag == "!!null"
 			if empty {
 				node.Content = append(node.Content[:i], node.Content[i+2:]...)
 			} else {
@@ -496,9 +510,12 @@ func snippetValueNode(snippet, key string) *yaml.Node {
 	return yamlnode.ChildByKey(m, key)
 }
 
-// appendFieldFromSnippet parses snippet under parentKey, extracts all child
-// key/value pairs from the snippet's struct value, and appends them to valueNode.
-// Returns false if the snippet is malformed or has no fields.
+// appendFieldFromSnippet parses snippet under parentKey and appends the
+// (parentKey, value) key-value pair to valueNode, so the field is correctly
+// nested under parentKey rather than flattened as siblings.  Returns false if
+// the snippet is malformed, the value has no fields, or the key already exists
+// in valueNode (duplicate-key guard — callers should check hasMappingKey first
+// when they want an update-or-insert semantic instead).
 func appendFieldFromSnippet(valueNode *yaml.Node, parentKey, snippet string) bool {
 	var templateRoot yaml.Node
 	if err := yaml.Unmarshal([]byte(parentKey+":\n"+snippet), &templateRoot); err != nil {
@@ -515,6 +532,13 @@ func appendFieldFromSnippet(valueNode *yaml.Node, parentKey, snippet string) boo
 	if tValue.Kind != yaml.MappingNode || len(tValue.Content) < 2 {
 		return false
 	}
-	valueNode.Content = append(valueNode.Content, tValue.Content...)
+	// Guard against duplicate keys: if parentKey already exists in valueNode,
+	// do not append a second copy.
+	if hasMappingKey(valueNode, parentKey) {
+		return false
+	}
+	// Append the (parentKey, value) pair — nesting the snippet under parentKey
+	// rather than splicing its children directly into valueNode.
+	valueNode.Content = append(valueNode.Content, tMapping.Content[0], tMapping.Content[1])
 	return true
 }

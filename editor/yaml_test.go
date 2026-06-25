@@ -92,34 +92,46 @@ func TestSetNodeAt_preservesSiblingStructure(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestAppendFieldFromSnippet_multipleFields(t *testing.T) {
-	// Simulate a FieldSnippet that contains two sub-fields.
+	// Simulate a FieldSnippet for a struct field "parent" with two sub-fields.
+	// appendFieldFromSnippet should add (parentKey → {path, recursive}) to the
+	// container mapping — NOT flatten path/recursive as siblings of existing.
 	snippet := "  path: /foo\n  recursive: true\n"
 
 	var root yaml.Node
-	if err := yaml.Unmarshal([]byte(`parent:
-  existing: ok
-`), &root); err != nil {
+	if err := yaml.Unmarshal([]byte("existing: ok\n"), &root); err != nil {
 		t.Fatal(err)
 	}
-	valueNode := root.Content[0].Content[1] // the mapping under "parent"
+	// container is the mapping that will receive the new "parent" field.
+	container := root.Content[0]
 
-	if !appendFieldFromSnippet(valueNode, "parent", snippet) {
+	if !appendFieldFromSnippet(container, "parent", snippet) {
 		t.Fatal("appendFieldFromSnippet returned false")
 	}
 
-	// Both path and recursive must be present in the mapping.
-	keys := make(map[string]bool)
-	for i := 0; i+1 < len(valueNode.Content); i += 2 {
-		keys[valueNode.Content[i].Value] = true
+	// container must now have both "existing" and "parent" at the top level.
+	topKeys := make(map[string]int)
+	for i := 0; i+1 < len(container.Content); i += 2 {
+		topKeys[container.Content[i].Value] = i
 	}
-	if !keys["path"] {
-		t.Error("field 'path' missing after appendFieldFromSnippet")
-	}
-	if !keys["recursive"] {
-		t.Error("field 'recursive' missing after appendFieldFromSnippet - only first field was inserted")
-	}
-	if !keys["existing"] {
+	if _, ok := topKeys["existing"]; !ok {
 		t.Error("pre-existing field 'existing' was lost")
+	}
+	parentIdx, ok := topKeys["parent"]
+	if !ok {
+		t.Fatal("field 'parent' missing after appendFieldFromSnippet")
+	}
+
+	// The value of "parent" must be a mapping containing path and recursive.
+	parentVal := container.Content[parentIdx+1]
+	subKeys := make(map[string]bool)
+	for i := 0; i+1 < len(parentVal.Content); i += 2 {
+		subKeys[parentVal.Content[i].Value] = true
+	}
+	if !subKeys["path"] {
+		t.Error("sub-field 'path' missing from parent's value")
+	}
+	if !subKeys["recursive"] {
+		t.Error("sub-field 'recursive' missing from parent's value")
 	}
 }
 
@@ -315,5 +327,63 @@ func TestPruneEmptyContent(t *testing.T) {
 		got := serialize(n)
 		assert.Contains(t, got, "alice")
 		assert.NotContains(t, got, "value")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// pruneEmptyMappings - null scalar values must be treated as empty
+// ---------------------------------------------------------------------------
+
+func TestPruneEmptyMappings_nullScalar(t *testing.T) {
+	parse := func(src string) *yaml.Node {
+		t.Helper()
+		var doc yaml.Node
+		if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
+			return doc.Content[0]
+		}
+		return &doc
+	}
+
+	t.Run("null scalar mapping value removed", func(t *testing.T) {
+		// "autoscaler:" with no value parses as a null scalar (Tag=="!!null").
+		// Drilling into a new empty object field and back out produces exactly
+		// this: the child editor serializes "autoscaler:\n" and setNodeAt writes
+		// the null scalar into editRoot. pruneEmptyMappings must remove it so
+		// the parent YAML does not show a phantom "autoscaler:" line.
+		n := parse("autoscaler:")
+		pruneEmptyMappings(n)
+		assert.Empty(t, n.Content, "null scalar value should be pruned")
+	})
+
+	t.Run("empty mapping value still removed", func(t *testing.T) {
+		n := parse("autoscaler: {}")
+		pruneEmptyMappings(n)
+		assert.Empty(t, n.Content, "empty mapping value should still be pruned")
+	})
+
+	t.Run("non-null scalar not removed", func(t *testing.T) {
+		n := parse("name: alice")
+		pruneEmptyMappings(n)
+		assert.Len(t, n.Content, 2, "non-null scalar value must not be pruned")
+	})
+
+	t.Run("empty string scalar not removed", func(t *testing.T) {
+		// Empty string ("") is a legitimate placeholder for a just-added field
+		// (toggle ON creates Tag="" Value=""); it must NOT be pruned.
+		n := parse(`name: ""`)
+		pruneEmptyMappings(n)
+		assert.Len(t, n.Content, 2, "empty string scalar (Tag not !!null) must not be pruned")
+	})
+
+	t.Run("sibling with content preserved after null pruned", func(t *testing.T) {
+		n := parse("autoscaler:\nname: alice\n")
+		pruneEmptyMappings(n)
+		got, err := yaml.Marshal(n)
+		assert.NoError(t, err)
+		assert.NotContains(t, string(got), "autoscaler", "phantom null key must be removed")
+		assert.Contains(t, string(got), "alice", "sibling with content must survive")
 	})
 }

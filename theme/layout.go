@@ -63,7 +63,7 @@ func TwoColumnWidths(totalWidth int) (listW, rightW int) {
 	if rightW < 10 {
 		rightW = 10
 	}
-	return
+	return listW, rightW
 }
 
 // RenderTwoColumnView assembles the standard two-panel screen: header, panels

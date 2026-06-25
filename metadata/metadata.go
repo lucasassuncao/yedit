@@ -33,26 +33,6 @@ type MetadataProvider interface {
 
 var metadataProviderType = reflect.TypeOf((*MetadataProvider)(nil)).Elem()
 
-func collectMissing(fields []schema.FieldDef, nodes map[string]*Node, prefix string, missing *[]string) {
-	for _, f := range fields {
-		if f.YAMLName == "" || f.YAMLName == "-" {
-			continue
-		}
-		path := f.YAMLName
-		if prefix != "" {
-			path = prefix + "." + f.YAMLName
-		}
-		node, ok := nodes[f.YAMLName]
-		if !ok {
-			*missing = append(*missing, path)
-			continue
-		}
-		if len(f.Children) > 0 && f.Kind != schema.KindVariant {
-			collectMissing(f.Children, node.Children, path, missing)
-		}
-	}
-}
-
 // NewFromTree validates tree against the schema struct (the same pointer handed to
 // editor.Config.Schema), fills each node's FieldMeta.Type from the Go type
 // (explicitly set Type values are kept), and returns the MetadataSource.
@@ -93,8 +73,8 @@ func NewFromTree(schemaPtr any, tree map[string]*Node) (editor.MetadataSource, e
 // New composes the metadata tree from v, which must implement MetadataProvider.
 // For each field whose type also implements MetadataProvider, Children are populated
 // automatically via reflection. Nodes with Children already set are not overridden
-// (explicit wins). Returns an error if any yaml-tagged field in the struct has no
-// entry in the composed tree (built-in coverage validation).
+// (explicit wins). Fields with no metadata node are silently accepted and receive
+// default (empty) FieldMeta values.
 //
 // Use NewFromTree instead when the root struct is from a third-party package and
 // cannot implement MetadataProvider.
@@ -114,12 +94,7 @@ func NewFromTree(schemaPtr any, tree map[string]*Node) (editor.MetadataSource, e
 //  4. Run composeTree to auto-populate Children for every node whose field type
 //     implements MetadataProvider. See composeTree for the full algorithm.
 //
-//  5. Discover all yaml-tagged fields in the struct via schema.Discover, then
-//     walk the composed tree to find any field that has no corresponding node.
-//     This enforces full coverage: adding a new yaml field to the struct without
-//     updating Metadata() is a startup error, not a silent gap in the hint panel.
-//
-//  6. Delegate to NewFromTree to validate tree keys against the schema struct
+//  5. Delegate to NewFromTree to validate tree keys against the schema struct
 //     and fill in each node's Type label from the Go type.
 func New(v any) (editor.MetadataSource, error) {
 	// Step 1: root must declare its own fields.
@@ -139,14 +114,7 @@ func New(v any) (editor.MetadataSource, error) {
 	if err := composeTree(baseType, tree, cache); err != nil {
 		return nil, err
 	}
-	// Step 5: enforce full coverage - every yaml-tagged field must have a node.
-	fields := schema.Discover(reflect.New(baseType).Interface())
-	var missing []string
-	collectMissing(fields, tree, "", &missing)
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("metadata: fields have no documentation: %s", strings.Join(missing, ", "))
-	}
-	// Step 6: validate keys and fill Type labels.
+	// Step 5: validate keys and fill Type labels.
 	return NewFromTree(reflect.New(baseType).Interface(), tree)
 }
 

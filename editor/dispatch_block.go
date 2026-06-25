@@ -27,13 +27,14 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 		be.tree = be.resyncTreeFromYAML()
 
 	case SyncYAML:
+		if act.Checkpoint {
+			// Snapshot BEFORE applying the change so undo returns to the
+			// pre-paste/pre-batch-edit state, not the post-change state.
+			be = be.saveUndo()
+		}
 		updated, parsed := be.syncParsedNode(act.Content)
 		if !parsed {
 			break
-		}
-		if act.Checkpoint {
-			be = be.saveUndo()
-			updated, _ = be.syncParsedNode(act.Content)
 		}
 		be = updated
 		be.dirty = true
@@ -48,16 +49,7 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 		be = be.performEntryDelete(act.SeqIdx)
 
 	case NavigateEntry:
-		be.statusMsg = ""
-		if be.dirty {
-			// Peek whether the current entry parses before committing the undo
-			// snapshot: if the flush would fail we skip saveUndo so we don't
-			// push a phantom step that restores the same invalid state.
-			if be.flushCurrentEntry().editorErr.kind == 0 {
-				be = be.saveUndo()
-			}
-		}
-		be = be.flushAndLoadEntry(act.Idx)
+		be = be.handleNavigateEntry(act.Idx)
 
 	case ApplyPreset:
 		be.statusMsg = ""
@@ -77,6 +69,32 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 
 	default:
 		panic(fmt.Sprintf("editor: unhandled BlockAction %T", a))
+	}
+	return be
+}
+
+// handleNavigateEntry performs all bounds validation, undo snapshotting, and
+// entry loading for a NavigateEntry action. Extracted to keep dispatch's
+// cyclomatic complexity within the project limit.
+func (be blockEditState) handleNavigateEntry(idx int) blockEditState {
+	be.statusMsg = ""
+	count := entryCount(&be.node, be.coll.isMap)
+	if count == 0 || idx < 0 || idx >= count {
+		// Nothing to navigate to; leave current entry unchanged.
+		return be
+	}
+	if be.dirty {
+		// Peek whether the current entry parses before committing the undo
+		// snapshot: if the flush would fail we skip saveUndo so we don't
+		// push a phantom step that restores the same invalid state.
+		if be.flushCurrentEntry().editorErr.kind == 0 {
+			be = be.saveUndo()
+		}
+	}
+	be = be.flushAndLoadEntry(idx)
+	// Surface parse errors in the status bar so they are not missed.
+	if be.editorErr.kind == errParse {
+		be.statusMsg = be.editorErr.message
 	}
 	return be
 }

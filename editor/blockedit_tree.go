@@ -7,56 +7,39 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/alert"
+	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
-// fieldHasContent reports whether the field at node.yamlPath has a non-empty
-// value in the current YAML editor content. For structured sequences the
-// editor shows a single item under the block key, so doc[key] is a []any with
-// one element and node.yamlPath[0] is the seq-item label (skipped).
+// fieldHasContent reports whether the field at node.yamlPath has non-empty
+// content in the canonical node (be.node). Using the node rather than parsing
+// the text buffer means the check is correct even when the buffer is mid-edit
+// or temporarily invalid.
 func (be blockEditState) fieldHasContent(node treeNode) bool {
-	var doc map[string]any
-	if err := yaml.Unmarshal([]byte(be.yamlEditor.Value()), &doc); err != nil {
-		return false
-	}
 	path := node.yamlPath
 	if len(path) == 0 {
 		return false
 	}
-	var sub map[string]any
-	startIdx := 0
-	if items, ok := doc[be.key].([]any); ok {
-		if len(items) == 0 {
+	// For collection editors the entry value mapping is the search root;
+	// skip the first path segment (entry label).
+	cur := &be.node
+	start := 0
+	if be.isCollectionNav() {
+		entryVal := entryValueNode(&be.node, be.coll.isMap, be.coll.current)
+		if entryVal == nil {
 			return false
 		}
-		sub, _ = items[0].(map[string]any)
-		startIdx = 1 // skip seq item label
-	} else {
-		sub, _ = doc[be.key].(map[string]any)
+		cur = entryVal
+		start = 1
 	}
-	if sub == nil || len(path) <= startIdx {
-		return false
-	}
-	cur := sub
-	for i := startIdx; i < len(path)-1; i++ {
-		cur, _ = cur[path[i]].(map[string]any)
+	for j := start; j < len(path)-1; j++ {
+		cur = yamlnode.ChildByKey(cur, path[j])
 		if cur == nil {
 			return false
 		}
 	}
-	val, exists := cur[path[len(path)-1]]
-	if !exists || val == nil {
-		return false
-	}
-	switch v := val.(type) {
-	case string:
-		return v != ""
-	case map[string]any:
-		return len(v) > 0
-	case []any:
-		return len(v) > 0
-	default:
-		return true
-	}
+	child := yamlnode.ChildByKey(cur, path[len(path)-1])
+	return child != nil && nodeHasContent(child)
 }
 
 func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
@@ -187,7 +170,13 @@ func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
 func (be *blockEditState) applyToggle(ctx toggleCtx, node treeNode, checked bool) {
 	if be.isCollectionNav() {
 		be.toggleEntryField(ctx, node, checked)
-		be.yamlEditor.SetValue(entryViewYAML(&be.node, be.key, be.coll.isMap, be.coll.current))
+		// Only rebuild the YAML editor from the canonical node when the toggle
+		// succeeded (no parse error). If there IS a parse error the buffer
+		// already contains invalid text; overwriting it with the canonical
+		// content would mask the error and confuse the user.
+		if be.editorErr.kind == errNone {
+			be.yamlEditor.SetValue(entryViewYAML(&be.node, be.key, be.coll.isMap, be.coll.current))
+		}
 		return
 	}
 	be.node = *toggleNodeField(&be.node, ctx, node, checked)
@@ -205,12 +194,30 @@ func (be *blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked
 	if entryNode == nil {
 		return
 	}
+	// Clone before any mutation so a failed applyToggleAt mid-path does not
+	// leave the entry in a partially-modified state (mirrors toggleNodeField).
+	cloned := yamlnode.CloneNode(entryNode)
 	fieldPath := node.yamlPath[1:]
-	if !applyToggleAt(entryNode, fieldPath[:len(fieldPath)-1], fieldPath[len(fieldPath)-1], checked, ctx, false) {
+	// asStruct=true for KindObject fields at depth 1 so their snippet is nested
+	// correctly under the field name (same logic as toggleNodeField for structs).
+	asStruct := node.def.Kind == schema.KindObject && len(fieldPath) == 1
+	if !applyToggleAt(cloned, fieldPath[:len(fieldPath)-1], fieldPath[len(fieldPath)-1], checked, ctx, asStruct) {
 		return
 	}
-	pruneEmptyMappings(entryNode)
-	reorderNestedMappingKeys(entryNode, ctx.childDefs)
+	pruneEmptyMappings(cloned)
+	reorderNestedMappingKeys(cloned, ctx.childDefs)
+	// Write the cloned node back into be.node at the entry's position.
+	if be.coll.isMap {
+		idx := be.coll.current
+		if 2*idx+1 < len(be.node.Content) {
+			be.node.Content[2*idx+1] = cloned
+		}
+	} else {
+		idx := be.coll.current
+		if idx >= 0 && idx < len(be.node.Content) {
+			be.node.Content[idx] = cloned
+		}
+	}
 }
 
 // handleTreeAddNew appends a fresh entry to the collection and moves the cursor

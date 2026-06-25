@@ -1,8 +1,11 @@
 package editor
 
 import (
+	"strings"
+
 	"gopkg.in/yaml.v3"
 
+	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
@@ -46,7 +49,9 @@ func deriveChecked(valueNode *yaml.Node, nodes []treeNode, skipFirstSeg bool) []
 			continue
 		}
 		child := yamlnode.ChildByKey(cur, path[len(path)-1])
-		if n.openable {
+		if n.openable || !n.isLeaf {
+			// Openable fields and inline struct parents require real content, not
+			// just key presence, so an empty mapping {} counts as unchecked.
 			out[i].checked = child != nil && nodeHasContent(child)
 		} else {
 			out[i].checked = child != nil
@@ -87,7 +92,8 @@ func toggleNodeField(valueNode *yaml.Node, ctx toggleCtx, node treeNode, checked
 		cloned.Content = nil
 	}
 	path := node.yamlPath
-	if !applyToggleAt(cloned, path[:len(path)-1], path[len(path)-1], checked, ctx, node.depth == 0) {
+	asStruct := node.depth == 0 && node.def.Kind == schema.KindObject
+	if !applyToggleAt(cloned, path[:len(path)-1], path[len(path)-1], checked, ctx, asStruct) {
 		return valueNode
 	}
 	pruneEmptyMappings(cloned)
@@ -123,4 +129,15 @@ func blockValueNode(content string) *yaml.Node {
 		return v
 	}
 	return &yaml.Node{Kind: yaml.MappingNode}
+}
+
+// blockValueNodeOrNil is like blockValueNode but returns nil when content is
+// non-empty and fails to parse, instead of silently falling back to an empty
+// mapping. Used by callers that need to distinguish "empty block" from "corrupt
+// content" so they can surface an error rather than masking it.
+func blockValueNodeOrNil(content string) *yaml.Node {
+	if strings.TrimSpace(content) == "" {
+		return &yaml.Node{Kind: yaml.MappingNode}
+	}
+	return valueNodeOfSnippet(content)
 }

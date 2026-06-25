@@ -122,16 +122,17 @@ func newModel(cfg Config) (model, error) {
 	}, nil
 }
 
-// model-level alert is always a modal over the list (the block editor uses its
-// own confirmAlert), so enterAlert preserves blockEdits and dismissal returns to
-// the list via enterList.
-
-// enterList makes the block list the active screen, discarding any open editor
-// stack and alert.
+// model-level alert (validation, save confirm, etc.) can be shown over the list
+// OR over an active block editor. enterAlert preserves blockEdits so dismissal
+// can return to the block editor via enterBlockEdit instead of discarding the
+// stack via enterList. The block editor's own confirmAlert uses mode=paneBlockEdit
+// and is handled separately in handleDismissedAlert.
 func (m model) enterList() model {
 	m.mode = paneList
 	m.alertVisible = false
 	m.blockEdits = nil
+	m.editRoot = nil
+	m.editBlockKey = ""
 	return m
 }
 
@@ -278,9 +279,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		return m.handleWindowSizeMsg(msg)
 	case openItemMsg:
-		if m.mode == paneBlockEdit {
-			return m, nil // stale Cmd: editor is already open, discard
-		}
 		return m.handleOpenItem(msg.Item)
 	case openChildMsg:
 		return m.dispatch(DrillIn{Key: msg.key, Defs: msg.defs, Kind: msg.kind, RelSegs: msg.relSegs})
@@ -291,9 +289,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case commitRequestedMsg:
 		return m.saveAll()
 	case deleteItemMsg:
-		if m.mode == paneBlockEdit {
-			return m, nil // stale Cmd: editor is already open, discard
-		}
 		return m.handleDeleteItemMsg(msg)
 	case confirmedDeleteMsg:
 		m = m.enterList()
@@ -301,14 +296,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case confirmedReloadMsg:
 		m = m.enterList()
 		return m.dispatch(Reload{})
+	case confirmedDocPresetMsg:
+		return m.handleConfirmedDocPreset(msg)
+	case validateRequestedMsg:
+		return m.validateKeys()
 	case alert.DismissedMsg:
-		// Forward to the active blockEdit first so its confirmAlert is cleared.
-		if top := m.topBE(); top != nil {
-			be, cmd := top.Update(msg)
-			return m.withTopBE(be), cmd
-		}
-		m = m.enterList()
-		return m, nil
+		return m.handleDismissedAlert(msg)
 	case doSaveMsg:
 		return m.dispatch(Save{})
 	case saveResultMsg:
@@ -317,6 +310,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.doc = msg.doc
 		m.saved = true
+		// syncView refreshes the list's dirty decorations (e.g. unsaved-changes
+		// indicator) immediately so they reflect the now-saved state.
+		m = m.syncView()
 		return m.showAlert("Saved", fmt.Sprintf("Saved to %s.", m.doc.Path()), alert.KindSuccess)
 	case reloadResultMsg:
 		if msg.err != nil {
@@ -332,9 +328,51 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	return m.handleModeUpdate(msg)
+}
+
+// handleConfirmedDocPreset replaces the document with the preset content after
+// the user confirms the action.
+func (m model) handleConfirmedDocPreset(msg confirmedDocPresetMsg) (tea.Model, tea.Cmd) {
+	newDoc, err := m.doc.ReplaceRaw([]byte(msg.Content))
+	if err != nil {
+		return m.withStatus(fmt.Sprintf("Failed to apply preset %q: %v", msg.Name, err))
+	}
+	m.doc = newDoc
+	m = m.syncView()
+	return m.withStatus(fmt.Sprintf("Applied preset %q — ctrl+s to save.", msg.Name))
+}
+
+// handleDismissedAlert clears the active alert and returns to the appropriate screen. Routing depends on the current mode,
+// not on whether a block editor stack exists, because entering paneAlert preserves blockEdits for return?
+//
+//   - paneBlockEdit: the block editor's own confirm overlay (save/delete) is active; forward DismissedMsg to the block editor to clear it.
+//   - any other mode: a root-level alert (validation, etc.) was shown. If a block editor stack was preserved, restore it, otherwise return to the list.
+func (m model) handleDismissedAlert(msg alert.DismissedMsg) (tea.Model, tea.Cmd) {
+	if m.mode == paneBlockEdit {
+		if top := m.topBE(); top != nil {
+			be, cmd := top.Update(msg)
+			return m.withTopBE(be), cmd
+		}
+	}
+	if len(m.blockEdits) > 0 {
+		m = m.enterBlockEdit()
+	} else {
+		m = m.enterList()
+	}
+	return m, nil
+}
+
+// handleModeUpdate dispatches msg to the active pane when no root-level
+// message handler matched first.
+func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.mode {
 	case paneAlert:
 		if key, ok := msg.(tea.KeyMsg); ok {
+			// Global shortcuts (save, validate) work even while an alert is shown.
+			if mo, cmd, handled := m.handleGlobalKey(key); handled {
+				return mo, cmd
+			}
 			al, cmd := m.alert.Update(key)
 			m.alert = al
 			return m, cmd
@@ -342,12 +380,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case paneBlockEdit:
 		return m.handlePaneBlockEdit(msg)
 	case panePreview:
-		if key, ok := msg.(tea.KeyMsg); ok {
-			return m.handlePreviewKey(key)
-		}
-		var cmd tea.Cmd
-		m.preview, cmd = m.preview.Update(msg)
-		return m, cmd
+		return m.handlePreviewUpdate(msg)
 	case paneList:
 		if key, ok := msg.(tea.KeyMsg); ok {
 			return m.handleListKey(key)
@@ -358,6 +391,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// handlePreviewUpdate routes a message to the preview pane, preferring key
+// bindings over generic viewport updates.
+func (m model) handlePreviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		return m.handlePreviewKey(key)
+	}
+	var cmd tea.Cmd
+	m.preview, cmd = m.preview.Update(msg)
+	return m, cmd
 }
 
 func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
@@ -382,6 +426,9 @@ func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleDeleteItemMsg(msg deleteItemMsg) (tea.Model, tea.Cmd) {
+	if m.mode == paneBlockEdit {
+		return m, nil // stale Cmd: editor is already open, discard
+	}
 	if m.cfg.NoDeleteConfirm {
 		return m.handleDelete(msg.Key)
 	}

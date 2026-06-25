@@ -24,10 +24,23 @@ func WithMetadata(src editor.MetadataSource) Option {
 	return func(g *SchemaGenerator) { g.metadata = src }
 }
 
+// WithExamples configures the generator to emit an "Examples" section linking
+// to a preset example page for any page whose lowercased name is present in
+// pages. relDir is the path to the examples directory relative to the docs
+// directory (e.g. "../examples"). Used together with GenerateExampleDocs.
+func WithExamples(relDir string, pages map[string]bool) Option {
+	return func(g *SchemaGenerator) {
+		g.examplesRelDir = relDir
+		g.examplePages = pages
+	}
+}
+
 // SchemaGenerator generates markdown documentation from a Go struct using
 // schema.Discover for structure and a MetadataSource for field descriptions.
 type SchemaGenerator struct {
-	metadata editor.MetadataSource
+	metadata       editor.MetadataSource
+	examplesRelDir string
+	examplePages   map[string]bool
 }
 
 // NewSchemaGenerator creates a SchemaGenerator. All configuration is passed
@@ -172,15 +185,17 @@ func GenerateInMemory(entries []Entry) (DocSet, error) {
 
 // Generate builds the MetadataSource for each entry, generates documentation,
 // and writes an index.md to indexPath. Each Entry.Config must implement
-// metadata.MetadataProvider.
-func Generate(indexPath string, entries []Entry) error {
+// metadata.MetadataProvider. Extra opts (e.g. WithExamples) are applied to the
+// per-entry generator in addition to the metadata source.
+func Generate(indexPath string, entries []Entry, opts ...Option) error {
 	var allFiles []GeneratedFile
 	for _, e := range entries {
 		src, err := metadata.New(e.Config)
 		if err != nil {
 			return fmt.Errorf("build metadata for %T: %w", e.Config, err)
 		}
-		files, err := NewSchemaGenerator(WithMetadata(src)).GenerateDocsForEach([]Entry{e})
+		genOpts := append([]Option{WithMetadata(src)}, opts...)
+		files, err := NewSchemaGenerator(genOpts...).GenerateDocsForEach([]Entry{e})
 		if err != nil {
 			return err
 		}

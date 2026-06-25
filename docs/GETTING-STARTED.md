@@ -6,7 +6,7 @@ This guide walks you through the full integration path: define your config struc
 
 ## 1. Define the config struct
 
-yedit drives the editor from a Go struct using `yaml` tags. No other annotations are needed.
+yamltui drives the editor from a Go struct using `yaml` tags. No other annotations are needed.
 
 ```go
 type Config struct {

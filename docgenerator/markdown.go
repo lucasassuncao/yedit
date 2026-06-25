@@ -14,6 +14,7 @@ import (
 func (g *SchemaGenerator) generateRootMarkdown(title string, fields []schema.FieldDef) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("# %s\n\n", title))
+	g.writeExamplesLink(&sb, title)
 	sb.WriteString("## Arguments\n\n")
 	sb.WriteString("The following arguments are supported:\n\n")
 	g.writeFieldsTableLinked(&sb, fields)
@@ -64,12 +65,30 @@ func (g *SchemaGenerator) generateMarkdown(typeName string, fields []schema.Fiel
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("# %s\n\n", typeName))
+	g.writeExamplesLink(&sb, typeName)
 	sb.WriteString("## Arguments\n\n")
 	sb.WriteString("The following arguments are supported:\n\n")
 	g.writeFieldsTable(&sb, fields, sectionPath)
 	g.writeNestedSections(&sb, fields, sectionPath, 3)
 
 	return sb.String()
+}
+
+// writeExamplesLink emits an "Examples" section linking to the preset example
+// page for title when the generator was configured with WithExamples and an
+// example page exists for it. The lookup is by lowercased title so both the
+// root page (e.g. "ContainerEngine") and split-child pages (e.g. "deployment")
+// resolve to "<title>.md" in the examples directory.
+func (g *SchemaGenerator) writeExamplesLink(sb *strings.Builder, title string) {
+	if g.examplesRelDir == "" {
+		return
+	}
+	key := strings.ToLower(title)
+	if !g.examplePages[key] {
+		return
+	}
+	sb.WriteString("## Examples\n\n")
+	fmt.Fprintf(sb, "For usage examples, see [%s presets](%s/%s.md).\n\n", title, g.examplesRelDir, key)
 }
 
 func (g *SchemaGenerator) writeFieldsTable(sb *strings.Builder, fields []schema.FieldDef, sectionPath []string) {

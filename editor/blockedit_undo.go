@@ -100,7 +100,19 @@ func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 	be.node = *yamlnode.CloneNode(&snap.node)
 
 	if be.isCollectionNav() {
-		be.coll.current = snap.currentEntryIdx
+		// Clamp the restored entry index against the actual entry count in the
+		// restored node to prevent loadEntry from receiving an out-of-range index.
+		restoredCount := entryCount(&be.node, be.coll.isMap)
+		idx := snap.currentEntryIdx
+		switch {
+		case restoredCount == 0:
+			idx = -1
+		case idx >= restoredCount:
+			idx = restoredCount - 1
+		case idx < 0:
+			idx = 0
+		}
+		be.coll.current = idx
 		if len(snap.treeNodes) > 0 {
 			treeNodes := make([]treeNode, len(snap.treeNodes))
 			copy(treeNodes, snap.treeNodes)
@@ -121,5 +133,16 @@ func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 	}
 	be.yamlEditor.SetValue(snap.yamlValue)
 	be.tree = syncTreeCheckedFromNode(be.tree, &be.node)
+	// If syncTreeCheckedFromNode left the cursor out of bounds (e.g. the pre-
+	// undo cursor was on an AVAILABLE/separator row that no longer exists in
+	// the restored tree), advance to the first selectable field so the user is
+	// not silently stranded with no operable row.
+	vis := be.tree.visibleNodes()
+	if be.tree.cursor < 0 || be.tree.cursor >= len(vis) {
+		be.tree.cursor = 0
+		for be.tree.cursor < len(vis) && be.tree.nodes[vis[be.tree.cursor]].kind == treeNodeSeparator {
+			be.tree.cursor++
+		}
+	}
 	return be
 }

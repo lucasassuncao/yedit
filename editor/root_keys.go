@@ -52,6 +52,9 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleDocPresetKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if mo, cmd, handled := m.handleGlobalKey(msg); handled {
+		return mo, cmd
+	}
 	pb, action, name := m.docPreset.Update(msg, false)
 	m.docPreset = pb
 	switch action {
@@ -69,6 +72,10 @@ func (m model) handleDocPresetKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handlePreviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Global shortcuts (save, validate) are available in every mode.
+	if mo, cmd, handled := m.handleGlobalKey(msg); handled {
+		return mo, cmd
+	}
 	switch msg.String() {
 	case "tab", "esc":
 		return m.togglePreviewPane()

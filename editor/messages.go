@@ -63,6 +63,18 @@ type confirmedDeleteMsg struct{ Key string }
 // when the user confirms discarding local edits in favour of the on-disk file.
 type confirmedReloadMsg struct{}
 
+// confirmedDocPresetMsg is dispatched by the "Apply document preset?" confirm
+// alert when the user confirms replacing the entire document with a preset.
+type confirmedDocPresetMsg struct {
+	Name    string
+	Content string
+}
+
+// validateRequestedMsg is emitted by the block editor (Ctrl+L) to ask the
+// model to run the doc-level validation pass. The block layer has no model
+// access, so it requests the action as a message the root Update handles.
+type validateRequestedMsg struct{}
+
 // clearStatusMsg is sent by a time.Tick to auto-clear the status bar. seq must
 // match model.statusSeq; a newer message will have incremented it, so the old
 // tick becomes a no-op.

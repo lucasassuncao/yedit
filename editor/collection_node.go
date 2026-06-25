@@ -2,6 +2,7 @@ package editor
 
 import (
 	"fmt"
+
 	"github.com/lucasassuncao/yedit/yamlnode"
 
 	"gopkg.in/yaml.v3"
@@ -112,6 +113,11 @@ func parseEntryFromView(view string, isMap bool) (keyNode, valNode *yaml.Node, o
 	}
 	if isMap {
 		if blockVal.Kind != yaml.MappingNode || len(blockVal.Content) < 2 {
+			return nil, nil, false
+		}
+		// Reject views that contain more than one map entry — the extra pairs
+		// would be silently dropped by the two-node splice, corrupting data.
+		if len(blockVal.Content) > 2 {
 			return nil, nil, false
 		}
 		return blockVal.Content[0], blockVal.Content[1], true
