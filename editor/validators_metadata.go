@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/lucasassuncao/yedit/internal/yamlnode"
+	"github.com/lucasassuncao/yedit/yamlnode"
 
 	"gopkg.in/yaml.v3"
 

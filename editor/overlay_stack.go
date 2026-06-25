@@ -6,7 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
 
-	"github.com/lucasassuncao/yedit/internal/yamlnode"
+	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
 // topBE returns a copy of the active (deepest) block editor, or nil when none
@@ -91,6 +91,38 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// refreshCollectionFromNode updates a collection-nav editor in-place from node,
+// rebuilding the tree when the entry count changes and adjusting the cursor so
+// the previously viewed entry stays in view after removals.
+func (be *blockEditState) refreshCollectionFromNode(node *yaml.Node) {
+	isMap := be.isMapNav()
+	oldCount := entryCount(&be.node, isMap)
+	be.node = *yamlnode.CloneNode(node)
+	newCount := entryCount(&be.node, isMap)
+	if newCount != oldCount {
+		be.tree.nodes = be.collectionTreeNodes()
+		be.coll.current = clampCollCursor(be.coll.current, oldCount, newCount)
+	}
+	be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
+}
+
+// clampCollCursor adjusts the cursor after a collection's entry count changes.
+// When entries were removed it shifts the cursor down by the removed count so
+// the viewed entry is preserved; then clamps to [0, newCount-1].
+func clampCollCursor(current, oldCount, newCount int) int {
+	if newCount < oldCount {
+		if current >= oldCount-newCount {
+			current -= oldCount - newCount
+		} else {
+			current = 0
+		}
+	}
+	if current >= newCount {
+		return newCount - 1
+	}
+	return current
+}
+
 // refreshTopFromRoot rebuilds the active editor's content from the node at its
 // focus path in editRoot, preserving tree cursor/expansion and the current
 // collection entry. markDirty propagates uncommitted-changes state up from a
@@ -106,18 +138,7 @@ func (m model) refreshTopFromRoot(markDirty bool) model {
 	}
 	be := *top
 	if be.isCollectionNav() {
-		isMap := be.isMapNav()
-		oldCount := entryCount(&be.node, isMap)
-		be.node = *yamlnode.CloneNode(node)
-		// Rebuild the tree only when the entry count changed; otherwise keep it so
-		// the expanded/collapsed view and cursor survive the round-trip.
-		if entryCount(&be.node, isMap) != oldCount {
-			be.tree.nodes = be.collectionTreeNodes()
-			if be.coll.current >= entryCount(&be.node, isMap) {
-				be.coll.current = entryCount(&be.node, isMap) - 1
-			}
-		}
-		be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
+		be.refreshCollectionFromNode(node)
 	} else {
 		be.node = *yamlnode.CloneNode(node)
 		be.yamlEditor.SetValue(nodeToContent(be.key, &be.node))
@@ -155,7 +176,7 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 		initial = it.Key + ":\n"
 	}
 
-	children := m.childrenOf[it.Key]
+	children := applyPresentation(m.childrenOf[it.Key], m.cfg.Metadata, it.Key, nil)
 	kind := fieldKind(m.schemaTree, it.Key)
 	// Unknown items have no schema, so skip unknown-key validation inside the overlay.
 	knownByPath := m.knownByPath
@@ -187,7 +208,13 @@ func (m model) flushTopToRoot() (model, bool) {
 		return m, false
 	}
 	val := valueNodeOfSnippet(snippet)
-	if val == nil || !setNodeAt(m.editRoot, committed.focus, val) {
+	if val == nil {
+		m.statusMsg = "internal error: could not write editor into canonical tree"
+		return m, false
+	}
+	rootSnap := yamlnode.CloneNode(m.editRoot)
+	if !setNodeAt(m.editRoot, committed.focus, val) {
+		*m.editRoot = *rootSnap
 		m.statusMsg = "internal error: could not write editor into canonical tree"
 		return m, false
 	}
@@ -219,7 +246,14 @@ func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
 	if node := nodeAt(m.editRoot, childFocus); node != nil {
 		content = nodeToContent(msg.key, node)
 	}
-	be := newBlockEdit(m.cfg, blockSpec{key: msg.key, defs: msg.defs, kind: msg.kind, content: content, knownByPath: nil}, m.width, m.height)
+	// For map-nav collections, relSegs[0] is the runtime map entry key (not a
+	// schema field name) and must be excluded from the metadata lookup prefix.
+	metaPrefix := focusToStringPath(childFocus)
+	if m.topBE().isCollectionNav() && m.topBE().coll.isMap && len(msg.relSegs) > 0 {
+		metaPrefix = focusToStringPath(append(append([]pathSeg(nil), parentFocus...), msg.relSegs[1:]...))
+	}
+	defs := applyPresentation(msg.defs, m.cfg.Metadata, m.editBlockKey, metaPrefix)
+	be := newBlockEdit(m.cfg, blockSpec{key: msg.key, defs: defs, kind: msg.kind, content: content, knownByPath: nil}, m.width, m.height)
 	be.isEdit = true
 	be.focus = childFocus
 

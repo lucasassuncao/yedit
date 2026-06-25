@@ -6,7 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
 
-	"github.com/lucasassuncao/yedit/internal/alert"
+	"github.com/lucasassuncao/yedit/alert"
 )
 
 // fieldHasContent reports whether the field at node.yamlPath has a non-empty
@@ -155,7 +155,11 @@ func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
 	if be.isCollectionNav() {
 		// node.yamlPath[0] is the current item's label (not a real key); the live
 		// item is be.coll.current. node.yamlPath[1:] are the field keys below it.
-		relSegs = append(relSegs, segIdx(be.coll.current))
+		if be.coll.isMap {
+			relSegs = append(relSegs, segKey(entryLabel(&be.node, true, be.coll.current)))
+		} else {
+			relSegs = append(relSegs, segIdx(be.coll.current))
+		}
 		for _, k := range node.yamlPath[1:] {
 			relSegs = append(relSegs, segKey(k))
 		}

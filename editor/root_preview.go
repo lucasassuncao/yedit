@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/glamour/styles"
 
-	"github.com/lucasassuncao/yedit/internal/render"
+	"github.com/lucasassuncao/yedit/render"
 )
 
 func (m model) togglePreviewPane() (tea.Model, tea.Cmd) {

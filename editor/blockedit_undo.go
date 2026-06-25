@@ -3,7 +3,7 @@ package editor
 import (
 	"gopkg.in/yaml.v3"
 
-	"github.com/lucasassuncao/yedit/internal/yamlnode"
+	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
 // blockEditUndoSnap captures the state of a blockEditState before a

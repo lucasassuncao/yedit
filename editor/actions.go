@@ -21,7 +21,11 @@ type ToggleField struct {
 }
 
 // SyncYAML advances be.node from new YAML content (parse-gated).
-type SyncYAML struct{ Content string }
+// Checkpoint: true saves an undo snapshot first (use for paste); false skips it (use for individual keystrokes).
+type SyncYAML struct {
+	Content    string
+	Checkpoint bool
+}
 
 // AddEntry appends a new entry to a collection-nav block.
 type AddEntry struct{}
@@ -36,6 +40,10 @@ type NavigateEntry struct{ Idx int }
 // Content is the already-fetched YAML so dispatch stays pure.
 type ApplyPreset struct{ Name, Content string }
 
+// AppendPreset appends preset entries to a collection-nav block.
+// Content is the already-fetched YAML so dispatch stays pure.
+type AppendPreset struct{ Name, Content string }
+
 // Undo restores the previous block snapshot.
 type Undo struct{}
 
@@ -48,6 +56,7 @@ func (AddEntry) blockAction()      {}
 func (DeleteEntry) blockAction()   {}
 func (NavigateEntry) blockAction() {}
 func (ApplyPreset) blockAction()   {}
+func (AppendPreset) blockAction()  {}
 func (Undo) blockAction()          {}
 func (Redo) blockAction()          {}
 

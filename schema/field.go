@@ -3,6 +3,18 @@
 // its UI.
 package schema
 
+// Presentation controls how a field's children are shown in the tree panel.
+// It is applied after schema discovery via the editor's applyPresentation step.
+// KindPrimitive fields are always PresentationFlat regardless of what is set.
+type Presentation int
+
+const (
+	PresentationDefault Presentation = iota // derive from Kind: Object→Inline, List/Dict→Overlay, Primitive→Flat
+	PresentationFlat                        // leaf with no children shown
+	PresentationInline                      // children expanded inline in the tree
+	PresentationOverlay                     // children opened in a dedicated overlay editor
+)
+
 // Kind classifies a discovered field's shape.
 type Kind int
 
@@ -26,7 +38,8 @@ const (
 type FieldDef struct {
 	YAMLName     string
 	Kind         Kind
-	Scalar       string // concrete scalar type for primitives ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
+	Presentation Presentation // how children are shown; set by editor.applyPresentation
+	Scalar       string       // concrete scalar type for primitives ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
 	Children     []FieldDef
 	OmitEmpty    bool   // yaml:",omitempty" - zero value is not written to disk
 	Flow         bool   // yaml:",flow" - serialised inline rather than block style

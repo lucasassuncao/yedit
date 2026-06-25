@@ -10,7 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/lucasassuncao/yedit/internal/alert"
+	"github.com/lucasassuncao/yedit/alert"
 )
 
 // sizeProbeConfig is a minimal schema with one struct block so the test can

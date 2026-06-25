@@ -27,7 +27,15 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 		be.tree = be.resyncTreeFromYAML()
 
 	case SyncYAML:
-		be = be.syncParsedNode(act.Content)
+		updated, parsed := be.syncParsedNode(act.Content)
+		if !parsed {
+			break
+		}
+		if act.Checkpoint {
+			be = be.saveUndo()
+			updated, _ = be.syncParsedNode(act.Content)
+		}
+		be = updated
 		be.dirty = true
 		be.statusMsg = ""
 
@@ -41,11 +49,23 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 
 	case NavigateEntry:
 		be.statusMsg = ""
+		if be.dirty {
+			// Peek whether the current entry parses before committing the undo
+			// snapshot: if the flush would fail we skip saveUndo so we don't
+			// push a phantom step that restores the same invalid state.
+			if be.flushCurrentEntry().editorErr.kind == 0 {
+				be = be.saveUndo()
+			}
+		}
 		be = be.flushAndLoadEntry(act.Idx)
 
 	case ApplyPreset:
 		be.statusMsg = ""
 		be = be.applyPreset(act.Name, act.Content)
+
+	case AppendPreset:
+		be.statusMsg = ""
+		be = be.appendPreset(act.Name, act.Content)
 
 	case Undo:
 		be = be.restoreUndo()

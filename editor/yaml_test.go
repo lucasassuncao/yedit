@@ -8,8 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
 
-	"github.com/lucasassuncao/yedit/internal/yamlnode"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
 func parseValueNode(t *testing.T, src string) *yaml.Node {
@@ -197,4 +197,123 @@ func TestToggleChildUnderEmptyParent(t *testing.T) {
 	be = cursorToLabel(be, "path")
 	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
 	is.Contains(be.yamlEditor.Value(), "path:", "toggling source.path did not add the field")
+}
+
+func TestPruneEmptyContent(t *testing.T) {
+	parse := func(src string) *yaml.Node {
+		t.Helper()
+		var doc yaml.Node
+		if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		// unwrap DocumentNode → root MappingNode
+		if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
+			return doc.Content[0]
+		}
+		return &doc
+	}
+	serialize := func(n *yaml.Node) string {
+		t.Helper()
+		out, err := yaml.Marshal(n)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		return string(out)
+	}
+
+	t.Run("scalar empty string as mapping value removed", func(t *testing.T) {
+		n := parse("key: \"\"")
+		pruneEmptyContent(n)
+		assert.Empty(t, n.Content)
+	})
+
+	t.Run("scalar null as mapping value removed", func(t *testing.T) {
+		n := parse("key: null")
+		pruneEmptyContent(n)
+		assert.Empty(t, n.Content)
+	})
+
+	t.Run("empty mapping as mapping value removed", func(t *testing.T) {
+		n := parse("key: {}")
+		pruneEmptyContent(n)
+		assert.Empty(t, n.Content)
+	})
+
+	t.Run("empty sequence as mapping value removed", func(t *testing.T) {
+		n := parse("key: []")
+		pruneEmptyContent(n)
+		assert.Empty(t, n.Content)
+	})
+
+	t.Run("non-empty scalar mapping value kept", func(t *testing.T) {
+		n := parse("key: value")
+		pruneEmptyContent(n)
+		assert.Len(t, n.Content, 2)
+	})
+
+	t.Run("empty scalar sequence item removed (gap 1)", func(t *testing.T) {
+		n := parse("tags:\n  - \"\"\n  - hello\n  - \"\"")
+		pruneEmptyContent(n)
+		got := serialize(n)
+		assert.Contains(t, got, "hello")
+		assert.NotContains(t, got, `""`)
+	})
+
+	t.Run("null scalar sequence item removed (gap 1)", func(t *testing.T) {
+		n := parse("tags:\n  - ~\n  - hello")
+		pruneEmptyContent(n)
+		got := serialize(n)
+		assert.Contains(t, got, "hello")
+		assert.NotContains(t, got, "null")
+	})
+
+	t.Run("all scalar sequence items empty collapses key (gap 1)", func(t *testing.T) {
+		n := parse("tags:\n  - \"\"\n  - \"\"")
+		pruneEmptyContent(n)
+		assert.Empty(t, n.Content)
+	})
+
+	t.Run("empty nested sequence item removed (gap 2)", func(t *testing.T) {
+		n := parse("matrix:\n  - []\n  - [a, b]")
+		pruneEmptyContent(n)
+		got := serialize(n)
+		assert.NotContains(t, got, "[]")
+		assert.Contains(t, got, "a")
+	})
+
+	t.Run("all nested sequence items empty collapses key (gap 2)", func(t *testing.T) {
+		n := parse("matrix:\n  - []\n  - []")
+		pruneEmptyContent(n)
+		assert.Empty(t, n.Content)
+	})
+
+	t.Run("cascade: mapping whose children all become empty is removed", func(t *testing.T) {
+		n := parse("outer:\n  inner:\n    field: \"\"")
+		pruneEmptyContent(n)
+		assert.Empty(t, n.Content)
+	})
+
+	t.Run("partial mapping: non-empty sibling keeps parent", func(t *testing.T) {
+		n := parse("outer:\n  a: \"\"\n  b: kept")
+		pruneEmptyContent(n)
+		got := serialize(n)
+		assert.Contains(t, got, "kept")
+		assert.NotContains(t, got, `a:`)
+	})
+
+	t.Run("struct sequence: entry with all empty fields removed", func(t *testing.T) {
+		n := parse("items:\n  - name: \"\"\n    value: \"\"\n  - name: alice\n    value: ok")
+		pruneEmptyContent(n)
+		got := serialize(n)
+		assert.Contains(t, got, "alice")
+		assert.NotContains(t, got, "name: \"\"")
+	})
+
+	t.Run("struct sequence: entry with one non-empty field survives", func(t *testing.T) {
+		n := parse("items:\n  - name: alice\n    value: \"\"")
+		pruneEmptyContent(n)
+		got := serialize(n)
+		assert.Contains(t, got, "alice")
+		assert.NotContains(t, got, "value")
+	})
 }

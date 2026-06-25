@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lucasassuncao/yedit/internal/yamlnode"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/yamlnode"
 
 	"gopkg.in/yaml.v3"
 
@@ -134,14 +134,7 @@ func MutuallyExclusive(keys ...string) Validator {
 			return newPathKeysValidator("MutuallyExclusive", keys, mutualExclusionViolation)
 		}
 	}
-	return &mutuallyExclusiveValidator{keys: keys}
-}
-
-type mutuallyExclusiveValidator struct{ keys []string }
-
-func (v *mutuallyExclusiveValidator) Validate(in ValidationInput) []Violation {
-	present := keysPresent(in.Blocks)
-	return mutualExclusionViolation(v.keys, func(k string) bool { return present[k] }, "")
+	return &topLevelKeysValidator{keys: keys, violation: mutualExclusionViolation}
 }
 
 // misconfiguredValidator reports a fixed configuration error on every run, so
@@ -151,6 +144,19 @@ type misconfiguredValidator struct{ message string }
 
 func (v *misconfiguredValidator) Validate(ValidationInput) []Violation {
 	return []Violation{{Message: v.message}}
+}
+
+// topLevelKeysValidator is the shared implementation for key-combination rules
+// that operate on top-level document blocks (MutuallyExclusive, AtLeastOneOf,
+// ExactlyOneOf, AllOrNone). violation encodes the specific rule semantics.
+type topLevelKeysValidator struct {
+	keys      []string
+	violation func(keys []string, has func(string) bool, where string) []Violation
+}
+
+func (v *topLevelKeysValidator) Validate(in ValidationInput) []Violation {
+	present := keysPresent(in.Blocks)
+	return v.violation(v.keys, func(k string) bool { return present[k] }, "")
 }
 
 // newPathKeysValidator builds the path-aware variant of a key-combination
@@ -510,14 +516,7 @@ func AtLeastOneOf(keys ...string) Validator {
 			return newPathKeysValidator("AtLeastOneOf", keys, atLeastOneViolation)
 		}
 	}
-	return &atLeastOneOfValidator{keys: keys}
-}
-
-type atLeastOneOfValidator struct{ keys []string }
-
-func (v *atLeastOneOfValidator) Validate(in ValidationInput) []Violation {
-	present := keysPresent(in.Blocks)
-	return atLeastOneViolation(v.keys, func(k string) bool { return present[k] }, "")
+	return &topLevelKeysValidator{keys: keys, violation: atLeastOneViolation}
 }
 
 // atLeastOneViolation returns a violation when none of keys is present
@@ -554,14 +553,7 @@ func ExactlyOneOf(keys ...string) Validator {
 			return newPathKeysValidator("ExactlyOneOf", keys, exactlyOneViolation)
 		}
 	}
-	return &exactlyOneOfValidator{keys: keys}
-}
-
-type exactlyOneOfValidator struct{ keys []string }
-
-func (v *exactlyOneOfValidator) Validate(in ValidationInput) []Violation {
-	present := keysPresent(in.Blocks)
-	return exactlyOneViolation(v.keys, func(k string) bool { return present[k] }, "")
+	return &topLevelKeysValidator{keys: keys, violation: exactlyOneViolation}
 }
 
 // exactlyOneViolation returns a violation when none or more than one of keys
@@ -939,14 +931,7 @@ func AllOrNone(keys ...string) Validator {
 			return newPathKeysValidator("AllOrNone", keys, allOrNoneViolation)
 		}
 	}
-	return &allOrNoneValidator{keys: keys}
-}
-
-type allOrNoneValidator struct{ keys []string }
-
-func (v *allOrNoneValidator) Validate(in ValidationInput) []Violation {
-	present := keysPresent(in.Blocks)
-	return allOrNoneViolation(v.keys, func(k string) bool { return present[k] }, "")
+	return &topLevelKeysValidator{keys: keys, violation: allOrNoneViolation}
 }
 
 // allOrNoneViolation returns a violation listing the missing keys when only

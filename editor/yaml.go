@@ -1,7 +1,7 @@
 package editor
 
 import (
-	"github.com/lucasassuncao/yedit/internal/yamlnode"
+	"github.com/lucasassuncao/yedit/yamlnode"
 	"sort"
 	"strings"
 
@@ -66,6 +66,18 @@ type pathSeg struct {
 
 func segKey(k string) pathSeg { return pathSeg{key: k} }
 func segIdx(i int) pathSeg    { return pathSeg{idx: i, isIndex: true} }
+
+// focusToStringPath converts a focus path to a slice of key strings, dropping
+// index segments. Used to build metadata lookup prefixes for nested editors.
+func focusToStringPath(focus []pathSeg) []string {
+	out := make([]string, 0, len(focus))
+	for _, s := range focus {
+		if !s.isIndex {
+			out = append(out, s.key)
+		}
+	}
+	return out
+}
 
 // nodeToContent serializes a value node as a standalone "<key>:\n  ..." block,
 // forcing block style so the result renders one field per line. Returns
@@ -137,6 +149,50 @@ func nodeAt(node *yaml.Node, segs []pathSeg) *yaml.Node {
 	return node
 }
 
+// coerceToMapping coerces a null scalar node (kind==Scalar, value=="") to a
+// MappingNode so path traversal can continue through it. Returns false when
+// the node is some other non-mapping kind.
+func coerceToMapping(n *yaml.Node) bool {
+	if n.Kind == yaml.MappingNode {
+		return true
+	}
+	if n.Kind == yaml.ScalarNode && n.Value == "" {
+		n.Kind = yaml.MappingNode
+		n.Tag = ""
+		n.Value = ""
+		n.Content = nil
+		return true
+	}
+	return false
+}
+
+// advanceSeg advances parent by one path segment, creating intermediate mapping
+// keys as needed. Returns (next, false) when the segment cannot be traversed.
+func advanceSeg(parent *yaml.Node, s pathSeg) (*yaml.Node, bool) {
+	if s.isIndex {
+		if parent.Kind != yaml.SequenceNode || s.idx < 0 || s.idx >= len(parent.Content) {
+			return nil, false
+		}
+		return parent.Content[s.idx], true
+	}
+	if !coerceToMapping(parent) {
+		return nil, false
+	}
+	child := yamlnode.ChildByKey(parent, s.key)
+	switch {
+	case child == nil:
+		child = &yaml.Node{Kind: yaml.MappingNode}
+		parent.Content = append(parent.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: s.key}, child)
+	case child.Kind == yaml.ScalarNode && child.Value != "":
+		// Non-null scalar: cannot be traversed by any subsequent segment.
+		return nil, false
+	default:
+		coerceToMapping(child) // coerces null scalar; no-op for sequences and mappings
+	}
+	return child, true
+}
+
 // setNodeAt replaces the node addressed by segs within root with newVal,
 // creating intermediate mapping keys as needed. Returns false when a sequence
 // index is out of range or an intermediate node has a conflicting kind. This is
@@ -149,23 +205,11 @@ func setNodeAt(root *yaml.Node, segs []pathSeg, newVal *yaml.Node) bool {
 	}
 	parent := root
 	for _, s := range segs[:len(segs)-1] {
-		if s.isIndex {
-			if parent.Kind != yaml.SequenceNode || s.idx < 0 || s.idx >= len(parent.Content) {
-				return false
-			}
-			parent = parent.Content[s.idx]
-		} else {
-			if parent.Kind != yaml.MappingNode {
-				return false
-			}
-			child := yamlnode.ChildByKey(parent, s.key)
-			if child == nil {
-				child = &yaml.Node{Kind: yaml.MappingNode}
-				parent.Content = append(parent.Content,
-					&yaml.Node{Kind: yaml.ScalarNode, Value: s.key}, child)
-			}
-			parent = child
+		next, ok := advanceSeg(parent, s)
+		if !ok {
+			return false
 		}
+		parent = next
 	}
 	last := segs[len(segs)-1]
 	if last.isIndex {
@@ -175,7 +219,7 @@ func setNodeAt(root *yaml.Node, segs []pathSeg, newVal *yaml.Node) bool {
 		parent.Content[last.idx] = newVal
 		return true
 	}
-	if parent.Kind != yaml.MappingNode {
+	if !coerceToMapping(parent) {
 		return false
 	}
 	for i := 0; i+1 < len(parent.Content); i += 2 {
@@ -237,7 +281,9 @@ func findOrCreateMappingChild(mapping *yaml.Node, key string) *yaml.Node {
 			// An existing key with a null/empty value (e.g. "source:\n") parses as
 			// a scalar node, not a mapping. Coerce it so children can be added -
 			// without this, appendLeafToMapping silently no-ops on the scalar.
-			if child.Kind != yaml.MappingNode && child.Value == "" {
+			// Guard on ScalarNode explicitly: sequences also have Value=="" but
+			// must not be turned into mappings.
+			if child.Kind == yaml.ScalarNode && child.Value == "" {
 				child.Kind = yaml.MappingNode
 				child.Tag = ""
 				child.Value = ""
@@ -336,7 +382,9 @@ func pruneEmptyContent(node *yaml.Node) {
 		i := 0
 		for i < len(node.Content) {
 			item := node.Content[i]
-			if item.Kind == yaml.MappingNode && len(item.Content) == 0 {
+			empty := (item.Kind == yaml.MappingNode || item.Kind == yaml.SequenceNode) && len(item.Content) == 0 ||
+				item.Kind == yaml.ScalarNode && (item.Tag == "!!null" || item.Value == "")
+			if empty {
 				node.Content = append(node.Content[:i], node.Content[i+1:]...)
 			} else {
 				i++

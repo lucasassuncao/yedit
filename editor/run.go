@@ -28,6 +28,13 @@ func Run(cfg Config) (Result, error) {
 	return RunContext(context.Background(), cfg)
 }
 
+// NewModelForTest constructs the editor model for use in external test packages.
+// In production code use Run or RunContext; this entry point skips the bubbletea
+// program and returns the raw tea.Model so tests can drive it via Update/View.
+func NewModelForTest(cfg Config) (tea.Model, error) {
+	return newModel(cfg)
+}
+
 // RunContext is Run with a context: cancelling ctx shuts the editor down and
 // makes RunContext return the context's error. Unsaved changes are discarded
 // on cancellation, but Result.Saved still reports any save that completed

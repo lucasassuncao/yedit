@@ -11,8 +11,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"gopkg.in/yaml.v3"
 
+	"github.com/lucasassuncao/yedit/alert"
 	"github.com/lucasassuncao/yedit/document"
-	"github.com/lucasassuncao/yedit/internal/alert"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
 )
@@ -219,6 +219,29 @@ func applyHidden(fields []schema.FieldDef, hidden []string) []schema.FieldDef {
 	return out
 }
 
+// applyPresentation stamps Presentation on FieldDefs from the MetadataSource so
+// that presentation intent travels with the field into collection navigators.
+// prefixSegs is the dot-path from the block root to the current defs level (nil at top level).
+func applyPresentation(fields []schema.FieldDef, meta MetadataSource, blockKey string, prefixSegs []string) []schema.FieldDef {
+	if meta == nil {
+		return fields
+	}
+	out := make([]schema.FieldDef, len(fields))
+	for i, f := range fields {
+		childSegs := make([]string, len(prefixSegs)+1)
+		copy(childSegs, prefixSegs)
+		childSegs[len(prefixSegs)] = f.YAMLName
+		if p := meta.FieldMeta(blockKey, strings.Join(childSegs, ".")).Presentation; p != schema.PresentationDefault {
+			f.Presentation = p
+		}
+		if len(f.Children) > 0 {
+			f.Children = applyPresentation(f.Children, meta, blockKey, childSegs)
+		}
+		out[i] = f
+	}
+	return out
+}
+
 func buildChildrenMap(fields []schema.FieldDef) map[string][]schema.FieldDef {
 	m := make(map[string][]schema.FieldDef, len(fields))
 	for _, f := range fields {
@@ -255,6 +278,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		return m.handleWindowSizeMsg(msg)
 	case openItemMsg:
+		if m.mode == paneBlockEdit {
+			return m, nil // stale Cmd: editor is already open, discard
+		}
 		return m.handleOpenItem(msg.Item)
 	case openChildMsg:
 		return m.dispatch(DrillIn{Key: msg.key, Defs: msg.defs, Kind: msg.kind, RelSegs: msg.relSegs})
@@ -265,6 +291,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case commitRequestedMsg:
 		return m.saveAll()
 	case deleteItemMsg:
+		if m.mode == paneBlockEdit {
+			return m, nil // stale Cmd: editor is already open, discard
+		}
 		return m.handleDeleteItemMsg(msg)
 	case confirmedDeleteMsg:
 		m = m.enterList()

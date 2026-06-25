@@ -115,10 +115,7 @@ func (be blockEditState) isCollectionNav() bool {
 // collectionTreeNodes rebuilds the tree nodes for the current collection entries,
 // picking the map or sequence layout from the block kind.
 func (be blockEditState) collectionTreeNodes() []treeNode {
-	if be.isMapNav() {
-		return buildMapNodesFromNode(be.childDefs, &be.node)
-	}
-	return buildSeqNodesFromNode(be.childDefs, &be.node)
+	return buildCollectionNodesFromNode(be.childDefs, &be.node, be.isMapNav())
 }
 
 // flushCurrentEntry parses the current entry's editor text back into the

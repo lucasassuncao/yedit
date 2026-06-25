@@ -230,6 +230,228 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 	is.Equal("new.com", check.ContainerEngine.HTTPRoutes["web"].Host, "kept edit not persisted")
 }
 
+// TestDrillOutFromSeqNavInsideMapNav verifies that ESC works when the stack is:
+// list → KindDictionary (map nav) → KindList (seq nav). The KindList editor is
+// opened by drilling into a struct list field within an expanded map-nav entry.
+func TestDrillOutFromSeqNavInsideMapNav(t *testing.T) {
+	must := require.New(t)
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	must.NoError(os.WriteFile(path, []byte(`field2:
+  key1:
+    A: foo
+    B:
+      - C: bar
+`), 0o600))
+
+	type subField1Probe struct {
+		C string `yaml:"C,omitempty"`
+	}
+	type field2Probe struct {
+		A string           `yaml:"A,omitempty"`
+		B []subField1Probe `yaml:"B,omitempty"`
+	}
+	type rootProbe struct {
+		Field2 map[string]*field2Probe `yaml:"field2,omitempty"`
+	}
+
+	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
+	must.NoError(err)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	// Open "field2" from the list (top-level KindDictionary editor, focus = nil).
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "field2", Existing: true}})
+	m = updated.(model)
+	must.Len(m.blockEdits, 1, "stack depth after opening field2")
+
+	subField1Defs := []schema.FieldDef{{YAMLName: "C", Kind: schema.KindPrimitive}}
+	field2ChildDefs := []schema.FieldDef{
+		{YAMLName: "A", Kind: schema.KindPrimitive},
+		{YAMLName: "B", Kind: schema.KindList, Children: subField1Defs},
+	}
+
+	// Drill into B via the same path handleTreeOpenChild would emit for a map nav
+	// entry: relSegs = [segKey("key1"), segKey("B")].
+	updated, _ = m.Update(openChildMsg{
+		key:     "B",
+		defs:    subField1Defs,
+		kind:    schema.KindList,
+		relSegs: []pathSeg{segKey("key1"), segKey("B")},
+	})
+	m = updated.(model)
+	must.Len(m.blockEdits, 2, "stack depth after drilling into B")
+	must.True(m.topBE().isSeqNav(), "B editor should be a seq navigator")
+	_ = field2ChildDefs // suppress unused
+
+	// ESC inside B editor must navigate back to field2 (depth 1), not exit to list.
+	updated, _ = m.Update(drillOutMsg{})
+	m = updated.(model)
+	must.Len(m.blockEdits, 1, "after ESC: stack depth should be 1 (back at field2)")
+	must.Equal("field2", m.topBE().key, "after ESC: should be back at field2 editor")
+}
+
+// TestEscKeyFromSeqNavInsideMapNav is the same scenario as
+// TestDrillOutFromSeqNavInsideMapNav but drives the full ESC→cmd→drillOut path
+// instead of injecting drillOutMsg directly. This ensures the key handler in
+// updateKey emits drillOutMsg for nested editors (len(be.focus) > 0).
+func TestEscKeyFromSeqNavInsideMapNav(t *testing.T) {
+	must := require.New(t)
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	must.NoError(os.WriteFile(path, []byte(`field2:
+  key1:
+    A: foo
+    B:
+      - C: bar
+`), 0o600))
+
+	type subField1Probe struct {
+		C string `yaml:"C,omitempty"`
+	}
+	type field2Probe struct {
+		A string           `yaml:"A,omitempty"`
+		B []subField1Probe `yaml:"B,omitempty"`
+	}
+	type rootProbe struct {
+		Field2 map[string]*field2Probe `yaml:"field2,omitempty"`
+	}
+
+	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
+	must.NoError(err)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "field2", Existing: true}})
+	m = updated.(model)
+	must.Len(m.blockEdits, 1, "stack depth after opening field2")
+
+	subField1Defs := []schema.FieldDef{{YAMLName: "C", Kind: schema.KindPrimitive}}
+
+	updated, _ = m.Update(openChildMsg{
+		key:     "B",
+		defs:    subField1Defs,
+		kind:    schema.KindList,
+		relSegs: []pathSeg{segKey("key1"), segKey("B")},
+	})
+	m = updated.(model)
+	must.Len(m.blockEdits, 2, "stack depth after drilling into B")
+	must.True(m.topBE().isSeqNav(), "B editor should be a seq navigator")
+
+	// Send the actual ESC key — updateKey must emit drillOutMsg as a cmd
+	// (not drillOutMsg directly) because len(be.focus) > 0.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	must.Len(m.blockEdits, 2, "after ESC key: stack not yet popped (cmd pending)")
+	must.NotNil(cmd, "ESC in a nested editor must return a non-nil cmd (drillOutMsg)")
+
+	// Execute the cmd: it must return drillOutMsg, which the model then processes.
+	msg := cmd()
+	_, ok := msg.(drillOutMsg)
+	must.True(ok, "cmd returned by ESC in nested editor must be drillOutMsg")
+
+	updated, _ = m.Update(msg)
+	m = updated.(model)
+	must.Len(m.blockEdits, 1, "after drillOutMsg: stack depth should be 1 (back at field2)")
+	must.Equal("field2", m.topBE().key, "after drillOutMsg: should be back at field2 editor")
+}
+
+// TestDrillOutFromEmptyParent verifies that ESC from a child editor works even
+// when the parent editor had empty content ("key:\n"). That flush writes a null
+// scalar into editRoot; setNodeAt must coerce it to a mapping so the child's
+// drill-out write succeeds instead of silently aborting.
+func TestDrillOutFromEmptyParent(t *testing.T) {
+	must := require.New(t)
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	// Parent block is present but has no fields set yet.
+	must.NoError(os.WriteFile(path, []byte("gateway:\n"), 0o600))
+
+	type serversDef struct {
+		Host string `yaml:"host,omitempty"`
+	}
+	type gatewayDef struct {
+		Servers []serversDef `yaml:"servers,omitempty"`
+	}
+	type rootProbe struct {
+		Gateway *gatewayDef `yaml:"gateway,omitempty"`
+	}
+
+	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
+	must.NoError(err)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	// Open the "gateway" block (KindObject, empty content).
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "gateway", Existing: true}})
+	m = updated.(model)
+	must.Len(m.blockEdits, 1, "stack depth after opening gateway")
+
+	serversDefs := []schema.FieldDef{{YAMLName: "host", Kind: schema.KindPrimitive}}
+
+	// Drill into "servers" (a KindList child). The parent flush writes a null
+	// scalar into editRoot; setNodeAt must handle that for this to succeed.
+	updated, _ = m.Update(openChildMsg{
+		key:     "servers",
+		defs:    serversDefs,
+		kind:    schema.KindList,
+		relSegs: []pathSeg{segKey("servers")},
+	})
+	m = updated.(model)
+	must.Len(m.blockEdits, 2, "stack depth after drilling into servers")
+
+	// ESC from the child editor must pop back to gateway, not abort.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	must.NotNil(cmd, "ESC in nested editor must return drillOutMsg cmd")
+	msg := cmd()
+	_, ok := msg.(drillOutMsg)
+	must.True(ok, "cmd must be drillOutMsg")
+
+	updated, _ = m.Update(msg)
+	m = updated.(model)
+	must.Len(m.blockEdits, 1, "after drill-out: back at gateway editor")
+	must.Equal("gateway", m.topBE().key, "after drill-out: should be at gateway editor")
+}
+
+// TestFlushTopToRoot_rollbackOnSetNodeAtFailure verifies that editRoot is
+// atomically restored when setNodeAt fails mid-traversal. Without rollback, a
+// failed flush can leave editRoot in a partial state where intermediate nodes
+// were already created before the failure.
+func TestFlushTopToRoot_rollbackOnSetNodeAtFailure(t *testing.T) {
+	must := require.New(t)
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	must.NoError(os.WriteFile(path, []byte("gateway:\n"), 0o600))
+
+	type gatewayDef struct {
+		Host string `yaml:"host,omitempty"`
+	}
+	type rootProbe struct {
+		Gateway *gatewayDef `yaml:"gateway,omitempty"`
+	}
+
+	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
+	must.NoError(err)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "gateway", Existing: true}})
+	m = updated.(model)
+	must.Len(m.blockEdits, 1)
+
+	// Snapshot editRoot before corrupting the focus.
+	snapBefore, _ := yaml.Marshal(m.editRoot)
+
+	// Set an impossible focus: sequence index 999 on a mapping editRoot.
+	// setNodeAt will fail because editRoot.Kind != SequenceNode.
+	be := *m.topBE()
+	be.focus = []pathSeg{segIdx(999)}
+	m = m.withTopBE(be)
+
+	_, ok := m.flushTopToRoot()
+	must.False(ok, "flushTopToRoot must return false on setNodeAt failure")
+
+	snapAfter, _ := yaml.Marshal(m.editRoot)
+	must.Equal(string(snapBefore), string(snapAfter), "editRoot must be identical after a failed flush (rollback)")
+}
+
 // ---------------------------------------------------------------------------
 // Nested toggle combinations - deep nesting, pruning, and interaction probes
 // ---------------------------------------------------------------------------

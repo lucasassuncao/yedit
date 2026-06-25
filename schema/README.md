@@ -18,6 +18,7 @@ Package schema discovers the editable shape of a Go struct via reflection over y
 - [type FieldDef](<#FieldDef>)
   - [func Discover\(v any, recursionLimit ...int\) \[\]FieldDef](<#Discover>)
 - [type Kind](<#Kind>)
+- [type Presentation](<#Presentation>)
 - [type Provider](<#Provider>)
 
 
@@ -51,7 +52,7 @@ func UnknownKeys(raw []byte, known map[string]map[string]bool) []string
 UnknownKeys returns the dotted paths of any YAML keys not present in the schema described by known. Free\-form sub\-trees \(paths missing from known\) are not validated.
 
 <a name="FieldDef"></a>
-## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L26-L34>)
+## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L38-L47>)
 
 FieldDef describes a single editable field discovered from a Go struct.
 
@@ -63,7 +64,8 @@ FieldDef carries structure only. Field metadata \(required, allowed values, rang
 type FieldDef struct {
     YAMLName     string
     Kind         Kind
-    Scalar       string // concrete scalar type for primitives ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
+    Presentation Presentation // how children are shown; set by editor.applyPresentation
+    Scalar       string       // concrete scalar type for primitives ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
     Children     []FieldDef
     OmitEmpty    bool   // yaml:",omitempty" - zero value is not written to disk
     Flow         bool   // yaml:",flow" - serialised inline rather than block style
@@ -87,7 +89,7 @@ To customise discovery for union types \(a value that can be a scalar OR a struc
 The optional recursionLimit controls how many extra levels a self\-referential type expands beyond the first: 0 \(or omitted\) uses the default of 1, which allows one recursive level so that fields like "any \[\]CategoryFilter" are navigable. Set to 0 explicitly behaves the same as omitting.
 
 <a name="Kind"></a>
-## type [Kind](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L7>)
+## type [Kind](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L19>)
 
 Kind classifies a discovered field's shape.
 
@@ -108,8 +110,28 @@ const (
 )
 ```
 
+<a name="Presentation"></a>
+## type [Presentation](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L9>)
+
+Presentation controls how a field's children are shown in the tree panel. It is applied after schema discovery via the editor's applyPresentation step. KindPrimitive fields are always PresentationFlat regardless of what is set.
+
+```go
+type Presentation int
+```
+
+<a name="PresentationDefault"></a>
+
+```go
+const (
+    PresentationDefault Presentation = iota // derive from Kind: Object→Inline, List/Dict→Overlay, Primitive→Flat
+    PresentationFlat                        // leaf with no children shown
+    PresentationInline                      // children expanded inline in the tree
+    PresentationOverlay                     // children opened in a dedicated overlay editor
+)
+```
+
 <a name="Provider"></a>
-## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L40-L42>)
+## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L53-L55>)
 
 Provider is an opt\-in interface for types that reflection cannot introspect correctly \- typically union types \(e.g. a value that can be a string OR a struct OR a map\). Implementations return the FieldDef tree they want the editor to see in place of the wrapper type's own fields.
 

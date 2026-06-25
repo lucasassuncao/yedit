@@ -5,6 +5,7 @@ import (
 
 	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/metadata"
+	"github.com/lucasassuncao/yedit/schema"
 )
 
 var testMetadata = mustBuildMetadata()
@@ -225,7 +226,9 @@ func (DatabaseConfig) Metadata() map[string]*metadata.Node {
 		}},
 		"pool": {
 			FieldMeta: editor.FieldMeta{
-				Snippet: "  pool:\n    min-size: 2\n    max-size: 10\n    timeout: 30\n",
+				Description:  "Connection pool settings (opens as overlay — demonstrates PresentationOverlay + presets).",
+				Snippet:      "  pool:\n    min-size: 2\n    max-size: 10\n    timeout: 30\n",
+				Presentation: schema.PresentationOverlay,
 			},
 			Children: PoolConfig{}.Metadata(),
 		},

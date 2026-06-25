@@ -24,4 +24,13 @@ workers:
   - name: "background"
     concurrency: 1
     queue: "low"
+port-attrs:
+  "3000":
+    label: "frontend"
+    on-auto-forward: openBrowser
+    protocol: http
+  "8080":
+    label: "api"
+    on-auto-forward: notify
+    protocol: http
 unknown-key: "flagged by ctrl+l validate"

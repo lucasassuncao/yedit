@@ -7,8 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucasassuncao/yedit/alert"
 	"github.com/lucasassuncao/yedit/document"
-	"github.com/lucasassuncao/yedit/internal/alert"
 	"github.com/lucasassuncao/yedit/schema"
 )
 

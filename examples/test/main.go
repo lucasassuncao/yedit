@@ -334,6 +334,7 @@ func appTheme(name string) theme.Theme {
 var testPresets = presets.Combine(
 	presets.ForField("server", serverPresetsMap()),
 	presets.ForField("logging", loggingPresetsMap()),
+	presets.ForField("pool", poolPresetsMap()),
 )
 
 func serverPresetsMap() map[string]ServerConfig {
@@ -347,6 +348,14 @@ func loggingPresetsMap() map[string]LoggingConfig {
 	return map[string]LoggingConfig{
 		"development": {Level: "debug", ShowCaller: true},
 		"production":  {Level: "warn", File: "/var/log/app.log"},
+	}
+}
+
+func poolPresetsMap() map[string]PoolConfig {
+	return map[string]PoolConfig{
+		"small":  {MinSize: 2, MaxSize: 5, Timeout: 10},
+		"medium": {MinSize: 5, MaxSize: 20, Timeout: 30},
+		"large":  {MinSize: 10, MaxSize: 100, Timeout: 60},
 	}
 }
 

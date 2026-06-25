@@ -35,7 +35,7 @@ func benchmarkBuildSeqNodes(b *testing.B, n int) {
 	defs := catDefs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = buildSeqNodesFromNode(defs, node)
+		_ = buildCollectionNodesFromNode(defs, node, false)
 	}
 }
 

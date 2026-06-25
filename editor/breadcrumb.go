@@ -36,7 +36,13 @@ func (m model) blockBreadcrumbPrefix() []string {
 	var segs []string
 	for _, be := range m.blockEdits[:n-1] {
 		segs = append(segs, be.key)
-		segs = append(segs, be.tree.BreadcrumbSegments()...)
+		// BreadcrumbSegments returns the path to the field the user drilled into.
+		// Its last element equals the child editor's be.key and would duplicate it,
+		// so only the leading segments (e.g. "[0]" for collection entries) are kept.
+		sub := be.tree.BreadcrumbSegments()
+		if len(sub) > 1 {
+			segs = append(segs, sub[:len(sub)-1]...)
+		}
 	}
 	return segs
 }

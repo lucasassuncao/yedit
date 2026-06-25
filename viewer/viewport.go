@@ -3,7 +3,7 @@ package viewer
 import (
 	"github.com/charmbracelet/glamour"
 
-	"github.com/lucasassuncao/yedit/internal/render"
+	"github.com/lucasassuncao/yedit/render"
 )
 
 // renderYAML wraps yaml in a markdown code fence and runs it through the

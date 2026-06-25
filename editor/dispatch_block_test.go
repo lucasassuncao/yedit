@@ -111,6 +111,36 @@ func TestReplayBlock(t *testing.T) {
 	must.Equal(string(finalYAML), string(replayedYAML), "replay produced different node")
 }
 
+func TestReplayBlock_withSyncYAML(t *testing.T) {
+	must := require.New(t)
+	be := newBlockEdit(Config{}, structSpec(), 120, 40)
+	initial := be
+
+	newContent := be.yamlEditor.Value() + "# comment\n"
+	be = be.dispatch(SyncYAML{Content: newContent, Checkpoint: false})
+	be = be.dispatch(SyncYAML{Content: newContent + "# second\n", Checkpoint: false})
+	final := be
+
+	replayed := replayBlock(initial, final.actionLog)
+
+	finalYAML, _ := yaml.Marshal(final.node)
+	replayedYAML, _ := yaml.Marshal(replayed.node)
+	must.Equal(string(finalYAML), string(replayedYAML), "replayBlock with SyncYAML produced different node")
+	must.Len(final.actionLog, 2, "both SyncYAML dispatches must appear in actionLog")
+}
+
+func TestSyncYAML_checkpointSavesUndo(t *testing.T) {
+	must := require.New(t)
+	be := newBlockEdit(Config{}, structSpec(), 120, 40)
+
+	be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value() + "# paste\n", Checkpoint: true})
+	must.Len(be.undoStack, 1, "Checkpoint:true must push to undoStack")
+
+	be2 := newBlockEdit(Config{}, structSpec(), 120, 40)
+	be2 = be2.dispatch(SyncYAML{Content: be2.yamlEditor.Value() + "# keystroke\n", Checkpoint: false})
+	must.Empty(be2.undoStack, "Checkpoint:false must not push to undoStack")
+}
+
 func TestDispatchNoEmptySequenceItem(t *testing.T) {
 	must := require.New(t)
 	spec := seqSpec("categories:\n  - name: existing\n")

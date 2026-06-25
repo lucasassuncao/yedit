@@ -7,6 +7,7 @@ import (
 
 	"github.com/lucasassuncao/yedit/document"
 	"github.com/lucasassuncao/yedit/presets"
+	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
 )
 
@@ -49,6 +50,12 @@ type FieldMeta struct {
 	// NotOneOf is a case-sensitive denylist. Enforced by NotOneOfFromMetadata.
 	// Skipped when empty or when the field value is empty.
 	NotOneOf []string
+	// Presentation overrides how the field's children are shown in the tree panel.
+	// PresentationOverlay: field opens in a dedicated overlay editor (drill-in).
+	// PresentationInline: children are expanded inline in the tree.
+	// PresentationFlat: field is shown as a leaf with no children.
+	// Zero value (PresentationDefault) derives behavior from Kind.
+	Presentation schema.Presentation
 	// Multiline is display-only: sets Type to "multiline string" when Type is
 	// empty, and auto-generates a block-scalar example when Example is empty.
 	// Does not change editor behavior.

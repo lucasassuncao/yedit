@@ -2,7 +2,7 @@ package editor
 
 import (
 	"fmt"
-	"github.com/lucasassuncao/yedit/internal/yamlnode"
+	"github.com/lucasassuncao/yedit/yamlnode"
 
 	"gopkg.in/yaml.v3"
 
@@ -153,41 +153,23 @@ func removeEntry(node *yaml.Node, isMap bool, i int) {
 	}
 }
 
-// buildSeqNodesFromNode builds the tree nodes for a sequence collection from its
+// buildCollectionNodesFromNode builds the tree nodes for a collection from its
 // value node: one seqItem per element (collapsed) with its child field nodes,
 // checked states derived structurally, then the "+ add new" row.
-func buildSeqNodesFromNode(childDefs []schema.FieldDef, seqNode *yaml.Node) []treeNode {
+func buildCollectionNodesFromNode(childDefs []schema.FieldDef, node *yaml.Node, isMap bool) []treeNode {
 	var nodes []treeNode
-	n := entryCount(seqNode, false)
-	if n == 0 {
+	n := entryCount(node, isMap)
+	if !isMap && n == 0 {
 		nodes = append(nodes, treeNode{kind: treeNodeSeparator, label: "(empty list)", depth: 0, isLeaf: true})
 	}
 	for i := 0; i < n; i++ {
-		label := entryLabel(seqNode, false, i)
+		label := entryLabel(node, isMap, i)
 		nodes = append(nodes, treeNode{
 			kind: treeNodeSeqItem, yamlPath: []string{label}, label: label,
 			depth: 0, isLeaf: false, checked: true, seqIdx: i,
 		})
 		children := flattenDefsAsTree(childDefs, []string{label}, 1)
-		children = deriveChecked(entryValueNode(seqNode, false, i), children, true)
-		nodes = append(nodes, children...)
-	}
-	nodes = append(nodes, treeNode{kind: treeNodeAddNew, label: "+ add new", depth: 0, isLeaf: true})
-	return nodes
-}
-
-// buildMapNodesFromNode is the map-collection analogue of buildSeqNodesFromNode.
-func buildMapNodesFromNode(childDefs []schema.FieldDef, mapNode *yaml.Node) []treeNode {
-	var nodes []treeNode
-	n := entryCount(mapNode, true)
-	for i := 0; i < n; i++ {
-		label := entryLabel(mapNode, true, i)
-		nodes = append(nodes, treeNode{
-			kind: treeNodeSeqItem, yamlPath: []string{label}, label: label,
-			depth: 0, isLeaf: false, checked: true, seqIdx: i,
-		})
-		children := flattenDefsAsTree(childDefs, []string{label}, 1)
-		children = deriveChecked(entryValueNode(mapNode, true, i), children, true)
+		children = deriveChecked(entryValueNode(node, isMap, i), children, true)
 		nodes = append(nodes, children...)
 	}
 	nodes = append(nodes, treeNode{kind: treeNodeAddNew, label: "+ add new", depth: 0, isLeaf: true})

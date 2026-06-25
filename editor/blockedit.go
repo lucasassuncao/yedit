@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"gopkg.in/yaml.v3"
 
-	"github.com/lucasassuncao/yedit/internal/alert"
+	"github.com/lucasassuncao/yedit/alert"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
 )
@@ -159,19 +159,9 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 		be.tree.nodes = be.collectionTreeNodes()
 	}
 
-	// If presets are available and this is a new block, try the "base" preset.
 	content := spec.content
-	trivial := spec.key + ":\n"
-	if (content == "" || content == trivial) && !structured {
-		if cfg.BlockPresets != nil {
-			if y, err := cfg.BlockPresets.PresetYAML(spec.key, "base"); err == nil {
-				content = y
-				be.currentPreset = "base"
-			}
-		}
-		if content == "" {
-			content = trivial
-		}
+	if content == "" {
+		content = spec.key + ":\n"
 	}
 
 	be.yamlEditor = be.newYAMLEditor(content)
@@ -350,7 +340,7 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 			if err != nil {
 				be.editorErr = editorError{kind: errPreset, message: fmt.Sprintf("preset error: %v", err)}
 			} else {
-				be = be.appendPreset(name, y)
+				be = be.dispatch(AppendPreset{Name: name, Content: y})
 			}
 		}
 	case presetNone:
@@ -369,7 +359,7 @@ func (be blockEditState) updateEditing(msg tea.Msg) (blockEditState, tea.Cmd) {
 			var cmd tea.Cmd
 			be.yamlEditor, cmd = be.yamlEditor.Update(msg)
 			if be.yamlEditor.Value() != prev {
-				be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value()})
+				be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value(), Checkpoint: true})
 			}
 			return be, cmd
 		}
@@ -480,9 +470,7 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	// and other non-mutating keys leave the tree unchanged, so there is nothing to
 	// resync - and no reason to re-parse the buffer.
 	if be.yamlEditor.Value() != prevValue {
-		be.dirty = true
-		be.statusMsg = ""
-		be = be.syncParsedNode(be.yamlEditor.Value())
+		be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value(), Checkpoint: false})
 	}
 	return be, cmd
 }
@@ -490,23 +478,25 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 // syncParsedNode is the parse gate called after every YAML editor keystroke. It
 // advances the canonical node (and thus the tree) only when content parses
 // successfully; an invalid buffer leaves the last good state in place.
-func (be blockEditState) syncParsedNode(content string) blockEditState {
+// Returns false when the content did not parse and no state was changed.
+func (be blockEditState) syncParsedNode(content string) (blockEditState, bool) {
 	if be.isCollectionNav() {
 		kn, vn, ok := parseEntryFromView(content, be.coll.isMap)
 		if !ok {
-			return be
+			return be, false
 		}
 		if cur := be.coll.current; cur >= 0 && cur < entryCount(&be.node, be.coll.isMap) {
 			setEntry(&be.node, be.coll.isMap, cur, kn, vn)
 		}
 		be.tree = be.collectionDeriveTree()
-		return be
+		return be, true
 	}
 	if v := valueNodeOfSnippet(content); v != nil {
 		be.node = *v
 		be.tree = be.resyncTreeFromYAML()
+		return be, true
 	}
-	return be
+	return be, false
 }
 
 // resyncTreeFromYAML re-derives the tree's checked states from the canonical

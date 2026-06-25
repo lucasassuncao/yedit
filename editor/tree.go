@@ -69,14 +69,14 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 			break
 		}
 		tm.isSeq = true
-		tm.nodes = buildSeqNodesFromNode(spec.defs, collValueNode(spec.content, false))
+		tm.nodes = buildCollectionNodesFromNode(spec.defs, collValueNode(spec.content, false), false)
 
 	case schema.KindDictionary:
 		if len(spec.defs) == 0 {
 			break // free-form map (e.g. map[string]string) - no tree; raw YAML
 		}
 		tm.isSeq = true // collection navigator, keyed by the map key
-		tm.nodes = buildMapNodesFromNode(spec.defs, collValueNode(spec.content, true))
+		tm.nodes = buildCollectionNodesFromNode(spec.defs, collValueNode(spec.content, true), true)
 
 	case schema.KindObject:
 		tm.nodes = flattenDefsAsTree(spec.defs, nil, 0)
@@ -109,10 +109,27 @@ func flattenDefsAsTree(defs []schema.FieldDef, prefix []string, depth int) []tre
 		copy(path, prefix)
 		path[len(prefix)] = d.YAMLName
 
-		isLeaf := d.Kind != schema.KindObject || len(d.Children) == 0
-		// A map[string]Struct or []Struct field has no inline children, but can be
-		// opened in a dedicated editor: pressing Enter/→ drills into the collection.
-		openable := (d.Kind == schema.KindDictionary || d.Kind == schema.KindList) && len(d.Children) > 0
+		var openable, isLeaf bool
+		switch d.Presentation {
+		case schema.PresentationOverlay:
+			openable = true
+			isLeaf = true
+		case schema.PresentationInline:
+			openable = false
+			isLeaf = false
+		case schema.PresentationFlat:
+			openable = false
+			isLeaf = true
+		default: // PresentationDefault: derive from Kind
+			openable = (d.Kind == schema.KindDictionary || d.Kind == schema.KindList) && len(d.Children) > 0
+			isLeaf = d.Kind != schema.KindObject || len(d.Children) == 0
+		}
+		// KindPrimitive is always flat regardless of Presentation.
+		if d.Kind == schema.KindPrimitive {
+			openable = false
+			isLeaf = true
+		}
+
 		out = append(out, treeNode{
 			kind:     treeNodeField,
 			yamlPath: path,
@@ -123,10 +140,8 @@ func flattenDefsAsTree(defs []schema.FieldDef, prefix []string, depth int) []tre
 			expanded: false,
 			def:      d,
 		})
-		// Only inline struct parents (KindObject) get expandable children in the
-		// tree. Openable collections (list/map of struct) drill into a dedicated
-		// editor instead, so they carry no inline children.
-		if d.Kind == schema.KindObject && len(d.Children) > 0 {
+		// Only inline struct parents (Inline presentation) get expandable children.
+		if !openable && !isLeaf {
 			out = append(out, flattenDefsAsTree(d.Children, path, depth+1)...)
 		}
 	}
@@ -267,7 +282,11 @@ func (tm treeModel) WithNewSeqItem(defs []schema.FieldDef, label string) treeMod
 		insertAt = 0
 	}
 	nodes := make([]treeNode, 0, len(tm.nodes)+1+len(children))
-	nodes = append(nodes, tm.nodes[:insertAt]...)
+	for _, n := range tm.nodes[:insertAt] {
+		if n.kind != treeNodeSeparator {
+			nodes = append(nodes, n)
+		}
+	}
 	nodes = append(nodes, seqNode)
 	nodes = append(nodes, children...)
 	nodes = append(nodes, tm.nodes[insertAt:]...)
