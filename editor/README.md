@@ -52,7 +52,9 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
   - [func NewValidationInput\(raw \[\]byte, blocks \[\]document.Block\) ValidationInput](<#NewValidationInput>)
 - [type Validator](<#Validator>)
   - [func AllOrNone\(keys ...string\) Validator](<#AllOrNone>)
+  - [func AllOrNoneNested\(scopedPath string, keys ...string\) Validator](<#AllOrNoneNested>)
   - [func AtLeastOneOf\(keys ...string\) Validator](<#AtLeastOneOf>)
+  - [func AtLeastOneOfNested\(scopedPath string, keys ...string\) Validator](<#AtLeastOneOfNested>)
   - [func CountFromMetadata\(\) Validator](<#CountFromMetadata>)
   - [func CountRange\(path string, minCount, maxCount int\) Validator](<#CountRange>)
   - [func CrossFieldOrdered\(smallerPath, largerPath string\) Validator](<#CrossFieldOrdered>)
@@ -60,6 +62,8 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
   - [func Deprecated\(path, message string\) Validator](<#Deprecated>)
   - [func DeprecatedFromMetadata\(\) Validator](<#DeprecatedFromMetadata>)
   - [func ExactlyOneOf\(keys ...string\) Validator](<#ExactlyOneOf>)
+  - [func ExactlyOneOfNested\(scopedPath string, keys ...string\) Validator](<#ExactlyOneOfNested>)
+  - [func ForbiddenIf\(key, condPath, condValue string\) Validator](<#ForbiddenIf>)
   - [func FormatFromMetadata\(\) Validator](<#FormatFromMetadata>)
   - [func LengthFromMetadata\(\) Validator](<#LengthFromMetadata>)
   - [func MutuallyExclusive\(keys ...string\) Validator](<#MutuallyExclusive>)
@@ -76,10 +80,13 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
   - [func RequiredWith\(key, parent string\) Validator](<#RequiredWith>)
   - [func UniqueFromMetadata\(\) Validator](<#UniqueFromMetadata>)
   - [func UniqueValues\(seqPath string\) Validator](<#UniqueValues>)
+  - [func ValueHasLength\(path string, min, max int\) Validator](<#ValueHasLength>)
   - [func ValueHasPrefix\(path, prefix string\) Validator](<#ValueHasPrefix>)
   - [func ValueHasSuffix\(path, suffix string\) Validator](<#ValueHasSuffix>)
   - [func ValueInRange\(path, minVal, maxVal string\) Validator](<#ValueInRange>)
   - [func ValueMatches\(path, pattern string\) Validator](<#ValueMatches>)
+  - [func ValueMatchesFormat\(path string, formats ...Format\) Validator](<#ValueMatchesFormat>)
+  - [func ValueNotOneOf\(path string, denied ...string\) Validator](<#ValueNotOneOf>)
   - [func ValueOneOf\(path string, allowed ...string\) Validator](<#ValueOneOf>)
 - [type ValidatorFunc](<#ValidatorFunc>)
   - [func \(f ValidatorFunc\) Validate\(in ValidationInput\) \[\]Violation](<#ValidatorFunc.Validate>)
@@ -740,6 +747,19 @@ editor.AllOrNone("server.tls-cert", "server.tls-key")
 
 Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
 
+<a name="AllOrNoneNested"></a>
+### func [AllOrNoneNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1346>)
+
+```go
+func AllOrNoneNested(scopedPath string, keys ...string) Validator
+```
+
+AllOrNoneNested walks the YAML tree and fires at every mapping whose direct parent key is the last segment of scopedPath, checking that either all or none of keys are present \- the nested counterpart of AllOrNone.
+
+```
+editor.AllOrNoneNested("servers.tls", "cert", "key")
+```
+
 <a name="AtLeastOneOf"></a>
 ### func [AtLeastOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L513>)
 
@@ -757,6 +777,19 @@ editor.AtLeastOneOf("auth.token", "auth.password")
 ```
 
 Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
+
+<a name="AtLeastOneOfNested"></a>
+### func [AtLeastOneOfNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1286>)
+
+```go
+func AtLeastOneOfNested(scopedPath string, keys ...string) Validator
+```
+
+AtLeastOneOfNested walks the YAML tree and fires at every mapping whose direct parent key is the last segment of scopedPath, checking that at least one of keys is present \- the nested counterpart of AtLeastOneOf.
+
+```
+editor.AtLeastOneOfNested("categories.source.auth", "token", "password")
+```
 
 <a name="CountFromMetadata"></a>
 ### func [CountFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_metadata.go#L232>)
@@ -847,6 +880,37 @@ editor.ExactlyOneOf("source.git", "source.local")
 ```
 
 Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
+
+<a name="ExactlyOneOfNested"></a>
+### func [ExactlyOneOfNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1316>)
+
+```go
+func ExactlyOneOfNested(scopedPath string, keys ...string) Validator
+```
+
+ExactlyOneOfNested walks the YAML tree and fires at every mapping whose direct parent key is the last segment of scopedPath, checking that exactly one of keys is present \- the nested counterpart of ExactlyOneOf.
+
+```
+editor.ExactlyOneOfNested("categories.source", "git", "local")
+```
+
+<a name="ForbiddenIf"></a>
+### func [ForbiddenIf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1241>)
+
+```go
+func ForbiddenIf(key, condPath, condValue string) Validator
+```
+
+ForbiddenIf reports a violation when key is present and condPath equals condValue \- the inverse of RequiredIf.
+
+When key and condPath share the same parent prefix, the rule is evaluated inside every mapping reached by that parent \- sequences and dict\-style mappings are expanded automatically, so each entry is checked against its own condition value:
+
+```
+// read-only mode must not carry a write-token field
+editor.ForbiddenIf("server.write-token", "server.mode", "readonly")
+```
+
+Paths with unrelated parents are both resolved from the document root.
 
 <a name="FormatFromMetadata"></a>
 ### func [FormatFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_metadata.go#L281>)
@@ -1079,6 +1143,20 @@ UniqueValues reports a violation when two or more scalar items in the sequence a
 editor.UniqueValues("tags")
 ```
 
+<a name="ValueHasLength"></a>
+### func [ValueHasLength](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1167>)
+
+```go
+func ValueHasLength(path string, min, max int) Validator
+```
+
+ValueHasLength reports a violation when the scalar at path is present but its Unicode code point count falls outside \[min, max\]. A zero bound means no rule for that side. An absent or empty value reports nothing \- combine with Required when the field is mandatory. Sequences and dict\-style mappings along the path are expanded automatically.
+
+```
+editor.ValueHasLength("name", 3, 64)
+editor.ValueHasLength("description", 0, 500) // max only
+```
+
 <a name="ValueHasPrefix"></a>
 ### func [ValueHasPrefix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L874>)
 
@@ -1130,6 +1208,32 @@ ValueMatches reports a violation when the scalar at path is present but does not
 
 ```
 editor.ValueMatches("version", `^\d+\.\d+\.\d+$`)
+```
+
+<a name="ValueMatchesFormat"></a>
+### func [ValueMatchesFormat](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1198>)
+
+```go
+func ValueMatchesFormat(path string, formats ...Format) Validator
+```
+
+ValueMatchesFormat reports a violation when the scalar at path is present but does not match any of the given formats \(OR semantics: valid if any one matches\). An absent or empty value reports nothing. Sequences and dict\-style mappings along the path are expanded automatically.
+
+```
+editor.ValueMatchesFormat("endpoint", editor.FormatURL, editor.FormatHost)
+```
+
+<a name="ValueNotOneOf"></a>
+### func [ValueNotOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L1134>)
+
+```go
+func ValueNotOneOf(path string, denied ...string) Validator
+```
+
+ValueNotOneOf reports a violation when the scalar at path is present and its value is in the denied list. Case\-sensitive. An absent or empty value reports nothing \- the inverse of ValueOneOf.
+
+```
+editor.ValueNotOneOf("protocol", "ftp", "telnet")
 ```
 
 <a name="ValueOneOf"></a>

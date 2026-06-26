@@ -1126,6 +1126,248 @@ func (v *deprecatedValidator) Validate(in ValidationInput) []Violation {
 	return errs
 }
 
+// ValueNotOneOf reports a violation when the scalar at path is present and its
+// value is in the denied list. Case-sensitive. An absent or empty value reports
+// nothing - the inverse of ValueOneOf.
+//
+//	editor.ValueNotOneOf("protocol", "ftp", "telnet")
+func ValueNotOneOf(path string, denied ...string) Validator {
+	return &valueNotOneOfValidator{path: path, denied: denied}
+}
+
+type valueNotOneOfValidator struct {
+	path   string
+	denied []string
+}
+
+func (v *valueNotOneOfValidator) Validate(in ValidationInput) []Violation {
+	var errs []Violation
+	forEachScalar(in.Root, v.path, &errs, func(value, where string) {
+		for _, d := range v.denied {
+			if value == d {
+				errs = append(errs, Violation{
+					Path:    where,
+					Message: fmt.Sprintf("value %q is not allowed", value),
+				})
+				return
+			}
+		}
+	})
+	return errs
+}
+
+// ValueHasLength reports a violation when the scalar at path is present but its
+// Unicode code point count falls outside [min, max]. A zero bound means no rule
+// for that side. An absent or empty value reports nothing - combine with Required
+// when the field is mandatory. Sequences and dict-style mappings along the path
+// are expanded automatically.
+//
+//	editor.ValueHasLength("name", 3, 64)
+//	editor.ValueHasLength("description", 0, 500) // max only
+func ValueHasLength(path string, min, max int) Validator {
+	return &valueHasLengthValidator{path: path, min: min, max: max}
+}
+
+type valueHasLengthValidator struct {
+	path     string
+	min, max int
+}
+
+func (v *valueHasLengthValidator) Validate(in ValidationInput) []Violation {
+	var errs []Violation
+	forEachScalar(in.Root, v.path, &errs, func(value, where string) {
+		n := len([]rune(value))
+		switch {
+		case v.min > 0 && v.max > 0 && (n < v.min || n > v.max):
+			errs = append(errs, Violation{Path: where, Message: fmt.Sprintf("must be between %d and %d chars", v.min, v.max)})
+		case v.min > 0 && n < v.min:
+			errs = append(errs, Violation{Path: where, Message: fmt.Sprintf("must be at least %d chars", v.min)})
+		case v.max > 0 && n > v.max:
+			errs = append(errs, Violation{Path: where, Message: fmt.Sprintf("must be at most %d chars", v.max)})
+		}
+	})
+	return errs
+}
+
+// ValueMatchesFormat reports a violation when the scalar at path is present but
+// does not match any of the given formats (OR semantics: valid if any one
+// matches). An absent or empty value reports nothing. Sequences and dict-style
+// mappings along the path are expanded automatically.
+//
+//	editor.ValueMatchesFormat("endpoint", editor.FormatURL, editor.FormatHost)
+func ValueMatchesFormat(path string, formats ...Format) Validator {
+	return &valueMatchesFormatValidator{path: path, formats: formats}
+}
+
+type valueMatchesFormatValidator struct {
+	path    string
+	formats []Format
+}
+
+func (v *valueMatchesFormatValidator) Validate(in ValidationInput) []Violation {
+	var errs []Violation
+	forEachScalar(in.Root, v.path, &errs, func(value, where string) {
+		for _, f := range v.formats {
+			if !f.IsZero() && f.validate(value) {
+				return
+			}
+		}
+		labels := make([]string, 0, len(v.formats))
+		for _, f := range v.formats {
+			if !f.IsZero() {
+				labels = append(labels, f.Label())
+			}
+		}
+		errs = append(errs, Violation{
+			Path:    where,
+			Message: "value does not match expected format: " + strings.Join(labels, " | "),
+		})
+	})
+	return errs
+}
+
+// ForbiddenIf reports a violation when key is present and condPath equals
+// condValue - the inverse of RequiredIf.
+//
+// When key and condPath share the same parent prefix, the rule is evaluated
+// inside every mapping reached by that parent - sequences and dict-style
+// mappings are expanded automatically, so each entry is checked against its
+// own condition value:
+//
+//	// read-only mode must not carry a write-token field
+//	editor.ForbiddenIf("server.write-token", "server.mode", "readonly")
+//
+// Paths with unrelated parents are both resolved from the document root.
+func ForbiddenIf(key, condPath, condValue string) Validator {
+	return &forbiddenIfValidator{key: key, condPath: condPath, condValue: condValue}
+}
+
+type forbiddenIfValidator struct{ key, condPath, condValue string }
+
+func (v *forbiddenIfValidator) Validate(in ValidationInput) []Violation {
+	root := in.Root
+	if root == nil {
+		return nil
+	}
+	var errs []Violation
+	if parent, leaves, shared := splitSharedParent([]string{v.key, v.condPath}); shared {
+		keyLeaf, condLeaf := leaves[0], leaves[1]
+		forEachParentMapping(root, parent, func(n *yaml.Node, p string) {
+			if yamlnode.ScalarChild(n, condLeaf) != v.condValue {
+				return
+			}
+			if yamlnode.ChildByKey(n, keyLeaf) != nil {
+				errs = append(errs, Violation{
+					Path:    yamlnode.JoinPath(p, keyLeaf),
+					Message: fmt.Sprintf("not allowed when %q is %q", v.condPath, v.condValue),
+				})
+			}
+		})
+		return errs
+	}
+	// Unrelated parents: both paths are resolved from the root.
+	if yamlnode.ScalarAt(root, strings.Split(v.condPath, ".")) != v.condValue {
+		return nil
+	}
+	if yamlnode.NodeAtPath(root, strings.Split(v.key, ".")) != nil {
+		errs = append(errs, Violation{
+			Path:    v.key,
+			Message: fmt.Sprintf("not allowed when %q is %q", v.condPath, v.condValue),
+		})
+	}
+	return errs
+}
+
+// AtLeastOneOfNested walks the YAML tree and fires at every mapping whose
+// direct parent key is the last segment of scopedPath, checking that at least
+// one of keys is present - the nested counterpart of AtLeastOneOf.
+//
+//	editor.AtLeastOneOfNested("categories.source.auth", "token", "password")
+func AtLeastOneOfNested(scopedPath string, keys ...string) Validator {
+	segs := strings.Split(scopedPath, ".")
+	return &atLeastOneOfNestedValidator{
+		navSegs:   segs[:len(segs)-1],
+		parentKey: segs[len(segs)-1],
+		keys:      keys,
+	}
+}
+
+type atLeastOneOfNestedValidator struct {
+	navSegs   []string
+	parentKey string
+	keys      []string
+}
+
+func (v *atLeastOneOfNestedValidator) Validate(in ValidationInput) []Violation {
+	var errs []Violation
+	walkScopedMappings(in.Root, v.navSegs, v.parentKey, func(n *yaml.Node, where string) {
+		errs = append(errs, atLeastOneViolation(v.keys, func(k string) bool {
+			return yamlnode.ChildByKey(n, k) != nil
+		}, where)...)
+	})
+	return errs
+}
+
+// ExactlyOneOfNested walks the YAML tree and fires at every mapping whose
+// direct parent key is the last segment of scopedPath, checking that exactly
+// one of keys is present - the nested counterpart of ExactlyOneOf.
+//
+//	editor.ExactlyOneOfNested("categories.source", "git", "local")
+func ExactlyOneOfNested(scopedPath string, keys ...string) Validator {
+	segs := strings.Split(scopedPath, ".")
+	return &exactlyOneOfNestedValidator{
+		navSegs:   segs[:len(segs)-1],
+		parentKey: segs[len(segs)-1],
+		keys:      keys,
+	}
+}
+
+type exactlyOneOfNestedValidator struct {
+	navSegs   []string
+	parentKey string
+	keys      []string
+}
+
+func (v *exactlyOneOfNestedValidator) Validate(in ValidationInput) []Violation {
+	var errs []Violation
+	walkScopedMappings(in.Root, v.navSegs, v.parentKey, func(n *yaml.Node, where string) {
+		errs = append(errs, exactlyOneViolation(v.keys, func(k string) bool {
+			return yamlnode.ChildByKey(n, k) != nil
+		}, where)...)
+	})
+	return errs
+}
+
+// AllOrNoneNested walks the YAML tree and fires at every mapping whose direct
+// parent key is the last segment of scopedPath, checking that either all or
+// none of keys are present - the nested counterpart of AllOrNone.
+//
+//	editor.AllOrNoneNested("servers.tls", "cert", "key")
+func AllOrNoneNested(scopedPath string, keys ...string) Validator {
+	segs := strings.Split(scopedPath, ".")
+	return &allOrNoneNestedValidator{
+		navSegs:   segs[:len(segs)-1],
+		parentKey: segs[len(segs)-1],
+		keys:      keys,
+	}
+}
+
+type allOrNoneNestedValidator struct {
+	navSegs   []string
+	parentKey string
+	keys      []string
+}
+
+func (v *allOrNoneNestedValidator) Validate(in ValidationInput) []Violation {
+	var errs []Violation
+	walkScopedMappings(in.Root, v.navSegs, v.parentKey, func(n *yaml.Node, where string) {
+		errs = append(errs, allOrNoneViolation(v.keys, func(k string) bool {
+			return yamlnode.ChildByKey(n, k) != nil
+		}, where)...)
+	})
+	return errs
+}
+
 // parseOrderedPair tries to parse a and b as comparable values of the same
 // kind (plain number, time.Duration, or size string). Mixed kinds are not
 // comparable.

@@ -1553,6 +1553,582 @@ func TestDeprecated(t *testing.T) {
 	}
 }
 
+func TestValueNotOneOf(t *testing.T) {
+	v := ValueNotOneOf("server.protocol", "ftp", "telnet")
+
+	tests := []struct {
+		name          string
+		raw           string
+		wantViolation bool
+		wantContains  []string
+	}{
+		{
+			name: "allowed value - ok",
+			raw:  "server:\n  protocol: https\n",
+		},
+		{
+			name:          "denied value - violation",
+			raw:           "server:\n  protocol: ftp\n",
+			wantViolation: true,
+			wantContains:  []string{"server.protocol", `"ftp"`, "not allowed"},
+		},
+		{
+			name:          "second denied value - violation",
+			raw:           "server:\n  protocol: telnet\n",
+			wantViolation: true,
+		},
+		{
+			name: "absent path - ok",
+			raw:  "name: myapp\n",
+		},
+		{
+			name: "empty value - ok",
+			raw:  "server:\n  protocol:\n",
+		},
+		{
+			name:          "non-scalar value - violation (scalar expected)",
+			raw:           "server:\n  protocol:\n    sub: ftp\n",
+			wantViolation: true,
+			wantContains:  []string{"scalar"},
+		},
+		{
+			name:          "sequence expansion - flags denied item",
+			raw:           "server:\n  - protocol: https\n  - protocol: ftp\n",
+			wantViolation: true,
+			wantContains:  []string{"server[1].protocol"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runValidator(t, v, tc.raw, nil)
+			if tc.wantViolation && len(got) == 0 {
+				t.Fatal("expected a violation, got none")
+			}
+			if !tc.wantViolation && len(got) != 0 {
+				t.Errorf("expected no violations, got %v", got)
+			}
+			for _, want := range tc.wantContains {
+				if len(got) > 0 && !strings.Contains(got[0], want) {
+					t.Errorf("violation should contain %q; got %q", want, got[0])
+				}
+			}
+		})
+	}
+}
+
+func TestValueHasLength(t *testing.T) {
+	tests := []struct {
+		name          string
+		validator     Validator
+		raw           string
+		wantViolation bool
+		wantContains  []string
+	}{
+		{
+			name:      "within range - ok",
+			validator: ValueHasLength("name", 3, 10),
+			raw:       "name: hello\n",
+		},
+		{
+			name:          "too short - violation",
+			validator:     ValueHasLength("name", 3, 10),
+			raw:           "name: hi\n",
+			wantViolation: true,
+			wantContains:  []string{"name", "between 3 and 10"},
+		},
+		{
+			name:          "too long - violation",
+			validator:     ValueHasLength("name", 3, 10),
+			raw:           "name: this-is-too-long\n",
+			wantViolation: true,
+			wantContains:  []string{"name", "between 3 and 10"},
+		},
+		{
+			name:      "max only - ok",
+			validator: ValueHasLength("name", 0, 10),
+			raw:       "name: hello\n",
+		},
+		{
+			name:          "max only - violation",
+			validator:     ValueHasLength("name", 0, 5),
+			raw:           "name: too-long\n",
+			wantViolation: true,
+			wantContains:  []string{"at most 5"},
+		},
+		{
+			name:          "min only - violation",
+			validator:     ValueHasLength("name", 5, 0),
+			raw:           "name: hi\n",
+			wantViolation: true,
+			wantContains:  []string{"at least 5"},
+		},
+		{
+			name:      "min only - ok",
+			validator: ValueHasLength("name", 3, 0),
+			raw:       "name: hello world\n",
+		},
+		{
+			name:      "absent path - ok",
+			validator: ValueHasLength("name", 3, 10),
+			raw:       "version: 1\n",
+		},
+		{
+			name:      "empty value - ok",
+			validator: ValueHasLength("name", 3, 10),
+			raw:       "name:\n",
+		},
+		{
+			name:          "non-scalar - violation (scalar expected)",
+			validator:     ValueHasLength("name", 3, 10),
+			raw:           "name:\n  first: a\n",
+			wantViolation: true,
+			wantContains:  []string{"scalar"},
+		},
+		{
+			name:          "unicode code points counted correctly",
+			validator:     ValueHasLength("label", 3, 5),
+			raw:           "label: héllo\n", // 5 code points
+			wantViolation: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runValidator(t, tc.validator, tc.raw, nil)
+			if tc.wantViolation && len(got) == 0 {
+				t.Fatal("expected a violation, got none")
+			}
+			if !tc.wantViolation && len(got) != 0 {
+				t.Errorf("expected no violations, got %v", got)
+			}
+			for _, want := range tc.wantContains {
+				if len(got) > 0 && !strings.Contains(got[0], want) {
+					t.Errorf("violation should contain %q; got %q", want, got[0])
+				}
+			}
+		})
+	}
+}
+
+func TestValueMatchesFormat(t *testing.T) {
+	tests := []struct {
+		name          string
+		validator     Validator
+		raw           string
+		wantViolation bool
+		wantContains  []string
+	}{
+		{
+			name:      "valid URL - ok",
+			validator: ValueMatchesFormat("endpoint", FormatURL),
+			raw:       "endpoint: https://example.com\n",
+		},
+		{
+			name:          "invalid URL - violation",
+			validator:     ValueMatchesFormat("endpoint", FormatURL),
+			raw:           "endpoint: not-a-url\n",
+			wantViolation: true,
+			wantContains:  []string{"endpoint", "url"},
+		},
+		{
+			name:      "OR semantics - second format matches - ok",
+			validator: ValueMatchesFormat("addr", FormatURL, FormatIPv4),
+			raw:       "addr: 192.168.1.1\n",
+		},
+		{
+			name:          "OR semantics - neither matches - violation lists both",
+			validator:     ValueMatchesFormat("addr", FormatURL, FormatIPv4),
+			raw:           "addr: not-valid\n",
+			wantViolation: true,
+			wantContains:  []string{"addr", "url", "ipv4"},
+		},
+		{
+			name:      "absent path - ok",
+			validator: ValueMatchesFormat("endpoint", FormatURL),
+			raw:       "name: myapp\n",
+		},
+		{
+			name:      "empty value - ok",
+			validator: ValueMatchesFormat("endpoint", FormatURL),
+			raw:       "endpoint:\n",
+		},
+		{
+			name:          "non-scalar - violation (scalar expected)",
+			validator:     ValueMatchesFormat("endpoint", FormatURL),
+			raw:           "endpoint:\n  host: example.com\n",
+			wantViolation: true,
+			wantContains:  []string{"scalar"},
+		},
+		{
+			name:          "sequence expansion - flags invalid item",
+			validator:     ValueMatchesFormat("mirrors.url", FormatURL),
+			raw:           "mirrors:\n  - url: https://a.com\n  - url: ftp://bad\n",
+			wantViolation: true,
+			wantContains:  []string{"mirrors[1].url"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runValidator(t, tc.validator, tc.raw, nil)
+			if tc.wantViolation && len(got) == 0 {
+				t.Fatal("expected a violation, got none")
+			}
+			if !tc.wantViolation && len(got) != 0 {
+				t.Errorf("expected no violations, got %v", got)
+			}
+			for _, want := range tc.wantContains {
+				if len(got) > 0 && !strings.Contains(got[0], want) {
+					t.Errorf("violation should contain %q; got %q", want, got[0])
+				}
+			}
+		})
+	}
+}
+
+func TestForbiddenIf(t *testing.T) {
+	tests := []struct {
+		name          string
+		validator     Validator
+		raw           string
+		wantViolation bool
+		wantContains  []string
+	}{
+		{
+			name:      "condition active, key absent - ok",
+			validator: ForbiddenIf("server.write-token", "server.mode", "readonly"),
+			raw:       "server:\n  mode: readonly\n",
+		},
+		{
+			name:          "condition active, key present - violation",
+			validator:     ForbiddenIf("server.write-token", "server.mode", "readonly"),
+			raw:           "server:\n  mode: readonly\n  write-token: secret\n",
+			wantViolation: true,
+			wantContains:  []string{"server.write-token", "not allowed", "readonly"},
+		},
+		{
+			name:      "condition inactive - key present - ok",
+			validator: ForbiddenIf("server.write-token", "server.mode", "readonly"),
+			raw:       "server:\n  mode: readwrite\n  write-token: secret\n",
+		},
+		{
+			name:      "condition path absent - ok",
+			validator: ForbiddenIf("server.write-token", "server.mode", "readonly"),
+			raw:       "name: myapp\n",
+		},
+		{
+			name:      "empty document - ok",
+			validator: ForbiddenIf("server.write-token", "server.mode", "readonly"),
+			raw:       "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runValidator(t, tc.validator, tc.raw, nil)
+			if tc.wantViolation && len(got) == 0 {
+				t.Fatal("expected a violation, got none")
+			}
+			if !tc.wantViolation && len(got) != 0 {
+				t.Errorf("expected no violations, got %v", got)
+			}
+			for _, want := range tc.wantContains {
+				if len(got) > 0 && !strings.Contains(got[0], want) {
+					t.Errorf("violation should contain %q; got %q", want, got[0])
+				}
+			}
+		})
+	}
+}
+
+func TestForbiddenIf_sequenceExpansion(t *testing.T) {
+	v := ForbiddenIf("servers.debug-key", "servers.mode", "readonly")
+	raw := `
+servers:
+  - mode: readwrite
+    debug-key: ok
+  - mode: readonly
+    debug-key: forbidden
+  - mode: readonly
+`
+	got := runValidator(t, v, raw, nil)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 violation (servers[1] only), got %v", got)
+	}
+	if !strings.Contains(got[0], "servers[1]") {
+		t.Errorf("violation should point at servers[1]; got %q", got[0])
+	}
+}
+
+func TestForbiddenIf_unrelatedParents(t *testing.T) {
+	v := ForbiddenIf("debug.token", "mode", "production")
+	tests := []struct {
+		name          string
+		raw           string
+		wantViolation bool
+	}{
+		{
+			name:          "condition active, key present - violation",
+			raw:           "mode: production\ndebug:\n  token: secret\n",
+			wantViolation: true,
+		},
+		{
+			name: "condition active, key absent - ok",
+			raw:  "mode: production\n",
+		},
+		{
+			name: "condition inactive - ok",
+			raw:  "mode: staging\ndebug:\n  token: secret\n",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runValidator(t, v, tc.raw, nil)
+			if tc.wantViolation && len(got) == 0 {
+				t.Fatal("expected a violation, got none")
+			}
+			if !tc.wantViolation && len(got) != 0 {
+				t.Errorf("expected no violations, got %v", got)
+			}
+		})
+	}
+}
+
+func TestAtLeastOneOfNested(t *testing.T) {
+	v := AtLeastOneOfNested("categories.source.auth", "token", "password")
+
+	tests := []struct {
+		name      string
+		raw       string
+		wantCount int
+		wantInErr []string
+	}{
+		{
+			name: "token present - ok",
+			raw: `
+categories:
+  - source:
+      auth:
+        token: abc
+`,
+			wantCount: 0,
+		},
+		{
+			name: "both present - ok",
+			raw: `
+categories:
+  - source:
+      auth:
+        token: abc
+        password: s3cr3t
+`,
+			wantCount: 0,
+		},
+		{
+			name: "none present - violation",
+			raw: `
+categories:
+  - source:
+      auth:
+        user: admin
+`,
+			wantCount: 1,
+			wantInErr: []string{"auth", "at least one of", "token", "password"},
+		},
+		{
+			name: "second entry violates",
+			raw: `
+categories:
+  - source:
+      auth:
+        token: abc
+  - source:
+      auth:
+        user: admin
+`,
+			wantCount: 1,
+			wantInErr: []string{"categories[1]"},
+		},
+		{
+			name:      "auth absent - not checked",
+			raw:       "categories:\n  - source:\n      url: http://x\n",
+			wantCount: 0,
+		},
+		{
+			name:      "empty document - ok",
+			raw:       "",
+			wantCount: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			if len(errs) != tc.wantCount {
+				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
+			}
+			for _, want := range tc.wantInErr {
+				if len(errs) > 0 && !strings.Contains(errs[0].String(), want) {
+					t.Errorf("first error should contain %q; got %q", want, errs[0].String())
+				}
+			}
+		})
+	}
+}
+
+func TestExactlyOneOfNested(t *testing.T) {
+	v := ExactlyOneOfNested("categories.source", "git", "local")
+
+	tests := []struct {
+		name      string
+		raw       string
+		wantCount int
+		wantInErr []string
+	}{
+		{
+			name: "exactly one - ok",
+			raw: `
+categories:
+  - source:
+      git: https://example.com/repo.git
+`,
+			wantCount: 0,
+		},
+		{
+			name: "none present - violation",
+			raw: `
+categories:
+  - source:
+      url: http://x
+`,
+			wantCount: 1,
+			wantInErr: []string{"source", "exactly one of"},
+		},
+		{
+			name: "both present - violation",
+			raw: `
+categories:
+  - source:
+      git: https://example.com/repo.git
+      local: ./vendor
+`,
+			wantCount: 1,
+			wantInErr: []string{"source", "found:", "git", "local"},
+		},
+		{
+			name: "second entry violates",
+			raw: `
+categories:
+  - source:
+      git: https://example.com/repo.git
+  - source:
+      git: https://x.com
+      local: ./y
+`,
+			wantCount: 1,
+			wantInErr: []string{"categories[1]"},
+		},
+		{
+			name:      "source absent - not checked",
+			raw:       "categories:\n  - name: tools\n",
+			wantCount: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			if len(errs) != tc.wantCount {
+				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
+			}
+			for _, want := range tc.wantInErr {
+				if len(errs) > 0 && !strings.Contains(errs[0].String(), want) {
+					t.Errorf("first error should contain %q; got %q", want, errs[0].String())
+				}
+			}
+		})
+	}
+}
+
+func TestAllOrNoneNested(t *testing.T) {
+	v := AllOrNoneNested("servers.tls", "cert", "key")
+
+	tests := []struct {
+		name      string
+		raw       string
+		wantCount int
+		wantInErr []string
+	}{
+		{
+			name: "both present - ok",
+			raw: `
+servers:
+  - tls:
+      cert: /etc/tls/cert.pem
+      key: /etc/tls/key.pem
+`,
+			wantCount: 0,
+		},
+		{
+			name: "none present - ok",
+			raw: `
+servers:
+  - tls:
+      ca: /etc/tls/ca.pem
+`,
+			wantCount: 0,
+		},
+		{
+			name: "only cert - violation",
+			raw: `
+servers:
+  - tls:
+      cert: /etc/tls/cert.pem
+`,
+			wantCount: 1,
+			wantInErr: []string{"tls", "missing", "key"},
+		},
+		{
+			name: "second entry violates",
+			raw: `
+servers:
+  - tls:
+      cert: /etc/tls/cert.pem
+      key: /etc/tls/key.pem
+  - tls:
+      cert: /etc/tls/cert.pem
+`,
+			wantCount: 1,
+			wantInErr: []string{"servers[1]"},
+		},
+		{
+			name:      "tls absent - not checked",
+			raw:       "servers:\n  - host: localhost\n",
+			wantCount: 0,
+		},
+		{
+			name:      "empty document - ok",
+			raw:       "",
+			wantCount: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			if len(errs) != tc.wantCount {
+				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
+			}
+			for _, want := range tc.wantInErr {
+				if len(errs) > 0 && !strings.Contains(errs[0].String(), want) {
+					t.Errorf("first error should contain %q; got %q", want, errs[0].String())
+				}
+			}
+		})
+	}
+}
+
 // TestPathExpansion_acrossValidators verifies that every path-based validator
 // expands sequences and dict-style mappings along the path, like
 // MutuallyExclusive always did - e.g. "categories.installers.source.type" is
