@@ -340,6 +340,7 @@ func (m model) handleConfirmedDocPreset(msg confirmedDocPresetMsg) (tea.Model, t
 	}
 	m.doc = newDoc
 	m = m.syncView()
+	m = m.enterList()
 	return m.withStatus(fmt.Sprintf("Applied preset %q — ctrl+s to save.", msg.Name))
 }
 
