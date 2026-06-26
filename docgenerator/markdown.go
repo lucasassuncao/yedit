@@ -77,7 +77,7 @@ func (g *SchemaGenerator) generateMarkdown(typeName string, fields []schema.Fiel
 // writeExamplesLink emits an "Examples" section linking to the preset example
 // page for title when the generator was configured with WithExamples and an
 // example page exists for it. The lookup is by lowercased title so both the
-// root page (e.g. "ContainerEngine") and split-child pages (e.g. "deployment")
+// root page (e.g. "yedit") and split-child pages (e.g. "categories")
 // resolve to "<title>.md" in the examples directory.
 func (g *SchemaGenerator) writeExamplesLink(sb *strings.Builder, title string) {
 	if g.examplesRelDir == "" {

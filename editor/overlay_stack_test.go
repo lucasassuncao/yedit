@@ -15,10 +15,10 @@ import (
 )
 
 // ceStructSpec is a struct block that contains a nested map-of-struct field
-// (httproutes), mirroring containerengine in the workload schema.
+// (httproutes), mirroring yedit in the workload schema.
 func ceStructSpec() blockSpec {
 	return blockSpec{
-		key: "containerengine",
+		key: "yedit",
 		defs: []schema.FieldDef{
 			{YAMLName: "deployment", Kind: schema.KindObject, Children: []schema.FieldDef{
 				{YAMLName: "replicas", Kind: schema.KindPrimitive},
@@ -29,7 +29,7 @@ func ceStructSpec() blockSpec {
 			}},
 		},
 		kind: schema.KindObject,
-		content: `containerengine:
+		content: `yedit:
   httproutes:
     web:
       host: example.com
@@ -111,13 +111,13 @@ func TestDrillInCommitsThroughCanonicalTree(t *testing.T) {
 		} `yaml:"httproutes,omitempty"`
 	}
 	type rootProbe struct {
-		ContainerEngine *ceProbe `yaml:"containerengine,omitempty"`
+		Yedit *ceProbe `yaml:"yedit,omitempty"`
 	}
 
 	is := assert.New(t)
 	must := require.New(t)
 	path := filepath.Join(t.TempDir(), "w.yaml")
-	must.NoError(os.WriteFile(path, []byte(`containerengine:
+	must.NoError(os.WriteFile(path, []byte(`yedit:
   httproutes:
     web:
       host: example.com
@@ -127,7 +127,7 @@ func TestDrillInCommitsThroughCanonicalTree(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "containerengine", Existing: true}})
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "yedit", Existing: true}})
 	m = updated.(model)
 	must.Len(m.blockEdits, 1, "after open: stack depth should be 1")
 
@@ -157,8 +157,8 @@ func TestDrillInCommitsThroughCanonicalTree(t *testing.T) {
 	// The document must still hold a structurally-intact nested mapping.
 	var check rootProbe
 	must.NoError(yaml.Unmarshal(m.doc.Raw(), &check), "committed doc is not structurally valid")
-	must.NotNil(check.ContainerEngine, "nested content lost")
-	is.Equal("example.com", check.ContainerEngine.HTTPRoutes["web"].Host, "nested content corrupted")
+	must.NotNil(check.Yedit, "nested content lost")
+	is.Equal("example.com", check.Yedit.HTTPRoutes["web"].Host, "nested content corrupted")
 }
 
 // TestDrillOutKeepsEdits verifies that Esc inside a nested editor navigates back
@@ -172,13 +172,13 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 		} `yaml:"httproutes,omitempty"`
 	}
 	type rootProbe struct {
-		ContainerEngine *ceProbe `yaml:"containerengine,omitempty"`
+		Yedit *ceProbe `yaml:"yedit,omitempty"`
 	}
 
 	is := assert.New(t)
 	must := require.New(t)
 	path := filepath.Join(t.TempDir(), "w.yaml")
-	must.NoError(os.WriteFile(path, []byte(`containerengine:
+	must.NoError(os.WriteFile(path, []byte(`yedit:
   httproutes:
     web:
       host: old.com
@@ -187,7 +187,7 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 	must.NoError(err, "newModel")
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "containerengine", Existing: true}})
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "yedit", Existing: true}})
 	m = updated.(model)
 
 	// Drill into httproutes.
@@ -226,8 +226,8 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 	m = updated.(model)
 	var check rootProbe
 	must.NoError(yaml.Unmarshal(m.doc.Raw(), &check), "doc invalid after commit")
-	must.NotNil(check.ContainerEngine, "kept edit not persisted: ContainerEngine nil")
-	is.Equal("new.com", check.ContainerEngine.HTTPRoutes["web"].Host, "kept edit not persisted")
+	must.NotNil(check.Yedit, "kept edit not persisted: yedit nil")
+	is.Equal("new.com", check.Yedit.HTTPRoutes["web"].Host, "kept edit not persisted")
 }
 
 // TestDrillOutFromSeqNavInsideMapNav verifies that ESC works when the stack is:

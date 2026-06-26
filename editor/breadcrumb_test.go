@@ -89,8 +89,8 @@ func TestBlockBreadcrumbPrefix_structChild(t *testing.T) {
 	m := model{blockEdits: []blockEditState{parent, child}}
 	got := m.blockBreadcrumbPrefix()
 
-	if len(got) != 1 || got[0] != "containerengine" {
-		t.Errorf("got prefix %v, want [containerengine]", got)
+	if len(got) != 1 || got[0] != "yedit" {
+		t.Errorf("got prefix %v, want [yedit]", got)
 	}
 }
 
