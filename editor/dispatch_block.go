@@ -25,6 +25,9 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 		ctx := toggleCtx{key: be.key, snippets: be.snippetsFn(), childDefs: be.childDefs}
 		be.applyToggle(ctx, node, act.Checked)
 		be.tree = be.resyncTreeFromYAML()
+		if !be.isCollectionNav() && be.committedYAML != "" && be.yamlEditor.Value() == be.committedYAML {
+			be.dirty = false
+		}
 
 	case SyncYAML:
 		if act.Checkpoint {
@@ -38,6 +41,9 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 		}
 		be = updated
 		be.dirty = true
+		if !be.isCollectionNav() && be.committedYAML != "" && be.yamlEditor.Value() == be.committedYAML {
+			be.dirty = false
+		}
 		be.statusMsg = ""
 
 	case AddEntry:

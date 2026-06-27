@@ -17,7 +17,8 @@ const (
 	treeNodeField     treeNodeKind = iota // a struct field (leaf or expandable struct)
 	treeNodeSeqItem                       // an existing sequence item ([N] label)
 	treeNodeAddNew                        // the virtual "+ add new" row
-	treeNodeSeparator                     // ADDED / AVAILABLE section header (not selectable)
+	treeNodeSeparator                     // ADDED / AVAILABLE / UNKNOWN section header (not selectable)
+	treeNodeUnknown                       // a field that is present in the YAML but not in the schema (not togglable)
 )
 
 // treeNode is one entry in the flat DFS list stored by treeModel.
@@ -54,8 +55,9 @@ type treeModel struct {
 	cursor   int        // position within the visible list
 	offset   int        // scroll offset within the visible list
 	height   int
-	isSeq    bool   // true when the block root is KindSlice
-	emptyMsg string // shown when nodes is empty; defaults to "(no fields)"
+	isSeq    bool              // true when the block root is KindSlice
+	emptyMsg string            // shown when nodes is empty; defaults to "(no fields)"
+	defs     []schema.FieldDef // schema defs for KindObject blocks; used by syncTreeCheckedFromNode to recompute the UNKNOWN section
 }
 
 // newTreeModel builds a treeModel from a blockSpec and a panel height.
@@ -79,9 +81,12 @@ func newTreeModel(spec blockSpec, h int) treeModel {
 		tm.nodes = buildCollectionNodesFromNode(spec.defs, collValueNode(spec.content, true), true)
 
 	case schema.KindObject:
+		tm.defs = spec.defs
 		tm.nodes = flattenDefsAsTree(spec.defs, nil, 0)
-		tm.nodes = deriveChecked(blockValueNode(spec.content), tm.nodes, false)
-		tm.nodes = applySections(tm.nodes)
+		valueNode := blockValueNode(spec.content)
+		tm.nodes = deriveChecked(valueNode, tm.nodes, false)
+		tm.nodes = applySections(tm.nodes, collectUnknownNodes(valueNode, spec.defs))
+		tm.nodes = injectNestedUnknowns(tm.nodes, valueNode, spec.defs)
 		// Start cursor on the first selectable node (skip opening separator).
 		vis := tm.visibleNodes()
 		for tm.cursor < len(vis) && tm.nodes[vis[tm.cursor]].kind == treeNodeSeparator {
@@ -343,6 +348,12 @@ func (tm treeModel) Update(msg tea.KeyMsg) (treeModel, treeAction) {
 
 func (tm treeModel) moveUp() treeModel {
 	vis := tm.visibleNodes()
+	if len(vis) == 0 {
+		return tm
+	}
+	if tm.cursor >= len(vis) {
+		tm.cursor = len(vis) - 1
+	}
 	start := tm.cursor
 	for tm.cursor > 0 {
 		tm.cursor--
@@ -360,6 +371,12 @@ func (tm treeModel) moveUp() treeModel {
 
 func (tm treeModel) moveDown() treeModel {
 	vis := tm.visibleNodes()
+	if len(vis) == 0 {
+		return tm
+	}
+	if tm.cursor >= len(vis) {
+		tm.cursor = len(vis) - 1
+	}
 	start := tm.cursor
 	// Move down, skipping separators, while staying within bounds
 	for tm.cursor+1 < len(vis) {
@@ -480,6 +497,8 @@ func (tm treeModel) handleRemove() (treeModel, treeAction) {
 		if !nd.isLeaf && hasCheckedDescendant(tm.nodes, idx) {
 			return tm, treeToggled
 		}
+	case treeNodeUnknown:
+		return tm, treeToggled
 	}
 	return tm, treeNoAction
 }
@@ -640,6 +659,12 @@ func (tm treeModel) nodeLine(nd treeNode, ni, vi int, th resolvedTheme) string {
 		}
 		return th.existingItem.Render("  " + label)
 
+	case treeNodeUnknown:
+		indent := strings.Repeat("  ", nd.depth)
+		if vi == tm.cursor {
+			return th.unknownItem.Render(indent + "▶⚠ " + nd.label)
+		}
+		return th.unknownItem.Render(indent + "⚠ " + nd.label)
 	default: // treeNodeField
 		return tm.fieldLine(nd, ni, vi, th)
 	}

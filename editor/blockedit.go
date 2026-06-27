@@ -86,8 +86,9 @@ type blockEditState struct {
 	prevActive      blockEditPanel // panel to return to when leaving hint focus
 	hintScroll      int            // scroll offset in hint panel when active == blockEditPanelHint
 
-	isEdit bool // false = add new block, true = edit existing
-	dirty  bool // uncommitted changes since last ctrl+s
+	isEdit        bool   // false = add new block, true = edit existing
+	dirty         bool   // uncommitted changes since last ctrl+s
+	committedYAML string // normalized YAML at last ctrl+s (or open); used to reset dirty when content reverts
 
 	// focus is this editor's address within the model's canonical editRoot tree.
 	// nil for the top-level editor (whole block); deeper editors carry the indexed
@@ -196,6 +197,12 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	if len(spec.defs) == 0 || spec.kind == schema.KindPrimitive || (spec.kind == schema.KindDictionary && !structured) {
 		be.active = blockEditPanelYAML
 		be.yamlEditor.Focus()
+	}
+
+	// Baseline for dirty-tracking: the normalized content after all setup.
+	// Compared after mutations so dirty can be cleared when content reverts.
+	if !structured {
+		be.committedYAML = nodeToContent(be.key, &be.node)
 	}
 
 	return be
@@ -607,6 +614,7 @@ func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 		}
 		be.yamlEditor.SetValue(fresh)
 		be.dirty = false
+		be.committedYAML = nodeToContent(be.key, &be.node)
 		return be
 	}
 	isMap := be.isMapNav()
@@ -628,6 +636,8 @@ func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 
 func (be blockEditState) switchPanel() blockEditState {
 	if be.active == blockEditPanelTree {
+		// Checkpoint before YAML editing so manual changes are undoable with ctrl+u.
+		be = be.saveUndo()
 		be.active = blockEditPanelYAML
 		be.yamlEditor.Focus()
 	} else {

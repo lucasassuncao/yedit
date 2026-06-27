@@ -62,7 +62,7 @@ func deriveChecked(valueNode *yaml.Node, nodes []treeNode, skipFirstSeg bool) []
 
 // syncTreeCheckedFromNode re-derives checked states for all field nodes from
 // valueNode (the block's canonical value mapping), then re-applies ADDED/
-// AVAILABLE sectioning for struct trees, restoring the cursor. It is the
+// AVAILABLE/UNKNOWS sectioning for struct trees, restoring the cursor. It is the
 // node-based replacement for syncTreeCheckedFromYAML.
 func syncTreeCheckedFromNode(tm treeModel, valueNode *yaml.Node) treeModel {
 	var selectedPath []string
@@ -73,10 +73,82 @@ func syncTreeCheckedFromNode(tm treeModel, valueNode *yaml.Node) treeModel {
 	tm.nodes = deriveChecked(valueNode, tm.nodes, false)
 
 	if !tm.isSeq {
-		tm.nodes = applySections(tm.nodes)
+		tm.nodes = applySections(tm.nodes, collectUnknownNodes(valueNode, tm.defs))
+		tm.nodes = injectNestedUnknowns(tm.nodes, valueNode, tm.defs)
 		tm = tm.restoreCursorToPath(selectedPath)
 	}
 	return tm
+}
+
+// injectNestedUnknowns scans the flat node list for inline struct parents
+// (treeNodeField, !isLeaf, !openable) and inserts treeNodeUnknown children
+// after the last known child of each parent when the parent's value mapping
+// contains keys not declared in its schema. applySections strips all
+// treeNodeUnknown nodes before re-calling this, keeping it idempotent.
+func injectNestedUnknowns(nodes []treeNode, valueNode *yaml.Node, defs []schema.FieldDef) []treeNode {
+	if valueNode == nil || valueNode.Kind != yaml.MappingNode || len(defs) == 0 {
+		return nodes
+	}
+	defsByName := make(map[string]schema.FieldDef, len(defs))
+	for _, d := range defs {
+		defsByName[d.YAMLName] = d
+	}
+	result := make([]treeNode, 0, len(nodes))
+	for i := 0; i < len(nodes); i++ {
+		n := nodes[i]
+		result = append(result, n)
+		if n.kind != treeNodeField || n.isLeaf || n.openable || len(n.yamlPath) == 0 {
+			continue
+		}
+		d, ok := defsByName[n.yamlPath[0]]
+		if !ok || len(d.Children) == 0 {
+			continue
+		}
+		childVal := yamlnode.ChildByKey(valueNode, n.yamlPath[0])
+		if childVal == nil {
+			continue
+		}
+		unknowns := collectUnknownNodes(childVal, d.Children)
+		if len(unknowns) == 0 {
+			continue
+		}
+		// Consume all descendants of n (depth > n.depth) before injecting.
+		for i+1 < len(nodes) && nodes[i+1].depth > n.depth {
+			i++
+			result = append(result, nodes[i])
+		}
+		// Inject unknowns inline at n.depth+1 with the full yaml path.
+		for _, u := range unknowns {
+			u.depth = n.depth + 1
+			u.yamlPath = append([]string{n.yamlPath[0]}, u.yamlPath...)
+			result = append(result, u)
+		}
+	}
+	return result
+}
+
+func collectUnknownNodes(valueNode *yaml.Node, defs []schema.FieldDef) []treeNode {
+	if valueNode == nil || valueNode.Kind != yaml.MappingNode {
+		return nil
+	}
+	known := make(map[string]bool, len(defs))
+	for _, d := range defs {
+		known[d.YAMLName] = true
+	}
+	var out []treeNode
+	for i := 0; i+1 < len(valueNode.Content); i += 2 {
+		key := valueNode.Content[i].Value
+		if !known[key] {
+			out = append(out, treeNode{
+				kind:     treeNodeUnknown,
+				yamlPath: []string{key},
+				label:    key,
+				depth:    0,
+				isLeaf:   true,
+			})
+		}
+	}
+	return out
 }
 
 // toggleNodeField adds or removes a single leaf field within valueNode (the

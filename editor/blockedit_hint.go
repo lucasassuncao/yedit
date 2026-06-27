@@ -46,9 +46,16 @@ func (be blockEditState) hintContent() string {
 		return be.theme.hintDim.Render("  select a field to see hints")
 	}
 	node := be.tree.nodes[idx]
-	if node.kind != treeNodeField {
+
+	switch node.kind {
+	case treeNodeUnknown:
+		return be.theme.unknownItem.Render("⚠ unknown key - not declare in the schema\n remove it before saving")
+	case treeNodeField:
+		// handled below
+	default:
 		return be.theme.hintDim.Render("  select a field to see hints")
 	}
+
 	fieldPath := strings.Join(node.yamlPath, ".")
 	if be.isCollectionNav() && len(node.yamlPath) > 0 {
 		fieldPath = strings.Join(node.yamlPath[1:], ".")
