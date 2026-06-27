@@ -501,6 +501,26 @@ violations := editor.RunAll(wired, raw, blocks)
 
 ### Why `Wire` exists — and why `RunAll` requires `WiredValidators`
 
+Think of a `FromMetadata` validator as a **light bulb**: it knows what to do, but it needs to be plugged into a socket before it can do anything. `Wire` is the moment you plug it in — it injects the schema tree and the `MetadataSource` into each `FromMetadata` validator. `RunAll` is then the switch that turns them on.
+
+```go
+// Declared statically — no schema yet, like an unplugged bulb:
+var MyValidators = []editor.Validator{
+    editor.RequiredFromMetadata(), // inert until wired
+    editor.OneOfFromMetadata(),    // inert until wired
+    editor.Required("server"),     // explicit: works without wiring
+}
+
+// Wire plugs them in — injects schema and MetadataSource:
+wired := editor.Wire(MyValidators, editor.Config{
+    Schema:   &MyConfig{},
+    Metadata: hints,
+})
+
+// RunAll flips the switch:
+violations := editor.RunAll(wired, raw, blocks)
+```
+
 `RunAll` accepts `WiredValidators`, not `[]Validator` directly. This is
 intentional: FromMetadata validators (`RequiredFromMetadata`, `OneOfFromMetadata`,
 etc.) hold unexported `defs` and `hints` fields that must be populated before

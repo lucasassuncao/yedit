@@ -120,6 +120,37 @@ if res.Saved {
 
 `editor.Run` blocks until the user exits (Esc or Ctrl+C). It returns `RunResult.Saved = true` when the user wrote changes to disk.
 
+### Schema vs Metadata
+
+`Schema` and `Metadata` are distinct concerns and it is worth understanding the split before wiring them together:
+
+- **Schema** describes **shape**: which fields exist, what Go type they are, how they nest. It is derived automatically from your struct via reflection — you get it for free.
+- **Metadata** describes **meaning**: what a field does, which values it accepts, whether it is required, what a good example looks like. You declare this manually because only you know the semantics.
+
+Concretely: the schema tells the editor that `logging.level` is a string field inside a `logging` object. The metadata tells it that the only valid values are `"debug"`, `"info"`, `"warn"`, and `"error"`, and that the field is required. One you get automatically; the other you write once and both the hint panel and the `FromMetadata` validators use it.
+
+```go
+// Schema — derived automatically from the struct:
+type LoggingConfig struct {
+    Level string `yaml:"level"` // editor knows: string field, lives under "logging"
+    File  string `yaml:"file"`  // editor knows: string field, lives under "logging"
+}
+
+// Metadata — you declare the semantics:
+func (LoggingConfig) Metadata() map[string]*metadata.Node {
+    return map[string]*metadata.Node{
+        "level": {FieldMeta: editor.FieldMeta{
+            Description: "Minimum log severity to emit.",
+            Required:    true,
+            OneOf:       []string{"debug", "info", "warn", "error"},
+        }},
+        "file": {FieldMeta: editor.FieldMeta{
+            Description: "Path to the log file. Empty disables file output.",
+        }},
+    }
+}
+```
+
 ### Key Config fields
 
 | Field | Purpose |
