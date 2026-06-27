@@ -167,9 +167,9 @@ func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
 // re-renders the editor from it. For collections it targets the current entry's
 // value mapping; for struct blocks the block's own mapping. Either way the tree
 // (derived from the same node) stays in agreement.
-func (be *blockEditState) applyToggle(ctx toggleCtx, node treeNode, checked bool) {
+func (be blockEditState) applyToggle(ctx toggleCtx, node treeNode, checked bool) blockEditState {
 	if be.isCollectionNav() {
-		be.toggleEntryField(ctx, node, checked)
+		be = be.toggleEntryField(ctx, node, checked)
 		// Only rebuild the YAML editor from the canonical node when the toggle
 		// succeeded (no parse error). If there IS a parse error the buffer
 		// already contains invalid text; overwriting it with the canonical
@@ -177,22 +177,23 @@ func (be *blockEditState) applyToggle(ctx toggleCtx, node treeNode, checked bool
 		if be.editorErr.kind == errNone {
 			be.yamlEditor.SetValue(entryViewYAML(&be.node, be.key, be.coll.isMap, be.coll.current))
 		}
-		return
+		return be
 	}
 	be.node = *toggleNodeField(&be.node, ctx, node, checked)
 	be.yamlEditor.SetValue(nodeToContent(be.key, &be.node))
+	return be
 }
 
 // toggleEntryField mutates the current collection entry's value mapping. It
 // mirrors applyToggleToEntry but operates on the live node instead of re-parsed
 // text: yamlPath[0] is the entry label (skipped), the field path starts at [1].
-func (be *blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked bool) {
+func (be blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked bool) blockEditState {
 	if len(node.yamlPath) < 2 {
-		return
+		return be
 	}
 	entryNode := entryValueNode(&be.node, be.coll.isMap, be.coll.current)
 	if entryNode == nil {
-		return
+		return be
 	}
 	// Clone before any mutation so a failed applyToggleAt mid-path does not
 	// leave the entry in a partially-modified state (mirrors toggleNodeField).
@@ -202,7 +203,7 @@ func (be *blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked
 	// correctly under the field name (same logic as toggleNodeField for structs).
 	asStruct := node.def.Kind == schema.KindObject && len(fieldPath) == 1
 	if !applyToggleAt(cloned, fieldPath[:len(fieldPath)-1], fieldPath[len(fieldPath)-1], checked, ctx, asStruct) {
-		return
+		return be
 	}
 	pruneEmptyMappings(cloned)
 	reorderNestedMappingKeys(cloned, ctx.childDefs)
@@ -218,6 +219,7 @@ func (be *blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked
 			be.node.Content[idx] = cloned
 		}
 	}
+	return be
 }
 
 // handleTreeAddNew appends a fresh entry to the collection and moves the cursor

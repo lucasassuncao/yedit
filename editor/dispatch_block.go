@@ -23,7 +23,7 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 		be = be.saveUndo()
 		be.dirty = true
 		ctx := toggleCtx{key: be.key, snippets: be.snippetsFn(), childDefs: be.childDefs}
-		be.applyToggle(ctx, node, act.Checked)
+		be = be.applyToggle(ctx, node, act.Checked)
 		be.tree = be.resyncTreeFromYAML()
 		if !be.isCollectionNav() && be.committedYAML != "" && be.yamlEditor.Value() == be.committedYAML {
 			be.dirty = false

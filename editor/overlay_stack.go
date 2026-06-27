@@ -104,7 +104,7 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 // refreshCollectionFromNode updates a collection-nav editor in-place from node,
 // rebuilding the tree when the entry count changes and adjusting the cursor so
 // the previously viewed entry stays in view after removals.
-func (be *blockEditState) refreshCollectionFromNode(node *yaml.Node) {
+func (be blockEditState) refreshCollectionFromNode(node *yaml.Node) blockEditState {
 	isMap := be.isMapNav()
 	oldCount := entryCount(&be.node, isMap)
 	be.node = *yamlnode.CloneNode(node)
@@ -114,6 +114,7 @@ func (be *blockEditState) refreshCollectionFromNode(node *yaml.Node) {
 		be.coll.current = clampCollCursor(be.coll.current, oldCount, newCount)
 	}
 	be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
+	return be
 }
 
 // clampCollCursor adjusts the cursor after a collection's entry count changes.
@@ -149,7 +150,7 @@ func (m model) refreshTopFromRoot(markDirty bool) model {
 	}
 	be := *top
 	if be.isCollectionNav() {
-		be.refreshCollectionFromNode(node)
+		be = be.refreshCollectionFromNode(node)
 	} else {
 		be.node = *yamlnode.CloneNode(node)
 		be.yamlEditor.SetValue(nodeToContent(be.key, &be.node))

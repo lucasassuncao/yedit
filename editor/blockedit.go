@@ -143,7 +143,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	be.help = newHelpModel(be.theme)
 	be.help.Width = w - 1
 	_, be.legendLines = renderLegend(be.help, be.currentKeyMap(), w-1)
-	be.relayout()
+	be = be.relayout()
 
 	be.tree = newTreeModel(spec, be.innerH())
 
@@ -221,11 +221,12 @@ func (be blockEditState) newYAMLEditor(content string) textarea.Model {
 	return ta
 }
 
-func (be *blockEditState) relayout() {
+func (be blockEditState) relayout() blockEditState {
 	be.listW, be.rightW = theme.TwoColumnWidths(be.width)
 	if be.kind == schema.KindObject {
 		be.previewRenderer = newPreviewRenderer(be.rightW - 2)
 	}
+	return be
 }
 
 func (be blockEditState) innerH() int {
@@ -298,7 +299,7 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.height = m.Height
 		be.help.Width = be.width - 1
 		_, be.legendLines = renderLegend(be.help, be.currentKeyMap(), be.width-1)
-		be.relayout()
+		be = be.relayout()
 		be.yamlEditor.SetWidth(be.rightW - 2)
 		be.yamlEditor.SetHeight(be.editorH() - 1)
 		be.tree.height = be.innerH()
