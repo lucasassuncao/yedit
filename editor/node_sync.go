@@ -55,6 +55,10 @@ func deriveChecked(valueNode *yaml.Node, nodes []treeNode, skipFirstSeg bool) []
 			out[i].checked = child != nil && nodeHasContent(child)
 		} else {
 			out[i].checked = child != nil
+			// A present-but-empty leaf (null/""/[]/{}) is scaffolding the user has
+			// not filled in; pruneEmptyContent strips it at save, so flag it here
+			// to render it as a draft rather than a committed field.
+			out[i].emptyValue = child != nil && !nodeHasContent(child)
 		}
 	}
 	return out

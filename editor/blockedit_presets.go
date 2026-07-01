@@ -45,6 +45,16 @@ func newPresetBrowser(source presets.Source, field, current string) (presetBrows
 	return pb, true
 }
 
+// selectedName returns the preset name under the cursor, or "" when the cursor
+// is out of range. The browser only opens with a non-empty names slice and the
+// cursor is clamped in Update, so "" is a defensive fallback, not an expected value.
+func (pb presetBrowser) selectedName() string {
+	if pb.cursor < 0 || pb.cursor >= len(pb.names) {
+		return ""
+	}
+	return pb.names[pb.cursor]
+}
+
 // presetAction is the outcome of a key handled by the preset browser.
 type presetAction int
 
@@ -70,11 +80,11 @@ func (pb presetBrowser) Update(key tea.KeyMsg, allowAppend bool) (presetBrowser,
 		pb.previewFocus = !pb.previewFocus
 	case "enter":
 		if !pb.previewFocus {
-			return pb, presetApplied, pb.names[pb.cursor]
+			return pb, presetApplied, pb.selectedName()
 		}
 	case "a":
 		if !pb.previewFocus && allowAppend {
-			return pb, presetAppended, pb.names[pb.cursor]
+			return pb, presetAppended, pb.selectedName()
 		}
 	case "up":
 		if pb.previewFocus {
@@ -141,7 +151,7 @@ func (pb *presetBrowser) previewView(height int) string {
 // previewYAML returns the raw YAML of the preset under the cursor, or an
 // inline error comment when the source fails to resolve it.
 func (pb *presetBrowser) previewYAML() string {
-	y, err := pb.source.PresetYAML(pb.field, pb.names[pb.cursor])
+	y, err := pb.source.PresetYAML(pb.field, pb.selectedName())
 	if err != nil {
 		return fmt.Sprintf("# error: %v", err)
 	}
@@ -167,6 +177,11 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 	be.dirty = true
 
 	if be.isCollectionNav() {
+		// Non-empty preset YAML that does not parse would be coerced to an empty
+		// collection by collValueNode; tell the user instead of silently clearing.
+		if strings.TrimSpace(y) != "" && valueNodeOfSnippet(y) == nil {
+			be.editorErr = editorError{kind: errPreset, message: "Preset YAML is invalid; block reset to empty."}
+		}
 		be.node = *collValueNode(y, be.isMapNav())
 		be.tree.nodes = be.collectionTreeNodes()
 		be.tree.cursor = 0

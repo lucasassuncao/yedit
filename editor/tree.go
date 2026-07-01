@@ -23,16 +23,17 @@ const (
 
 // treeNode is one entry in the flat DFS list stored by treeModel.
 type treeNode struct {
-	kind     treeNodeKind
-	yamlPath []string // path from block root, e.g. ["source", "filter"]
-	label    string   // display label
-	depth    int
-	isLeaf   bool // scalar/slice/map field - no children to expand
-	openable bool // map-of-struct field - Enter/→ drills into a child editor
-	checked  bool // field is present in the YAML
-	expanded bool
-	seqIdx   int             // for treeNodeSeqItem: index in the sequence
-	def      schema.FieldDef // for treeNodeField: the backing field definition
+	kind       treeNodeKind
+	yamlPath   []string // path from block root, e.g. ["source", "filter"]
+	label      string   // display label
+	depth      int
+	isLeaf     bool // scalar/slice/map field - no children to expand
+	openable   bool // map-of-struct field - Enter/→ drills into a child editor
+	checked    bool // field is present in the YAML
+	emptyValue bool // checked leaf whose value is empty (null/""/[]/{}) - pruned at save
+	expanded   bool
+	seqIdx     int             // for treeNodeSeqItem: index in the sequence
+	def        schema.FieldDef // for treeNodeField: the backing field definition
 }
 
 // treeAction is returned by treeModel.Update to describe what happened.
@@ -399,6 +400,23 @@ func (tm treeModel) clampOffset() treeModel {
 	return tm
 }
 
+// clampCursor forces the cursor back into the visible range. An empty tree
+// leaves the cursor at 0 (harmless: every consumer guards len(vis)==0). Used
+// after state restores (undo/redo) where a snapshot's cursor may no longer be
+// valid against the restored node set.
+func (tm treeModel) clampCursor() treeModel {
+	vis := tm.visibleNodes()
+	switch {
+	case len(vis) == 0:
+		tm.cursor = 0
+	case tm.cursor < 0:
+		tm.cursor = 0
+	case tm.cursor >= len(vis):
+		tm.cursor = len(vis) - 1
+	}
+	return tm
+}
+
 func (tm treeModel) handleRight() (treeModel, treeAction) {
 	idx := tm.currentNodeIdx()
 	if idx < 0 {
@@ -682,6 +700,8 @@ func (tm treeModel) fieldLine(nd treeNode, ni, vi int, th resolvedTheme) string 
 		mark = "▾"
 	case !nd.isLeaf:
 		mark = "▸"
+	case nd.checked && nd.emptyValue:
+		mark = "◌" // present but empty: a draft that is pruned at save unless filled
 	case nd.checked:
 		mark = "●"
 	default:
@@ -697,6 +717,10 @@ func (tm treeModel) fieldLine(nd treeNode, ni, vi int, th resolvedTheme) string 
 		if nd.checked {
 			return th.existingItem.Render("  " + label)
 		}
+		return th.availableItem.Render("  " + label)
+	case nd.checked && nd.emptyValue:
+		// Muted like an available field: it lives under ADDED but will not persist
+		// while empty, so it must not read as a committed value.
 		return th.availableItem.Render("  " + label)
 	case nd.checked:
 		return th.existingItem.Render("  " + label)

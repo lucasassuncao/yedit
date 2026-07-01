@@ -135,7 +135,7 @@ func parseEntryFromView(view string, isMap bool) (keyNode, valNode *yaml.Node, o
 // setEntry splices a parsed key/value back into the collection node at index i.
 func setEntry(node *yaml.Node, isMap bool, i int, keyNode, valNode *yaml.Node) {
 	if isMap {
-		if 2*i+1 < len(node.Content) {
+		if i >= 0 && 2*i+1 < len(node.Content) {
 			node.Content[2*i] = keyNode
 			node.Content[2*i+1] = valNode
 		}
@@ -149,7 +149,7 @@ func setEntry(node *yaml.Node, isMap bool, i int, keyNode, valNode *yaml.Node) {
 // removeEntry splices entry i out of the collection node.
 func removeEntry(node *yaml.Node, isMap bool, i int) {
 	if isMap {
-		if 2*i+1 < len(node.Content) {
+		if i >= 0 && 2*i+1 < len(node.Content) {
 			node.Content = append(node.Content[:2*i], node.Content[2*i+2:]...)
 		}
 		return

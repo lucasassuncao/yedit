@@ -129,6 +129,7 @@ func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 		// unparseable) text the user had typed into the entry at snapshot time.
 		be.yamlEditor.SetValue(snap.yamlValue)
 		be.tree = be.resyncTreeFromYAML()
+		be.tree = be.tree.clampCursor()
 		return be
 	}
 	be.yamlEditor.SetValue(snap.yamlValue)
