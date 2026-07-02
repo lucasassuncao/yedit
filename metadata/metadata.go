@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/schema"
@@ -310,28 +309,18 @@ func fieldTypeByYAML(t reflect.Type, yamlName string) reflect.Type {
 	return nil
 }
 
-var durationType = reflect.TypeOf(time.Duration(0))
-
 // typeLabel converts a Go type to the human-readable label shown in the hint
-// panel ("string", "duration", "[]object", "map[string]int", …).
+// panel ("string", "duration", "[]object", "map[string]int", …). Scalar labels
+// come from schema.ScalarLabel - the shared vocabulary - so the hint panel and
+// the discovered schema can never name the same type differently.
 func typeLabel(t reflect.Type) string {
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
+	if s := schema.ScalarLabel(t); s != "" {
+		return s
+	}
 	switch t.Kind() {
-	case reflect.String:
-		return "string"
-	case reflect.Bool:
-		return "bool"
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		if t == durationType {
-			return "duration"
-		}
-		return "int"
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return "uint"
-	case reflect.Float32, reflect.Float64:
-		return "float"
 	case reflect.Slice, reflect.Array:
 		elem := t.Elem()
 		for elem.Kind() == reflect.Ptr {

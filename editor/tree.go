@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucasassuncao/yedit/schema"
@@ -329,18 +330,18 @@ func (tm treeModel) Update(msg tea.KeyMsg) (treeModel, treeAction) {
 		return tm, treeNoAction
 	}
 
-	switch msg.String() {
-	case "up":
+	switch {
+	case key.Matches(msg, kbUp):
 		return tm.moveUp(), treeNoAction
-	case "down":
+	case key.Matches(msg, kbDown):
 		return tm.moveDown(), treeNoAction
-	case "right":
+	case key.Matches(msg, kbRight):
 		return tm.handleRight()
-	case "left":
+	case key.Matches(msg, kbLeft):
 		return tm.handleLeft(vis)
-	case "enter":
+	case key.Matches(msg, kbEnter):
 		return tm.handleEnter()
-	case "ctrl+d":
+	case key.Matches(msg, kbCtrlDRemove):
 		return tm.handleRemove()
 	}
 

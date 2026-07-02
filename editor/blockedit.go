@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
@@ -324,16 +325,16 @@ func (be blockEditState) updateConfirming(msg tea.Msg) (blockEditState, tea.Cmd)
 		be.confirmAlertVisible = false
 		return be, nil
 	}
-	if key, ok := msg.(tea.KeyMsg); ok {
+	if km, ok := msg.(tea.KeyMsg); ok {
 		// Allow global shortcuts even while the confirm overlay is active so
 		// the user is not surprised that Ctrl+S / Ctrl+L are unavailable.
-		switch key.String() {
-		case "ctrl+s":
+		switch {
+		case key.Matches(km, kbCtrlSSaveCh):
 			return be, func() tea.Msg { return commitRequestedMsg{} }
-		case "ctrl+l":
+		case key.Matches(km, kbCtrlLValid):
 			return be, func() tea.Msg { return validateRequestedMsg{} }
 		}
-		al, cmd := be.confirmAlert.Update(key)
+		al, cmd := be.confirmAlert.Update(km)
 		be.confirmAlert = al
 		return be, cmd
 	}
@@ -341,11 +342,11 @@ func (be blockEditState) updateConfirming(msg tea.Msg) (blockEditState, tea.Cmd)
 }
 
 func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.Cmd) {
-	key, ok := msg.(tea.KeyMsg)
+	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return be, nil
 	}
-	pb, action, name := be.preset.Update(key, be.isCollectionNav())
+	pb, action, name := be.preset.Update(km, be.isCollectionNav())
 	be.preset = pb
 	switch action {
 	case presetApplied:
@@ -393,8 +394,8 @@ func (be blockEditState) updateEditing(msg tea.Msg) (blockEditState, tea.Cmd) {
 
 // handleHintKey handles ctrl+h (toggle hint focus) and navigation when the hint
 // panel is focused. Returns (state, true) when it consumed the key.
-func (be blockEditState) handleHintKey(key tea.KeyMsg) (blockEditState, bool) {
-	if key.String() == "ctrl+h" && be.cfg.EnableHints {
+func (be blockEditState) handleHintKey(msg tea.KeyMsg) (blockEditState, bool) {
+	if key.Matches(msg, kbCtrlHHint) && be.cfg.EnableHints {
 		if be.active == blockEditPanelHint {
 			be.active = be.prevActive
 		} else {
@@ -406,12 +407,12 @@ func (be blockEditState) handleHintKey(key tea.KeyMsg) (blockEditState, bool) {
 	if be.active != blockEditPanelHint {
 		return be, false
 	}
-	switch key.String() {
-	case "up":
+	switch {
+	case key.Matches(msg, kbUp):
 		if be.hintScroll > 0 {
 			be.hintScroll--
 		}
-	case "down":
+	case key.Matches(msg, kbDown):
 		// Scroll bound is the content height, not the panel height - otherwise
 		// the tail of a hint longer than two panel-fulls stays unreachable.
 		lines := strings.Count(strings.TrimSuffix(be.hintContent(), "\n"), "\n") + 1
@@ -422,14 +423,14 @@ func (be blockEditState) handleHintKey(key tea.KeyMsg) (blockEditState, bool) {
 		if be.hintScroll < maxScroll {
 			be.hintScroll++
 		}
-	case "tab", "ctrl+h":
+	case key.Matches(msg, kbTab, kbCtrlHHint):
 		be.active = be.prevActive
 	}
 	return be, true
 }
 
 func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
-	if msg.Type == tea.KeyEsc {
+	if key.Matches(msg, kbEsc) {
 		// Nested editor: Esc navigates up one level, keeping edits (they are
 		// flushed into the canonical tree by the model). Nothing is lost, so no
 		// discard prompt - that only guards leaving the block edit entirely.
@@ -453,23 +454,23 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 
 	// Ctrl+S commits the editor stack into the document. That needs model access,
 	// so the block layer requests it as a message the root Update handles.
-	if msg.String() == "ctrl+s" {
+	if key.Matches(msg, kbCtrlSSaveCh) {
 		return be, func() tea.Msg { return commitRequestedMsg{} }
 	}
 	// Ctrl+L triggers doc-level validation (available in every mode).
-	if msg.String() == "ctrl+l" {
+	if key.Matches(msg, kbCtrlLValid) {
 		return be, func() tea.Msg { return validateRequestedMsg{} }
 	}
 
 	// Ctrl+U / Ctrl+Y: block-level undo/redo. Empty stacks only report status.
-	if msg.String() == "ctrl+u" {
+	if key.Matches(msg, kbCtrlUUndo) {
 		if len(be.undoStack) == 0 {
 			be.statusMsg = "Nothing to undo."
 			return be, nil
 		}
 		return be.dispatch(Undo{}), nil
 	}
-	if msg.String() == "ctrl+y" {
+	if key.Matches(msg, kbCtrlYRedo) {
 		if len(be.redoStack) == 0 {
 			be.statusMsg = "Nothing to redo."
 			return be, nil
@@ -482,12 +483,12 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 		return be2, nil
 	}
 
-	if msg.Type == tea.KeyTab {
+	if key.Matches(msg, kbTab) {
 		return be.switchPanel(), nil
 	}
 
 	if be.active == blockEditPanelTree {
-		if msg.String() == "p" {
+		if key.Matches(msg, kbPreset) {
 			return be.openPresetPicker(), nil
 		}
 		return be.updateTreePanel(msg)

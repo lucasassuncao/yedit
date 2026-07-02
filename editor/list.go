@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucasassuncao/yedit/document"
@@ -245,29 +246,29 @@ func (lm listModel) ItemByKey(key string) listItem {
 
 // Update handles keyboard input for both normal and filter modes.
 func (lm listModel) Update(msg tea.Msg) (listModel, tea.Cmd) {
-	key, ok := msg.(tea.KeyMsg)
+	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return lm, nil
 	}
 	if lm.filtering {
-		return lm.updateFilter(key)
+		return lm.updateFilter(km)
 	}
-	switch key.String() {
-	case "/":
+	switch {
+	case key.Matches(km, kbFilter):
 		lm.filtering = true
 		lm.filter = ""
 		lm.fCursor = 0
 		lm.fOffset = 0
-	case "up":
+	case key.Matches(km, kbUp):
 		lm = lm.moveCursor(-1)
-	case "down":
+	case key.Matches(km, kbDown):
 		lm = lm.moveCursor(1)
-	case "enter":
+	case key.Matches(km, kbEnter):
 		if it := lm.SelectedItem(); it != nil && !it.Unknown {
 			item := *it
 			return lm, func() tea.Msg { return openItemMsg{Item: item} }
 		}
-	case "ctrl+d":
+	case key.Matches(km, kbCtrlDDelete):
 		if it := lm.SelectedItem(); it != nil && it.Existing {
 			k := it.Key
 			return lm, func() tea.Msg { return deleteItemMsg{Key: k} }
@@ -276,14 +277,14 @@ func (lm listModel) Update(msg tea.Msg) (listModel, tea.Cmd) {
 	return lm, nil
 }
 
-func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
-	switch key.String() {
-	case "esc":
+func (lm listModel) updateFilter(km tea.KeyMsg) (listModel, tea.Cmd) {
+	switch {
+	case key.Matches(km, kbEsc):
 		lm.filtering = false
 		lm.filter = ""
 		lm.fCursor = 0
 		lm.fOffset = 0
-	case "enter":
+	case key.Matches(km, kbEnter):
 		items := lm.filteredItems()
 		var selCmd tea.Cmd
 		if lm.fCursor < len(items) {
@@ -305,7 +306,9 @@ func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
 		}
 		lm.filtering = false
 		return lm, selCmd
-	case "backspace", "ctrl+h":
+	// Text-editing keys (character input below, backspace and its ctrl+h
+	// alias here) are not menu actions, so they stay literal by design.
+	case km.String() == "backspace" || km.String() == "ctrl+h":
 		if len(lm.filter) > 0 {
 			// Drop the last rune, not the last byte - a multibyte character
 			// ("ç", "ã") would otherwise leave invalid UTF-8 in the filter.
@@ -316,12 +319,12 @@ func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
 		}
 	// Only the arrow keys navigate while filtering - "j"/"k" must remain
 	// typeable so filters like "unknown" or "worker" can be entered.
-	case "up":
+	case key.Matches(km, kbUp):
 		lm = lm.moveFCursor(-1)
-	case "down":
+	case key.Matches(km, kbDown):
 		lm = lm.moveFCursor(1)
 	default:
-		if r := key.Runes; len(r) == 1 && r[0] >= 32 {
+		if r := km.Runes; len(r) == 1 && r[0] >= 32 {
 			lm.filter += string(r)
 			lm.fCursor = 0
 			lm.fOffset = 0

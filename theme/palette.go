@@ -8,10 +8,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// colorVal returns a lipgloss.Color unless NO_COLOR is set, in which case it
-// returns an empty color (terminal default) so all rendering is monochrome.
-func colorVal(c string) lipgloss.Color {
-	if os.Getenv("NO_COLOR") != "" {
+// NoColor reports whether the NO_COLOR environment variable is set - the
+// single switch for monochrome mode across all yedit rendering.
+func NoColor() bool { return os.Getenv("NO_COLOR") != "" }
+
+// Color converts a color string to a lipgloss.Color, returning an empty color
+// (terminal default) when NoColor is active so rendering stays monochrome.
+func Color(c string) lipgloss.Color {
+	if NoColor() {
 		return lipgloss.Color("")
 	}
 	return lipgloss.Color(c)
@@ -20,13 +24,13 @@ func colorVal(c string) lipgloss.Color {
 // Palette - narrow on purpose. Clients can extend it with their own colours;
 // add to this list only when at least two yedit components need it.
 var (
-	Accent       = colorVal("63")  // blue - active borders, primary highlight
-	AccentBright = colorVal("212") // pink - titles, selection
-	Muted        = colorVal("240") // grey - inactive borders, status hints
-	Dim          = colorVal("245") // light grey - secondary text
-	Success      = colorVal("82")  // green - existing/added items, success alerts
-	Warning      = colorVal("220") // yellow - save-with-warnings alerts
-	Danger       = colorVal("196") // red - error alerts
+	Accent       = Color("63")  // blue - active borders, primary highlight
+	AccentBright = Color("212") // pink - titles, selection
+	Muted        = Color("240") // grey - inactive borders, status hints
+	Dim          = Color("245") // light grey - secondary text
+	Success      = Color("82")  // green - existing/added items, success alerts
+	Warning      = Color("220") // yellow - save-with-warnings alerts
+	Danger       = Color("196") // red - error alerts
 )
 
 // Common item styles. Each TUI is free to compose its own variants on top.

@@ -103,7 +103,7 @@ func buildFieldDef(f reflect.StructField, yamlName, yamlTag string) FieldDef {
 	info := FieldDef{
 		YAMLName: yamlName,
 		Kind:     kindOf(f.Type),
-		Scalar:   scalarLabel(f.Type),
+		Scalar:   ScalarLabel(f.Type),
 	}
 	for _, opt := range strings.Split(yamlTag, ",")[1:] {
 		switch strings.TrimSpace(opt) {
@@ -119,7 +119,7 @@ func buildFieldDef(f reflect.StructField, yamlName, yamlTag string) FieldDef {
 			ft = ft.Elem()
 		}
 		if ft.Kind() == reflect.Map {
-			info.MapKeyScalar = scalarLabel(ft.Key())
+			info.MapKeyScalar = ScalarLabel(ft.Key())
 		}
 	}
 	return info
@@ -199,12 +199,13 @@ func kindOf(t reflect.Type) Kind {
 	}
 }
 
-// scalarLabel returns a human label for a scalar Go type ("string", "int",
+// ScalarLabel returns a human label for a scalar Go type ("string", "int",
 // "bool", "float", "duration", "uint") or "" when t is not a scalar. Named
 // types with their own meaning (time.Duration) take precedence over their
-// underlying kind. It enriches FieldDef.Scalar so the UI can show the concrete
-// type instead of the generic "primitive".
-func scalarLabel(t reflect.Type) string {
+// underlying kind. It is the single vocabulary for scalar type labels: it
+// enriches FieldDef.Scalar and the metadata package builds its hint-panel
+// labels on top of it, so the two can never name the same type differently.
+func ScalarLabel(t reflect.Type) string {
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}

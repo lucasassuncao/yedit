@@ -80,24 +80,33 @@ func RunAll(w WiredValidators, raw []byte, blocks []document.Block) []Violation 
 //
 // cfg.Schema must be non-nil for FromMetadata validators to fire; cfg.Metadata
 // may be nil (FromMetadata validators will report nothing without a source).
+//
+// Callers that already hold the discovered schema tree (like the editor, which
+// needs the same tree for its UI) should use WireWithSchema instead, so both
+// sides are guaranteed to see the same schema.
 func Wire(validators []Validator, cfg Config) WiredValidators {
+	if cfg.Schema == nil {
+		out := make([]Validator, len(validators))
+		copy(out, validators)
+		return WiredValidators{validators: out}
+	}
+	return WireWithSchema(validators, discoverSchema(cfg), cfg.Metadata)
+}
+
+// WireWithSchema is Wire for callers that already discovered the schema tree:
+// it injects tree and metadata into every FromMetadata validator without
+// re-running discovery. The editor uses it with the exact tree that drives the
+// UI, making a divergence between what the screen shows and what the
+// validators check impossible by construction.
+func WireWithSchema(validators []Validator, tree []schema.FieldDef, metadata MetadataSource) WiredValidators {
 	out := make([]Validator, len(validators))
 	copy(out, validators)
-	if cfg.Schema != nil {
-		var tree []schema.FieldDef
-		if cfg.SchemaRecursionDepth > 0 {
-			tree = schema.Discover(cfg.Schema, cfg.SchemaRecursionDepth)
-		} else {
-			tree = schema.Discover(cfg.Schema)
-		}
-		tree = applyHidden(tree, cfg.Hidden)
-		for i, v := range out {
-			if rv, ok := v.(*metadataRuleValidator); ok {
-				wired := *rv
-				wired.defs = tree
-				wired.hints = cfg.Metadata
-				out[i] = &wired
-			}
+	for i, v := range out {
+		if rv, ok := v.(*metadataRuleValidator); ok {
+			wired := *rv
+			wired.defs = tree
+			wired.hints = metadata
+			out[i] = &wired
 		}
 	}
 	return WiredValidators{validators: out}

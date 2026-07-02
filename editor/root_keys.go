@@ -3,15 +3,16 @@ package editor
 import (
 	"fmt"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 func (m model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
-	switch msg.String() {
-	case "ctrl+s":
+	switch {
+	case key.Matches(msg, kbCtrlSSave):
 		mo, cmd := m.dispatch(CommitBlock{})
 		return mo, cmd, true
-	case "ctrl+l":
+	case key.Matches(msg, kbCtrlLValid):
 		mo, cmd := m.validateKeys()
 		return mo, cmd, true
 	}
@@ -24,16 +25,16 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if !m.list.IsFiltering() {
-		switch msg.String() {
-		case "tab":
+		switch {
+		case key.Matches(msg, kbTabPreview):
 			return m.togglePreviewPane()
-		case "ctrl+r":
+		case key.Matches(msg, kbCtrlRReload):
 			return m.reload()
-		case "p":
+		case key.Matches(msg, kbTemplates):
 			if pb, ok := newPresetBrowser(m.cfg.DocPresets, "", ""); ok {
 				return m.enterDocPreset(pb), nil
 			}
-		case "esc":
+		case key.Matches(msg, kbEsc):
 			// ctrl+c is handled for every mode in handleModeUpdate.
 			return m.quitOrConfirm()
 		}
@@ -73,8 +74,7 @@ func (m model) handlePreviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if mo, cmd, handled := m.handleGlobalKey(msg); handled {
 		return mo, cmd
 	}
-	switch msg.String() {
-	case "tab", "esc":
+	if key.Matches(msg, kbTabEscList) {
 		return m.togglePreviewPane()
 	}
 	// The preview is read-only; remaining keys only scroll the viewport.

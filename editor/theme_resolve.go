@@ -1,8 +1,6 @@
 package editor
 
 import (
-	"os"
-
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lucasassuncao/yedit/theme"
@@ -53,14 +51,14 @@ func resolveTheme(t theme.Theme) resolvedTheme {
 }
 
 // buildDerivedStyles creates the internal lipgloss styles from the resolved
-// color palette. Respects NO_COLOR by producing empty colors when set.
+// color palette. Respects NO_COLOR (via theme.Color) by producing empty colors.
 func buildDerivedStyles(c theme.Colors) resolvedTheme {
-	accent := toColor(c.ActiveBorderColor)
-	accentBright := toColor(c.SelectionColor)
-	muted := toColor(c.InactiveBorderColor)
-	dim := toColor(c.AvailableItemColor)
-	success := toColor(c.ExistingItemColor)
-	danger := toColor(c.ErrorColor)
+	accent := theme.Color(c.ActiveBorderColor)
+	accentBright := theme.Color(c.SelectionColor)
+	muted := theme.Color(c.InactiveBorderColor)
+	dim := theme.Color(c.AvailableItemColor)
+	success := theme.Color(c.ExistingItemColor)
+	danger := theme.Color(c.ErrorColor)
 
 	return resolvedTheme{
 		existingItem:  lipgloss.NewStyle().Foreground(success),
@@ -74,13 +72,4 @@ func buildDerivedStyles(c theme.Colors) resolvedTheme {
 		hintDim:       lipgloss.NewStyle().Foreground(muted),
 		errorText:     lipgloss.NewStyle().Foreground(danger),
 	}
-}
-
-// toColor converts a color string to lipgloss.Color, returning an empty color
-// when the NO_COLOR environment variable is set (monochrome mode).
-func toColor(s string) lipgloss.Color {
-	if os.Getenv("NO_COLOR") != "" {
-		return lipgloss.Color("")
-	}
-	return lipgloss.Color(s)
 }

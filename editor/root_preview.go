@@ -1,7 +1,6 @@
 package editor
 
 import (
-	"os"
 	"regexp"
 	"strings"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/charmbracelet/glamour/styles"
 
 	"github.com/lucasassuncao/yedit/render"
+	"github.com/lucasassuncao/yedit/theme"
 )
 
 func (m model) togglePreviewPane() (tea.Model, tea.Cmd) {
@@ -65,7 +65,7 @@ func (m model) scrollPreviewToSelected() model {
 // plain text.
 func newPreviewRenderer(wrap int) *glamour.TermRenderer {
 	cfg := styles.DarkStyleConfig
-	if os.Getenv("NO_COLOR") != "" {
+	if theme.NoColor() {
 		cfg = styles.NoTTYStyleConfig
 	}
 	one, zero := uint(1), uint(0)

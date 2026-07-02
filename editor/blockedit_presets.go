@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
 
@@ -68,25 +69,25 @@ const (
 // Update handles one key press and returns the updated browser. allowAppend
 // enables the "a" append action (collection-nav blocks only). name carries the
 // selected preset for presetApplied/presetAppended.
-func (pb presetBrowser) Update(key tea.KeyMsg, allowAppend bool) (presetBrowser, presetAction, string) {
-	switch key.String() {
-	case "esc":
+func (pb presetBrowser) Update(msg tea.KeyMsg, allowAppend bool) (presetBrowser, presetAction, string) {
+	switch {
+	case key.Matches(msg, kbEsc):
 		if pb.previewFocus {
 			pb.previewFocus = false
 			return pb, presetNone, ""
 		}
 		return pb, presetDismissed, ""
-	case "tab":
+	case key.Matches(msg, kbTab):
 		pb.previewFocus = !pb.previewFocus
-	case "enter":
+	case key.Matches(msg, kbEnter):
 		if !pb.previewFocus {
 			return pb, presetApplied, pb.selectedName()
 		}
-	case "a":
+	case key.Matches(msg, kbAAppend):
 		if !pb.previewFocus && allowAppend {
 			return pb, presetAppended, pb.selectedName()
 		}
-	case "up":
+	case key.Matches(msg, kbUp):
 		if pb.previewFocus {
 			if pb.previewScroll > 0 {
 				pb.previewScroll--
@@ -95,7 +96,7 @@ func (pb presetBrowser) Update(key tea.KeyMsg, allowAppend bool) (presetBrowser,
 			pb.cursor--
 			pb.previewScroll = 0
 		}
-	case "down":
+	case key.Matches(msg, kbDown):
 		if pb.previewFocus {
 			pb.previewScroll++
 		} else if pb.cursor < len(pb.names)-1 {

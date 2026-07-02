@@ -24,11 +24,10 @@ type Document struct {
 	path       string
 	loadPath   string // file the content was loaded from; Reload re-reads this even after SetPath
 	raw        []byte
-	loaded     []byte // raw at last load/save, used to clear dirty on Undo-to-original
+	loaded     []byte // raw at last load/save; Dirty() is computed against it
 	blocks     []Block
 	history    [][]byte
 	future     [][]byte // redo stack; populated by Undo, discarded on new mutations
-	dirty      bool
 	knownOrder []string
 
 	usedCRLF bool // file on disk used CRLF line endings; restored on Save
@@ -86,9 +85,14 @@ func copyBytes(b []byte) []byte {
 func (d Document) Raw() []byte     { return d.raw }
 func (d Document) Blocks() []Block { return d.blocks }
 func (d Document) Path() string    { return d.path }
-func (d Document) Dirty() bool     { return d.dirty }
 func (d Document) CanUndo() bool   { return len(d.history) > 0 }
 func (d Document) CanRedo() bool   { return len(d.future) > 0 }
+
+// Dirty reports whether the content differs from what was last loaded or
+// saved. It is computed rather than stored, so reverting an edit back to the
+// on-disk content reads as clean and no mutation path can forget to keep a
+// flag in sync.
+func (d Document) Dirty() bool { return !bytes.Equal(d.raw, d.loaded) }
 
 // SetPath overrides the path used by Save. Call after Load when the save
 // destination differs from the source (e.g. writing a template to a new file).
@@ -129,9 +133,9 @@ func appendCapped(stack [][]byte, snap []byte) [][]byte {
 }
 
 // Insert adds snippet to the document, positioned by the canonical key order.
-// Snapshots history and sets dirty on success. Returns an error (and rolls back)
-// if a post-write round-trip check detects that the stored block diverges from
-// the submitted snippet.
+// Snapshots history on success. Returns an error (and rolls back) if a
+// post-write round-trip check detects that the stored block diverges from the
+// submitted snippet.
 func (d Document) Insert(snippet string) (Document, error) {
 	newRaw, err := InsertBlock(d.raw, snippet, d.knownOrder)
 	if err != nil {
@@ -147,7 +151,6 @@ func (d Document) Insert(snippet string) (Document, error) {
 		return d, fmt.Errorf("reparsing after insert: %w", err)
 	}
 	d.blocks = blocks
-	d.dirty = true
 
 	if sBlocks, err2 := ParseBlocks([]byte(snippet)); err2 == nil && len(sBlocks) > 0 {
 		key := sBlocks[0].Key
@@ -179,7 +182,6 @@ func (d Document) Remove(key string) (Document, error) {
 		return d, fmt.Errorf("reparsing after remove: %w", err)
 	}
 	d.blocks = blocks
-	d.dirty = true
 	return d, nil
 }
 
@@ -203,7 +205,6 @@ func (d Document) Replace(key, snippet string) (Document, error) {
 		return d, fmt.Errorf("reparsing after replace: %w", err)
 	}
 	d.blocks = blocks
-	d.dirty = true
 
 	if recovered, err2 := BlockContent(d.raw, d.blocks, key); err2 == nil {
 		if !blockSemanticEqual(snippet, recovered) {
@@ -251,13 +252,11 @@ func (d Document) ReplaceRaw(raw []byte) (Document, error) {
 	}
 	d.raw = raw
 	d.blocks = blocks
-	d.dirty = true
 	return d, nil
 }
 
 // Undo restores the previous raw from history and pushes the undone state onto
-// the redo stack. Returns false if history is empty. dirty is set based on
-// whether the restored raw matches the last-loaded/saved content.
+// the redo stack. Returns false if history is empty.
 func (d Document) Undo() (Document, bool) {
 	if len(d.history) == 0 {
 		return d, false
@@ -271,7 +270,6 @@ func (d Document) Undo() (Document, bool) {
 	if blocks, err := ParseBlocks(prev); err == nil {
 		d.blocks = blocks
 	}
-	d.dirty = !bytes.Equal(d.raw, d.loaded)
 	return d, true
 }
 
@@ -291,7 +289,6 @@ func (d Document) Redo() (Document, bool) {
 	if blocks, err := ParseBlocks(prev); err == nil {
 		d.blocks = blocks
 	}
-	d.dirty = !bytes.Equal(d.raw, d.loaded)
 	return d, true
 }
 
@@ -309,7 +306,6 @@ func (d Document) rollback() Document {
 	if blocks, err := ParseBlocks(snap); err == nil {
 		d.blocks = blocks
 	}
-	d.dirty = !bytes.Equal(d.raw, d.loaded)
 	return d
 }
 
@@ -330,7 +326,6 @@ func (d Document) Save() (Document, error) {
 		return d, err
 	}
 	d.loaded = copyBytes(d.raw)
-	d.dirty = false
 	d = d.recordDiskState()
 	return d, nil
 }
@@ -364,11 +359,10 @@ func (d Document) Reload() (Document, error) {
 // snapshot of the document (e.g. in a background command), so by the time its
 // result arrives d may already carry newer edits; replacing d with the saved
 // snapshot would silently drop them. MarkSaved instead copies only the
-// persistence state: what is on disk (loaded, mtime/size) and the dirty flag
-// recomputed against the current content.
+// persistence state - what is on disk (loaded, mtime/size) - and Dirty()
+// follows from the current content.
 func (d Document) MarkSaved(saved Document) Document {
 	d.loaded = copyBytes(saved.loaded)
-	d.dirty = !bytes.Equal(d.raw, d.loaded)
 	d.diskModTime = saved.diskModTime
 	d.diskSize = saved.diskSize
 	return d

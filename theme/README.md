@@ -15,8 +15,10 @@ Package theme provides the palette, base lipgloss styles, and shared layout prim
 - [Variables](<#variables>)
 - [func All\(\) map\[string\]Theme](<#All>)
 - [func ClampScroll\(cursor, offset, height int\) int](<#ClampScroll>)
+- [func Color\(c string\) lipgloss.Color](<#Color>)
 - [func Composite\(fg, bg string, x, y int\) string](<#Composite>)
 - [func CompositeCenter\(fg, bg string\) string](<#CompositeCenter>)
+- [func NoColor\(\) bool](<#NoColor>)
 - [func RenderHeader\(title, subtitle, right string, width int\) string](<#RenderHeader>)
 - [func RenderHeaderWith\(title, subtitle, right string, width int, c Colors\) string](<#RenderHeaderWith>)
 - [func RenderTitledPanel\(title string, size Size, active bool, content string\) string](<#RenderTitledPanel>)
@@ -37,13 +39,13 @@ Package theme provides the palette, base lipgloss styles, and shared layout prim
 
 ```go
 var (
-    Accent       = colorVal("63")  // blue - active borders, primary highlight
-    AccentBright = colorVal("212") // pink - titles, selection
-    Muted        = colorVal("240") // grey - inactive borders, status hints
-    Dim          = colorVal("245") // light grey - secondary text
-    Success      = colorVal("82")  // green - existing/added items, success alerts
-    Warning      = colorVal("220") // yellow - save-with-warnings alerts
-    Danger       = colorVal("196") // red - error alerts
+    Accent       = Color("63")  // blue - active borders, primary highlight
+    AccentBright = Color("212") // pink - titles, selection
+    Muted        = Color("240") // grey - inactive borders, status hints
+    Dim          = Color("245") // light grey - secondary text
+    Success      = Color("82")  // green - existing/added items, success alerts
+    Warning      = Color("220") // yellow - save-with-warnings alerts
+    Danger       = Color("196") // red - error alerts
 )
 ```
 
@@ -167,7 +169,7 @@ var (
 ```
 
 <a name="All"></a>
-## func [All](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L103>)
+## func [All](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L107>)
 
 ```go
 func All() map[string]Theme
@@ -183,6 +185,15 @@ func ClampScroll(cursor, offset, height int) int
 ```
 
 ClampScroll adjusts a scroll offset so that the cursor row stays within the visible window of height rows, and returns the corrected offset. It scrolls up when the cursor sits above the window and down when it sits below, and never returns a negative offset. A non\-positive height leaves the offset untouched \(apart from the floor at zero\).
+
+<a name="Color"></a>
+## func [Color](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L17>)
+
+```go
+func Color(c string) lipgloss.Color
+```
+
+Color converts a color string to a lipgloss.Color, returning an empty color \(terminal default\) when NoColor is active so rendering stays monochrome.
 
 <a name="Composite"></a>
 ## func [Composite](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L158>)
@@ -201,6 +212,15 @@ func CompositeCenter(fg, bg string) string
 ```
 
 CompositeCenter centers fg over bg, replacing the bg cells behind it.
+
+<a name="NoColor"></a>
+## func [NoColor](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L13>)
+
+```go
+func NoColor() bool
+```
+
+NoColor reports whether the NO\_COLOR environment variable is set \- the single switch for monochrome mode across all yedit rendering.
 
 <a name="RenderHeader"></a>
 ## func [RenderHeader](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L44>)
@@ -257,7 +277,7 @@ func TwoColumnWidths(totalWidth int) (listW, rightW int)
 TwoColumnWidths computes left and right column widths for the standard two\-panel layout: left is totalWidth/3, clamped to \[30, 60\]; right gets the remainder minus 4 chars for the two border pairs.
 
 <a name="Colors"></a>
-## type [Colors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L41-L48>)
+## type [Colors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L45-L52>)
 
 Colors holds the six palette values that drive all editor styling. Each field is a lipgloss\-compatible color string: a hex value \("\#7C3AED"\), an ANSI 256\-color code \("63"\), or a named terminal color. Empty string means "inherit from Base" during theme resolution.
 
@@ -273,7 +293,7 @@ type Colors struct {
 ```
 
 <a name="ResolveColors"></a>
-### func [ResolveColors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L71>)
+### func [ResolveColors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L75>)
 
 ```go
 func ResolveColors(t Theme) Colors
@@ -291,7 +311,7 @@ type Size struct{ W, H int }
 ```
 
 <a name="Styles"></a>
-## type [Styles](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L52-L56>)
+## type [Styles](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L56-L60>)
 
 Styles holds optional per\-element lipgloss overrides. Nil fields are ignored during theme resolution and the default derived from Colors is used instead.
 
@@ -304,7 +324,7 @@ type Styles struct {
 ```
 
 <a name="Theme"></a>
-## type [Theme](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L62-L66>)
+## type [Theme](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L66-L70>)
 
 Theme is a three\-layer appearance configuration:
 

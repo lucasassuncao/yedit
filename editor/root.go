@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
@@ -77,13 +78,7 @@ func newModel(cfg Config) (model, error) {
 		return model{}, fmt.Errorf("editor: Config.Schema is required")
 	}
 
-	var tree []schema.FieldDef
-	if cfg.SchemaRecursionDepth > 0 {
-		tree = schema.Discover(cfg.Schema, cfg.SchemaRecursionDepth)
-	} else {
-		tree = schema.Discover(cfg.Schema) // use schema default (1 extra recursive level)
-	}
-	tree = applyHidden(tree, cfg.Hidden)
+	tree := discoverSchema(cfg)
 	known := schema.KnownChildren(tree)
 	childrenOf := buildChildrenMap(tree)
 	knownOrder := schema.TopLevelOrder(tree)
@@ -113,7 +108,7 @@ func newModel(cfg Config) (model, error) {
 		schemaTree:      tree,
 		knownByPath:     known,
 		childrenOf:      childrenOf,
-		wiredValidators: Wire(cfg.Validators, cfg),
+		wiredValidators: WireWithSchema(cfg.Validators, tree, cfg.Metadata),
 
 		list:     list,
 		preview:  preview,
@@ -190,6 +185,20 @@ func (m model) viewDocPreset() string {
 		out = clampLines(out, m.height)
 	}
 	return out
+}
+
+// discoverSchema runs schema discovery for cfg (honouring SchemaRecursionDepth)
+// and applies the Hidden filter. It is the single producer of the schema tree:
+// newModel hands the same tree to the UI and to the wired validators, so the
+// two can never disagree about the schema.
+func discoverSchema(cfg Config) []schema.FieldDef {
+	var tree []schema.FieldDef
+	if cfg.SchemaRecursionDepth > 0 {
+		tree = schema.Discover(cfg.Schema, cfg.SchemaRecursionDepth)
+	} else {
+		tree = schema.Discover(cfg.Schema) // schema default: 1 extra recursive level
+	}
+	return applyHidden(tree, cfg.Hidden)
 }
 
 func applyHidden(fields []schema.FieldDef, hidden []string) []schema.FieldDef {
@@ -371,7 +380,7 @@ func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Ctrl+C quits from every mode (the terminal is in raw mode, so it arrives
 	// as a plain key). Intercepting it here keeps the policy uniform instead of
 	// working only in the list view.
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+	if km, ok := msg.(tea.KeyMsg); ok && key.Matches(km, kbCtrlCQuit) {
 		return m.quitOrConfirm()
 	}
 	switch m.mode {
