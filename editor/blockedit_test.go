@@ -487,9 +487,10 @@ func TestCollectionNav_CommitFlushesAndSerializesAll(t *testing.T) {
 	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
 	be.dirty = true
 
-	_, snippet, ok := be.commit()
+	_, val, ok := be.commit()
 	must.True(ok, "commit failed")
 
+	snippet := nodeToContent(be.key, val)
 	must.Contains(snippet, "name: alpha_edited", "snippet missing edited entry")
 	must.Contains(snippet, "name: beta", "snippet missing second entry")
 }
@@ -506,14 +507,16 @@ func TestCollectionNav_DoubleCommitIdempotent(t *testing.T) {
 	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
 	be.dirty = true
 
-	be, snippet1, ok := be.commit()
+	be, val1, ok := be.commit()
 	must.True(ok, "first commit failed")
+	snippet1 := nodeToContent(be.key, val1)
 
 	// Re-sync after commit (mirrors the live flush path).
 	be = be.resyncAfterCommit(snippet1)
 
-	_, snippet2, ok := be.commit()
+	_, val2, ok := be.commit()
 	must.True(ok, "second commit failed")
+	snippet2 := nodeToContent(be.key, val2)
 
 	must.Equal(snippet1, snippet2, "double commit diverged")
 	is.Equal(1, strings.Count(snippet2, "name: beta"), "duplication detected")
@@ -924,4 +927,209 @@ func TestRestoreUndoWithOnlyNoopSnapshotsReportsNothing(t *testing.T) {
 	be = be.restoreUndo()
 	is.Equal("Nothing to undo.", be.statusMsg)
 	is.Empty(be.undoStack, "no-op snapshots must be dropped")
+}
+
+// commitShapeSpec is a plain struct block used by the commit shape-validation
+// tests: a "server" mapping with two scalar fields.
+func commitShapeSpec() blockSpec {
+	return blockSpec{
+		key: "server",
+		defs: []schema.FieldDef{
+			{YAMLName: "host", Kind: schema.KindPrimitive, Scalar: "string"},
+			{YAMLName: "port", Kind: schema.KindPrimitive, Scalar: "int"},
+		},
+		kind:    schema.KindObject,
+		content: "server:\n  host: localhost\n",
+	}
+}
+
+// TestCommit_RejectsExtraTopLevelKeys guards against silent data loss: a
+// second top-level key typed into the editor used to be dropped without
+// warning (only the first key's value was committed). It must instead fail
+// the commit with an explicit error naming the stray key.
+func TestCommit_RejectsExtraTopLevelKeys(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	be := newBlockEdit(Config{}, commitShapeSpec(), 100, 40)
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("server:\n  host: localhost\nlogging:\n  level: debug\n")
+
+	committed, val, ok := be.commit()
+	must.False(ok, "commit must reject a buffer with two top-level keys")
+	is.Nil(val)
+	is.Equal(errCommit, committed.editorErr.kind)
+	is.Contains(committed.editorErr.message, "logging", "the error must name the stray key")
+}
+
+// TestCommit_RejectsRenamedTopLevelKey guards the other silent-loss shape: a
+// renamed block header used to be ignored (content written back under the
+// original key). It must fail the commit with an explicit error.
+func TestCommit_RejectsRenamedTopLevelKey(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	be := newBlockEdit(Config{}, commitShapeSpec(), 100, 40)
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("cluster:\n  host: localhost\n")
+
+	committed, val, ok := be.commit()
+	must.False(ok, "commit must reject a renamed top-level key")
+	is.Nil(val)
+	is.Equal(errCommit, committed.editorErr.kind)
+	is.Contains(committed.editorErr.message, `"server"`, "the error must name the expected key")
+}
+
+// TestCommit_RejectsMissingHeader covers a buffer whose block header was
+// deleted or replaced by a bare scalar: the old path surfaced a misleading
+// "internal error"; it must now explain the missing header.
+func TestCommit_RejectsMissingHeader(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	for _, buffer := range []string{"just a scalar", ""} {
+		be := newBlockEdit(Config{}, commitShapeSpec(), 100, 40)
+		be.active = blockEditPanelYAML
+		be.yamlEditor.SetValue(buffer)
+
+		committed, val, ok := be.commit()
+		must.False(ok, "commit must reject buffer %q", buffer)
+		is.Nil(val)
+		is.Equal(errCommit, committed.editorErr.kind)
+		is.Contains(committed.editorErr.message, `"server:"`, "the error must name the expected header for buffer %q", buffer)
+	}
+}
+
+// TestCommit_AcceptsWellFormedBlock is the happy-path counterpart: a buffer
+// with exactly the block's own key commits and yields its value node.
+func TestCommit_AcceptsWellFormedBlock(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	be := newBlockEdit(Config{}, commitShapeSpec(), 100, 40)
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("server:\n  host: example.org\n  port: 8080\n")
+
+	committed, val, ok := be.commit()
+	must.True(ok, "commit failed; editorErr=%v", committed.editorErr)
+	must.NotNil(val)
+	is.Equal("server:\n  host: example.org\n  port: 8080\n", nodeToContent("server", val))
+}
+
+// TestTreelessBlock_UndoRestoresInitialContent guards the undo baseline for
+// blocks that open with the YAML panel focused (primitives, free-form
+// collections): typing must be reversible back to the content the editor
+// opened with, even though no Tab checkpoint ever fired.
+func TestTreelessBlock_UndoRestoresInitialContent(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	be := newBlockEdit(Config{}, blockSpec{key: "debug", kind: schema.KindPrimitive, content: "debug: false\n"}, 100, 40)
+	must.Equal(blockEditPanelYAML, be.active, "tree-less block must focus the YAML panel")
+	must.Empty(be.undoStack, "a freshly opened editor must have an empty undo stack")
+	original := be.yamlEditor.Value()
+
+	be, _ = be.updateKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	must.NotEqual(original, be.yamlEditor.Value(), "typing must change the buffer")
+
+	be = be.restoreUndo()
+	is.Equal(original, be.yamlEditor.Value(), "ctrl+u must restore the content the editor opened with")
+	is.Equal("Undone.", be.statusMsg)
+}
+
+// TestHintScroll_ReachesEndOfLongContent guards the hint panel's scroll bound:
+// it must be derived from the content height, so the last panel-full of a
+// long hint is reachable (the old bound was the panel height itself).
+func TestHintScroll_ReachesEndOfLongContent(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	longExample := strings.Repeat("line\n", 40)
+	cfg := Config{
+		EnableHints: true,
+		Metadata: MetadataFunc(func(block, fieldPath string) FieldMeta {
+			return FieldMeta{Description: "toggle", Example: longExample}
+		}),
+	}
+	be := newBlockEdit(cfg, blockSpec{key: "debug", kind: schema.KindPrimitive, content: "debug: false\n"}, 100, 40)
+	be.prevActive = be.active
+	be.active = blockEditPanelHint
+
+	lines := strings.Count(strings.TrimSuffix(be.hintContent(), "\n"), "\n") + 1
+	wantMax := lines - be.hintH()
+	must.Greater(wantMax, be.hintH()-1, "test setup: content must exceed twice the panel height")
+
+	down := tea.KeyMsg{Type: tea.KeyDown}
+	for range lines * 2 {
+		be, _ = be.handleHintKey(down)
+	}
+	is.Equal(wantMax, be.hintScroll, "scroll must reach the last panel-full of the hint content")
+}
+
+// FuzzStructInvariants feeds random action sequences into a struct block editor
+// and asserts the SOT invariant (tree ≡ node) after every step.
+// Run with: go test ./editor/... -fuzz=FuzzStructInvariants
+func FuzzStructInvariants(f *testing.F) {
+	f.Add([]byte{2, 0, 2, 1, 3, 2})
+	f.Add([]byte{0, 0, 0, 2, 3, 1, 1, 2})
+	f.Add([]byte{2, 2, 2, 3, 3, 3, 0, 2})
+	f.Fuzz(func(t *testing.T, actions []byte) {
+		be := newBlockEdit(Config{NoDeleteConfirm: true}, blockSpec{
+			key: "cfg", defs: cfgStructDefs(), kind: schema.KindObject, content: "cfg:\n",
+		}, 120, 40)
+		be = expandAll(be)
+		for _, a := range actions {
+			be = applyFuzzAction(be, a)
+			assertTreeMatchesNode(t, be)
+		}
+	})
+}
+
+// FuzzCollectionInvariants feeds random action sequences into a sequence
+// collection editor and asserts the collection SOT invariant after every step.
+// Run with: go test ./editor/... -fuzz=FuzzCollectionInvariants
+func FuzzCollectionInvariants(f *testing.F) {
+	f.Add([]byte{2, 0, 2, 3, 0, 2})
+	f.Add([]byte{3, 3, 2, 0, 2, 1, 2})
+	f.Fuzz(func(t *testing.T, actions []byte) {
+		be := newBlockEdit(Config{NoDeleteConfirm: true}, blockSpec{
+			key:  "categories",
+			defs: catDefs(),
+			kind: schema.KindList,
+			content: `categories:
+  - name: a
+  - name: b
+`,
+		}, 120, 40)
+		be = expandAll(be)
+		for _, a := range actions {
+			be = applyFuzzAction(be, a)
+			assertCollTreeMatchesNode(t, be)
+		}
+	})
+}
+
+// applyFuzzAction maps a byte to one of 5 safe editor actions.
+func applyFuzzAction(be blockEditState, a byte) blockEditState {
+	vis := be.tree.visibleNodes()
+	switch a % 5 {
+	case 0:
+		be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyDown})
+	case 1:
+		be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyUp})
+	case 2:
+		be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+		be = expandAll(be)
+	case 3:
+		if be.tree.cursor >= 0 && be.tree.cursor < len(vis) {
+			ni := vis[be.tree.cursor]
+			if ni < len(be.tree.nodes) {
+				n := be.tree.nodes[ni]
+				switch {
+				case n.kind == treeNodeField && n.checked:
+					be = be.dispatch(ToggleField{NodeIdx: ni, Checked: false})
+					be = expandAll(be)
+				case n.kind == treeNodeSeqItem:
+					be = be.performEntryDelete(n.seqIdx)
+				}
+			}
+		}
+	case 4:
+		be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyRight})
+	}
+	return be
 }

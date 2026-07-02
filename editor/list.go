@@ -3,6 +3,7 @@ package editor
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -306,7 +307,10 @@ func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
 		return lm, selCmd
 	case "backspace", "ctrl+h":
 		if len(lm.filter) > 0 {
-			lm.filter = lm.filter[:len(lm.filter)-1]
+			// Drop the last rune, not the last byte - a multibyte character
+			// ("ç", "ã") would otherwise leave invalid UTF-8 in the filter.
+			_, size := utf8.DecodeLastRuneInString(lm.filter)
+			lm.filter = lm.filter[:len(lm.filter)-size]
 			lm.fCursor = 0
 			lm.fOffset = 0
 		}

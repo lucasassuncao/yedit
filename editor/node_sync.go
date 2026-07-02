@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -66,7 +67,7 @@ func deriveChecked(valueNode *yaml.Node, nodes []treeNode, skipFirstSeg bool) []
 
 // syncTreeCheckedFromNode re-derives checked states for all field nodes from
 // valueNode (the block's canonical value mapping), then re-applies ADDED/
-// AVAILABLE/UNKNOWS sectioning for struct trees, restoring the cursor. It is the
+// AVAILABLE/UNKNOWN sectioning for struct trees, restoring the cursor. It is the
 // node-based replacement for syncTreeCheckedFromYAML.
 func syncTreeCheckedFromNode(tm treeModel, valueNode *yaml.Node) treeModel {
 	var selectedPath []string
@@ -85,30 +86,30 @@ func syncTreeCheckedFromNode(tm treeModel, valueNode *yaml.Node) treeModel {
 }
 
 // injectNestedUnknowns scans the flat node list for inline struct parents
-// (treeNodeField, !isLeaf, !openable) and inserts treeNodeUnknown children
-// after the last known child of each parent when the parent's value mapping
+// (treeNodeField, !isLeaf, !openable) at any depth and inserts treeNodeUnknown
+// children after each parent's descendant run when the parent's value mapping
 // contains keys not declared in its schema. applySections strips all
 // treeNodeUnknown nodes before re-calling this, keeping it idempotent.
 func injectNestedUnknowns(nodes []treeNode, valueNode *yaml.Node, defs []schema.FieldDef) []treeNode {
 	if valueNode == nil || valueNode.Kind != yaml.MappingNode || len(defs) == 0 {
 		return nodes
 	}
-	defsByName := make(map[string]schema.FieldDef, len(defs))
-	for _, d := range defs {
-		defsByName[d.YAMLName] = d
+	// insertion queues unknown rows to be emitted right after nodes[after],
+	// i.e. past the parent's contiguous run of descendants.
+	type insertion struct {
+		after int
+		rows  []treeNode
 	}
-	result := make([]treeNode, 0, len(nodes))
-	for i := 0; i < len(nodes); i++ {
-		n := nodes[i]
-		result = append(result, n)
+	var insertions []insertion
+	for i, n := range nodes {
 		if n.kind != treeNodeField || n.isLeaf || n.openable || len(n.yamlPath) == 0 {
 			continue
 		}
-		d, ok := defsByName[n.yamlPath[0]]
+		d, ok := defAtPath(defs, n.yamlPath)
 		if !ok || len(d.Children) == 0 {
 			continue
 		}
-		childVal := yamlnode.ChildByKey(valueNode, n.yamlPath[0])
+		childVal := yamlnode.NodeAtPath(valueNode, n.yamlPath)
 		if childVal == nil {
 			continue
 		}
@@ -116,19 +117,63 @@ func injectNestedUnknowns(nodes []treeNode, valueNode *yaml.Node, defs []schema.
 		if len(unknowns) == 0 {
 			continue
 		}
-		// Consume all descendants of n (depth > n.depth) before injecting.
-		for i+1 < len(nodes) && nodes[i+1].depth > n.depth {
-			i++
-			result = append(result, nodes[i])
+		end := i
+		for end+1 < len(nodes) && nodes[end+1].depth > n.depth {
+			end++
 		}
-		// Inject unknowns inline at n.depth+1 with the full yaml path.
-		for _, u := range unknowns {
+		rows := make([]treeNode, len(unknowns))
+		for j, u := range unknowns {
 			u.depth = n.depth + 1
-			u.yamlPath = append([]string{n.yamlPath[0]}, u.yamlPath...)
-			result = append(result, u)
+			u.yamlPath = append(append([]string{}, n.yamlPath...), u.yamlPath...)
+			rows[j] = u
+		}
+		insertions = append(insertions, insertion{after: end, rows: rows})
+	}
+	if len(insertions) == 0 {
+		return nodes
+	}
+	// Emit by insertion point; when a nested parent's run ends on the same row
+	// as its ancestor's, the deeper unknowns go first so each row still sits
+	// inside its own parent's subtree.
+	sort.SliceStable(insertions, func(a, b int) bool {
+		if insertions[a].after != insertions[b].after {
+			return insertions[a].after < insertions[b].after
+		}
+		return insertions[a].rows[0].depth > insertions[b].rows[0].depth
+	})
+	result := make([]treeNode, 0, len(nodes)+len(insertions))
+	k := 0
+	for i, n := range nodes {
+		result = append(result, n)
+		for k < len(insertions) && insertions[k].after == i {
+			result = append(result, insertions[k].rows...)
+			k++
 		}
 	}
 	return result
+}
+
+// defAtPath walks defs following path segments through Children and returns
+// the FieldDef reached at the end of the path.
+func defAtPath(defs []schema.FieldDef, path []string) (schema.FieldDef, bool) {
+	var found schema.FieldDef
+	cur := defs
+	for i, seg := range path {
+		ok := false
+		for _, d := range cur {
+			if d.YAMLName == seg {
+				found, ok = d, true
+				break
+			}
+		}
+		if !ok {
+			return schema.FieldDef{}, false
+		}
+		if i < len(path)-1 {
+			cur = found.Children
+		}
+	}
+	return found, true
 }
 
 func collectUnknownNodes(valueNode *yaml.Node, defs []schema.FieldDef) []treeNode {

@@ -22,6 +22,7 @@ const HistoryLimit = 50
 // blocks. Pass nil for unordered append behaviour.
 type Document struct {
 	path       string
+	loadPath   string // file the content was loaded from; Reload re-reads this even after SetPath
 	raw        []byte
 	loaded     []byte // raw at last load/save, used to clear dirty on Undo-to-original
 	blocks     []Block
@@ -58,7 +59,7 @@ func Load(path string, knownOrder []string) (Document, error) {
 	if err != nil {
 		return Document{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
-	d := Document{path: path, raw: raw, loaded: copyBytes(raw), blocks: blocks, knownOrder: knownOrder, usedCRLF: usedCRLF}
+	d := Document{path: path, loadPath: path, raw: raw, loaded: copyBytes(raw), blocks: blocks, knownOrder: knownOrder, usedCRLF: usedCRLF}
 	d = d.recordDiskState()
 	return d, nil
 }
@@ -91,9 +92,12 @@ func (d Document) CanRedo() bool   { return len(d.future) > 0 }
 
 // SetPath overrides the path used by Save. Call after Load when the save
 // destination differs from the source (e.g. writing a template to a new file).
+// Reload keeps re-reading the original load path. The on-disk state of the new
+// path is recorded so ExternallyChanged compares against the save destination
+// instead of reporting a false positive on the first save.
 func (d Document) SetPath(path string) Document {
 	d.path = path
-	return d
+	return d.recordDiskState()
 }
 
 // BlockContent returns the raw lines for a given block key.
@@ -331,20 +335,43 @@ func (d Document) Save() (Document, error) {
 	return d, nil
 }
 
-// Reload re-reads the file from disk, replacing the in-memory state entirely:
-// raw, blocks, dirty, and the undo/redo history are reset as if the document
-// had just been loaded. A missing file reloads as an empty document, mirroring
-// Load. On error (no path, unreadable or unparseable file) the in-memory state
-// is left untouched.
+// Reload re-reads the source file from disk, replacing the in-memory state
+// entirely: raw, blocks, dirty, and the undo/redo history are reset as if the
+// document had just been loaded. The source is the path the document was
+// loaded from, even when SetPath pointed Save at a different destination; the
+// save destination is preserved on the reloaded document. A missing file
+// reloads as an empty document, mirroring Load. On error (no path, unreadable
+// or unparseable file) the in-memory state is left untouched.
 func (d Document) Reload() (Document, error) {
-	if d.path == "" {
+	src := d.loadPath
+	if src == "" {
+		src = d.path
+	}
+	if src == "" {
 		return d, fmt.Errorf("document has no path; Load requires a path")
 	}
-	nd, err := Load(d.path, d.knownOrder)
+	nd, err := Load(src, d.knownOrder)
 	if err != nil {
 		return d, err
 	}
+	if d.path != src {
+		nd = nd.SetPath(d.path)
+	}
 	return nd, nil
+}
+
+// MarkSaved applies the outcome of a completed Save onto d. Save runs on a
+// snapshot of the document (e.g. in a background command), so by the time its
+// result arrives d may already carry newer edits; replacing d with the saved
+// snapshot would silently drop them. MarkSaved instead copies only the
+// persistence state: what is on disk (loaded, mtime/size) and the dirty flag
+// recomputed against the current content.
+func (d Document) MarkSaved(saved Document) Document {
+	d.loaded = copyBytes(saved.loaded)
+	d.dirty = !bytes.Equal(d.raw, d.loaded)
+	d.diskModTime = saved.diskModTime
+	d.diskSize = saved.diskSize
+	return d
 }
 
 // ExternallyChanged reports whether the file on disk was modified since this

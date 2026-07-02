@@ -41,10 +41,10 @@ type treeAction int
 
 const (
 	treeNoAction  treeAction = iota
-	treeToggled              // Space on a leaf - checked state changed
-	treeExpanded             // → on a collapsible node
+	treeToggled              // Enter on an unchecked leaf / ctrl+d on a checked field - checked state changed
+	treeExpanded             // → (or Enter) on a collapsed inline parent
 	treeCollapsed            // ← on an expanded node
-	treeAddNew               // Space/Enter on the treeNodeAddNew row
+	treeAddNew               // Enter on the treeNodeAddNew row
 	treeDeleted              // ctrl+d on a treeNodeSeqItem row
 	treeOpenChild            // Enter/→ on an openable map-of-struct field - drill in
 )

@@ -107,6 +107,11 @@ func RenderTitledPanelWith(title string, size Size, active bool, content string,
 
 	innerW := width - 2
 	titleSegment := lipgloss.NewStyle().Bold(true).Foreground(titleColor).Render(" " + title + " ")
+	// A title wider than the panel would push the top edge past the panel
+	// width; truncate it so the edge always closes at the right column.
+	if maxTitleW := innerW - 1; maxTitleW >= 0 && lipgloss.Width(titleSegment) > maxTitleW {
+		titleSegment = ansi.Truncate(titleSegment, maxTitleW, "… ")
+	}
 	fillLen := innerW - 1 - lipgloss.Width(titleSegment)
 	if fillLen < 0 {
 		fillLen = 0

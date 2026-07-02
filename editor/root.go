@@ -307,7 +307,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			return m.showAlert("Save failed", msg.err.Error(), alert.KindError)
 		}
-		m.doc = msg.doc
+		// The save ran on a snapshot; apply only its persistence outcome so any
+		// edit made while the save was in flight is not clobbered.
+		m.doc = m.doc.MarkSaved(msg.doc)
 		m.saved = true
 		// syncView refreshes the list's dirty decorations (e.g. unsaved-changes
 		// indicator) immediately so they reflect the now-saved state.
@@ -366,6 +368,12 @@ func (m model) handleDismissedAlert(msg alert.DismissedMsg) (tea.Model, tea.Cmd)
 // handleModeUpdate dispatches msg to the active pane when no root-level
 // message handler matched first.
 func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Ctrl+C quits from every mode (the terminal is in raw mode, so it arrives
+	// as a plain key). Intercepting it here keeps the policy uniform instead of
+	// working only in the list view.
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+c" {
+		return m.quitOrConfirm()
+	}
 	switch m.mode {
 	case paneAlert:
 		if key, ok := msg.(tea.KeyMsg); ok {
@@ -391,6 +399,24 @@ func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// quitOrConfirm quits immediately when nothing would be lost, otherwise asks
+// first. Uncommitted block-editor changes count as loss even while the
+// document itself is still clean.
+func (m model) quitOrConfirm() (tea.Model, tea.Cmd) {
+	dirty := m.doc.Dirty()
+	for _, be := range m.blockEdits {
+		if be.dirty {
+			dirty = true
+			break
+		}
+	}
+	if dirty {
+		return m.showConfirmAlert("Quit without saving?",
+			"Unsaved changes will be lost.", tea.Quit)
+	}
+	return m, tea.Quit
 }
 
 // handlePreviewUpdate routes a message to the preview pane, preferring key

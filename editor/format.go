@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Format describes the expected string format for a field.
@@ -113,10 +114,12 @@ var FormatFQDN = FormatCustom("fqdn", func(v string) bool {
 	return reFQDN.MatchString(v)
 })
 
-var reDuration = regexp.MustCompile(`^(\d+(\.\d+)?(ns|us|µs|ms|s|m|h))+$`)
-
+// FormatDuration accepts any time.ParseDuration value ("1h30m", "1.5h", "0"),
+// the same parser used by the range validators (ValueInRange /
+// RangeFromMetadata), so the two rules can never disagree on the same field.
 var FormatDuration = FormatCustom("duration", func(v string) bool {
-	return reDuration.MatchString(v)
+	_, err := time.ParseDuration(v)
+	return err == nil
 })
 
 var reGitRef = regexp.MustCompile(`^[a-zA-Z0-9_./-]{1,250}$`)

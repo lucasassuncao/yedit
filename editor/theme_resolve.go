@@ -32,12 +32,10 @@ type resolvedTheme struct {
 //  3. t.Colors (non-"" fields win)
 //  4. Build derived styles from resolved colors
 //  5. t.Styles overrides (non-zero lipgloss.Style wins)
+//
+// Steps 1-3 are theme.ResolveColors - the single owner of the color cascade.
 func resolveTheme(t theme.Theme) resolvedTheme {
-	c := theme.ThemeDark.Colors
-	if t.Base != nil {
-		c = mergeColors(c, t.Base.Colors)
-	}
-	c = mergeColors(c, t.Colors)
+	c := theme.ResolveColors(t)
 
 	rt := buildDerivedStyles(c)
 	rt.colors = c
@@ -52,28 +50,6 @@ func resolveTheme(t theme.Theme) resolvedTheme {
 		rt.selectedItem = *t.Styles.CursorLine
 	}
 	return rt
-}
-
-func mergeColors(base, over theme.Colors) theme.Colors {
-	if over.ActiveBorderColor != "" {
-		base.ActiveBorderColor = over.ActiveBorderColor
-	}
-	if over.SelectionColor != "" {
-		base.SelectionColor = over.SelectionColor
-	}
-	if over.InactiveBorderColor != "" {
-		base.InactiveBorderColor = over.InactiveBorderColor
-	}
-	if over.AvailableItemColor != "" {
-		base.AvailableItemColor = over.AvailableItemColor
-	}
-	if over.ExistingItemColor != "" {
-		base.ExistingItemColor = over.ExistingItemColor
-	}
-	if over.ErrorColor != "" {
-		base.ErrorColor = over.ErrorColor
-	}
-	return base
 }
 
 // buildDerivedStyles creates the internal lipgloss styles from the resolved

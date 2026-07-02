@@ -36,3 +36,18 @@ func TestFilterEnter_clampScrollApplied(t *testing.T) {
 	// must be inside that window, so offset must be >= 5.
 	is.GreaterOrEqual(lm.offset, 5, "offset must have been adjusted so the cursor is visible")
 }
+
+// TestFilterBackspace_removesWholeRune guards the filter against multibyte
+// input: backspace must drop the last rune, not the last byte, or a typed
+// "ç" would leave invalid UTF-8 behind and break matching.
+func TestFilterBackspace_removesWholeRune(t *testing.T) {
+	is := assert.New(t)
+
+	lm := buildLM([]string{"config"}, 3)
+	lm.filtering = true
+	lm.filter = "conç"
+
+	lm, _ = lm.updateFilter(tea.KeyMsg{Type: tea.KeyBackspace})
+
+	is.Equal("con", lm.filter, "backspace must remove the whole multibyte rune")
+}

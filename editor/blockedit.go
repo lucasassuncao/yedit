@@ -14,6 +14,7 @@ import (
 	"github.com/lucasassuncao/yedit/alert"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
+	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
 // blockSpec describes the block being opened for editing.
@@ -411,7 +412,10 @@ func (be blockEditState) handleHintKey(key tea.KeyMsg) (blockEditState, bool) {
 			be.hintScroll--
 		}
 	case "down":
-		maxScroll := be.hintH() - 1
+		// Scroll bound is the content height, not the panel height - otherwise
+		// the tail of a hint longer than two panel-fulls stays unreachable.
+		lines := strings.Count(strings.TrimSuffix(be.hintContent(), "\n"), "\n") + 1
+		maxScroll := lines - be.hintH()
 		if maxScroll < 0 {
 			maxScroll = 0
 		}
@@ -496,6 +500,13 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	// state, so tree and node never disagree. The model's editRoot is touched only
 	// at flush (navigation/commit).
 	prevValue := be.yamlEditor.Value()
+	// Tree-less blocks open with the YAML panel already focused, so the
+	// switchPanel checkpoint that normally guards manual editing never fires.
+	// Push the pre-edit state once, before the first keystroke can change the
+	// buffer, so ctrl+u can always return to the content the editor opened with.
+	if len(be.undoStack) == 0 && len(be.redoStack) == 0 {
+		be = be.saveUndo()
+	}
 	var cmd tea.Cmd
 	be.yamlEditor, cmd = be.yamlEditor.Update(msg)
 	// Only re-project when the content actually changed. Cursor moves, selection,
@@ -649,36 +660,37 @@ func (be blockEditState) switchPanel() blockEditState {
 	return be
 }
 
-// commit validates and serializes the editor's current content into a YAML
-// snippet. It returns (newState, snippet, true) on success; on a validation
-// error it returns (newState, "", false) with the detail in be.editorErr. The
-// snippet is plain data - the caller decides what to do with it (write into the
-// canonical tree, hand it to the document), so commit performs no effect itself.
-func (be blockEditState) commit() (blockEditState, string, bool) {
-	var snippet string
+// commit validates the editor's current content and returns its canonical
+// value node. It returns (newState, node, true) on success; on a validation
+// error it returns (newState, nil, false) with the detail in be.editorErr. The
+// node is detached data - the caller decides what to do with it (write it into
+// the canonical tree, serialize it for the document), so commit performs no
+// effect itself. Returning the node instead of a serialized snippet spares the
+// caller a lossy parse-back: parseBlockText already rejected stray or renamed
+// top-level keys with a user-facing message.
+func (be blockEditState) commit() (blockEditState, *yaml.Node, bool) {
+	var val *yaml.Node
 	if be.isCollectionNav() {
 		be = be.flushCurrentEntry()
 		if be.editorErr.kind != errNone {
-			return be, "", false
+			return be, nil, false
 		}
-		snippet = nodeToContent(be.key, &be.node)
+		val = yamlnode.CloneNode(&be.node)
 	} else {
 		be.editorErr = editorError{}
-		snippet = be.yamlEditor.Value()
+		v, errMsg := parseBlockText(be.key, be.yamlEditor.Value())
+		if errMsg != "" {
+			be.editorErr = editorError{kind: errCommit, message: errMsg}
+			return be, nil, false
+		}
+		val = v
 	}
 
-	if err := validateSnippetText(snippet); err != nil {
-		be.editorErr = editorError{kind: errCommit, message: fmt.Sprintf("Invalid YAML: %v", err)}
-		return be, "", false
-	}
 	if be.knownByPath != nil {
-		if unknown := schema.UnknownKeys([]byte(snippet), be.knownByPath); len(unknown) > 0 {
+		if unknown := schema.UnknownKeys([]byte(nodeToContent(be.key, val)), be.knownByPath); len(unknown) > 0 {
 			be.editorErr = editorError{kind: errCommit, message: fmt.Sprintf("Unknown keys: %s", strings.Join(unknown, ", "))}
-			return be, "", false
+			return be, nil, false
 		}
-	}
-	if !strings.HasSuffix(snippet, "\n") {
-		snippet += "\n"
 	}
 	// NOTE: dirty is intentionally NOT cleared here. commit() is called by
 	// flushTopToRoot during drill-in/out, where the edits have only reached
@@ -687,7 +699,7 @@ func (be blockEditState) commit() (blockEditState, string, bool) {
 	// dirty is cleared only by resyncAfterCommit, which runs after the content
 	// has been successfully committed to the document.
 
-	return be, snippet, true
+	return be, val, true
 }
 
 // View renders the block editor. parentSegs is the breadcrumb path from all

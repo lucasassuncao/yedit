@@ -141,8 +141,9 @@ func TestMapBlockCommitReassembles(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
-	be2, snippet, ok := be.commit()
+	be2, val, ok := be.commit()
 	must.True(ok, "commit failed; editorErr=%v", be2.editorErr)
+	snippet := nodeToContent(be2.key, val)
 	is.Contains(snippet, "\"3000\":", "committed snippet dropped entries")
 	is.Contains(snippet, "\"8080\":", "committed snippet dropped entries")
 }

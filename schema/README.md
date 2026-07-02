@@ -34,7 +34,7 @@ KnownChildren collapses a FieldDef tree into a map of dotted paths to the set of
 A nil value at a path means "free\-form" \- children at that path are not validated \(e.g. customizations.vscode.settings has no fixed schema\).
 
 <a name="TopLevelOrder"></a>
-## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L243>)
+## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L244>)
 
 ```go
 func TopLevelOrder(fields []FieldDef) []string
@@ -74,7 +74,7 @@ type FieldDef struct {
 ```
 
 <a name="Discover"></a>
-### func [Discover](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L39>)
+### func [Discover](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L40>)
 
 ```go
 func Discover(v any, recursionLimit ...int) []FieldDef
@@ -86,7 +86,7 @@ Only the yaml tag is read. Field metadata \(required, allowed values, ranges, de
 
 To customise discovery for union types \(a value that can be a scalar OR a struct OR a map\), make the wrapper type implement Provider \- its YeditSchema\(\) return value is used in place of reflective traversal.
 
-The optional recursionLimit controls how many extra levels a self\-referential type expands beyond the first: 0 \(or omitted\) uses the default of 1, which allows one recursive level so that fields like "any \[\]CategoryFilter" are navigable. Set to 0 explicitly behaves the same as omitting.
+The optional recursionLimit controls how many extra levels a self\-referential type expands beyond the first. Omitted, it defaults to 1, which allows one recursive level so that fields like "any \[\]CategoryFilter" are navigable. Passing 0 explicitly selects strict mode: recursive occurrences are not expanded at all.
 
 <a name="Kind"></a>
 ## type [Kind](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L19>)

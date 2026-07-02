@@ -54,10 +54,16 @@ func (m model) withTopBEError(kind errKind, msg string) model {
 // The enter* helpers (root.go) are the only functions that assign m.mode. Each
 // sets the active pane together with the data that pane owns, so the invariants
 //
-//	alertVisible           ⟺  mode == paneAlert
-//	len(blockEdits) > 0     ⟺  mode == paneBlockEdit
+//	alertVisible          ⟹  mode == paneAlert
+//	mode == paneBlockEdit ⟹  len(blockEdits) > 0
 //
 // cannot be violated by a caller that forgets to clear a sibling field. The
+// arrows are one-way on purpose: enterAlert preserves blockEdits so that
+// dismissing a root-level alert can return to the block editor underneath.
+
+// handleBlockEditDiscarded pops the active block editor after the user closed
+// it with Esc, returning to the parent editor or - from the top level - to the
+// list, with explicit feedback only when changes were actually thrown away.
 func (m model) handleBlockEditDiscarded(msg blockEditDiscardedMsg) (tea.Model, tea.Cmd) {
 	if len(m.blockEdits) > 0 {
 		m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
@@ -230,16 +236,12 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 // caller aborts the navigation/commit.
 func (m model) flushTopToRoot() (model, bool) {
 	top := m.topBE()
-	committed, snippet, ok := top.commit()
+	committed, val, ok := top.commit()
 	m = m.withTopBE(committed)
 	if !ok {
 		// committed.editorErr carries the detail and the editor's own feedback
 		// line renders it - the root status line is not visible in this mode.
 		return m, false
-	}
-	val := valueNodeOfSnippet(snippet)
-	if val == nil {
-		return m.withTopBEError(errCommit, "internal error: could not write editor into canonical tree"), false
 	}
 	rootSnap := yamlnode.CloneNode(m.editRoot)
 	if !setNodeAt(m.editRoot, committed.focus, val) {

@@ -33,9 +33,10 @@ var (
 // YeditSchema() return value is used in place of reflective traversal.
 //
 // The optional recursionLimit controls how many extra levels a self-referential
-// type expands beyond the first: 0 (or omitted) uses the default of 1, which
-// allows one recursive level so that fields like "any []CategoryFilter" are
-// navigable. Set to 0 explicitly behaves the same as omitting.
+// type expands beyond the first. Omitted, it defaults to 1, which allows one
+// recursive level so that fields like "any []CategoryFilter" are navigable.
+// Passing 0 explicitly selects strict mode: recursive occurrences are not
+// expanded at all.
 func Discover(v any, recursionLimit ...int) []FieldDef {
 	limit := 1 // default: one extra recursive level beyond the first visit
 	if len(recursionLimit) > 0 {

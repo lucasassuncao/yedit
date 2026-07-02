@@ -291,3 +291,57 @@ func TestSOT_ToggleRoundTripNode(t *testing.T) {
 	}
 	assertTreeMatchesNode(t, be)
 }
+
+// nestedUnknownSpec is a struct block with two inline-struct levels (a > b) so
+// unknown keys can appear at depth 1 and depth 2.
+func nestedUnknownSpec(content string) blockSpec {
+	return blockSpec{
+		key: "svc",
+		defs: []schema.FieldDef{
+			{YAMLName: "a", Kind: schema.KindObject, Children: []schema.FieldDef{
+				{YAMLName: "b", Kind: schema.KindObject, Children: []schema.FieldDef{
+					{YAMLName: "x", Kind: schema.KindPrimitive, Scalar: "string"},
+				}},
+			}},
+		},
+		kind:    schema.KindObject,
+		content: content,
+	}
+}
+
+// unknownRows collects the (yamlPath, depth) of every treeNodeUnknown row.
+func unknownRows(be blockEditState) (paths [][]string, depths []int) {
+	for _, n := range be.tree.nodes {
+		if n.kind == treeNodeUnknown {
+			paths = append(paths, n.yamlPath)
+			depths = append(depths, n.depth)
+		}
+	}
+	return paths, depths
+}
+
+// TestInjectNestedUnknowns_DepthTwo guards that unknown keys inside an inline
+// struct nested two levels deep are surfaced in the tree (they used to appear
+// only for depth-1 parents, leaving deeper strays invisible until save).
+func TestInjectNestedUnknowns_DepthTwo(t *testing.T) {
+	is := assert.New(t)
+	content := "svc:\n  a:\n    stray: 1\n    b:\n      x: hi\n      bogus: 2\n"
+	be := newBlockEdit(Config{}, nestedUnknownSpec(content), 100, 40)
+
+	paths, depths := unknownRows(be)
+	is.Contains(paths, []string{"a", "stray"}, "depth-1 unknown must be flagged")
+	is.Contains(paths, []string{"a", "b", "bogus"}, "depth-2 unknown must be flagged")
+	for i, p := range paths {
+		is.Equal(len(p)-1, depths[i], "unknown row %v must render at its parent's depth+1", p)
+	}
+}
+
+// TestInjectNestedUnknowns_NoneWhenClean guards the no-op path: a document
+// matching the schema injects no unknown rows.
+func TestInjectNestedUnknowns_NoneWhenClean(t *testing.T) {
+	is := assert.New(t)
+	be := newBlockEdit(Config{}, nestedUnknownSpec("svc:\n  a:\n    b:\n      x: hi\n"), 100, 40)
+
+	paths, _ := unknownRows(be)
+	is.Empty(paths, "a schema-clean document must inject no unknown rows")
+}

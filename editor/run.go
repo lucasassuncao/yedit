@@ -42,7 +42,7 @@ func NewModelForTest(cfg Config) (tea.Model, error) {
 func RunContext(ctx context.Context, cfg Config) (res Result, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("yamltui: editor panicked: %v\n%s", r, debug.Stack())
+			err = fmt.Errorf("yedit: editor panicked: %v\n%s", r, debug.Stack())
 		}
 	}()
 

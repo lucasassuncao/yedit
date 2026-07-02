@@ -9,7 +9,7 @@ type sectionChunk struct {
 // applySections splits depth-0 field chunks into an ADDED group (has content)
 // and an AVAILABLE group (all unchecked), injecting treeNodeSeparator headers.
 // unknownNodes (treeNodeUnknown rows produced by collectUnknownNodes) are
-// appended after AVAILABLE in a dedicatted UNKNOWN section.
+// appended after AVAILABLE in a dedicated UNKNOWN section.
 // It is idempotent: existing separators are stripped before re-applying.
 // Only used for KindObject trees (not KindList).
 func applySections(nodes []treeNode, unknownNodes []treeNode) []treeNode {

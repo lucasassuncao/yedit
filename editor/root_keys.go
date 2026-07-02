@@ -33,12 +33,9 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if pb, ok := newPresetBrowser(m.cfg.DocPresets, "", ""); ok {
 				return m.enterDocPreset(pb), nil
 			}
-		case "esc", "ctrl+c":
-			if m.doc.Dirty() {
-				return m.showConfirmAlert("Quit without saving?",
-					"Unsaved changes will be lost.", tea.Quit)
-			}
-			return m, tea.Quit
+		case "esc":
+			// ctrl+c is handled for every mode in handleModeUpdate.
+			return m.quitOrConfirm()
 		}
 		if ma, ok := listKeymap(m, msg); ok {
 			return m.dispatch(ma)

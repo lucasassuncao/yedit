@@ -1,4 +1,4 @@
-package document_test
+package document
 
 import (
 	"bytes"
@@ -9,8 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/lucasassuncao/yedit/document"
 )
 
 var canonicalOrder = []string{"name", "image", "forwardPorts", "remoteUser"}
@@ -20,7 +18,7 @@ func TestLoad_missing(t *testing.T) {
 	must := require.New(t)
 	path := filepath.Join(t.TempDir(), "missing.yaml")
 
-	doc, err := document.Load(path, canonicalOrder)
+	doc, err := Load(path, canonicalOrder)
 	must.NoError(err, "Load on missing file")
 	is.Empty(doc.Raw())
 	is.False(doc.Dirty(), "new document should not be dirty")
@@ -34,7 +32,7 @@ func TestLoad_crlf(t *testing.T) {
 	content := "name: mydev\r\nimage: ubuntu:22.04\r\n"
 	must.NoError(os.WriteFile(path, []byte(content), 0o600))
 
-	doc, err := document.Load(path, canonicalOrder)
+	doc, err := Load(path, canonicalOrder)
 	must.NoError(err, "Load")
 	is.Equal("name: mydev\nimage: ubuntu:22.04\n", string(doc.Raw()), "CRLF not normalised")
 }
@@ -42,7 +40,7 @@ func TestLoad_crlf(t *testing.T) {
 func TestDocument_BlockContent(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
-	doc, err := document.New([]byte("name: mydev\nimage: ubuntu:22.04\n"), canonicalOrder)
+	doc, err := New([]byte("name: mydev\nimage: ubuntu:22.04\n"), canonicalOrder)
 	must.NoError(err)
 	content, err := doc.BlockContent("image")
 	must.NoError(err, "BlockContent")
@@ -52,7 +50,7 @@ func TestDocument_BlockContent(t *testing.T) {
 func TestDocument_InsertOrdered(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
-	doc, err := document.New([]byte("name: mydev\nforwardPorts:\n  - 3000\n"), canonicalOrder)
+	doc, err := New([]byte("name: mydev\nforwardPorts:\n  - 3000\n"), canonicalOrder)
 	must.NoError(err)
 	doc, err = doc.Insert("image: ubuntu:22.04\n")
 	must.NoError(err, "Insert")
@@ -64,7 +62,7 @@ func TestDocument_InsertOrdered(t *testing.T) {
 
 func TestDocument_RemoveNotFound(t *testing.T) {
 	is := assert.New(t)
-	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
+	doc, _ := New([]byte("name: mydev\n"), canonicalOrder)
 	_, err := doc.Remove("image")
 	is.Error(err, "expected error removing absent key")
 }
@@ -73,7 +71,7 @@ func TestDocument_ReplaceRawInvalid(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
 	original := []byte("name: mydev\nimage: ubuntu:22.04\n")
-	doc, err := document.New(original, canonicalOrder)
+	doc, err := New(original, canonicalOrder)
 	must.NoError(err)
 
 	// Invalid YAML: a mapping with a bare ":" value.
@@ -86,7 +84,7 @@ func TestDocument_ReplaceRawInvalid(t *testing.T) {
 
 func TestDocument_UndoEmpty(t *testing.T) {
 	is := assert.New(t)
-	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
+	doc, _ := New([]byte("name: mydev\n"), canonicalOrder)
 	_, ok := doc.Undo()
 	is.False(ok, "Undo on empty history should return false")
 }
@@ -94,7 +92,7 @@ func TestDocument_UndoEmpty(t *testing.T) {
 func TestDocument_UndoRestores(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
-	doc, err := document.New([]byte("name: mydev\n"), canonicalOrder)
+	doc, err := New([]byte("name: mydev\n"), canonicalOrder)
 	must.NoError(err)
 	doc, err = doc.Insert("image: ubuntu:22.04\n")
 	must.NoError(err)
@@ -113,7 +111,7 @@ func TestDocument_UndoRestores(t *testing.T) {
 func TestDocument_UndoStaysDirtyMidStack(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
-	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
+	doc, _ := New([]byte("name: mydev\n"), canonicalOrder)
 	doc, _ = doc.Insert("image: ubuntu:22.04\n")
 	doc, _ = doc.Insert("remoteUser: vscode\n")
 	var ok bool
@@ -124,7 +122,7 @@ func TestDocument_UndoStaysDirtyMidStack(t *testing.T) {
 
 func TestDocument_RedoEmpty(t *testing.T) {
 	is := assert.New(t)
-	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
+	doc, _ := New([]byte("name: mydev\n"), canonicalOrder)
 	_, ok := doc.Redo()
 	is.False(ok, "Redo with nothing undone should return false")
 	is.False(doc.CanRedo(), "CanRedo should be false with nothing undone")
@@ -133,7 +131,7 @@ func TestDocument_RedoEmpty(t *testing.T) {
 func TestDocument_RedoReappliesUndoneChange(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
-	doc, err := document.New([]byte("name: mydev\n"), canonicalOrder)
+	doc, err := New([]byte("name: mydev\n"), canonicalOrder)
 	must.NoError(err)
 	doc, err = doc.Insert("image: ubuntu:22.04\n")
 	must.NoError(err)
@@ -157,7 +155,7 @@ func TestDocument_RedoReappliesUndoneChange(t *testing.T) {
 func TestDocument_RedoClearedByNewMutation(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
-	doc, _ := document.New([]byte("name: mydev\n"), canonicalOrder)
+	doc, _ := New([]byte("name: mydev\n"), canonicalOrder)
 	doc, _ = doc.Insert("image: ubuntu:22.04\n")
 	var ok bool
 	doc, ok = doc.Undo()
@@ -174,7 +172,7 @@ func TestDocument_RedoClearedByNewMutation(t *testing.T) {
 func TestDocument_HistoryCapsAt50(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
-	doc, err := document.New([]byte("name: mydev\n"), canonicalOrder)
+	doc, err := New([]byte("name: mydev\n"), canonicalOrder)
 	must.NoError(err)
 	// Perform 60 mutations: toggle image on and off, alternating.
 	for i := 0; i < 60; i++ {
@@ -195,13 +193,13 @@ func TestDocument_HistoryCapsAt50(t *testing.T) {
 		count++
 		must.LessOrEqual(count, 100, "undo loop did not terminate")
 	}
-	is.Equal(document.HistoryLimit, count, "expected HistoryLimit undos available")
+	is.Equal(HistoryLimit, count, "expected HistoryLimit undos available")
 }
 
 func TestDocument_ReplaceAtomic(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
-	doc, err := document.New([]byte("name: mydev\nimage: ubuntu:22.04\n"), canonicalOrder)
+	doc, err := New([]byte("name: mydev\nimage: ubuntu:22.04\n"), canonicalOrder)
 	must.NoError(err)
 	doc, err = doc.Replace("image", "image: alpine:latest\n")
 	must.NoError(err, "Replace")
@@ -220,7 +218,7 @@ func TestDocument_Save(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
 	path := filepath.Join(t.TempDir(), "out.yaml")
-	doc, err := document.Load(path, canonicalOrder)
+	doc, err := Load(path, canonicalOrder)
 	must.NoError(err)
 	doc, err = doc.Insert("name: mydev\n")
 	must.NoError(err)
@@ -245,7 +243,7 @@ func TestDocument_DirtyLifecycle(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
 	path := filepath.Join(t.TempDir(), "doc.yaml")
-	doc, _ := document.Load(path, canonicalOrder)
+	doc, _ := Load(path, canonicalOrder)
 	is.False(doc.Dirty(), "freshly loaded missing-file document should not be dirty")
 	var err error
 	doc, err = doc.Insert("name: mydev\n")
@@ -259,7 +257,7 @@ func TestDocument_DirtyLifecycle(t *testing.T) {
 func TestSave_noPath(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
-	doc, err := document.New([]byte("name: mydev\n"), canonicalOrder)
+	doc, err := New([]byte("name: mydev\n"), canonicalOrder)
 	must.NoError(err)
 	_, err = doc.Save()
 	is.Error(err, "expected error saving in-memory document")
@@ -272,7 +270,7 @@ func TestSave_preservesCRLF(t *testing.T) {
 	is := assert.New(t)
 	path := filepath.Join(t.TempDir(), "crlf.yaml")
 	must.NoError(os.WriteFile(path, []byte("name: web\r\nimage: alpine\r\n"), 0o644))
-	doc, err := document.Load(path, canonicalOrder)
+	doc, err := Load(path, canonicalOrder)
 	must.NoError(err)
 	doc, err = doc.Replace("image", "image: ubuntu\n")
 	must.NoError(err)
@@ -296,7 +294,7 @@ func TestSave_preservesFileMode(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "perm.yaml")
 	must.NoError(os.WriteFile(path, []byte("name: web\n"), 0o644))
 	must.NoError(os.Chmod(path, 0o644)) // defeat umask
-	doc, err := document.Load(path, canonicalOrder)
+	doc, err := Load(path, canonicalOrder)
 	must.NoError(err)
 	doc, err = doc.Replace("name", "name: api\n")
 	must.NoError(err)
@@ -313,7 +311,7 @@ func TestSave_noLeftoverTempFiles(t *testing.T) {
 	is := assert.New(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "out.yaml")
-	doc, err := document.Load(path, canonicalOrder)
+	doc, err := Load(path, canonicalOrder)
 	must.NoError(err)
 	doc, err = doc.Insert("name: web\n")
 	must.NoError(err)
@@ -332,7 +330,7 @@ func TestExternallyChanged(t *testing.T) {
 	is := assert.New(t)
 	path := filepath.Join(t.TempDir(), "ext.yaml")
 	must.NoError(os.WriteFile(path, []byte("name: web\n"), 0o644))
-	doc, err := document.Load(path, canonicalOrder)
+	doc, err := Load(path, canonicalOrder)
 	must.NoError(err)
 	must.False(doc.ExternallyChanged(), "freshly loaded file should not look externally changed")
 
@@ -359,7 +357,7 @@ func TestReplace_preservesPositionAndBlankLines(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
 	src := "name: web\n\nextra:\n  - one\n\nimage: alpine\n"
-	doc, err := document.New([]byte(src), canonicalOrder) // canonicalOrder: []string{"name", "image"}
+	doc, err := New([]byte(src), canonicalOrder) // canonicalOrder: []string{"name", "image"}
 	must.NoError(err)
 	doc, err = doc.Replace("name", "name: api\n")
 	must.NoError(err)
@@ -373,7 +371,7 @@ func TestReplace_preservesSurroundingComments(t *testing.T) {
 	src := "# top of file\nname: web\n\n# the image to use\nimage: alpine\n# trailing note\n"
 	path := filepath.Join(t.TempDir(), "comments.yaml")
 	must.NoError(os.WriteFile(path, []byte(src), 0o644))
-	doc, err := document.Load(path, canonicalOrder)
+	doc, err := Load(path, canonicalOrder)
 	must.NoError(err)
 	doc, err = doc.Replace("name", "name: api\n")
 	must.NoError(err)
@@ -392,7 +390,7 @@ func TestParseBlocks_withAnchors(t *testing.T) {
 	is := assert.New(t)
 	// Anchors must not crash ParseBlocks; the resolved content is what matters.
 	raw := "base: &anchor\n  value: x\nderived:\n  <<: *anchor\n"
-	blocks, err := document.ParseBlocks([]byte(raw))
+	blocks, err := ParseBlocks([]byte(raw))
 	must.NoError(err, "ParseBlocks with anchors")
 	must.Len(blocks, 2, "expected 2 blocks")
 	is.Equal("base", blocks[0].Key)
@@ -404,7 +402,7 @@ func TestParseBlocks_multiDocument(t *testing.T) {
 	is := assert.New(t)
 	// Only the first YAML document should be returned; no panic.
 	raw := "key1: val1\n---\nkey2: val2\n"
-	blocks, err := document.ParseBlocks([]byte(raw))
+	blocks, err := ParseBlocks([]byte(raw))
 	must.NoError(err, "ParseBlocks with multi-document")
 	// yaml.Unmarshal into a single node only reads the first document.
 	for _, b := range blocks {
@@ -416,7 +414,7 @@ func TestParseBlocks_tabIndented(t *testing.T) {
 	is := assert.New(t)
 	// Tab-indented YAML is invalid; ParseBlocks should return an error, not panic.
 	raw := "key:\n\tvalue: x\n"
-	_, err := document.ParseBlocks([]byte(raw))
+	_, err := ParseBlocks([]byte(raw))
 	is.Error(err, "expected error for tab-indented YAML")
 }
 
@@ -424,7 +422,7 @@ func TestDocument_ReplaceRoundTrip(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
 	// After Replace, the stored block must be semantically equal to the snippet.
-	doc, err := document.New([]byte("name: mydev\nimage: ubuntu:22.04\n"), []string{"name", "image"})
+	doc, err := New([]byte("name: mydev\nimage: ubuntu:22.04\n"), []string{"name", "image"})
 	must.NoError(err)
 	doc, err = doc.Replace("image", "image: debian:12\n")
 	must.NoError(err, "Replace failed")
@@ -436,7 +434,7 @@ func TestDocument_InsertRoundTrip(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
 	// After Insert, the stored block must be semantically equal to the snippet.
-	doc, err := document.New([]byte("name: mydev\n"), []string{"name", "image"})
+	doc, err := New([]byte("name: mydev\n"), []string{"name", "image"})
 	must.NoError(err)
 	doc, err = doc.Insert("image: ubuntu:22.04\n")
 	must.NoError(err, "Insert failed")
@@ -453,7 +451,7 @@ func TestLoad_utf8BOM(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bom.yaml")
 	must.NoError(os.WriteFile(path, raw, 0o600))
 
-	doc, err := document.Load(path, canonicalOrder)
+	doc, err := Load(path, canonicalOrder)
 	must.NoError(err, "Load with UTF-8 BOM")
 	for _, b := range doc.Blocks() {
 		is.Contains([]string{"name", "image"}, b.Key, "BOM leaking into key name?")
@@ -466,7 +464,7 @@ func TestLoad_utf8BOM(t *testing.T) {
 	must.NoError(err, "Save after BOM edit")
 
 	// Reload must also parse correctly - no BOM duplication or corruption.
-	doc2, err := document.Load(path, canonicalOrder)
+	doc2, err := Load(path, canonicalOrder)
 	must.NoError(err, "reload after BOM save")
 	for _, b := range doc2.Blocks() {
 		is.Contains([]string{"name", "image"}, b.Key, "after save+reload, unexpected block key")
@@ -485,7 +483,7 @@ func TestLoad_utf8BOM_strip(t *testing.T) {
 	raw := append([]byte{0xEF, 0xBB, 0xBF}, "name: mydev\n"...)
 	path := filepath.Join(t.TempDir(), "bom.yaml")
 	must.NoError(os.WriteFile(path, raw, 0o600))
-	doc, err := document.Load(path, canonicalOrder)
+	doc, err := Load(path, canonicalOrder)
 	must.NoError(err, "Load")
 	is.False(bytes.HasPrefix(doc.Raw(), bom), "Raw() still starts with UTF-8 BOM - should be stripped on load")
 }
@@ -496,8 +494,8 @@ func TestLoad_utf8BOM_strip(t *testing.T) {
 func TestRemoveBlock_staleRangeNoPanic(t *testing.T) {
 	must := require.New(t)
 	raw := []byte("a: 1\nb: 2\n")
-	blocks := []document.Block{{Key: "a", Line: 1, EndLine: 99}}
-	_, err := document.RemoveBlock(raw, blocks, "a")
+	blocks := []Block{{Key: "a", Line: 1, EndLine: 99}}
+	_, err := RemoveBlock(raw, blocks, "a")
 	must.NoError(err, "RemoveBlock must not error on a stale range")
 }
 
@@ -507,8 +505,8 @@ func TestRemoveBlock_staleRangeNoPanic(t *testing.T) {
 func TestBlockContent_staleRangeNoPanic(t *testing.T) {
 	must := require.New(t)
 	raw := []byte("a: 1\n")
-	blocks := []document.Block{{Key: "a", Line: 9, EndLine: 99}}
-	_, err := document.BlockContent(raw, blocks, "a")
+	blocks := []Block{{Key: "a", Line: 9, EndLine: 99}}
+	_, err := BlockContent(raw, blocks, "a")
 	must.NoError(err, "BlockContent must not error on a stale range")
 }
 
@@ -517,7 +515,7 @@ func TestBlockContent_staleRangeNoPanic(t *testing.T) {
 func TestDocument_InsertStripsTrailingBlankLines(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
-	doc, err := document.New([]byte("name: x\n"), canonicalOrder)
+	doc, err := New([]byte("name: x\n"), canonicalOrder)
 	must.NoError(err)
 	doc, err = doc.Insert("image: y\n\n")
 	must.NoError(err, "Insert")
@@ -531,7 +529,7 @@ func TestDocument_Reload(t *testing.T) {
 	is := assert.New(t)
 	path := filepath.Join(t.TempDir(), "reload.yaml")
 	must.NoError(os.WriteFile(path, []byte("name: original\n"), 0o600))
-	doc, err := document.Load(path, canonicalOrder)
+	doc, err := Load(path, canonicalOrder)
 	must.NoError(err, "Load")
 
 	// Local edit, then an external rewrite of the file.
@@ -555,7 +553,7 @@ func TestDocument_Reload_missingFile(t *testing.T) {
 	is := assert.New(t)
 	path := filepath.Join(t.TempDir(), "gone.yaml")
 	must.NoError(os.WriteFile(path, []byte("name: x\n"), 0o600))
-	doc, err := document.Load(path, canonicalOrder)
+	doc, err := Load(path, canonicalOrder)
 	must.NoError(err, "Load")
 	must.NoError(os.Remove(path))
 
@@ -568,8 +566,170 @@ func TestDocument_Reload_missingFile(t *testing.T) {
 func TestDocument_Reload_noPath(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
-	doc, err := document.New([]byte("name: x\n"), canonicalOrder)
+	doc, err := New([]byte("name: x\n"), canonicalOrder)
 	must.NoError(err)
 	_, err = doc.Reload()
 	is.Error(err, "Reload without a path should return an error")
+}
+
+// TestBlockSemanticEqual_roundtripComparison guards the round-trip verification
+// in Insert/Replace. The check used to compare snippet against
+// key+":\n"+recovered, but recovered (from BlockContent) already includes the
+// key line - so the prefix produced a duplicate-key YAML that fails to parse,
+// and blockSemanticEqual fail-opens to true. A real divergence was therefore
+// never caught. The fix compares snippet against recovered directly.
+func TestBlockSemanticEqual_roundtripComparison(t *testing.T) {
+	is := assert.New(t)
+	snippet := "image: ubuntu:22.04\n"
+	recovered := "image: ubuntu:22.04\n" // BlockContent includes the key line
+
+	is.True(blockSemanticEqual(snippet, recovered), "identical blocks must compare equal")
+
+	diverged := "image: SOMETHING-ELSE\n"
+	is.False(blockSemanticEqual(snippet, diverged), "divergent blocks must compare NOT equal")
+
+	// When b is a malformed duplicate-key document (e.g. the old code produced
+	// key+":\n"+recovered, creating two "image" keys), it fails to parse and
+	// blockSemanticEqual must return false so the round-trip check triggers a
+	// rollback rather than silently accepting corrupted content.
+	is.False(blockSemanticEqual(snippet, "image:\n"+diverged), "malformed b must fail-closed (false) so corruption triggers rollback")
+
+	// When a (the original snippet) fails to parse, the function must also
+	// fail-closed - it must not silently accept an unverifiable round-trip.
+	is.False(blockSemanticEqual("image:\n"+snippet, snippet), "malformed a must fail-closed (false) - symmetric with malformed b")
+}
+
+// TestSnapshot_clearsFuture documents the precondition for the rollback fix:
+// snapshot() always sets future to nil before the round-trip check runs.
+func TestSnapshot_clearsFuture(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	d, err := New([]byte("a: 1\n"), nil)
+	must.NoError(err)
+	d.future = [][]byte{[]byte("redo-state\n")}
+
+	d = d.snapshot()
+	is.Nil(d.future, "snapshot clears the redo stack")
+}
+
+// TestRollback_doesNotRestoreFuture shows that rollback() alone leaves the redo
+// stack empty -- which is why Insert/Replace must explicitly restore savedFuture.
+func TestRollback_doesNotRestoreFuture(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	d, err := New([]byte("a: 1\n"), nil)
+	must.NoError(err)
+	d.history = [][]byte{copyBytes(d.raw)}
+	d.future = [][]byte{[]byte("redo-state\n")}
+
+	d = d.snapshot()
+	d = d.rollback()
+	is.Empty(d.future, "rollback alone does not restore future (expectedpre-fix behavior)")
+}
+
+// TestRollback_savedFutureRestoresRedoStack verifies the fix used in Insert/Replace:
+// capture savedFuture before snapshot, restore it in all rollback paths.
+func TestRollback_savedFutureRestoresRedoStack(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	d, err := New([]byte("a: 1\n"), nil)
+	must.NoError(err)
+	d.history = [][]byte{copyBytes(d.raw)}
+	d.future = [][]byte{[]byte("redo-state\n")}
+	want := d.future
+
+	savedFuture := d.future
+	d = d.snapshot()
+	d = d.rollback()
+	d.future = savedFuture
+
+	is.Equal(want, d.future, "savedFuture pattern restores the redo stack after rollback")
+	is.Equal("a: 1\n", string(d.raw), "rollback restores raw")
+}
+
+// TestRollback_restoresConsistencyAfterRawMutation verifies that rollback()
+// restores both raw and blocks when called after d.raw was set to invalid content.
+func TestRollback_restoresConsistencyAfterRawMutation(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	d, err := New([]byte("a: 1\n"), nil)
+	must.NoError(err)
+
+	// Simulate what Insert does: snapshot, then set raw to content that would
+	// make ParseBlocks fail, then rollback to restore consistency.
+	d = d.snapshot()
+	d.raw = []byte("invalid: [\n") // unclosed flow sequence - ParseBlocks would fail on this
+
+	// Pre-fix: caller received d with d.raw=invalid, d.blocks=stale (inconsistent)
+	// Post-fix: rollback is called, restoring both raw and blocks.
+	d = d.rollback()
+	is.Equal("a: 1\n", string(d.raw), "rollback restored raw to pre-mutation state")
+	must.Len(d.blocks, 1, "rollback restored blocks via re-parse")
+	is.Equal("a", d.blocks[0].Key, "restored block key matches original content")
+}
+
+// TestSetPath_reloadReadsSourcePath guards the SavePath flow: Reload must
+// re-read the file the document was loaded from, not the save destination
+// (which may not even exist yet), and the destination must survive the reload.
+func TestSetPath_reloadReadsSourcePath(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "template.yaml")
+	dst := filepath.Join(dir, "new.yaml")
+	must.NoError(os.WriteFile(src, []byte("name: mydev\n"), 0o600))
+
+	doc, err := Load(src, canonicalOrder)
+	must.NoError(err)
+	doc = doc.SetPath(dst)
+
+	reloaded, err := doc.Reload()
+	must.NoError(err, "Reload")
+	is.Equal("name: mydev\n", string(reloaded.Raw()), "Reload must re-read the load path, not the save path")
+	is.Equal(dst, reloaded.Path(), "save destination must survive a reload")
+}
+
+// TestSetPath_externallyChangedNoFalsePositive guards that SetPath records the
+// destination's on-disk state: an untouched, pre-existing destination must not
+// read as externally changed on the first save.
+func TestSetPath_externallyChangedNoFalsePositive(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "template.yaml")
+	dst := filepath.Join(dir, "existing.yaml")
+	must.NoError(os.WriteFile(src, []byte("name: mydev\n"), 0o600))
+	must.NoError(os.WriteFile(dst, []byte("name: old\n"), 0o600))
+
+	doc, err := Load(src, canonicalOrder)
+	must.NoError(err)
+	doc = doc.SetPath(dst)
+
+	is.False(doc.ExternallyChanged(), "untouched destination must not read as externally changed")
+}
+
+// TestMarkSaved_preservesNewerEdits guards the async-save flow: applying a
+// completed save's outcome onto a document that gained edits meanwhile must
+// keep those edits (and the dirty flag), updating only the persistence state.
+func TestMarkSaved_preservesNewerEdits(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	path := filepath.Join(t.TempDir(), "doc.yaml")
+	must.NoError(os.WriteFile(path, []byte("name: mydev\nimage: ubuntu:22.04\n"), 0o600))
+
+	doc, err := Load(path, canonicalOrder)
+	must.NoError(err)
+
+	saved, err := doc.Save() // the snapshot a background command would write
+	must.NoError(err)
+
+	live, err := doc.Remove("image") // newer edit racing with the save
+	must.NoError(err)
+
+	live = live.MarkSaved(saved)
+	is.True(live.Dirty(), "newer edits must keep the document dirty after MarkSaved")
+	is.NotContains(string(live.Raw()), "image:", "MarkSaved must not clobber newer edits")
+
+	clean := doc.MarkSaved(saved)
+	is.False(clean.Dirty(), "a document matching the saved content must be clean")
 }

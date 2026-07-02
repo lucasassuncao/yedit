@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lucasassuncao/yedit/alert"
 	"github.com/lucasassuncao/yedit/document"
@@ -106,10 +107,12 @@ func rulesLines(entries []groupEntry) []string {
 	for _, sec := range sectionOrder {
 		items := sections[sec]
 		lines = append(lines, "  - "+sec)
+		// Measure in terminal cells, not bytes, so labels with multibyte runes
+		// do not skew the message column.
 		maxW := 0
 		for _, it := range items {
-			if len(it.label) > maxW {
-				maxW = len(it.label)
+			if w := lipgloss.Width(it.label); w > maxW {
+				maxW = w
 			}
 		}
 		for i, it := range items {
@@ -120,7 +123,7 @@ func rulesLines(entries []groupEntry) []string {
 			if it.label == "" {
 				lines = append(lines, fmt.Sprintf("    %s %s", conn, it.msg))
 			} else {
-				pad := strings.Repeat(" ", maxW-len(it.label))
+				pad := strings.Repeat(" ", maxW-lipgloss.Width(it.label))
 				lines = append(lines, fmt.Sprintf("    %s %s%s  %s", conn, it.label, pad, it.msg))
 			}
 		}
@@ -188,8 +191,10 @@ func formatErrors(errs []Violation, maxLines int) string {
 	}
 
 	if maxLines > 0 && len(lines) > maxLines {
+		// The tail mixes group headers and blank spacers, so count what is
+		// actually cut: lines, not errors.
 		remaining := len(lines) - maxLines
-		lines = append(lines[:maxLines], fmt.Sprintf("... and %d more error(s).", remaining))
+		lines = append(lines[:maxLines], fmt.Sprintf("... and %d more line(s).", remaining))
 	}
 	return strings.Join(lines, "\n")
 }

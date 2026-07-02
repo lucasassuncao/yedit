@@ -185,7 +185,7 @@ func ClampScroll(cursor, offset, height int) int
 ClampScroll adjusts a scroll offset so that the cursor row stays within the visible window of height rows, and returns the corrected offset. It scrolls up when the cursor sits above the window and down when it sits below, and never returns a negative offset. A non\-positive height leaves the offset untouched \(apart from the floor at zero\).
 
 <a name="Composite"></a>
-## func [Composite](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L153>)
+## func [Composite](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L158>)
 
 ```go
 func Composite(fg, bg string, x, y int) string
@@ -194,7 +194,7 @@ func Composite(fg, bg string, x, y int) string
 Composite overlays fg on top of bg at position \(x, y\). For each line in fg, the corresponding bg line has its \(x … x\+fgW\) segment replaced by the fg line, preserving ANSI color sequences in both strings.
 
 <a name="CompositeCenter"></a>
-## func [CompositeCenter](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L180>)
+## func [CompositeCenter](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L185>)
 
 ```go
 func CompositeCenter(fg, bg string) string
@@ -212,7 +212,7 @@ func RenderHeader(title, subtitle, right string, width int) string
 RenderHeader returns a single\-line header. title is rendered bold on the left, subtitle \(if non\-empty\) follows after a separator, right \(if non\-empty\) is right\-aligned for context such as filenames.
 
 <a name="RenderHeaderWith"></a>
-## func [RenderHeaderWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L131>)
+## func [RenderHeaderWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L136>)
 
 ```go
 func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string

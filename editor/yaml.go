@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -118,6 +119,34 @@ func normalizeBlockContent(key, raw string) string {
 		return raw
 	}
 	return nodeToContent(key, val)
+}
+
+// parseBlockText parses the block editor's buffer, which must contain exactly
+// one top-level key equal to key, and returns that key's value node. The
+// returned message is empty on success and user-facing on failure. Unlike
+// valueNodeOfSnippet - which silently returns the first key's value - this is
+// the strict variant for commit paths, where a stray second key or a renamed
+// key would otherwise be dropped without warning.
+func parseBlockText(key, text string) (*yaml.Node, string) {
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(text), &root); err != nil {
+		return nil, fmt.Sprintf("Invalid YAML: %v", err)
+	}
+	missingHeader := fmt.Sprintf("Missing %q header - the editor must contain the block's top-level key.", key+":")
+	if root.Kind == 0 || len(root.Content) == 0 {
+		return nil, missingHeader
+	}
+	doc := root.Content[0]
+	if doc.Kind != yaml.MappingNode || len(doc.Content) < 2 {
+		return nil, missingHeader
+	}
+	if len(doc.Content) > 2 {
+		return nil, fmt.Sprintf("Only one top-level key is allowed here - remove %q or commit it as its own block.", doc.Content[2].Value)
+	}
+	if got := doc.Content[0].Value; got != key {
+		return nil, fmt.Sprintf("Top-level key must be %q (found %q) - renaming it here is not supported.", key, got)
+	}
+	return doc.Content[1], ""
 }
 
 // valueNodeOfSnippet parses a standalone "<key>:\n  ..." block and returns the
@@ -337,61 +366,46 @@ func removeMappingKey(mapping *yaml.Node, key string) {
 // Toggle operations use Tag=="" for freshly-added empty values, so they are
 // not affected by this check.
 func pruneEmptyMappings(node *yaml.Node) {
-	if node == nil {
-		return
-	}
-	switch node.Kind {
-	case yaml.MappingNode:
-		for i := 1; i < len(node.Content); i += 2 {
-			pruneEmptyMappings(node.Content[i])
-		}
-		i := 0
-		for i < len(node.Content)-1 {
-			val := node.Content[i+1]
-			empty := (val.Kind == yaml.MappingNode || val.Kind == yaml.SequenceNode) && len(val.Content) == 0 ||
-				val.Kind == yaml.ScalarNode && val.Tag == "!!null"
-			if empty {
-				node.Content = append(node.Content[:i], node.Content[i+2:]...)
-			} else {
-				i += 2
-			}
-		}
-	case yaml.SequenceNode:
-		for _, item := range node.Content {
-			pruneEmptyMappings(item)
-		}
-		i := 0
-		for i < len(node.Content) {
-			item := node.Content[i]
-			if item.Kind == yaml.MappingNode && len(item.Content) == 0 {
-				node.Content = append(node.Content[:i], node.Content[i+1:]...)
-			} else {
-				i++
-			}
-		}
-	}
+	pruneEmpty(node,
+		func(v *yaml.Node) bool { return emptyCollection(v) || v.Kind == yaml.ScalarNode && v.Tag == "!!null" },
+		func(v *yaml.Node) bool { return v.Kind == yaml.MappingNode && len(v.Content) == 0 },
+	)
 }
 
 // pruneEmptyContent is like pruneEmptyMappings but also removes mapping values
-// that are null or empty scalars. Called on commit so that scaffold fields the
-// user never filled in (e.g. hooks.before.shell: "") are stripped before the
-// block is written to the document. Not used after individual toggles, where
-// "" is the legitimate placeholder for a just-added field.
+// and sequence items that are null or empty scalars. Called on commit so that
+// scaffold fields the user never filled in (e.g. hooks.before.shell: "") are
+// stripped before the block is written to the document. Not used after
+// individual toggles, where "" is the legitimate placeholder for a just-added
+// field.
 func pruneEmptyContent(node *yaml.Node) {
+	emptyVal := func(v *yaml.Node) bool {
+		return emptyCollection(v) || v.Kind == yaml.ScalarNode && (v.Tag == "!!null" || v.Value == "")
+	}
+	pruneEmpty(node, emptyVal, emptyVal)
+}
+
+// emptyCollection reports whether v is a mapping or sequence with no content.
+func emptyCollection(v *yaml.Node) bool {
+	return (v.Kind == yaml.MappingNode || v.Kind == yaml.SequenceNode) && len(v.Content) == 0
+}
+
+// pruneEmpty is the shared depth-first traversal behind pruneEmptyMappings and
+// pruneEmptyContent: it recurses into nested nodes first (so the cleanup
+// propagates upward), then removes mapping pairs whose value emptyPair reports
+// as empty and sequence items emptyItem reports as empty.
+func pruneEmpty(node *yaml.Node, emptyPair, emptyItem func(*yaml.Node) bool) {
 	if node == nil {
 		return
 	}
 	switch node.Kind {
 	case yaml.MappingNode:
 		for i := 1; i < len(node.Content); i += 2 {
-			pruneEmptyContent(node.Content[i])
+			pruneEmpty(node.Content[i], emptyPair, emptyItem)
 		}
 		i := 0
 		for i < len(node.Content)-1 {
-			val := node.Content[i+1]
-			empty := (val.Kind == yaml.MappingNode || val.Kind == yaml.SequenceNode) && len(val.Content) == 0 ||
-				val.Kind == yaml.ScalarNode && (val.Tag == "!!null" || val.Value == "")
-			if empty {
+			if emptyPair(node.Content[i+1]) {
 				node.Content = append(node.Content[:i], node.Content[i+2:]...)
 			} else {
 				i += 2
@@ -399,14 +413,11 @@ func pruneEmptyContent(node *yaml.Node) {
 		}
 	case yaml.SequenceNode:
 		for _, item := range node.Content {
-			pruneEmptyContent(item)
+			pruneEmpty(item, emptyPair, emptyItem)
 		}
 		i := 0
 		for i < len(node.Content) {
-			item := node.Content[i]
-			empty := (item.Kind == yaml.MappingNode || item.Kind == yaml.SequenceNode) && len(item.Content) == 0 ||
-				item.Kind == yaml.ScalarNode && (item.Tag == "!!null" || item.Value == "")
-			if empty {
+			if emptyItem(node.Content[i]) {
 				node.Content = append(node.Content[:i], node.Content[i+1:]...)
 			} else {
 				i++

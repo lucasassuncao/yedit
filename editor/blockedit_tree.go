@@ -44,9 +44,14 @@ func (be blockEditState) fieldHasContent(node treeNode) bool {
 
 func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	prevSeqIdx := be.tree.NearestSeqItem()
+	prevNodeIdx := be.tree.currentNodeIdx()
 
 	tree, action := be.tree.Update(msg)
 	be.tree = tree
+	if be.tree.currentNodeIdx() != prevNodeIdx {
+		// The hint panel now describes a different field; show it from the top.
+		be.hintScroll = 0
+	}
 
 	switch action {
 	case treeOpenChild:
@@ -207,18 +212,13 @@ func (be blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked 
 	}
 	pruneEmptyMappings(cloned)
 	reorderNestedMappingKeys(cloned, ctx.childDefs)
-	// Write the cloned node back into be.node at the entry's position.
-	if be.coll.isMap {
-		idx := be.coll.current
-		if 2*idx+1 < len(be.node.Content) {
-			be.node.Content[2*idx+1] = cloned
-		}
-	} else {
-		idx := be.coll.current
-		if idx >= 0 && idx < len(be.node.Content) {
-			be.node.Content[idx] = cloned
-		}
+	// Write the cloned node back into be.node at the entry's position, keeping
+	// the existing key node for maps.
+	var keyNode *yaml.Node
+	if be.coll.isMap && 2*be.coll.current < len(be.node.Content) {
+		keyNode = be.node.Content[2*be.coll.current]
 	}
+	setEntry(&be.node, be.coll.isMap, be.coll.current, keyNode, cloned)
 	return be
 }
 
@@ -246,7 +246,3 @@ func (be blockEditState) handleTreeAddNew() blockEditState {
 	be.tree = be.resyncTreeFromYAML()
 	return be
 }
-
-// performEntryDelete removes collection entry seqIdx from both the tree and the
-// buffer, saving undo first. saveUndo runs before the tree is mutated, so the
-// snapshot captures the pre-deletion tree directly and ctrl+u restores the entry.

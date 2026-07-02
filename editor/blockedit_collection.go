@@ -16,8 +16,6 @@ type collectionBuffer struct {
 	current int // index of the entry shown in yamlEditor (-1 if empty)
 }
 
-// blockEditState is the full-screen block editing mode that replaces the old
-// floating overlayModel. It reuses the same two-panel layout as the root view.
 // collectionDeriveTree refreshes every entry's label, yamlPath, and child
 // checkmarks from be.node, preserving the tree's structure (expansion/cursor).
 // It is the structural replacement for syncCurrentEntry - and unlike it, derives
@@ -59,6 +57,9 @@ func (be blockEditState) collectionDeriveTree() treeModel {
 	return tm
 }
 
+// performEntryDelete removes collection entry seqIdx from both the tree and
+// the canonical node. saveUndo runs before either is mutated, so the snapshot
+// captures the pre-deletion state directly and ctrl+u restores the entry.
 func (be blockEditState) performEntryDelete(seqIdx int) blockEditState {
 	// Flush the current entry so unsaved edits are not lost when we delete
 	// a different entry that shifts the canonical node.
