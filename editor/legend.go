@@ -45,7 +45,7 @@ var (
 	kbHint     = key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "hint"))
 	kbHintHide = key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "hide hint"))
 
-	kbCtrlPTemplates = key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "templates"))
+	kbTemplates = key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "templates"))
 )
 
 // KeyMap types implement help.KeyMap (short mode only — FullHelp is unused).

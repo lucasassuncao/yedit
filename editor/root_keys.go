@@ -29,7 +29,7 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.togglePreviewPane()
 		case "ctrl+r":
 			return m.reload()
-		case "ctrl+p":
+		case "p":
 			if pb, ok := newPresetBrowser(m.cfg.DocPresets, "", ""); ok {
 				return m.enterDocPreset(pb), nil
 			}

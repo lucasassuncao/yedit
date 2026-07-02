@@ -117,7 +117,7 @@ func listKeyMapFor(m model, previewFocused bool) help.KeyMap {
 	}
 	base := km.ShortHelp()
 	extended := make([]key.Binding, 0, len(base)+1)
-	extended = append(extended, base[0], kbCtrlPTemplates)
+	extended = append(extended, base[0], kbTemplates)
 	if len(base) > 1 {
 		extended = append(extended, base[1:]...)
 	}

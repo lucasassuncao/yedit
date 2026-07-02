@@ -350,7 +350,7 @@ type Config struct {
     Schema               any            // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
     Title                string         // label shown in the TUI header
     BlockPresets         presets.Source // optional; nil disables the preset picker inside block editors
-    DocPresets           presets.Source // optional; when set, ctrl+p on the root list opens a whole-document template picker
+    DocPresets           presets.Source // optional; when set, p on the root list opens a whole-document template picker
     EnableHints          bool           // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
     Metadata             MetadataSource // field metadata displayed in the hint panel and enforced by the FromMetadata validators
     Validators           []Validator    // rules evaluated before every save and on the validate shortcut
