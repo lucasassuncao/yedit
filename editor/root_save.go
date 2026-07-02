@@ -46,9 +46,25 @@ func (m model) withStatus(msg string) (model, tea.Cmd) {
 	})
 }
 
-func (m model) collectErrors() []Violation {
+// withStickyError sets an error status that persists until the next status
+// change - used for errors the user must not miss. Bumping statusSeq
+// invalidates any clear tick scheduled by an earlier withStatus, so a
+// transient message's timer cannot wipe the error early. Routine feedback
+// goes through withStatus instead. Only for messages shown on the root
+// status line (list/preview); while a block editor is open its own feedback
+// line is the visible channel - use withTopBEError there.
+func (m model) withStickyError(msg string) model {
+	m.statusSeq++
+	m.statusMsg = msg
+	return m
+}
+
+// collectErrors runs the unknown-key check and all wired validators against
+// doc. Callers pass m.doc, or a throwaway copy carrying uncommitted editor
+// content (see validateKeys).
+func (m model) collectErrors(doc document.Document) []Violation {
 	var errs []Violation
-	if u := schema.UnknownKeys(m.doc.Raw(), m.knownByPath); len(u) > 0 {
+	if u := schema.UnknownKeys(doc.Raw(), m.knownByPath); len(u) > 0 {
 		var filtered []string
 		for _, k := range u {
 			if !m.list.passthrough[k] {
@@ -59,20 +75,13 @@ func (m model) collectErrors() []Violation {
 			errs = append(errs, Violation{Path: k, Group: GroupUnknownKeys})
 		}
 	}
-	for _, v := range RunAll(m.wiredValidators, m.doc.Raw(), m.doc.Blocks()) {
+	for _, v := range RunAll(m.wiredValidators, doc.Raw(), doc.Blocks()) {
 		if v.Group == "" {
 			v.Group = GroupRules
 		}
 		errs = append(errs, v)
 	}
 	return errs
-}
-
-// groupLoc returns the display location for a grouped Violation entry.
-// Paths with dots or brackets are returned as-is; all others (including empty)
-// are returned unchanged so the caller omits the location prefix when empty.
-func groupLoc(path string) string {
-	return path
 }
 
 type groupEntry struct{ path, msg string }
@@ -165,7 +174,7 @@ func formatErrors(errs []Violation, maxLines int) string {
 			lines = append(lines, rulesLines(entries[grp])...)
 		} else {
 			for _, entry := range entries[grp] {
-				loc := groupLoc(entry.path)
+				loc := entry.path
 				switch {
 				case entry.msg == "":
 					lines = append(lines, "  - "+loc)
@@ -186,7 +195,7 @@ func formatErrors(errs []Violation, maxLines int) string {
 }
 
 func (m model) save() (tea.Model, tea.Cmd) {
-	errs := m.collectErrors()
+	errs := m.collectErrors(m.doc)
 	maxLines := m.height - 12 // reserve space for box border, padding, title, button
 	if maxLines < 6 {
 		maxLines = 6
@@ -247,12 +256,30 @@ func (m model) execReload() (tea.Model, tea.Cmd) {
 	return m, cmdReload(m.doc)
 }
 
+// validateKeys runs the document-level validation pass (ctrl+l). When a block
+// editor stack is open, the current (uncommitted) editor content is applied to
+// a throwaway copy of the document first, so validation reflects what is on
+// screen instead of the last committed state.
 func (m model) validateKeys() (tea.Model, tea.Cmd) {
+	doc := m.doc
+	if len(m.blockEdits) > 0 {
+		var ok bool
+		if m, ok = m.flushTopToRoot(); !ok {
+			// The editor content does not commit (parse/unknown-key error); the
+			// editor's feedback line shows the detail. Validating the stale
+			// document would only mislead, so stop here.
+			return m, nil
+		}
+		var err error
+		if doc, err = m.docWithEditorContent(); err != nil {
+			return m.showAlert("Validation failed", fmt.Sprintf("Could not apply editor content: %v", err), alert.KindError)
+		}
+	}
 	maxLines := m.height - 12
 	if maxLines < 6 {
 		maxLines = 6
 	}
-	if errs := m.collectErrors(); len(errs) > 0 {
+	if errs := m.collectErrors(doc); len(errs) > 0 {
 		return m.showAlert("Validation errors", formatErrors(errs, maxLines), alert.KindError)
 	}
 	return m.showAlert("Validation passed", "All keys are valid and no conflicts were found.", alert.KindSuccess)

@@ -66,12 +66,12 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 		be = be.appendPreset(act.Name, act.Content)
 
 	case Undo:
+		// restoreUndo sets the status message itself: it knows whether a
+		// snapshot was actually restored or the stack held only no-op states.
 		be = be.restoreUndo()
-		be.statusMsg = "Undone."
 
 	case Redo:
 		be = be.restoreRedo()
-		be.statusMsg = "Redone."
 
 	default:
 		panic(fmt.Sprintf("editor: unhandled BlockAction %T", a))

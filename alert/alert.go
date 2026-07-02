@@ -108,10 +108,12 @@ func (a Model) Box() string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(color)
 	title := titleStyle.Render(a.title)
 
+	// Measure in terminal cells (not bytes) so multibyte runes and symbols do
+	// not skew the OK-button centering.
 	maxW := 0
 	for _, l := range a.lines {
-		if len(l) > maxW {
-			maxW = len(l)
+		if w := lipgloss.Width(l); w > maxW {
+			maxW = w
 		}
 	}
 

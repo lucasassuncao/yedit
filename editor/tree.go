@@ -550,21 +550,26 @@ func (tm treeModel) restoreCursorToPath(path []string) treeModel {
 	}
 	// Second pass: the target node may be hidden under a collapsed ancestor.
 	// Expand any ancestor whose path is a prefix of the target path so the
-	// node becomes visible, then retry.
-	expanded := false
-	for i := range tm.nodes {
-		n := &tm.nodes[i]
+	// node becomes visible, then retry. Clone before the first mutation: the
+	// incoming slice may be shared (e.g. with an undo snapshot), and the tree's
+	// copy-on-write discipline forbids writing through a shared backing array.
+	var nodes []treeNode
+	for i, n := range tm.nodes {
 		if n.kind != treeNodeField || n.isLeaf || n.expanded {
 			continue
 		}
 		if isPathPrefix(n.yamlPath, path) {
-			n.expanded = true
-			expanded = true
+			if nodes == nil {
+				nodes = make([]treeNode, len(tm.nodes))
+				copy(nodes, tm.nodes)
+			}
+			nodes[i].expanded = true
 		}
 	}
-	if !expanded {
+	if nodes == nil {
 		return tm // node is not in the tree at all; leave cursor unchanged
 	}
+	tm.nodes = nodes
 	for vi, ni := range tm.visibleNodes() {
 		if pathEqual(tm.nodes[ni].yamlPath, path) {
 			tm.cursor = vi

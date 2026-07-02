@@ -271,12 +271,12 @@ func TestDrillOutFromSeqNavInsideMapNav(t *testing.T) {
 	}
 
 	// Drill into B via the same path handleTreeOpenChild would emit for a map nav
-	// entry: relSegs = [segKey("key1"), segKey("B")].
+	// entry: relSegs = [segMapKey("key1"), segKey("B")].
 	updated, _ = m.Update(openChildMsg{
 		key:     "B",
 		defs:    subField1Defs,
 		kind:    schema.KindList,
-		relSegs: []pathSeg{segKey("key1"), segKey("B")},
+		relSegs: []pathSeg{segMapKey("key1"), segKey("B")},
 	})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2, "stack depth after drilling into B")
@@ -330,7 +330,7 @@ func TestEscKeyFromSeqNavInsideMapNav(t *testing.T) {
 		key:     "B",
 		defs:    subField1Defs,
 		kind:    schema.KindList,
-		relSegs: []pathSeg{segKey("key1"), segKey("B")},
+		relSegs: []pathSeg{segMapKey("key1"), segKey("B")},
 	})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2, "stack depth after drilling into B")
@@ -509,3 +509,117 @@ func TestDrillOutFromEmptyList(t *testing.T) {
 
 // catDefs mirrors the movelooper category schema shape: nested structs (source,
 // source.filter), scalar lists, and a hooks struct with before/after children.
+
+// TestMapNavDrillEmitsMapEntrySeg locks the producer side of the runtime-key
+// marking: drilling into an openable field of a map-nav entry must emit the
+// entry key as a map-entry segment (isMapEntry), not a plain schema key, so
+// metadata prefixes can exclude it at any nesting depth.
+func TestMapNavDrillEmitsMapEntrySeg(t *testing.T) {
+	must := require.New(t)
+	spec := blockSpec{
+		key: "top",
+		defs: []schema.FieldDef{
+			{YAMLName: "inner", Kind: schema.KindDictionary, Children: []schema.FieldDef{
+				{YAMLName: "x", Kind: schema.KindPrimitive},
+			}},
+		},
+		kind: schema.KindDictionary,
+		content: `top:
+  k1:
+    inner:
+      k2:
+        x: hi
+`,
+	}
+	be := newBlockEdit(Config{}, spec, 100, 40)
+	must.True(be.isMapNav(), "spec should build a map navigator")
+
+	// Expand the k1 entry so its "inner" child becomes visible, then drill in.
+	be.tree = be.tree.withNodeMutated(0, func(n *treeNode) { n.expanded = true })
+	be = cursorToLabel(be, "inner")
+	_, cmd := be.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	must.NotNil(cmd, "Enter on an openable field must emit a command")
+	msg, ok := cmd().(openChildMsg)
+	must.True(ok, "expected openChildMsg, got %T", cmd())
+	must.Len(msg.relSegs, 2)
+	must.True(msg.relSegs[0].isMapEntry, "entry key segment must be marked isMapEntry")
+	must.Equal("k1", msg.relSegs[0].key)
+	must.False(msg.relSegs[1].isMapEntry, "schema field segment must not be marked isMapEntry")
+	must.Equal("inner", msg.relSegs[1].key)
+}
+
+// TestNestedMapNavMetadataPrefixSkipsRuntimeKeys is the regression test for
+// metadata lookups in dictionaries nested inside dictionaries: the runtime
+// entry keys of ALL map-nav ancestors (k1, k2) must be excluded from the
+// fieldPath, not only the immediate parent's. Before the isMapEntry marking,
+// the second drill queried "k1.inner.deep.y" and hints/Presentation silently
+// stopped resolving.
+func TestNestedMapNavMetadataPrefixSkipsRuntimeKeys(t *testing.T) {
+	type deepProbe struct {
+		Y string `yaml:"y,omitempty"`
+	}
+	type leafProbe struct {
+		Deep []deepProbe `yaml:"deep,omitempty"`
+	}
+	type outerProbe struct {
+		Inner map[string]*leafProbe `yaml:"inner,omitempty"`
+	}
+	type rootProbe struct {
+		Top map[string]*outerProbe `yaml:"top,omitempty"`
+	}
+
+	must := require.New(t)
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	must.NoError(os.WriteFile(path, []byte(`top:
+  k1:
+    inner:
+      k2:
+        deep:
+          - y: hello
+`), 0o600))
+
+	var queried []string
+	rec := MetadataFunc(func(blockKey, fieldPath string) FieldMeta {
+		queried = append(queried, fieldPath)
+		return FieldMeta{}
+	})
+	m, err := newModel(Config{Path: path, Schema: &rootProbe{}, Metadata: rec})
+	must.NoError(err)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "top", Existing: true}})
+	m = updated.(model)
+	must.Len(m.blockEdits, 1)
+
+	deepDefs := []schema.FieldDef{{YAMLName: "y", Kind: schema.KindPrimitive}}
+	innerDefs := []schema.FieldDef{{YAMLName: "deep", Kind: schema.KindList, Children: deepDefs}}
+
+	// First drill: entry k1 of "top", into its "inner" dictionary.
+	updated, _ = m.Update(openChildMsg{
+		key:     "inner",
+		defs:    innerDefs,
+		kind:    schema.KindDictionary,
+		relSegs: []pathSeg{segMapKey("k1"), segKey("inner")},
+	})
+	m = updated.(model)
+	must.Len(m.blockEdits, 2)
+
+	// Second drill: entry k2 of "inner", into its "deep" list. The parent focus
+	// now carries the k1 runtime key; it must not leak into the lookup path.
+	queried = nil
+	updated, _ = m.Update(openChildMsg{
+		key:     "deep",
+		defs:    deepDefs,
+		kind:    schema.KindList,
+		relSegs: []pathSeg{segMapKey("k2"), segKey("deep")},
+	})
+	m = updated.(model)
+	must.Len(m.blockEdits, 3)
+
+	must.Contains(queried, "inner.deep.y", "metadata must be queried by schema field names only")
+	for _, p := range queried {
+		must.NotContains(p, "k1", "runtime map key of a map-nav ancestor leaked into fieldPath %q", p)
+		must.NotContains(p, "k2", "runtime map key of the immediate parent leaked into fieldPath %q", p)
+	}
+}

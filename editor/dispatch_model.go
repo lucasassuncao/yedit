@@ -49,7 +49,7 @@ func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
 	case ApplyDocPreset:
 		// Show a confirmation dialog before replacing the entire document.
 		// The actual replace is performed when confirmedDocPresetMsg is received.
-		msg := fmt.Sprintf("Apply preset %q? This will replace the entire document — all unsaved changes will be lost.", act.Name)
+		msg := fmt.Sprintf("Apply preset %q? This will replace the entire document - all unsaved changes will be lost.", act.Name)
 		return m.showConfirmAlert("Apply document preset?", msg,
 			func() tea.Msg { return confirmedDocPresetMsg(act) })
 	default:

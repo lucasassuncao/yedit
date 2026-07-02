@@ -210,3 +210,29 @@ func TestMatrix_ToggleConsequenceAcrossContexts(t *testing.T) {
 		})
 	}
 }
+
+// TestRestoreCursorToPathDoesNotMutateSharedNodes guards the tree's
+// copy-on-write discipline: when restoreCursorToPath needs to expand a
+// collapsed ancestor to reveal the target, it must clone the nodes slice
+// instead of writing through the (possibly shared) backing array. Undo
+// snapshots shallow-copy tree nodes and would otherwise be corrupted.
+func TestRestoreCursorToPathDoesNotMutateSharedNodes(t *testing.T) {
+	shared := []treeNode{
+		{kind: treeNodeField, yamlPath: []string{"parent"}, label: "parent", depth: 0, isLeaf: false},
+		{kind: treeNodeField, yamlPath: []string{"parent", "child"}, label: "child", depth: 1, isLeaf: true},
+	}
+	tm := treeModel{nodes: shared, height: 10}
+
+	got := tm.restoreCursorToPath([]string{"parent", "child"})
+
+	if !got.nodes[0].expanded {
+		t.Error("restoreCursorToPath should expand the collapsed ancestor in its own copy")
+	}
+	vis := got.visibleNodes()
+	if got.cursor >= len(vis) || got.nodes[vis[got.cursor]].label != "child" {
+		t.Errorf("cursor should land on the revealed child, got cursor=%d", got.cursor)
+	}
+	if shared[0].expanded {
+		t.Error("restoreCursorToPath mutated the shared input slice in place (copy-on-write violated)")
+	}
+}

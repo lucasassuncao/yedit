@@ -61,21 +61,29 @@ func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked 
 // key (isIndex == false) or a sequence index (isIndex == true). A focus path is
 // the canonical, unambiguous address of a node. Rooted at the filters sequence,
 // filters[0].any[1] is [segIdx(0), segKey("any"), segIdx(1)].
+//
+// isMapEntry marks a key that is a runtime map-entry key (user data, e.g. the
+// "web" in httproutes.web) rather than a schema field name. Both navigate the
+// node tree the same way; the distinction matters only for schema/metadata
+// lookups, which must see field names exclusively.
 type pathSeg struct {
-	key     string
-	idx     int
-	isIndex bool
+	key        string
+	idx        int
+	isIndex    bool
+	isMapEntry bool
 }
 
-func segKey(k string) pathSeg { return pathSeg{key: k} }
-func segIdx(i int) pathSeg    { return pathSeg{idx: i, isIndex: true} }
+func segKey(k string) pathSeg    { return pathSeg{key: k} }
+func segMapKey(k string) pathSeg { return pathSeg{key: k, isMapEntry: true} }
+func segIdx(i int) pathSeg       { return pathSeg{idx: i, isIndex: true} }
 
 // focusToStringPath converts a focus path to a slice of key strings, dropping
-// index segments. Used to build metadata lookup prefixes for nested editors.
+// index segments and runtime map-entry keys - neither is a schema field name,
+// at any nesting depth. Used to build metadata lookup prefixes for nested editors.
 func focusToStringPath(focus []pathSeg) []string {
 	out := make([]string, 0, len(focus))
 	for _, s := range focus {
-		if !s.isIndex {
+		if !s.isIndex && !s.isMapEntry {
 			out = append(out, s.key)
 		}
 	}

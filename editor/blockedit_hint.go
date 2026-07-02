@@ -49,7 +49,7 @@ func (be blockEditState) hintContent() string {
 
 	switch node.kind {
 	case treeNodeUnknown:
-		return be.theme.unknownItem.Render("⚠ unknown key - not declare in the schema\n remove it before saving")
+		return be.theme.unknownItem.Render("⚠ unknown key - not declared in the schema\n remove it before saving")
 	case treeNodeField:
 		// handled below
 	default:

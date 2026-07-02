@@ -3136,7 +3136,7 @@ func TestRequiredFromMetadata_wiredByNewModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	errs := m.collectErrors()
+	errs := m.collectErrors(m.doc)
 	found := false
 	for _, e := range errs {
 		if strings.Contains(e.String(), "version: required") {

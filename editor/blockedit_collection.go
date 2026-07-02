@@ -159,7 +159,7 @@ func (be blockEditState) flushCurrentEntry() blockEditState {
 		count := entryCount(&be.node, be.coll.isMap)
 		for i := 0; i < count; i++ {
 			if i != cur && entryLabel(&be.node, true, i) == newKey {
-				be.editorErr = editorError{kind: errParse, message: fmt.Sprintf("Duplicate map key %q — rename it to a unique key first.", newKey)}
+				be.editorErr = editorError{kind: errParse, message: fmt.Sprintf("Duplicate map key %q - rename it to a unique key first.", newKey)}
 				return be
 			}
 		}

@@ -198,7 +198,7 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 		// The preset YAML is unparseable; reset to an empty mapping and tell
 		// the user so the block is not silently cleared without explanation.
 		be.node = yaml.Node{Kind: yaml.MappingNode}
-		be.editorErr = editorError{kind: errPreset, message: "Preset YAML is invalid — block reset to empty."}
+		be.editorErr = editorError{kind: errPreset, message: "Preset YAML is invalid - block reset to empty."}
 	}
 	be.tree = syncTreeCheckedFromNode(be.tree, &be.node)
 	return be

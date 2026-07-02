@@ -106,6 +106,7 @@ func newModel(cfg Config) (model, error) {
 	preview := viewport.New(0, 0)
 	preview.SetContent(renderPreviewYAML(string(doc.Raw()), nil))
 
+	rt := resolveTheme(cfg.Theme)
 	return model{
 		cfg:             cfg,
 		doc:             doc,
@@ -117,8 +118,8 @@ func newModel(cfg Config) (model, error) {
 		list:     list,
 		preview:  preview,
 		showHint: cfg.EnableHints,
-		theme:    resolveTheme(cfg.Theme),
-		help:     newHelpModel(resolveTheme(cfg.Theme)),
+		theme:    rt,
+		help:     newHelpModel(rt),
 	}, nil
 }
 
@@ -186,9 +187,7 @@ func (m model) viewDocPreset() string {
 
 	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legend})
 	if m.height > 0 {
-		if lines := strings.Split(out, "\n"); len(lines) > m.height {
-			out = strings.Join(lines[:m.height], "\n")
-		}
+		out = clampLines(out, m.height)
 	}
 	return out
 }
@@ -341,7 +340,7 @@ func (m model) handleConfirmedDocPreset(msg confirmedDocPresetMsg) (tea.Model, t
 	m.doc = newDoc
 	m = m.syncView()
 	m = m.enterList()
-	return m.withStatus(fmt.Sprintf("Applied preset %q — ctrl+s to save.", msg.Name))
+	return m.withStatus(fmt.Sprintf("Applied preset %q - ctrl+s to save.", msg.Name))
 }
 
 // handleDismissedAlert clears the active alert and returns to the appropriate screen. Routing depends on the current mode,
@@ -444,8 +443,7 @@ func (m model) handleDelete(key string) (tea.Model, tea.Cmd) {
 	var err error
 	m.doc, err = m.doc.Remove(key)
 	if err != nil {
-		m.statusMsg = fmt.Sprintf("Error removing %s: %v", key, err)
-		return m, nil
+		return m.withStickyError(fmt.Sprintf("Error removing %s: %v", key, err)), nil
 	}
 	m = m.syncView()
 	return m.withStatus(fmt.Sprintf("Removed %q (not saved yet).", key))
@@ -501,9 +499,7 @@ func (m model) View() string {
 
 	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legend})
 	if m.height > 0 {
-		if lines := strings.Split(out, "\n"); len(lines) > m.height {
-			out = strings.Join(lines[:m.height], "\n")
-		}
+		out = clampLines(out, m.height)
 	}
 	if m.alertVisible {
 		out = theme.CompositeCenter(m.alert.Box(), out)

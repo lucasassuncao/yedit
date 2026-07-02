@@ -231,10 +231,11 @@ func (lm listModel) SelectedItem() *listItem {
 }
 
 // ItemByKey returns the listItem for the given key, or a zero listItem when
-// the key is not in the list.
+// the key is not in the list. Separator rows are skipped so a block that
+// happens to be named like a section label (e.g. "ADDED") cannot match one.
 func (lm listModel) ItemByKey(key string) listItem {
 	for _, it := range lm.items {
-		if it.Key == key {
+		if !it.Separator && it.Key == key {
 			return it
 		}
 	}
@@ -287,7 +288,7 @@ func (lm listModel) updateFilter(key tea.KeyMsg) (listModel, tea.Cmd) {
 		if lm.fCursor < len(items) {
 			sel := items[lm.fCursor].Key
 			for i, it := range lm.items {
-				if it.Key == sel {
+				if !it.Separator && it.Key == sel {
 					lm.cursor = i
 					lm = lm.clampScroll()
 					break

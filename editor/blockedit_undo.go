@@ -1,6 +1,8 @@
 package editor
 
 import (
+	"reflect"
+
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/yamlnode"
@@ -51,37 +53,72 @@ func appendSnapCapped(stack []blockEditUndoSnap, snap blockEditUndoSnap) []block
 	return stack
 }
 
+// snapEqual reports whether two snapshots capture the same editor state.
+// Snapshots are deep copies built the same way by captureSnap, so a structural
+// comparison is exact; reflect.DeepEqual also handles anchor/alias cycles.
+func snapEqual(a, b blockEditUndoSnap) bool {
+	return reflect.DeepEqual(a, b)
+}
+
 // saveUndo pushes the current state onto the undo stack. Any redo entries are
 // discarded - a new mutation forks away from the undone states.
+//
+// An exact duplicate of the stack top is skipped: speculative checkpoints
+// (e.g. Tab into the YAML panel with no edit afterwards) would otherwise pile
+// up identical snapshots that make ctrl+u appear to do nothing. When the state
+// is unchanged since the last push there is no fork to discard either, so the
+// redo stack is left alone.
 func (be blockEditState) saveUndo() blockEditState {
-	be.undoStack = appendSnapCapped(be.undoStack, be.captureSnap())
+	snap := be.captureSnap()
+	if n := len(be.undoStack); n > 0 && snapEqual(be.undoStack[n-1], snap) {
+		return be
+	}
+	be.undoStack = appendSnapCapped(be.undoStack, snap)
 	be.redoStack = nil
 	return be
 }
 
-// restoreUndo restores the most recent undo snapshot and pushes the undone
-// state onto the redo stack. No-op when the undo stack is empty.
+// restoreUndo restores the most recent undo snapshot that differs from the
+// live state and pushes the undone state onto the redo stack. Snapshots equal
+// to the live state (left by speculative checkpoints) are dropped first, so a
+// single ctrl+u always lands on a visible change. Sets the matching status
+// message; no-op apart from it when there is nothing to restore.
 func (be blockEditState) restoreUndo() blockEditState {
+	live := be.captureSnap()
+	for len(be.undoStack) > 0 && snapEqual(be.undoStack[len(be.undoStack)-1], live) {
+		be.undoStack = be.undoStack[:len(be.undoStack)-1]
+	}
 	if len(be.undoStack) == 0 {
+		be.statusMsg = "Nothing to undo."
 		return be
 	}
-	be.redoStack = appendSnapCapped(be.redoStack, be.captureSnap())
+	be.redoStack = appendSnapCapped(be.redoStack, live)
 	snap, rest := popSnap(be.undoStack)
 	be.undoStack = rest
-	return be.applySnap(snap)
+	be = be.applySnap(snap)
+	be.statusMsg = "Undone."
+	return be
 }
 
 // restoreRedo re-applies the most recently undone change and pushes the
-// current state onto the undo stack so the redo itself can be undone. No-op
-// when the redo stack is empty.
+// current state onto the undo stack so the redo itself can be undone. Mirrors
+// restoreUndo: live-equal snapshots are dropped and the status message is set
+// here; no-op apart from it when there is nothing to restore.
 func (be blockEditState) restoreRedo() blockEditState {
+	live := be.captureSnap()
+	for len(be.redoStack) > 0 && snapEqual(be.redoStack[len(be.redoStack)-1], live) {
+		be.redoStack = be.redoStack[:len(be.redoStack)-1]
+	}
 	if len(be.redoStack) == 0 {
+		be.statusMsg = "Nothing to redo."
 		return be
 	}
-	be.undoStack = appendSnapCapped(be.undoStack, be.captureSnap())
+	be.undoStack = appendSnapCapped(be.undoStack, live)
 	snap, rest := popSnap(be.redoStack)
 	be.redoStack = rest
-	return be.applySnap(snap)
+	be = be.applySnap(snap)
+	be.statusMsg = "Redone."
+	return be
 }
 
 // popSnap removes and returns the top snapshot of stack.

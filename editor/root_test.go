@@ -382,3 +382,109 @@ func TestFilterAcceptsJK(t *testing.T) {
 	must.NotNil(sel, "selected item should not be nil after filter+enter")
 	is.Equal("unknown-key", sel.Key, "filter+enter should select unknown-key")
 }
+
+// TestStickyErrorSurvivesStaleClearTick guards the status policy: an error set
+// via withStickyError must bump statusSeq so a clear tick scheduled by an
+// earlier transient withStatus cannot wipe the error when it fires.
+func TestStickyErrorSurvivesStaleClearTick(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	m, err := newModel(Config{
+		Path:   filepath.Join(t.TempDir(), "probe.yaml"),
+		Schema: &sizeProbeConfig{},
+	})
+	must.NoError(err, "newModel")
+
+	m, _ = m.withStatus("transient")
+	staleSeq := m.statusSeq
+	m = m.withStickyError("disk exploded")
+
+	updated, _ := m.Update(clearStatusMsg{seq: staleSeq})
+	m = updated.(model)
+	is.Equal("disk exploded", m.statusMsg, "stale clear tick must not wipe a sticky error")
+}
+
+// TestValidateKeysSeesUncommittedEditorContent is the regression test for the
+// stale ctrl+l: with a block editor open, validation must run against the
+// on-screen (uncommitted) content, while the real document stays untouched.
+func TestValidateKeysSeesUncommittedEditorContent(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+
+	var seenRaw string
+	recorder := ValidatorFunc(func(in ValidationInput) []Violation {
+		seenRaw = string(in.Raw)
+		return nil
+	})
+
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	must.NoError(os.WriteFile(path, []byte("server:\n  host: old.com\n"), 0o600))
+	m, err := newModel(Config{
+		Path:       path,
+		Schema:     &sizeProbeConfig{},
+		Validators: []Validator{recorder},
+	})
+	must.NoError(err, "newModel")
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "server", Existing: true}})
+	m = updated.(model)
+	must.Equal(paneBlockEdit, m.mode)
+
+	// Edit the block without committing.
+	be := *m.topBE()
+	be.yamlEditor.SetValue("server:\n  host: new.com\n")
+	be.dirty = true
+	m = m.withTopBE(be)
+
+	// ctrl+l → validateRequestedMsg → validateKeys.
+	updated, _ = m.Update(validateRequestedMsg{})
+	m = updated.(model)
+
+	is.Contains(seenRaw, "new.com", "validators must see the uncommitted editor content")
+	is.NotContains(seenRaw, "old.com", "validators must not see the stale committed value")
+	is.Contains(string(m.doc.Raw()), "old.com", "validation must not mutate the real document")
+	is.Equal(paneAlert, m.mode, "validation outcome must be shown as an alert")
+}
+
+// TestValidateKeysBlocksOnUnparseableEditor guards the flush gate: when the
+// open editor's buffer cannot be committed (invalid YAML), ctrl+l must not
+// silently validate the stale document - it stays in the editor with the
+// error on the editor's own feedback line.
+func TestValidateKeysBlocksOnUnparseableEditor(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+
+	validatorRan := false
+	recorder := ValidatorFunc(func(in ValidationInput) []Violation {
+		validatorRan = true
+		return nil
+	})
+
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	must.NoError(os.WriteFile(path, []byte("server:\n  host: old.com\n"), 0o600))
+	m, err := newModel(Config{
+		Path:       path,
+		Schema:     &sizeProbeConfig{},
+		Validators: []Validator{recorder},
+	})
+	must.NoError(err, "newModel")
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "server", Existing: true}})
+	m = updated.(model)
+
+	be := *m.topBE()
+	be.yamlEditor.SetValue("server:\n  host: [unclosed\n")
+	be.dirty = true
+	m = m.withTopBE(be)
+
+	updated, _ = m.Update(validateRequestedMsg{})
+	m = updated.(model)
+
+	is.False(validatorRan, "validators must not run against the stale document")
+	is.Equal(paneBlockEdit, m.mode, "editor stays open so the user can fix the buffer")
+	is.NotEqual(errNone, m.topBE().editorErr.kind, "the editor's feedback line must carry the error")
+}

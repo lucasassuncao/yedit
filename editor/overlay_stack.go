@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
 
+	"github.com/lucasassuncao/yedit/document"
 	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
@@ -31,6 +32,21 @@ func (m model) withTopBE(be blockEditState) model {
 	updated[len(updated)-1] = be
 	m.blockEdits = updated
 	return m
+}
+
+// withTopBEError sets a sticky error on the active block editor's feedback
+// line - the channel actually rendered while a block editor is open (the root
+// status line is not drawn in paneBlockEdit, so m.statusMsg would be invisible
+// there and could resurface stale once back at the list). Falls back to the
+// root sticky status when no editor is open.
+func (m model) withTopBEError(kind errKind, msg string) model {
+	top := m.topBE()
+	if top == nil {
+		return m.withStickyError(msg)
+	}
+	be := *top
+	be.editorErr = editorError{kind: kind, message: msg}
+	return m.withTopBE(be)
 }
 
 // --- Screen transitions ---
@@ -145,8 +161,7 @@ func (m model) refreshTopFromRoot(markDirty bool) model {
 	}
 	node := nodeAt(m.editRoot, top.focus)
 	if node == nil {
-		m.statusMsg = "internal: focus path lost after drill-out; editor may show stale content"
-		return m
+		return m.withTopBEError(errBlocked, "internal: focus path lost after drill-out; editor may show stale content")
 	}
 	be := *top
 	if be.isCollectionNav() {
@@ -183,8 +198,7 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 	if it.Existing {
 		current, err := m.doc.BlockContent(it.Key)
 		if err != nil {
-			m.statusMsg = fmt.Sprintf("Error reading %s: %v", it.Key, err)
-			return m, nil
+			return m.withStickyError(fmt.Sprintf("Error reading %s: %v", it.Key, err)), nil
 		}
 		initial = current
 	} else {
@@ -219,19 +233,18 @@ func (m model) flushTopToRoot() (model, bool) {
 	committed, snippet, ok := top.commit()
 	m = m.withTopBE(committed)
 	if !ok {
-		m.statusMsg = committed.editorErr.message
+		// committed.editorErr carries the detail and the editor's own feedback
+		// line renders it - the root status line is not visible in this mode.
 		return m, false
 	}
 	val := valueNodeOfSnippet(snippet)
 	if val == nil {
-		m.statusMsg = "internal error: could not write editor into canonical tree"
-		return m, false
+		return m.withTopBEError(errCommit, "internal error: could not write editor into canonical tree"), false
 	}
 	rootSnap := yamlnode.CloneNode(m.editRoot)
 	if !setNodeAt(m.editRoot, committed.focus, val) {
 		*m.editRoot = *rootSnap
-		m.statusMsg = "internal error: could not write editor into canonical tree"
-		return m, false
+		return m.withTopBEError(errCommit, "internal error: could not write editor into canonical tree"), false
 	}
 	return m, true
 }
@@ -242,16 +255,15 @@ func (m model) flushTopToRoot() (model, bool) {
 // validation is left to the parent, so the child uses a nil knownByPath (its
 // root key is the field name, which would otherwise read as an unknown key).
 func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
-	const maxNestingDepth = 10
-	if len(m.blockEdits) >= maxNestingDepth {
-		m.statusMsg = fmt.Sprintf("Maximum nesting depth (%d) reached.", maxNestingDepth)
-		return m, nil
-	}
-
 	// Guard against stale openChildMsg arriving with an empty blockEdits stack.
 	top := m.topBE()
 	if top == nil {
 		return m, nil
+	}
+
+	const maxNestingDepth = 10
+	if len(m.blockEdits) >= maxNestingDepth {
+		return m.withTopBEError(errBlocked, fmt.Sprintf("Maximum nesting depth (%d) reached.", maxNestingDepth)), nil
 	}
 
 	// Flush the parent into editRoot so the child reads the parent's live state.
@@ -267,12 +279,10 @@ func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
 	if node := nodeAt(m.editRoot, childFocus); node != nil {
 		content = nodeToContent(msg.key, node)
 	}
-	// For map-nav collections, relSegs[0] is the runtime map entry key (not a
-	// schema field name) and must be excluded from the metadata lookup prefix.
+	// focusToStringPath drops index segments and runtime map-entry keys (marked
+	// by segMapKey at emit time), so the prefix holds only schema field names -
+	// including entry keys of map-nav ancestors further up the focus path.
 	metaPrefix := focusToStringPath(childFocus)
-	if m.topBE().isCollectionNav() && m.topBE().coll.isMap && len(msg.relSegs) > 0 {
-		metaPrefix = focusToStringPath(append(append([]pathSeg(nil), parentFocus...), msg.relSegs[1:]...))
-	}
 	defs := applyPresentation(msg.defs, m.cfg.Metadata, m.editBlockKey, metaPrefix)
 	be := newBlockEdit(m.cfg, blockSpec{key: msg.key, defs: defs, kind: msg.kind, content: content, knownByPath: nil}, m.width, m.height)
 	be.isEdit = true
@@ -281,6 +291,30 @@ func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
 	m.blockEdits = append(m.blockEdits, be)
 	m = m.enterBlockEdit()
 	return m, be.Init()
+}
+
+// docWithEditorContent returns a copy of m.doc with the open editor stack's
+// current content applied - the document that WOULD result from committing
+// now. Used by validation so ctrl+l inside an editor reflects the on-screen
+// content. The caller must have flushed the top editor into editRoot first
+// (flushTopToRoot); editRoot is cloned here so the pruning never mutates the
+// live edit session. Mirrors commitAll's serialization, minus the effects.
+func (m model) docWithEditorContent() (document.Document, error) {
+	root := yamlnode.CloneNode(m.editRoot)
+	pruneEmptyContent(root)
+	blockIsEmpty := len(root.Content) == 0 &&
+		(root.Kind == yaml.MappingNode || root.Kind == yaml.SequenceNode)
+	isEdit := m.blockEdits[0].isEdit
+	switch {
+	case blockIsEmpty && isEdit:
+		return m.doc.Remove(m.editBlockKey)
+	case blockIsEmpty:
+		return m.doc, nil
+	case isEdit:
+		return m.doc.Replace(m.editBlockKey, nodeToContent(m.editBlockKey, root))
+	default:
+		return m.doc.Insert(nodeToContent(m.editBlockKey, root))
+	}
 }
 
 // saveAll is the Ctrl+S handler. When block editors are open it commits all
@@ -332,8 +366,7 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 		}
 	}
 	if err != nil {
-		m.statusMsg = fmt.Sprintf("Apply error: %v", err)
-		return m, nil
+		return m.withTopBEError(errCommit, fmt.Sprintf("Apply error: %v", err)), nil
 	}
 	m = m.syncView()
 	m = m.enterList()

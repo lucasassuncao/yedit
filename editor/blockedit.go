@@ -50,10 +50,11 @@ const (
 type errKind int
 
 const (
-	errNone   errKind = iota
-	errParse          // YAML parse failed in flushCurrentEntry; blocks navigation
-	errCommit         // validation failed at commit time; blocks commit
-	errPreset         // preset I/O failure; display only
+	errNone    errKind = iota
+	errParse           // YAML parse failed in flushCurrentEntry; blocks navigation
+	errCommit          // validation failed at commit time; blocks commit
+	errPreset          // preset I/O failure; display only
+	errBlocked         // action rejected (nesting depth, lost focus path); display only
 )
 
 // editorError carries a typed error for the block editor's status bar.
@@ -728,9 +729,7 @@ func (be blockEditState) View(parentSegs []string) string {
 
 	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legend})
 	if be.height > 0 {
-		if lines := strings.Split(out, "\n"); len(lines) > be.height {
-			out = strings.Join(lines[:be.height], "\n")
-		}
+		out = clampLines(out, be.height)
 	}
 	if be.confirmAlertVisible {
 		out = theme.CompositeCenter(be.confirmAlert.Box(), out)
@@ -757,9 +756,7 @@ func (be blockEditState) presetView(parentSegs []string) string {
 
 	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Legend: legend})
 	if be.height > 0 {
-		if lines := strings.Split(out, "\n"); len(lines) > be.height {
-			out = strings.Join(lines[:be.height], "\n")
-		}
+		out = clampLines(out, be.height)
 	}
 	return out
 }

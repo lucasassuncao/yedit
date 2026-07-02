@@ -866,3 +866,62 @@ func TestInnerH_MinimumOne(t *testing.T) {
 		t.Errorf("innerH must be at least 1, got %d", h)
 	}
 }
+
+// TestSaveUndoDeduplicatesSpeculativeCheckpoints guards that repeated Tab
+// switches into the YAML panel (speculative checkpoints with no edit between
+// them) push a single snapshot instead of piling up identical ones.
+func TestSaveUndoDeduplicatesSpeculativeCheckpoints(t *testing.T) {
+	must := require.New(t)
+	be := newBlockEdit(Config{}, structSpec(), 100, 40)
+
+	for range 3 {
+		be = be.switchPanel() // tree → yaml: checkpoint
+		be = be.switchPanel() // yaml → tree: no checkpoint
+	}
+
+	must.Len(be.undoStack, 1, "identical speculative checkpoints must be deduplicated")
+}
+
+// TestUndoAfterSpeculativeCheckpointRestoresInOnePress guards the restore-side
+// dedupe: after a real change followed by a Tab checkpoint (equal to the live
+// state), a single undo must land on the pre-change state instead of first
+// "restoring" the identical checkpoint.
+func TestUndoAfterSpeculativeCheckpointRestoresInOnePress(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	be := newBlockEdit(Config{}, structSpec(), 100, 40)
+	want := be.yamlEditor.Value()
+
+	outputIdx := -1
+	for i, n := range be.tree.nodes {
+		if n.kind == treeNodeField && n.label == "output" {
+			outputIdx = i
+			break
+		}
+	}
+	must.GreaterOrEqual(outputIdx, 0, "output node not found")
+	be = be.dispatch(ToggleField{NodeIdx: outputIdx, Checked: false})
+	must.NotContains(be.yamlEditor.Value(), "output:", "toggle should remove the field")
+
+	be = be.switchPanel() // speculative checkpoint at the post-toggle state
+
+	be = be.restoreUndo()
+	is.Equal(want, be.yamlEditor.Value(), "one undo must restore the pre-toggle state")
+	is.Equal("Undone.", be.statusMsg)
+}
+
+// TestRestoreUndoWithOnlyNoopSnapshotsReportsNothing guards the honest status:
+// when the stack holds only snapshots identical to the live state, undo drops
+// them and reports "Nothing to undo." instead of a phantom "Undone.".
+func TestRestoreUndoWithOnlyNoopSnapshotsReportsNothing(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	be := newBlockEdit(Config{}, structSpec(), 100, 40)
+
+	be = be.switchPanel() // checkpoint identical to the live state
+	must.Len(be.undoStack, 1)
+
+	be = be.restoreUndo()
+	is.Equal("Nothing to undo.", be.statusMsg)
+	is.Empty(be.undoStack, "no-op snapshots must be dropped")
+}

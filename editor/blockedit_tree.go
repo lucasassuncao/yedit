@@ -139,7 +139,7 @@ func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
 		// node.yamlPath[0] is the current item's label (not a real key); the live
 		// item is be.coll.current. node.yamlPath[1:] are the field keys below it.
 		if be.coll.isMap {
-			relSegs = append(relSegs, segKey(entryLabel(&be.node, true, be.coll.current)))
+			relSegs = append(relSegs, segMapKey(entryLabel(&be.node, true, be.coll.current)))
 		} else {
 			relSegs = append(relSegs, segIdx(be.coll.current))
 		}
