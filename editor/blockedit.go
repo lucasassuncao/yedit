@@ -523,10 +523,16 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	prevValue := be.yamlEditor.Value()
 	// Tree-less blocks open with the YAML panel already focused, so the
 	// switchPanel checkpoint that normally guards manual editing never fires.
-	// Push the pre-edit state once, before the first keystroke can change the
-	// buffer, so ctrl+u can always return to the content the editor opened with.
-	if len(be.undoStack) == 0 && len(be.redoStack) == 0 {
-		be = be.saveUndo()
+	// Capture the pre-edit state whenever there is nothing to fall back to -
+	// including after an undo emptied the stack - and push it below if the
+	// keystroke actually mutates the buffer, so ctrl+u can always return to the
+	// content before this keystroke. The snapshot must be taken before Update:
+	// the textarea shares its buffer internals, so a plain struct copy would
+	// alias the post-keystroke content.
+	var preSnap *blockEditUndoSnap
+	if len(be.undoStack) == 0 {
+		snap := be.captureSnap()
+		preSnap = &snap
 	}
 	var cmd tea.Cmd
 	be.yamlEditor, cmd = be.yamlEditor.Update(msg)
@@ -534,6 +540,12 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	// and other non-mutating keys leave the tree unchanged, so there is nothing to
 	// resync - and no reason to re-parse the buffer.
 	if be.yamlEditor.Value() != prevValue {
+		if preSnap != nil {
+			be.undoStack = appendSnapCapped(nil, *preSnap)
+		}
+		// Any real edit forks away from the undone states, so pending redo
+		// entries are discarded.
+		be.redoStack = nil
 		be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value(), Checkpoint: false})
 	}
 	return be, cmd

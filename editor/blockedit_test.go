@@ -297,6 +297,41 @@ func TestAppendPreset_multiEntryPreset(t *testing.T) {
 	is.Equal(2, be.tree.cursor, "cursor should be on last entry")
 }
 
+// TestAppendPreset_duplicateMapKeyRejected verifies that appending a preset
+// whose entry key already exists in a map-nav collection is rejected instead
+// of splicing a duplicate mapping key into the node.
+func TestAppendPreset_duplicateMapKeyRejected(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	stub := stubPresets{data: map[string]string{
+		"moves/dup": "moves:\n  alpha:\n    path: /from-preset\n",
+	}}
+	spec := blockSpec{
+		key:  "moves",
+		kind: schema.KindDictionary,
+		defs: []schema.FieldDef{
+			{YAMLName: "path", Kind: schema.KindPrimitive},
+		},
+		content: "moves:\n  alpha:\n    path: /original\n",
+	}
+	be := newBlockEdit(Config{BlockPresets: stub}, spec, 100, 40)
+	must.True(be.isMapNav(), "spec must build a map-nav block")
+
+	y, _ := stub.PresetYAML("moves", "dup")
+	be = be.dispatch(AppendPreset{Name: "dup", Content: y})
+
+	is.Equal(errPreset, be.editorErr.kind, "colliding append must set a preset error")
+	count := 0
+	for i := 0; i+1 < len(be.node.Content); i += 2 {
+		if be.node.Content[i].Value == "alpha" {
+			count++
+		}
+	}
+	is.Equal(1, count, "'alpha' must remain a single entry")
+	base := nodeToContent("moves", &be.node)
+	is.Contains(base, "path: /original", "original entry value must be preserved")
+}
+
 // structSpec returns a KindObject blockSpec with two primitive fields.
 func structSpec() blockSpec {
 	return blockSpec{
@@ -831,6 +866,38 @@ func TestRedo_clearedByNewMutation(t *testing.T) {
 	// New mutation (remove again) must clear the redo stack.
 	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
 	is.Empty(be.redoStack, "redoStack must be cleared by a new mutation")
+}
+
+// TestUndo_treelessRetypeAfterUndo verifies that in a tree-less (YAML-only)
+// block a keystroke after an undo re-checkpoints the restored state, so a
+// second ctrl+u can undo the new edit instead of reporting "Nothing to undo."
+// It also verifies the new edit invalidates the pending redo entry.
+func TestUndo_treelessRetypeAfterUndo(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	spec := blockSpec{
+		key:     "log-level",
+		kind:    schema.KindPrimitive,
+		content: "log-level: info\n",
+	}
+	be := newBlockEdit(Config{}, spec, 100, 40)
+	must.Equal(blockEditPanelYAML, be.active, "tree-less block must open in the YAML panel")
+	baseline := be.yamlEditor.Value()
+
+	typeRune := func(r rune) {
+		be, _ = be.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	typeRune('x')
+	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	must.Equal(baseline, be.yamlEditor.Value(), "first undo must restore the opening content")
+
+	typeRune('y')
+	is.Empty(be.redoStack, "a new edit after undo must discard the redo entry")
+
+	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	is.Equal("Undone.", be.statusMsg, "second undo must work after retyping")
+	is.Equal(baseline, be.yamlEditor.Value(), "second undo must restore the pre-retype content")
 }
 
 // TestRestoreRedo_emptyStackIsNoOp guards restoreRedo against an empty stack.

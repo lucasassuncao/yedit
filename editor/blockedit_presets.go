@@ -213,6 +213,23 @@ func (be blockEditState) appendPreset(name, y string) blockEditState {
 
 	be = be.flushCurrentEntry()
 	be.editorErr = editorError{} // appending overrides an in-progress invalid entry; don't block
+	// Appending a preset whose entry key already exists in the map would splice a
+	// duplicate mapping key into the node - the same corruption flushCurrentEntry
+	// guards against on rename - so reject the whole append instead.
+	if be.isMapNav() {
+		existing := make(map[string]bool, len(be.node.Content)/2)
+		for i := 0; i+1 < len(be.node.Content); i += 2 {
+			existing[be.node.Content[i].Value] = true
+		}
+		for i := 0; i+1 < len(presetNode.Content); i += 2 {
+			k := presetNode.Content[i].Value
+			if existing[k] {
+				be.editorErr = editorError{kind: errPreset, message: fmt.Sprintf("Preset entry %q already exists - append cancelled.", k)}
+				return be
+			}
+			existing[k] = true
+		}
+	}
 	// Indentation is irrelevant now: the entries are spliced as nodes and re-encoded.
 	be.node.Content = append(be.node.Content, presetNode.Content...)
 
