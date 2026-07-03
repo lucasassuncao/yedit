@@ -221,7 +221,7 @@ func TestSOT_CollectionAddDeleteConsistency(t *testing.T) {
 	assertCollTreeMatchesNode(t, be)
 
 	// Delete the first entry.
-	be = be.performEntryDelete(0)
+	be = be.dispatch(DeleteEntry{SeqIdx: 0})
 	if got := entryCount(&be.node, false); got != 2 {
 		t.Fatalf("after delete, entry count = %d, want 2", got)
 	}

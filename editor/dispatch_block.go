@@ -7,6 +7,11 @@ import "fmt"
 // (pruneEmptyMappings, saveUndo) are guaranteed per-case.
 const maxActionLog = 512
 
+// dispatch logs the action, applies it, and then re-derives the projected
+// state at this single gateway: the tree is rebuilt from the canonical node
+// and the dirty flag is recomputed against the committed baseline. No action
+// can leave either disagreeing with the node, because none of them is
+// responsible for keeping them in sync anymore.
 func (be blockEditState) dispatch(a BlockAction) blockEditState {
 	if len(be.actionLog) < maxActionLog {
 		log := make([]BlockAction, len(be.actionLog)+1)
@@ -14,6 +19,17 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 		log[len(be.actionLog)] = a
 		be.actionLog = log
 	}
+	be = be.applyAction(a)
+	be.tree = be.resyncTreeFromYAML()
+	be.dirty = be.computeDirty()
+	return be
+}
+
+// applyAction performs the state change for a single BlockAction. Tree
+// derivation and dirty tracking are NOT its concern - dispatch re-derives both
+// after every action - so the cases only mutate the node, the buffer, and any
+// structural tree rows (entry added/removed).
+func (be blockEditState) applyAction(a BlockAction) blockEditState {
 	switch act := a.(type) {
 	case ToggleField:
 		if act.NodeIdx < 0 || act.NodeIdx >= len(be.tree.nodes) {
@@ -21,13 +37,8 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 		}
 		node := be.tree.nodes[act.NodeIdx]
 		be = be.saveUndo()
-		be.dirty = true
 		ctx := toggleCtx{key: be.key, snippets: be.snippetsFn(), childDefs: be.childDefs}
 		be = be.applyToggle(ctx, node, act.Checked)
-		be.tree = be.resyncTreeFromYAML()
-		if !be.isCollectionNav() && be.committedYAML != "" && be.yamlEditor.Value() == be.committedYAML {
-			be.dirty = false
-		}
 
 	case SyncYAML:
 		if act.Checkpoint {
@@ -40,10 +51,6 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 			break
 		}
 		be = updated
-		be.dirty = true
-		if !be.isCollectionNav() && be.committedYAML != "" && be.yamlEditor.Value() == be.committedYAML {
-			be.dirty = false
-		}
 		be.statusMsg = ""
 
 	case AddEntry:
@@ -101,6 +108,10 @@ func (be blockEditState) handleNavigateEntry(idx int) blockEditState {
 	// Surface parse errors in the status bar so they are not missed.
 	if be.editorErr.kind == errParse {
 		be.statusMsg = be.editorErr.message
+		// The navigation was refused: move the cursor back to the entry that
+		// is actually loaded, so the tree and the buffer visibly agree again
+		// instead of pointing at different entries until the user notices.
+		be.tree = be.tree.cursorToSeqItem(be.coll.current)
 	}
 	return be
 }

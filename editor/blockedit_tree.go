@@ -226,7 +226,6 @@ func (be blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked 
 // to it so the user can start filling in its fields immediately.
 func (be blockEditState) handleTreeAddNew() blockEditState {
 	be = be.saveUndo()
-	be.dirty = true
 	be = be.flushCurrentEntry()
 	be.editorErr = editorError{} // adding overrides an in-progress invalid entry; don't block on it
 	label := be.newEntryLabel()
@@ -242,7 +241,5 @@ func (be blockEditState) handleTreeAddNew() blockEditState {
 	} else {
 		be.node.Content = append(be.node.Content, vn)
 	}
-	be = be.loadEntry(be.tree.NearestSeqItem())
-	be.tree = be.resyncTreeFromYAML()
-	return be
+	return be.loadEntry(be.tree.NearestSeqItem())
 }

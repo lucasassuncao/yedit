@@ -66,14 +66,9 @@ func (be blockEditState) performEntryDelete(seqIdx int) blockEditState {
 	be = be.flushCurrentEntry()
 	be.editorErr = editorError{} // deletion overrides a pending parse error
 	be = be.saveUndo()
-	be.dirty = true
 	be.tree = be.tree.WithDeletedSeqItem(seqIdx)
 	removeEntry(&be.node, be.coll.isMap, seqIdx)
-	be = be.loadEntry(be.tree.NearestSeqItem())
-	// Re-derive so positional ("item N") labels of unnamed entries stay in sync
-	// with their new index in the node after the surviving entries shift up.
-	be.tree = be.resyncTreeFromYAML()
-	return be
+	return be.loadEntry(be.tree.NearestSeqItem())
 }
 
 // flushAndLoadEntry flushes the current entry into be.node and then loads the

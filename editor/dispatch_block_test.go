@@ -3,6 +3,7 @@ package editor
 import (
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -159,4 +160,26 @@ func TestDispatchNoEmptySequenceItem(t *testing.T) {
 			must.Fail("empty mapping item found after AddEntry + NavigateEntry", "index %d", i)
 		}
 	}
+}
+
+// TestNavigateBlocked_CursorSnapsBack guards the cursor/loaded-entry
+// reconciliation: when navigation is refused because the current entry does
+// not parse, the tree cursor must return to the loaded entry instead of
+// staying on the entry the user could not reach.
+func TestNavigateBlocked_CursorSnapsBack(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	be := newBlockEdit(Config{}, seqSpec("categories:\n  - name: alpha\n  - name: beta\n"), 100, 40)
+
+	// Corrupt the current entry's buffer, then navigate away via the tree
+	// panel (the real path: the cursor moves first, then the flush refuses).
+	be.yamlEditor.SetValue("categories:\n  - name: [broken\n")
+	be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value(), Checkpoint: false})
+	must.True(be.dirty, "an unparseable buffer must read dirty")
+
+	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyDown})
+
+	is.Equal(0, be.coll.current, "the loaded entry must not change")
+	is.Equal(errParse, be.editorErr.kind, "navigation must be refused with a parse error")
+	is.Equal(0, be.tree.NearestSeqItem(), "the cursor must snap back to the loaded entry")
 }

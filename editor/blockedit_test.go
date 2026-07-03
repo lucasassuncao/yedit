@@ -228,7 +228,7 @@ func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
 
 	be = be.openPresetPicker()
 	y, _ := stub.PresetYAML("categories", "extra")
-	be = be.appendPreset("extra", y)
+	be = be.dispatch(AppendPreset{Name: "extra", Content: y})
 
 	base := nodeToContent("categories", &be.node)
 	is.Contains(base, "name: existing", "entries missing original entry")
@@ -266,7 +266,7 @@ func TestAppendPreset_indentMismatch(t *testing.T) {
 	be := newBlockEdit(Config{BlockPresets: stub}, spec, 100, 40)
 	be = be.openPresetPicker()
 	y, _ := stub.PresetYAML("categories", "extra")
-	be = be.appendPreset("extra", y)
+	be = be.dispatch(AppendPreset{Name: "extra", Content: y})
 
 	base2 := nodeToContent("categories", &be.node)
 	is.Contains(base2, "name: existing", "entries missing original entry")
@@ -285,7 +285,7 @@ func TestAppendPreset_multiEntryPreset(t *testing.T) {
 	be := newBlockEdit(Config{BlockPresets: stub}, spec, 100, 40)
 	be = be.openPresetPicker()
 	y, _ := stub.PresetYAML("categories", "multi")
-	be = be.appendPreset("multi", y)
+	be = be.dispatch(AppendPreset{Name: "multi", Content: y})
 
 	seqCount := 0
 	for _, n := range be.tree.nodes {
@@ -1124,7 +1124,7 @@ func applyFuzzAction(be blockEditState, a byte) blockEditState {
 					be = be.dispatch(ToggleField{NodeIdx: ni, Checked: false})
 					be = expandAll(be)
 				case n.kind == treeNodeSeqItem:
-					be = be.performEntryDelete(n.seqIdx)
+					be = be.dispatch(DeleteEntry{SeqIdx: n.seqIdx})
 				}
 			}
 		}
@@ -1132,4 +1132,60 @@ func applyFuzzAction(be blockEditState, a byte) blockEditState {
 		be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyRight})
 	}
 	return be
+}
+
+// TestComputedDirty_ToggleOnOffReadsClean guards the derived dirty flag for
+// struct blocks: toggling a field on and then off returns the node to its
+// baseline, so the editor must read clean again.
+func TestComputedDirty_ToggleOnOffReadsClean(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	// commitShapeSpec has "host" present and "port" absent (unchecked).
+	be := newBlockEdit(Config{}, commitShapeSpec(), 100, 40)
+	must.False(be.dirty, "freshly opened editor must be clean")
+
+	idx := -1
+	for i, n := range be.tree.nodes {
+		if n.kind == treeNodeField && n.isLeaf && !n.checked {
+			idx = i
+			break
+		}
+	}
+	must.GreaterOrEqual(idx, 0, "need an unchecked leaf field")
+	label := be.tree.nodes[idx].label
+
+	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: true})
+	must.True(be.dirty, "adding a field must read dirty")
+
+	// The tree was resectioned by the toggle; find the field again by label.
+	idx = -1
+	for i, n := range be.tree.nodes {
+		if n.kind == treeNodeField && n.label == label && n.checked {
+			idx = i
+			break
+		}
+	}
+	must.GreaterOrEqual(idx, 0, "toggled field not found after resync")
+	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: false})
+	is.False(be.dirty, "removing the just-added field must read clean again")
+}
+
+// TestComputedDirty_CollectionRevertReadsClean guards the derived dirty flag
+// for collections, which previously stayed dirty forever once touched: an
+// entry edited and then reverted to its original content must read clean.
+func TestComputedDirty_CollectionRevertReadsClean(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	be := newBlockEdit(Config{}, seqSpec("categories:\n  - name: alpha\n  - name: beta\n"), 100, 40)
+	must.False(be.dirty, "freshly opened editor must be clean")
+	original := be.yamlEditor.Value()
+
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
+	be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value(), Checkpoint: false})
+	must.True(be.dirty, "edited entry must read dirty")
+
+	be.yamlEditor.SetValue(original)
+	be = be.dispatch(SyncYAML{Content: original, Checkpoint: false})
+	is.False(be.dirty, "reverting the entry to its original content must read clean again")
 }

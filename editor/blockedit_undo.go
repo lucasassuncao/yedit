@@ -15,7 +15,6 @@ type blockEditUndoSnap struct {
 	node            yaml.Node // deep copy of the canonical node at snapshot time
 	currentEntryIdx int
 	yamlValue       string
-	dirty           bool
 	preset          string
 	// tree state for collection blocks - preserved so restoring keeps
 	// the expanded/collapsed view and cursor position intact.
@@ -35,7 +34,6 @@ func (be blockEditState) captureSnap() blockEditUndoSnap {
 		node:            *yamlnode.CloneNode(&be.node),
 		currentEntryIdx: be.coll.current,
 		yamlValue:       be.yamlEditor.Value(),
-		dirty:           be.dirty,
 		preset:          be.currentPreset,
 		treeNodes:       treeNodes,
 		treeCursor:      be.tree.cursor,
@@ -128,10 +126,11 @@ func popSnap(stack []blockEditUndoSnap) (blockEditUndoSnap, []blockEditUndoSnap)
 	return snap, stack[:last]
 }
 
-// applySnap loads snap into the live editor state.
+// applySnap loads snap into the live editor state. The dirty flag is not part
+// of the snapshot: dispatch recomputes it from the restored content, so it
+// cannot disagree with what was actually restored.
 func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 	be.currentPreset = snap.preset
-	be.dirty = snap.dirty
 	be.editorErr = editorError{}
 
 	be.node = *yamlnode.CloneNode(&snap.node)

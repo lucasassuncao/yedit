@@ -175,7 +175,6 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 	be = be.saveUndo()
 	be.currentPreset = name
 	be.editorErr = editorError{}
-	be.dirty = true
 
 	if be.isCollectionNav() {
 		// Non-empty preset YAML that does not parse would be coerced to an empty
@@ -187,9 +186,7 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 		be.tree.nodes = be.collectionTreeNodes()
 		be.tree.cursor = 0
 		be.tree.offset = 0
-		be = be.loadEntry(0)
-		be.tree = be.resyncTreeFromYAML()
-		return be
+		return be.loadEntry(0)
 	}
 
 	be.yamlEditor.SetValue(y)
@@ -201,7 +198,6 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 		be.node = yaml.Node{Kind: yaml.MappingNode}
 		be.editorErr = editorError{kind: errPreset, message: "Preset YAML is invalid - block reset to empty."}
 	}
-	be.tree = syncTreeCheckedFromNode(be.tree, &be.node)
 	return be
 }
 
@@ -225,9 +221,7 @@ func (be blockEditState) appendPreset(name, y string) blockEditState {
 	be.tree.cursor = entryCount(&be.node, be.isMapNav()) - 1
 
 	be = be.loadEntry(entryCount(&be.node, be.isMapNav()) - 1)
-	be.tree = be.resyncTreeFromYAML()
 	be.currentPreset = name
 	be.editorErr = editorError{}
-	be.dirty = true
 	return be
 }

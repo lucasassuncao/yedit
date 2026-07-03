@@ -208,6 +208,19 @@ func (tm treeModel) withNodeMutated(idx int, mut func(*treeNode)) treeModel {
 	return tm
 }
 
+// cursorToSeqItem moves the cursor to the treeNodeSeqItem row with the given
+// sequence index, or leaves it unchanged when no such row is visible. Used to
+// reconcile the cursor with the loaded entry after a refused navigation.
+func (tm treeModel) cursorToSeqItem(seqIdx int) treeModel {
+	for vi, ni := range tm.visibleNodes() {
+		if tm.nodes[ni].kind == treeNodeSeqItem && tm.nodes[ni].seqIdx == seqIdx {
+			tm.cursor = vi
+			return tm.clampOffset()
+		}
+	}
+	return tm
+}
+
 // NearestSeqItem returns the seqIdx of the treeNodeSeqItem that is an ancestor
 // of the current cursor, or -1 if none.
 func (tm treeModel) NearestSeqItem() int {

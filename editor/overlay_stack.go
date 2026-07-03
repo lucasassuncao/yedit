@@ -113,7 +113,7 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 
 	// Refresh the parent FIRST, then snapshot the refreshed state so Ctrl+U
 	// restores the post-drill-out content (not the stale pre-refresh snapshot).
-	m = m.refreshTopFromRoot(childWasDirty)
+	m = m.refreshTopFromRoot()
 	if childWasDirty {
 		if top := m.topBE(); top != nil {
 			be := top.saveUndo()
@@ -158,9 +158,10 @@ func clampCollCursor(current, oldCount, newCount int) int {
 
 // refreshTopFromRoot rebuilds the active editor's content from the node at its
 // focus path in editRoot, preserving tree cursor/expansion and the current
-// collection entry. markDirty propagates uncommitted-changes state up from a
-// child so the top-level "Discard changes?" guard still fires.
-func (m model) refreshTopFromRoot(markDirty bool) model {
+// collection entry. The dirty flag is recomputed from the refreshed content,
+// so uncommitted child edits reach the top-level "Discard changes?" guard
+// without explicit plumbing.
+func (m model) refreshTopFromRoot() model {
 	top := m.topBE()
 	if top == nil {
 		return m
@@ -177,9 +178,7 @@ func (m model) refreshTopFromRoot(markDirty bool) model {
 		be.yamlEditor.SetValue(nodeToContent(be.key, &be.node))
 	}
 	be.tree = be.resyncTreeFromYAML()
-	if markDirty {
-		be.dirty = true
-	}
+	be.dirty = be.computeDirty()
 	return m.withTopBE(be)
 }
 

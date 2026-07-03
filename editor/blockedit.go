@@ -202,13 +202,33 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 		be.yamlEditor.Focus()
 	}
 
-	// Baseline for dirty-tracking: the normalized content after all setup.
-	// Compared after mutations so dirty can be cleared when content reverts.
-	if !structured {
+	// Baseline for dirty-tracking: the normalized open state, for every block
+	// kind. computeDirty compares against it, so dirty is derived rather than
+	// maintained flag-by-flag. Non-collection blocks normalize the buffer (an
+	// unparseable block on disk must still read as clean until edited).
+	if structured {
 		be.committedYAML = nodeToContent(be.key, &be.node)
+	} else {
+		be.committedYAML = normalizeBlockContent(be.key, be.yamlEditor.Value())
 	}
 
 	return be
+}
+
+// computeDirty reports whether the editor's state differs from the committed
+// baseline (committedYAML). It is derived at the dispatch boundary instead of
+// being maintained by every mutation: content that returns to the baseline -
+// a toggle undone by hand, an edit typed and then reverted - reads as clean
+// again, for collections too.
+func (be blockEditState) computeDirty() bool {
+	if be.isCollectionNav() {
+		if nodeToContent(be.key, &be.node) != be.committedYAML {
+			return true
+		}
+		// The buffer may hold unflushed edits of the current entry.
+		return be.yamlEditor.Value() != be.entryYAML(be.coll.current)
+	}
+	return normalizeBlockContent(be.key, be.yamlEditor.Value()) != be.committedYAML
 }
 
 func (be blockEditState) newYAMLEditor(content string) textarea.Model {
@@ -355,7 +375,7 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 			if err != nil {
 				be.editorErr = editorError{kind: errPreset, message: fmt.Sprintf("preset error: %v", err)}
 			} else {
-				be = be.applyPreset(name, y)
+				be = be.dispatch(ApplyPreset{Name: name, Content: y})
 			}
 		}
 	case presetAppended:
@@ -529,13 +549,10 @@ func (be blockEditState) syncParsedNode(content string) (blockEditState, bool) {
 		if !ok {
 			return be, false
 		}
-		be = be.applyParsedEntry(kn, vn)
-		be.tree = be.collectionDeriveTree()
-		return be, true
+		return be.applyParsedEntry(kn, vn), true
 	}
 	if v := valueNodeOfSnippet(content); v != nil {
 		be.node = *v
-		be.tree = be.resyncTreeFromYAML()
 		return be, true
 	}
 	return be, false
@@ -618,7 +635,7 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 // resyncAfterCommit reloads the editor from the freshly committed block so a
 // repeated Ctrl+S is idempotent. For collection blocks it re-derives the entry
 // list (and tree, when the entry count changed); otherwise it reloads the raw
-// YAML. Clears the dirty flag either way.
+// YAML. The committed baseline is reset either way, so dirty reads clean.
 func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 	if !be.isCollectionNav() {
 		if v := blockValueNodeOrNil(fresh); v != nil {
@@ -627,8 +644,8 @@ func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 			be.node = yaml.Node{Kind: yaml.MappingNode}
 		}
 		be.yamlEditor.SetValue(fresh)
-		be.dirty = false
 		be.committedYAML = nodeToContent(be.key, &be.node)
+		be.dirty = be.computeDirty()
 		return be
 	}
 	isMap := be.isMapNav()
@@ -644,7 +661,8 @@ func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 	}
 	be.tree = be.collectionDeriveTree()
 	be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
-	be.dirty = false
+	be.committedYAML = nodeToContent(be.key, &be.node)
+	be.dirty = be.computeDirty()
 	return be
 }
 
