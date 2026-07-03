@@ -2,6 +2,7 @@ package editor
 
 import (
 	"fmt"
+	"reflect"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"gopkg.in/yaml.v3"
@@ -124,36 +125,66 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 }
 
 // refreshCollectionFromNode updates a collection-nav editor in-place from node,
-// rebuilding the tree when the entry count changes and adjusting the cursor so
-// the previously viewed entry stays in view after removals.
+// rebuilding the tree when the entry count changes and re-anchoring the cursor
+// on the previously viewed entry so it stays in view after removals.
 func (be blockEditState) refreshCollectionFromNode(node *yaml.Node) blockEditState {
 	isMap := be.isMapNav()
-	oldCount := entryCount(&be.node, isMap)
+	old := be.node
+	oldCount := entryCount(&old, isMap)
 	be.node = *yamlnode.CloneNode(node)
 	newCount := entryCount(&be.node, isMap)
 	if newCount != oldCount {
 		be.tree.nodes = be.collectionTreeNodes()
-		be.coll.current = clampCollCursor(be.coll.current, oldCount, newCount)
+		be.coll.current = reanchorCollCursor(&old, &be.node, isMap, be.coll.current)
 	}
 	be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
 	return be
 }
 
-// clampCollCursor adjusts the cursor after a collection's entry count changes.
-// When entries were removed it shifts the cursor down by the removed count so
-// the viewed entry is preserved; then clamps to [0, newCount-1].
-func clampCollCursor(current, oldCount, newCount int) int {
-	if newCount < oldCount {
-		if current >= oldCount-newCount {
-			current -= oldCount - newCount
-		} else {
-			current = 0
-		}
+// reanchorCollCursor locates the entry the user was viewing (index cur in
+// oldNode) inside the refreshed newNode: map entries are matched by key,
+// sequence entries by structural equality. Entries can be removed anywhere in
+// the collection (e.g. pruning of empty mappings), so a positional shift would
+// guess wrong; identity matching finds the entry wherever it landed. When it
+// cannot be found (removed, or its content was edited), cur is clamped to the
+// new bounds.
+func reanchorCollCursor(oldNode, newNode *yaml.Node, isMap bool, cur int) int {
+	if i := findEntryIndex(oldNode, newNode, isMap, cur); i >= 0 {
+		return i
 	}
-	if current >= newCount {
+	if newCount := entryCount(newNode, isMap); cur >= newCount {
 		return newCount - 1
 	}
-	return current
+	return cur
+}
+
+// findEntryIndex returns the index in newNode of the entry at index cur in
+// oldNode - matched by key for maps, by structural equality for sequences -
+// or -1 when the entry cannot be located.
+func findEntryIndex(oldNode, newNode *yaml.Node, isMap bool, cur int) int {
+	if cur < 0 || cur >= entryCount(oldNode, isMap) {
+		return -1
+	}
+	newCount := entryCount(newNode, isMap)
+	if isMap {
+		key := entryLabel(oldNode, true, cur)
+		for i := 0; i < newCount; i++ {
+			if entryLabel(newNode, true, i) == key {
+				return i
+			}
+		}
+		return -1
+	}
+	val := entryValueNode(oldNode, false, cur)
+	if val == nil {
+		return -1
+	}
+	for i := 0; i < newCount; i++ {
+		if reflect.DeepEqual(entryValueNode(newNode, false, i), val) {
+			return i
+		}
+	}
+	return -1
 }
 
 // refreshTopFromRoot rebuilds the active editor's content from the node at its

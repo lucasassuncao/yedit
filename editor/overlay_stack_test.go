@@ -623,3 +623,63 @@ func TestNestedMapNavMetadataPrefixSkipsRuntimeKeys(t *testing.T) {
 		must.NotContains(p, "k2", "runtime map key of the immediate parent leaked into fieldPath %q", p)
 	}
 }
+
+// mapCollNode builds a MappingNode with the given key/scalar pairs, one entry
+// per key: {key: {v: <val>}}.
+func mapCollNode(pairs ...string) *yaml.Node {
+	n := &yaml.Node{Kind: yaml.MappingNode}
+	for i := 0; i+1 < len(pairs); i += 2 {
+		n.Content = append(n.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: pairs[i]},
+			&yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+				{Kind: yaml.ScalarNode, Value: "v"},
+				{Kind: yaml.ScalarNode, Value: pairs[i+1]},
+			}},
+		)
+	}
+	return n
+}
+
+// seqCollNode builds a SequenceNode of single-field mappings: [{v: <val>}, ...].
+func seqCollNode(vals ...string) *yaml.Node {
+	n := &yaml.Node{Kind: yaml.SequenceNode}
+	for _, v := range vals {
+		n.Content = append(n.Content, &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Value: "v"},
+			{Kind: yaml.ScalarNode, Value: v},
+		}})
+	}
+	return n
+}
+
+// TestReanchorCollCursor verifies the cursor follows the viewed entry by
+// identity after entries are removed anywhere in the collection - including
+// removals BEFORE the cursor, which a positional shift would track wrong.
+func TestReanchorCollCursor(t *testing.T) {
+	is := assert.New(t)
+
+	// Map: entry "b" viewed at index 1; "a" (index 0) removed -> "b" is now 0.
+	oldM := mapCollNode("a", "1", "b", "2", "c", "3")
+	newM := mapCollNode("b", "2", "c", "3")
+	is.Equal(0, reanchorCollCursor(oldM, newM, true, 1), "map: cursor must follow key 'b' after removal before it")
+
+	// Map: the viewed entry itself removed -> clamp old index into new bounds.
+	newM2 := mapCollNode("a", "1", "c", "3")
+	is.Equal(1, reanchorCollCursor(oldM, newM2, true, 1), "map: removed viewed entry clamps to old position")
+
+	// Map: everything removed -> cursor -1 (empty collection convention).
+	is.Equal(-1, reanchorCollCursor(oldM, mapCollNode(), true, 1), "map: empty collection yields -1")
+
+	// Seq: entry {v:2} viewed at index 1; index 0 removed -> now index 0.
+	oldS := seqCollNode("1", "2", "3")
+	newS := seqCollNode("2", "3")
+	is.Equal(0, reanchorCollCursor(oldS, newS, false, 1), "seq: cursor must follow the entry by structural equality")
+
+	// Seq: viewed entry edited (no structural match) -> clamped old index.
+	newS2 := seqCollNode("1", "3")
+	is.Equal(1, reanchorCollCursor(oldS, newS2, false, 1), "seq: unmatched entry clamps to old position")
+
+	// No change in position when entries were only appended.
+	newS3 := seqCollNode("1", "2", "3", "4")
+	is.Equal(1, reanchorCollCursor(oldS, newS3, false, 1), "seq: append keeps cursor on same entry")
+}
