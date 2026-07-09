@@ -60,6 +60,7 @@ func renderHeader(title, file string, dirty bool, width int, th resolvedTheme) s
 // breadcrumbHeader builds a block editor's header line: parentSegs (from
 // model.blockBreadcrumbPrefix) plus this editor's own key and tree position.
 func (be blockEditState) breadcrumbHeader(parentSegs []string) string {
-	segs := append(append(parentSegs, be.key), be.tree.BreadcrumbSegments()...)
+	segs := append(append([]string(nil), parentSegs...), be.key)
+	segs = append(segs, be.tree.BreadcrumbSegments()...)
 	return theme.RenderHeaderWith(be.cfg.Title, strings.Join(segs, " › "), "", be.width, be.theme.colors)
 }

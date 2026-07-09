@@ -108,7 +108,7 @@ func (pb presetBrowser) Update(msg tea.KeyMsg, allowAppend bool) (presetBrowser,
 }
 
 // listView renders the preset name list with the cursor row highlighted.
-func (pb *presetBrowser) listView(th resolvedTheme) string {
+func (pb presetBrowser) listView(th resolvedTheme) string {
 	var sb strings.Builder
 	for i, name := range pb.names {
 		if i > 0 {
@@ -125,7 +125,7 @@ func (pb *presetBrowser) listView(th resolvedTheme) string {
 
 // previewView renders the selected preset's YAML clipped to height lines,
 // honouring the current scroll offset.
-func (pb *presetBrowser) previewView(height int) string {
+func (pb presetBrowser) previewView(height int) string {
 	full := pb.previewYAML()
 	if full == "" {
 		return ""
@@ -151,7 +151,7 @@ func (pb *presetBrowser) previewView(height int) string {
 
 // previewYAML returns the raw YAML of the preset under the cursor, or an
 // inline error comment when the source fails to resolve it.
-func (pb *presetBrowser) previewYAML() string {
+func (pb presetBrowser) previewYAML() string {
 	y, err := pb.source.PresetYAML(pb.field, pb.selectedName())
 	if err != nil {
 		return fmt.Sprintf("# error: %v", err)

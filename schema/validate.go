@@ -44,16 +44,16 @@ func walkChildren(out map[string]map[string]bool, prefix string, fields []FieldD
 
 // UnknownKeys returns the dotted paths of any YAML keys not present in the
 // schema described by known. Free-form sub-trees (paths missing from known)
-// are not validated.
-func UnknownKeys(raw []byte, known map[string]map[string]bool) []string {
+// are not validated. Returns an error if raw does not parse as YAML.
+func UnknownKeys(raw []byte, known map[string]map[string]bool) ([]string, error) {
 	var doc map[string]any
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return nil
+		return nil, fmt.Errorf("parsing yaml: %w", err)
 	}
 	var unknown []string
 	walkKnown(doc, "", "", known, &unknown)
 	sort.Strings(unknown)
-	return unknown
+	return unknown, nil
 }
 
 // reservedTopLevelKeys are ignored during validation regardless of schema.

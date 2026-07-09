@@ -15,7 +15,7 @@ Package schema discovers the editable shape of a Go struct via reflection over y
 - [func KnownChildren\(fields \[\]FieldDef\) map\[string\]map\[string\]bool](<#KnownChildren>)
 - [func ScalarLabel\(t reflect.Type\) string](<#ScalarLabel>)
 - [func TopLevelOrder\(fields \[\]FieldDef\) \[\]string](<#TopLevelOrder>)
-- [func UnknownKeys\(raw \[\]byte, known map\[string\]map\[string\]bool\) \[\]string](<#UnknownKeys>)
+- [func UnknownKeys\(raw \[\]byte, known map\[string\]map\[string\]bool\) \(\[\]string, error\)](<#UnknownKeys>)
 - [type FieldDef](<#FieldDef>)
   - [func Discover\(v any, recursionLimit ...int\) \[\]FieldDef](<#Discover>)
 - [type Kind](<#Kind>)
@@ -56,10 +56,10 @@ TopLevelOrder returns the discovered top\-level yaml names in declaration order.
 ## func [UnknownKeys](<https://github.com/lucasassuncao/yedit/blob/main/schema/validate.go#L48>)
 
 ```go
-func UnknownKeys(raw []byte, known map[string]map[string]bool) []string
+func UnknownKeys(raw []byte, known map[string]map[string]bool) ([]string, error)
 ```
 
-UnknownKeys returns the dotted paths of any YAML keys not present in the schema described by known. Free\-form sub\-trees \(paths missing from known\) are not validated.
+UnknownKeys returns the dotted paths of any YAML keys not present in the schema described by known. Free\-form sub\-trees \(paths missing from known\) are not validated. Returns an error if raw does not parse as YAML.
 
 <a name="FieldDef"></a>
 ## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L38-L47>)

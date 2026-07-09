@@ -223,7 +223,12 @@ func GenerateIndex(baseDir string, files []GeneratedFile) error {
 		}
 		sb.WriteString(fmt.Sprintf("- [%s](./%s)\n", f.Name, filepath.ToSlash(rel)))
 	}
-	return os.WriteFile(filepath.Join(baseDir, "README.md"), []byte(sb.String()), 0600)
+	out := filepath.Join(baseDir, "README.md")
+	valid, ok := validatePathWithinBase(baseDir, out)
+	if !ok {
+		return fmt.Errorf("invalid index path: %s", out)
+	}
+	return os.WriteFile(valid, []byte(sb.String()), 0600)
 }
 
 // fieldMeta translates the (sectionPath, fieldName) docgenerator coordinates to
@@ -258,6 +263,9 @@ func (g *SchemaGenerator) writeRaw(docsDir, name, md string) error {
 
 func typeName(v any) string {
 	t := reflect.TypeOf(v)
+	if t == nil {
+		return ""
+	}
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}

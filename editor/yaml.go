@@ -207,16 +207,16 @@ func coerceToMapping(n *yaml.Node) bool {
 }
 
 // advanceSeg advances parent by one path segment, creating intermediate mapping
-// keys as needed. Returns (next, false) when the segment cannot be traversed.
-func advanceSeg(parent *yaml.Node, s pathSeg) (*yaml.Node, bool) {
+// keys as needed. Returns a non-nil error when the segment cannot be traversed.
+func advanceSeg(parent *yaml.Node, s pathSeg) (*yaml.Node, error) {
 	if s.isIndex {
 		if parent.Kind != yaml.SequenceNode || s.idx < 0 || s.idx >= len(parent.Content) {
-			return nil, false
+			return nil, fmt.Errorf("sequence index %d out of range (kind=%v, len=%d)", s.idx, parent.Kind, len(parent.Content))
 		}
-		return parent.Content[s.idx], true
+		return parent.Content[s.idx], nil
 	}
 	if !coerceToMapping(parent) {
-		return nil, false
+		return nil, fmt.Errorf("cannot traverse key %q: node is not a mapping (kind=%v)", s.key, parent.Kind)
 	}
 	child := yamlnode.ChildByKey(parent, s.key)
 	switch {
@@ -226,51 +226,51 @@ func advanceSeg(parent *yaml.Node, s pathSeg) (*yaml.Node, bool) {
 			&yaml.Node{Kind: yaml.ScalarNode, Value: s.key}, child)
 	case child.Kind == yaml.ScalarNode && child.Value != "":
 		// Non-null scalar: cannot be traversed by any subsequent segment.
-		return nil, false
+		return nil, fmt.Errorf("cannot traverse key %q: value is a non-null scalar %q", s.key, child.Value)
 	default:
 		coerceToMapping(child) // coerces null scalar; no-op for sequences and mappings
 	}
-	return child, true
+	return child, nil
 }
 
 // setNodeAt replaces the node addressed by segs within root with newVal,
-// creating intermediate mapping keys as needed. Returns false when a sequence
+// creating intermediate mapping keys as needed. Returns an error when a sequence
 // index is out of range or an intermediate node has a conflicting kind. This is
 // structurally safe: it operates on live nodes, so it can never turn a sequence
 // into a mapping the way string splicing could.
-func setNodeAt(root *yaml.Node, segs []pathSeg, newVal *yaml.Node) bool {
+func setNodeAt(root *yaml.Node, segs []pathSeg, newVal *yaml.Node) error {
 	if len(segs) == 0 {
 		*root = *yamlnode.CloneNode(newVal)
-		return true
+		return nil
 	}
 	parent := root
 	for _, s := range segs[:len(segs)-1] {
-		next, ok := advanceSeg(parent, s)
-		if !ok {
-			return false
+		next, err := advanceSeg(parent, s)
+		if err != nil {
+			return err
 		}
 		parent = next
 	}
 	last := segs[len(segs)-1]
 	if last.isIndex {
 		if parent.Kind != yaml.SequenceNode || last.idx < 0 || last.idx >= len(parent.Content) {
-			return false
+			return fmt.Errorf("sequence index %d out of range (kind=%v, len=%d)", last.idx, parent.Kind, len(parent.Content))
 		}
 		parent.Content[last.idx] = newVal
-		return true
+		return nil
 	}
 	if !coerceToMapping(parent) {
-		return false
+		return fmt.Errorf("cannot set key %q: node is not a mapping (kind=%v)", last.key, parent.Kind)
 	}
 	for i := 0; i+1 < len(parent.Content); i += 2 {
 		if parent.Content[i].Value == last.key {
 			parent.Content[i+1] = newVal
-			return true
+			return nil
 		}
 	}
 	parent.Content = append(parent.Content,
 		&yaml.Node{Kind: yaml.ScalarNode, Value: last.key}, newVal)
-	return true
+	return nil
 }
 
 // withYAMLRoot parses current as a YAML node, calls fn on it, and re-encodes.

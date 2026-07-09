@@ -274,9 +274,9 @@ func (m model) flushTopToRoot() (model, bool) {
 		return m, false
 	}
 	rootSnap := yamlnode.CloneNode(m.editRoot)
-	if !setNodeAt(m.editRoot, committed.focus, val) {
+	if err := setNodeAt(m.editRoot, committed.focus, val); err != nil {
 		*m.editRoot = *rootSnap
-		return m.withTopBEError(errCommit, "internal error: could not write editor into canonical tree"), false
+		return m.withTopBEError(errCommit, fmt.Sprintf("internal error: could not write editor into canonical tree: %v", err)), false
 	}
 	return m, true
 }

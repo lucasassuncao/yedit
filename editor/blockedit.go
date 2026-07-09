@@ -718,7 +718,12 @@ func (be blockEditState) commit() (blockEditState, *yaml.Node, bool) {
 	}
 
 	if be.knownByPath != nil {
-		if unknown := schema.UnknownKeys([]byte(nodeToContent(be.key, val)), be.knownByPath); len(unknown) > 0 {
+		unknown, err := schema.UnknownKeys([]byte(nodeToContent(be.key, val)), be.knownByPath)
+		if err != nil {
+			be.editorErr = editorError{kind: errCommit, message: fmt.Sprintf("Unknown keys check failed: %v", err)}
+			return be, nil, false
+		}
+		if len(unknown) > 0 {
 			be.editorErr = editorError{kind: errCommit, message: fmt.Sprintf("Unknown keys: %s", strings.Join(unknown, ", "))}
 			return be, nil, false
 		}

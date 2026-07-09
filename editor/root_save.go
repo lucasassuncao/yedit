@@ -65,7 +65,11 @@ func (m model) withStickyError(msg string) model {
 // content (see validateKeys).
 func (m model) collectErrors(doc document.Document) []Violation {
 	var errs []Violation
-	if u := schema.UnknownKeys(doc.Raw(), m.knownByPath); len(u) > 0 {
+	u, err := schema.UnknownKeys(doc.Raw(), m.knownByPath)
+	if err != nil {
+		errs = append(errs, Violation{Message: fmt.Sprintf("Unknown keys check failed: %v", err), Group: GroupRules})
+	}
+	if len(u) > 0 {
 		var filtered []string
 		for _, k := range u {
 			if !m.list.passthrough[k] {

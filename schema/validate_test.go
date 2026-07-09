@@ -114,7 +114,8 @@ build:
 		t.Run(tc.name, func(t *testing.T) {
 			is := assert.New(t)
 			must := require.New(t)
-			got := schema.UnknownKeys([]byte(tc.raw), known)
+			got, err := schema.UnknownKeys([]byte(tc.raw), known)
+			must.NoError(err)
 			must.Len(got, len(tc.want), "want %v, got %v", tc.want, got)
 			for i, w := range tc.want {
 				is.Equal(w, got[i], "[%d]", i)
@@ -145,5 +146,7 @@ portsAttributes:
   lucas:
     onAutoForward: notify
 `
-	is.Empty(schema.UnknownKeys([]byte(raw), known), "map keys must be free-form")
+	got, err := schema.UnknownKeys([]byte(raw), known)
+	require.NoError(t, err)
+	is.Empty(got, "map keys must be free-form")
 }

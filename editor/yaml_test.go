@@ -57,8 +57,8 @@ func TestSetNodeAt_preservesSiblingStructure(t *testing.T) {
 
 	// Replace filters[0].any[0] with a richer mapping.
 	newItem := parseValueNode(t, "regex: deep\nglob: x\n")
-	if !setNodeAt(filters, []pathSeg{segIdx(0), segKey("any"), segIdx(0)}, newItem) {
-		t.Fatal("setNodeAt returned false")
+	if err := setNodeAt(filters, []pathSeg{segIdx(0), segKey("any"), segIdx(0)}, newItem); err != nil {
+		t.Fatalf("setNodeAt: %v", err)
 	}
 
 	// Re-encode the whole doc and confirm it is still a sequence-of-mappings, not
