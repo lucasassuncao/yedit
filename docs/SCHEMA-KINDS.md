@@ -369,7 +369,7 @@ timeout:
 | `yaml:"name,omitempty"` | Sets `FieldDef.OmitEmpty = true`; zero value not written to disk |
 | `yaml:"name,flow"` | Sets `FieldDef.Flow = true`; serialised inline (e.g. `[a, b, c]`) |
 
-The `yaml` tag is the only tag yamltui reads. Field metadata - description, required, defaults, allowed values, ranges, patterns - is declared through the `MetadataSource` (`editor.FieldMeta`), typically built with the `yamltui/metadata` package, and enforced by the FromMetadata validator family (see `docs/validators.md`).
+The `yaml` tag is the only tag yamltui reads. Field metadata - description, required, defaults, allowed values, ranges, patterns - is declared through the `MetadataSource` (`editor.FieldMeta`), typically built with the `yamltui/metadata` package, and enforced by the FromMetadata validator family (see `docs/VALIDATORS.md`).
 
 ---
 

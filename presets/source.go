@@ -2,7 +2,7 @@
 // structs. Each struct value is marshaled via gopkg.in/yaml.v3 when a preset
 // is requested, so the embedding application never hand-writes YAML.
 //
-// See docs/PRESETS_AND_HINTS.md for the full usage guide and examples.
+// See docs/PRESETS.md for the full usage guide and examples.
 package presets
 
 import (

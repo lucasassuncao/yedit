@@ -38,8 +38,11 @@ func (be blockEditState) scrolledHintContent() string {
 func (be blockEditState) hintContent() string {
 	// Tree-less blocks (primitive/enum/free-form collection) have no field nodes;
 	// show the block's own metadata instead of the "select a field" placeholder.
+	// fieldPath is "" here - a block-level lookup, same as the root list's hint
+	// panel (hint.go) - not be.def.YAMLName, which FieldMeta would misread as a
+	// child path under the block and never resolve.
 	if be.tree.isEmpty() {
-		return be.fieldHintFor(be.def.YAMLName)
+		return be.fieldHintFor("")
 	}
 	idx := be.tree.currentNodeIdx()
 	if idx < 0 {
@@ -72,9 +75,14 @@ func (be blockEditState) fieldHintFor(fieldPath string) string {
 	meta := be.cfg.Metadata.FieldMeta(be.key, fieldPath)
 	ex := meta.Example
 	if ex == "" && meta.Multiline {
+		// fieldPath is "" for a tree-less block's own metadata (see hintContent) -
+		// fall back to the block's key so the generated example is still named.
 		fieldName := fieldPath
-		if i := strings.LastIndex(fieldPath, "."); i >= 0 {
-			fieldName = fieldPath[i+1:]
+		switch {
+		case fieldName == "":
+			fieldName = be.key
+		case strings.LastIndex(fieldPath, ".") >= 0:
+			fieldName = fieldPath[strings.LastIndex(fieldPath, ".")+1:]
 		}
 		ex = fieldName + ": |\n  line 1\n  line 2\n"
 	}

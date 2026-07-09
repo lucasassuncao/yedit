@@ -27,7 +27,7 @@ type LoggingConfig struct {
 }
 ```
 
-See [Schema Kinds Reference](schema-kinds-reference.md) for how each Go type maps to editor behavior (`KindObject`, `KindList`, `KindDictionary`, etc.).
+See [Schema Kinds Reference](SCHEMA-KINDS.md) for how each Go type maps to editor behavior (`KindObject`, `KindList`, `KindDictionary`, etc.).
 
 ---
 
@@ -97,7 +97,7 @@ if err != nil {
 
 `metadata.Node` embeds `editor.FieldMeta` for description, type label, default, required flag, allowed values (`OneOf`), and example snippet. The `Type` field is auto-filled from the Go type if left empty.
 
-For structs from third-party packages that cannot implement `Metadata()`, use `metadata.NewFromTree` and pass the full tree manually. See [Presets and Metadata](PRESETS_AND_HINTS.md) for details.
+For structs from third-party packages that cannot implement `Metadata()`, use `metadata.NewFromTree` and pass the full tree manually. See [Metadata and Hints](METADATA-AND-HINTS.md) for details.
 
 ---
 
@@ -228,7 +228,7 @@ func (myPresets) PresetYAML(field, name string) (string, error) {
 }
 ```
 
-Wire it in via `Config.Presets`. For presets shipped as embedded files, see [Presets & Metadata](presets-hints.md).
+Wire it in via `Config.Presets`. For presets shipped as embedded files, see [Presets](PRESETS.md).
 
 ---
 
@@ -242,18 +242,18 @@ import "github.com/lucasassuncao/yedit/docgenerator"
 gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(src))
 
 // Browse docs in the terminal:
-docs := gen.GenerateDocsInMemory(Config{})
+docs := gen.GenerateDocsInMemory([]docgenerator.Entry{{Config: Config{}, SplitStructs: true}})
 docgenerator.RenderMarkdownDocsInTerminal(docs, "myapp")
 
 // Write markdown files to disk:
-names, err := gen.GenerateAllDocs(Config{}, "docs/reference")
+files, err := gen.GenerateDocsForEach([]docgenerator.Entry{{Config: Config{}, DocsDir: "docs/reference", SplitStructs: true}})
 if err != nil {
     log.Fatal(err)
 }
-docgenerator.GenerateIndex("docs/reference", names)
+docgenerator.GenerateIndex("docs/reference", files)
 ```
 
-Wire these as subcommands in your CLI so users can run `myapp show-docs` and `myapp generate-docs`. See `examples/test/main.go` for a complete cobra integration.
+Wire these as subcommands in your CLI so users can run `myapp show-docs` and `myapp generate-docs`. See [Doc Generation](DOC-GENERATION.md) for the full API (including the single-call `Generate`/`GenerateInMemory` variants for structs that implement `MetadataProvider`) and `examples/test/main.go` for a complete cobra integration.
 
 ---
 
@@ -285,6 +285,10 @@ Both `metadata.New` and `metadata.NewFromTree` are cycle-aware and handle shared
 
 ## What's next
 
-- [Schema Kinds Reference](schema-kinds-reference.md) - full type mapping table with YAML examples
-- [Validators Reference](validators.md) - all 25+ built-in validators
-- [Architecture](architecture.md) - package layout and import relationships
+- [Config Reference](CONFIG-REFERENCE.md) - every `editor.Config` field in one table
+- [Schema Kinds Reference](SCHEMA-KINDS.md) - full type mapping table with YAML examples
+- [Validators Reference](VALIDATORS.md) - all 25+ built-in validators
+- [Undo & Redo](UNDO.md) - the two-level undo model and what is and isn't tracked
+- [Themes](THEMES.md) - built-in themes and how to customize colors
+- [Doc Generation](DOC-GENERATION.md) - generating Markdown reference docs and a TUI doc browser from your schema
+- [Architecture](dev/ARCHITECTURE.md) - package layout and import relationships (for contributing to yedit itself)

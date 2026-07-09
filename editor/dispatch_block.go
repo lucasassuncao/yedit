@@ -22,6 +22,9 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 	be = be.applyAction(a)
 	be.tree = be.resyncTreeFromYAML()
 	be.dirty = be.computeDirty()
+	if be.cfg.OnAction != nil {
+		be.cfg.OnAction(be.key, a)
+	}
 	return be
 }
 

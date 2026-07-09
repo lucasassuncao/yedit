@@ -9,6 +9,9 @@ import (
 // dispatch applies a ModelAction and returns the updated model and any Cmd.
 // All model-level mutations pass through here.
 func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
+	if m.cfg.OnModelAction != nil {
+		m.cfg.OnModelAction(a)
+	}
 	switch act := a.(type) {
 	case OpenBlock:
 		return m.handleOpenItem(m.list.ItemByKey(act.Key))
@@ -46,12 +49,14 @@ func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
 		m.showHint = !m.showHint
 		m = m.relayout()
 		return m, nil
+
 	case ApplyDocPreset:
 		// Show a confirmation dialog before replacing the entire document.
 		// The actual replace is performed when confirmedDocPresetMsg is received.
 		msg := fmt.Sprintf("Apply preset %q? This will replace the entire document - all unsaved changes will be lost.", act.Name)
 		return m.showConfirmAlert("Apply document preset?", msg,
 			func() tea.Msg { return confirmedDocPresetMsg(act) })
+
 	default:
 		panic(fmt.Sprintf("editor: unhandled ModelAction %T", a))
 	}

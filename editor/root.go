@@ -280,9 +280,50 @@ func fieldDefByName(fields []schema.FieldDef, name string) schema.FieldDef {
 	return schema.FieldDef{}
 }
 
+// traceLocation describes where in the UI a message is about to be handled,
+// for OnMsg session tracing. Format: "<pane>" or, inside the block editor,
+// "block:<key>:<panel>:<mode>".
+func (m model) traceLocation() string {
+	switch m.mode {
+	case paneList:
+		return "list"
+	case panePreview:
+		return "preview"
+	case paneAlert:
+		return "alert"
+	case paneDocPreset:
+		return "docPreset"
+	case paneBlockEdit:
+		if len(m.blockEdits) == 0 {
+			return "blockEdit"
+		}
+		be := m.blockEdits[len(m.blockEdits)-1]
+		panelName := "tree"
+		switch be.active {
+		case blockEditPanelYAML:
+			panelName = "yaml"
+		case blockEditPanelHint:
+			panelName = "hint"
+		}
+		modeName := "editing"
+		switch be.mode {
+		case modePresetBrowser:
+			modeName = "presetBrowser"
+		case modeConfirming:
+			modeName = "confirming"
+		}
+		return fmt.Sprintf("block:%s:%s:%s", be.key, panelName, modeName)
+	default:
+		return "unknown"
+	}
+}
+
 func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.cfg.OnMsg != nil {
+		m.cfg.OnMsg(m.traceLocation(), msg)
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.handleWindowSizeMsg(msg)

@@ -267,7 +267,7 @@ var FormatUUID = FormatCustom("uuid", func(v string) bool {
 ```
 
 <a name="NewModelForTest"></a>
-## func [NewModelForTest](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L34>)
+## func [NewModelForTest](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L37>)
 
 ```go
 func NewModelForTest(cfg Config) (tea.Model, error)
@@ -332,7 +332,7 @@ type CommitBlock struct{}
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L177-L194>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L178-L200>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -348,22 +348,27 @@ FieldMeta.PreChecked lists sub\-fields that start checked when a new block overl
 
 ```go
 type Config struct {
-    Path                 string         // YAML file to load; also the default save target when SavePath is empty
-    Schema               any            // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
-    Title                string         // label shown in the TUI header
-    BlockPresets         presets.Source // optional; nil disables the preset picker inside block editors
-    DocPresets           presets.Source // optional; when set, p on the root list opens a whole-document template picker
-    EnableHints          bool           // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
-    Metadata             MetadataSource // field metadata displayed in the hint panel and enforced by the FromMetadata validators
-    Validators           []Validator    // rules evaluated before every save and on the validate shortcut
-    Hidden               []string       // top-level keys to omit from the UI entirely
-    PassthroughKeys      []string       // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
-    Theme                theme.Theme    // zero-value resolves to ThemeDark
-    NoDeleteConfirm      bool           // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
-    NoValidateOnSave     bool           // allow saving even when validators report errors; a warning alert is shown but does not block
-    NoSaveConfirm        bool           // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
-    SavePath             string         // write to this path instead of Path; Path is still used for loading
-    SchemaRecursionDepth int            // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
+    Path                 string                               // YAML file to load; also the default save target when SavePath is empty
+    Schema               any                                  // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
+    Title                string                               // label shown in the TUI header
+    BlockPresets         presets.Source                       // optional; nil disables the preset picker inside block editors
+    DocPresets           presets.Source                       // optional; when set, p on the root list opens a whole-document template picker
+    EnableHints          bool                                 // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
+    Metadata             MetadataSource                       // field metadata displayed in the hint panel and enforced by the FromMetadata validators
+    Validators           []Validator                          // rules evaluated before every save and on the validate shortcut
+    Hidden               []string                             // top-level keys to omit from the UI entirely
+    PassthroughKeys      []string                             // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
+    Theme                theme.Theme                          // zero-value resolves to ThemeDark
+    NoDeleteConfirm      bool                                 // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
+    NoValidateOnSave     bool                                 // allow saving even when validators report errors; a warning alert is shown but does not block
+    NoSaveConfirm        bool                                 // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
+    SavePath             string                               // write to this path instead of Path; Path is still used for loading
+    SchemaRecursionDepth int                                  // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
+    OnAction             func(blockKey string, a BlockAction) // optional; called synchronously after every BlockAction is dispatched, with the key of the block editor it was applied to (e.g. for session tracing)
+    OnModelAction        func(ModelAction)                    // optional; called synchronously after every ModelAction is dispatched (e.g. for session tracing)
+    OnMsg                func(where string, msg tea.Msg)      // optional; called synchronously for every raw tea.Msg the program receives (every keystroke, resize, etc.), before it is routed. where describes the active pane/block/panel at the time (e.g. "list", "block:categories:tree:editing")
+    Dump                 bool                                 // when true, records every action and keystroke to a JSONL file; the path is reported in Result.DumpPath. Composes with OnAction/OnModelAction/OnMsg if those are also set.
+    DumpPath             string                               // optional explicit path for the Dump trace file; ignored when Dump is false. Empty falls back to a timestamped file in the OS temp dir.
 }
 ```
 
@@ -427,7 +432,7 @@ type DrillOut struct{}
 ```
 
 <a name="FieldMeta"></a>
-## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L22-L70>)
+## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L23-L71>)
 
 FieldMeta carries a single field's metadata: displayed in the Hint/Example panel and enforced by the FromMetadata validator family. Fields at their zero value declare nothing \- no panel line, no enforcement. MetadataSource is the sole authority: yedit never auto\-populates any FieldMeta field from struct tags. If no MetadataSource is configured, the hint panel shows only a generated example.
 
@@ -529,7 +534,7 @@ func (f Format) Label() string
 Label returns the display name used in the hint panel and docgenerator.
 
 <a name="MetadataFunc"></a>
-## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L89>)
+## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L90>)
 
 MetadataFunc adapts a plain function to the MetadataSource interface:
 
@@ -547,7 +552,7 @@ type MetadataFunc func(blockKey, fieldPath string) FieldMeta
 ```
 
 <a name="MetadataFunc.FieldMeta"></a>
-### func \(MetadataFunc\) [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L92>)
+### func \(MetadataFunc\) [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L93>)
 
 ```go
 func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta
@@ -556,7 +561,7 @@ func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta
 FieldMeta calls f.
 
 <a name="MetadataSource"></a>
-## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L77-L79>)
+## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L78-L80>)
 
 MetadataSource provides per\-field metadata for the Hint/Example panel and the FromMetadata validator family. It is called with the top\-level block key and the field's dot\-joined path from the block root \(e.g. "source", "source.path"\). For top\-level block entries in the root list, fieldPath is empty \(""\). Returning a zero FieldMeta means "no override".
 
@@ -614,7 +619,7 @@ type Reload struct{}
 ```
 
 <a name="Result"></a>
-## type [Result](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L12-L17>)
+## type [Result](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L12-L20>)
 
 Result reports the outcome of an editor session.
 
@@ -624,11 +629,14 @@ type Result struct {
     // session. It stays true even if the user keeps editing afterwards and
     // quits with unsaved changes.
     Saved bool
+    // DumpPath is the path of the session trace file, set when Config.Dump
+    // is true. Empty when Dump is false or the dump file could not be created.
+    DumpPath string
 }
 ```
 
 <a name="Run"></a>
-### func [Run](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L27>)
+### func [Run](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L30>)
 
 ```go
 func Run(cfg Config) (Result, error)
@@ -639,7 +647,7 @@ Run starts the editor TUI and blocks until the user quits. The Config must have 
 Returns the session Result on a clean quit, or the underlying tea.Program error. A panic inside the editor is recovered and returned as an error instead of crashing the embedding program: Bubble Tea restores the terminal before the panic propagates here, so the host is left with a usable terminal and a normal error to handle.
 
 <a name="RunContext"></a>
-### func [RunContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L42>)
+### func [RunContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L45>)
 
 ```go
 func RunContext(ctx context.Context, cfg Config) (res Result, err error)
@@ -699,7 +707,7 @@ type Undo struct{}
 ```
 
 <a name="ValidationInput"></a>
-## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L125-L129>)
+## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L126-L130>)
 
 ValidationInput carries the document state inspected by validators. RunAll builds it once per run and shares it across all validators, so the document is parsed a single time instead of once per validator. Build one with NewValidationInput when invoking a validator directly.
 
@@ -721,7 +729,7 @@ func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
 NewValidationInput parses raw once and bundles it with blocks for a validation run. Root is nil when raw is not valid YAML; an empty document yields an empty mapping so unconditional checks still run.
 
 <a name="Validator"></a>
-## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L134-L136>)
+## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L135-L137>)
 
 Validator is a pluggable rule executed at validate/save time. It returns one Violation per problem it finds. Returning an empty slice \(or nil\) means "all good".
 
@@ -1248,7 +1256,7 @@ func ValueOneOf(path string, allowed ...string) Validator
 ValueOneOf reports a violation when the field at path exists but its value is not in allowed. Sequences and dict\-style mappings along the path are expanded automatically, so every entry in a list or every value in a map is checked.
 
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L149>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L150>)
 
 ValidatorFunc adapts a plain function to the Validator interface, letting callers register inline validators without defining a named type:
 
@@ -1268,7 +1276,7 @@ type ValidatorFunc func(in ValidationInput) []Violation
 ```
 
 <a name="ValidatorFunc.Validate"></a>
-### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L152>)
+### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L153>)
 
 ```go
 func (f ValidatorFunc) Validate(in ValidationInput) []Violation
@@ -1277,7 +1285,7 @@ func (f ValidatorFunc) Validate(in ValidationInput) []Violation
 Validate calls f.
 
 <a name="Violation"></a>
-## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L107-L111>)
+## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L108-L112>)
 
 Violation is a single rule violation reported by a Validator.
 
@@ -1299,7 +1307,7 @@ func RunAll(w WiredValidators, raw []byte, blocks []document.Block) []Violation
 RunAll executes all validators against raw/blocks and collects violations. The document is parsed once and shared across validators. w must be produced by Wire; passing a zero WiredValidators is valid and always returns nil.
 
 <a name="Violation.String"></a>
-### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L114>)
+### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L115>)
 
 ```go
 func (v Violation) String() string

@@ -55,7 +55,7 @@ The main entry point. `editor.Run` starts a bubbletea program that manages:
 - An **editor stack** - drill-in (Enter on a nested field) pushes a new `blockEditState` onto the stack; drill-out (Esc) pops it. The single `editRoot *yaml.Node` holds all edits until Ctrl+S commits them to `document.Document`.
 - A **hint panel** - shown when `EnableHints` is set; renders `FieldMeta` from `Config.Metadata` for the focused field.
 
-`editor.Config` is the integration surface. See `editor/config.go` for the full field list.
+`editor.Config` is the integration surface. See `editor/config.go` for the full field list. For the state machine and message flow behind the list/editor/preset panes, see [Dispatch Flow](DISPATCH-FLOW.md).
 
 ### MetadataSource
 
@@ -104,7 +104,7 @@ type FieldDef struct {
 }
 ```
 
-`Kind` is the driving concept: `KindObject` gets a field tree, `KindList`/`KindDictionary` with children get a `[N]` navigator, everything else gets the raw YAML pane. See [Schema Kinds Reference](schema-kinds-reference.md) for the full mapping.
+`Kind` is the driving concept: `KindObject` gets a field tree, `KindList`/`KindDictionary` with children get a `[N]` navigator, everything else gets the raw YAML pane. See [Schema Kinds Reference](../SCHEMA-KINDS.md) for the full mapping.
 
 The schema package has no dependency on `editor` - it can be used standalone (e.g. by `docgenerator`).
 
@@ -128,37 +128,9 @@ A round-trip guard validates each `Insert`/`Replace` by re-parsing the stored bl
 
 ## docgenerator
 
-Generates Markdown reference tables from a Go struct and a `MetadataSource`. Used for `show-docs` (TUI browser) and `generate-docs` (write files to disk) CLI subcommands.
+Generates Markdown reference tables from a Go struct and a `MetadataSource`. Used for `show-docs` (TUI browser) and `generate-docs` (write files to disk) CLI subcommands. `docgenerator` depends on `editor` (for `MetadataSource`) and `schema` (for `Discover`), but not the other way around - no import cycle.
 
-```go
-// In-memory TUI browser - struct implements MetadataProvider:
-ds, _ := docgenerator.GenerateInMemory([]docgenerator.Entry{
-    {Config: Config{}, SplitStructs: true},
-})
-docgenerator.RenderMarkdownDocsInTerminal(ds, "myapp")
-
-// In-memory TUI browser - external MetadataSource:
-gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(src))
-ds = gen.GenerateDocsInMemory([]docgenerator.Entry{
-    {Config: Config{}, SplitStructs: true},
-})
-docgenerator.RenderMarkdownDocsInTerminal(ds, "myapp")
-
-// On disk - struct implements MetadataProvider:
-docgenerator.Generate("docs/", []docgenerator.Entry{
-    {Config: Config{}, DocsDir: "docs/reference", SplitStructs: true},
-})
-
-// On disk - external MetadataSource:
-files, _ := gen.GenerateDocsForEach([]docgenerator.Entry{
-    {Config: Config{}, DocsDir: "docs/reference", SplitStructs: true},
-})
-docgenerator.GenerateIndex("docs/", files)
-```
-
-`Entry.SplitStructs` controls the output shape. When `false` (default), one page is produced per entry with all nested sections inline. When `true`, the entry produces a root summary page whose table links to separate per-field pages; `DocSet.Children` records the parent→children relationship so the TUI can display hierarchy and wire `[1-9]` navigation.
-
-`docgenerator` depends on `editor` (for `MetadataSource`) and `schema` (for `Discover`), but not the other way around - no import cycle.
+This is a user-facing feature, not an implementation detail - see [Doc Generation](../DOC-GENERATION.md) for the full API and usage examples.
 
 ---
 
@@ -170,7 +142,7 @@ Three construction paths, each returning a `presets.Source` that the editor uses
 - **`Combine(sources...)`** - merges multiple `Source` values into one. Use to aggregate presets from several resource types into a single block preset picker.
 - **`Func(listFields, listPresets, presetYAML)`** - ad-hoc lookup for cases where presets are built dynamically or loaded from an external store.
 
-See [Presets & Metadata](presets-hints.md) for configuration details.
+See [Presets](../PRESETS.md) for configuration details.
 
 ---
 

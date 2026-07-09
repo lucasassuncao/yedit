@@ -1,99 +1,14 @@
-# Presets and Metadata
+# Metadata and Hints
 
-This document explains how to configure `Presets` and `Metadata` in `editor.Config`.
-
----
-
-## Presets
-
-Presets populate the preset picker with ready-made YAML snippets for a block. When a user selects a preset, the editor seeds the YAML text area with the chosen snippet.
-
-Presets are defined as Go structs and marshaled to YAML automatically - no hand-written YAML files or boilerplate interface implementations required.
-
-### The three-function pattern
-
-For each field that has presets, define three functions:
-
-```go
-type DatabaseConfig struct {
-    Driver   string `yaml:"driver"`
-    DSN      string `yaml:"dsn"`
-    MaxConns int    `yaml:"max-conns"`
-}
-
-// private: holds all preset values
-func databasePresetsMap() map[string]DatabaseConfig {
-    return map[string]DatabaseConfig{
-        "postgres-local": {Driver: "postgres", DSN: "postgres://localhost/mydb", MaxConns: 10},
-        "mysql-local":    {Driver: "mysql",    DSN: "mysql://localhost/mydb",    MaxConns: 5},
-        "sqlite":         {Driver: "sqlite",   DSN: "file:app.db"},
-    }
-}
-
-// public: returns the content of a specific preset by name
-func DatabasePreset(name string) DatabaseConfig {
-    return databasePresetsMap()[name]
-}
-
-// public: lists all available preset names (sorted)
-func ListOfDatabasePresets() []string {
-    field := "database"
-    return presets.ForField(field, databasePresetsMap()).ListPresets(field)
-}
-```
-
-### Single field
-
-When only one field has presets, pass `presets.ForField` directly:
-
-```go
-editor.Run(editor.Config{
-    Schema:  &MyConfig{},
-    Presets: presets.ForField("database", databasePresetsMap()),
-    // ...
-})
-```
-
-### Multiple fields
-
-When more than one field has presets, wrap them with `presets.Combine`:
-
-```go
-editor.Run(editor.Config{
-    Schema: &MyConfig{},
-    Presets: presets.Combine(
-        presets.ForField("database", databasePresetsMap()),
-        presets.ForField("server",   serverPresetsMap()),
-        presets.ForField("logging",  loggingPresetsMap()),
-    ),
-    // ...
-})
-```
-
-`Combine` merges the sources into one: when the editor asks for `"database"` presets, it dispatches to the `ForField("database", ...)` source; `"server"` goes to the next, and so on.
-
-### Dynamic lookup (no picker)
-
-When presets come from an external source (database, API) and cannot be enumerated upfront, use `presets.Func`. The picker will not appear, but direct `(field, name)` lookups still work:
-
-```go
-editor.Run(editor.Config{
-    Presets: presets.Func(func(field, name string) (string, error) {
-        snippet, err := myRegistry.FetchPreset(field, name)
-        return snippet, err
-    }),
-})
-```
+This document explains how to configure `Config.Metadata` in `editor.Config`.
 
 ---
-
-## Metadata
 
 Metadata populates the Hint/Example panel shown when the user presses `h` in the main list or when a field is selected in the block editor. Each entry carries a description, type label, required flag, default value, allowed values, and an example snippet.
 
 When `Config.Metadata` is `nil`, the hint panel shows only a generated example. Set `Metadata` to a `MetadataSource` and set `EnableHints: true` to enable the full panel.
 
-### Interface
+## Interface
 
 ```go
 type MetadataSource interface {
@@ -106,7 +21,7 @@ type MetadataSource interface {
 
 `MetadataSource` is the sole authority for all hint display data and `FromMetadata` validator constraints. yamltui does not derive metadata from struct tags.
 
-### FieldMeta
+## FieldMeta
 
 ```go
 type FieldMeta struct {
@@ -127,7 +42,7 @@ type FieldMeta struct {
 
 Set only the fields that are meaningful for the field being described. Zero values declare nothing.
 
-### metadata.New (recommended)
+## metadata.New (recommended)
 
 Use when the root struct is yours and can implement `MetadataProvider`. Each struct declares its own direct fields via `Metadata()`; nested structs that also implement `MetadataProvider` have their `Children` populated automatically. Full coverage is enforced: adding a yaml-tagged field to the struct without updating `Metadata()` is a startup error.
 
@@ -177,7 +92,7 @@ editor.Run(editor.Config{
 })
 ```
 
-### metadata.NewFromTree (escape hatch)
+## metadata.NewFromTree (escape hatch)
 
 Use when the root struct comes from a third-party package and cannot implement `MetadataProvider`. You assemble the full `Node` tree manually and pass it alongside the struct pointer. `New` calls `NewFromTree` internally as its final step, so both provide the same validation and `Type` inference.
 
@@ -210,7 +125,7 @@ if err != nil {
 
 `metadata.Node` embeds `editor.FieldMeta` and adds `Children map[string]*Node`. The `Type` field is auto-filled from the Go type if left empty.
 
-### MetadataFunc adapter
+## MetadataFunc adapter
 
 For simple cases or programmatic sources, use `editor.MetadataFunc`:
 
@@ -230,7 +145,7 @@ editor.Run(editor.Config{
 })
 ```
 
-### Recursive types
+## Recursive types
 
 For self-referential structs (e.g. a `Filter` that contains `Any []Filter`), use shared pointers and two-phase initialization to avoid infinite recursion:
 
@@ -254,7 +169,7 @@ src, err := metadata.NewFromTree(&Config{}, map[string]*metadata.Node{
 
 A Go map literal cannot reference itself during construction, so this two-phase pattern is required. Both `NewFromTree` and `New` are cycle-aware and handle shared pointers correctly.
 
-### Type labels
+## Type labels
 
 `metadata.Build` fills `Type` automatically from the Go type. When setting it manually, use:
 
@@ -272,8 +187,6 @@ A Go map literal cannot reference itself during construction, so this two-phase 
 | `interface{}`   | `"any"`          |
 
 yamltui displays the `Type` label as-is; any string meaningful to your users is valid.
-
----
 
 ## Full example
 

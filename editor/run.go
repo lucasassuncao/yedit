@@ -14,6 +14,9 @@ type Result struct {
 	// session. It stays true even if the user keeps editing afterwards and
 	// quits with unsaved changes.
 	Saved bool
+	// DumpPath is the path of the session trace file, set when Config.Dump
+	// is true. Empty when Dump is false or the dump file could not be created.
+	DumpPath string
 }
 
 // Run starts the editor TUI and blocks until the user quits. The Config must
@@ -45,6 +48,16 @@ func RunContext(ctx context.Context, cfg Config) (res Result, err error) {
 			err = fmt.Errorf("yedit: editor panicked: %v\n%s", r, debug.Stack())
 		}
 	}()
+
+	if cfg.Dump {
+		dumper, dumpErr := newDumpWriter(cfg.DumpPath)
+		if dumpErr != nil {
+			return Result{}, fmt.Errorf("yedit: creating session dump file: %w", dumpErr)
+		}
+		defer dumper.close()
+		wireDump(&cfg, dumper)
+		res.DumpPath = dumper.path()
+	}
 
 	m, err := newModel(cfg)
 	if err != nil {

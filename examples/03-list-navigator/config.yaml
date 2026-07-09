@@ -1,3 +1,4 @@
+app-name: "my-app"
 debug: false
 server:
   host: localhost
@@ -6,4 +7,7 @@ server:
     min-size: 2
     max-size: 10
 workers:
-  - concurrency: 3
+  - name: "default"
+    concurrency: 2
+  - name: "background"
+    concurrency: 1

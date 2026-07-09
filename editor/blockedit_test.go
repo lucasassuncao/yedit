@@ -570,8 +570,12 @@ func TestPrimitiveBlock_showsFieldItemAndHint(t *testing.T) {
 		content: "debug: false\n",
 	}
 	cfg := Config{
+		// fieldPath must be "" for a tree-less block's own metadata (same
+		// contract as the root list's hint panel) - a mock that ignored
+		// fieldPath here would not have caught the regression where
+		// blockedit_hint.go passed be.def.YAMLName instead of "".
 		Metadata: MetadataFunc(func(block, fieldPath string) FieldMeta {
-			if block == "debug" {
+			if block == "debug" && fieldPath == "" {
 				return FieldMeta{Type: "bool", Default: "false"}
 			}
 			return FieldMeta{}

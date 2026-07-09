@@ -15,10 +15,10 @@
 #     Remove-Item demo-app
 #
 # Drives examples/test through a small editing session: toggle the hint panel,
-# delete the unknown key flagged by validation, apply a server preset, save,
-# validate, and quit. The example re-creates test.yaml on first run, so the
-# tape starts from a clean seed and removes the file afterwards. Each screen
-# transition is guarded by Wait+Screen so the keystrokes cannot desync.
+# drill into the server block, apply a preset, save, validate, and quit. The
+# example re-creates demo.yaml on first run, so the tape starts from a clean
+# seed and removes the file afterwards. Each screen transition is guarded by
+# Wait+Screen so the keystrokes cannot desync.
 
 Output docs/demo.gif
 
@@ -31,7 +31,7 @@ Set WaitTimeout 60s
 
 # Fresh seed + launch (hidden: startup is not part of the demo).
 Hide
-Type "rm -f test.yaml && ./demo-app"
+Type "rm -f demo.yaml && ./demo-app"
 Enter
 Wait+Screen /Blocks/
 Show
@@ -42,39 +42,22 @@ Sleep 1.5s
 Type "h"
 Sleep 2s
 
-# Walk down the ADDED section.
-Type "jjj"
-Sleep 1.5s
-
-# Filter, then delete the unknown key (flagged by ctrl+l).
-Type "/"
-Type "unknown"
-Sleep 500ms
-Enter
-Sleep 1s
-Ctrl+D
-Wait+Screen /Remove block\?/
-Sleep 1.5s
-Type "y"
+# Walk down to the server block (app-name, debug, server, workers).
+Down 2
 Sleep 1.5s
 
 # Open the server block.
-Type "/"
-Type "server"
-Sleep 500ms
 Enter
-Sleep 1s
-Enter
-Wait+Screen /Fields/
+Wait+Screen /Field/
 Sleep 2s
 
 # Browse its fields and apply the "production" preset.
-Type "jj"
+Down
 Sleep 1.5s
 Type "p"
 Wait+Screen /production/
 Sleep 1.5s
-Type "j"
+Down
 Sleep 1s
 Enter
 Sleep 2s
@@ -105,5 +88,5 @@ Sleep 1.5s
 
 # Cleanup the generated seed.
 Hide
-Type "rm -f test.yaml"
+Type "rm -f demo.yaml"
 Enter
