@@ -7,6 +7,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// TestEntryLabel_negativeIndex guards against an index-out-of-range panic:
+// be.coll.current legitimately holds -1 for an empty collection, and the map
+// branch's bound check (2*i < len) would accept a negative index without it.
+func TestEntryLabel_negativeIndex(t *testing.T) {
+	node := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "web"},
+		{Kind: yaml.MappingNode},
+	}}
+	if got := entryLabel(node, true, -1); got != "" {
+		t.Errorf("entryLabel(map, -1) = %q, want \"\"", got)
+	}
+	seq := makeBenchSeqNode(1)
+	if got := entryLabel(seq, false, -1); got != "item 0" {
+		t.Errorf("entryLabel(seq, -1) = %q, want fallback label", got)
+	}
+}
+
 // BenchmarkDeriveChecked measures re-deriving checked states for all field
 // nodes in a flat list - called once per user action on a collection.
 func BenchmarkDeriveChecked_10(b *testing.B)  { benchmarkDeriveChecked(b, 10) }

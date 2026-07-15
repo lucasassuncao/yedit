@@ -46,7 +46,7 @@ func Discover(v any, recursionLimit ...int) []FieldDef {
 	if t == nil {
 		return nil
 	}
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return discoverFields(t, 0, make(map[reflect.Type]int), limit)
@@ -89,7 +89,7 @@ func discoverFields(t reflect.Type, depth int, seen map[reflect.Type]int, limit 
 // embedFields promotes the exported fields of an anonymous or inline struct embed.
 func embedFields(f reflect.StructField, depth int, seen map[reflect.Type]int, limit int) []FieldDef {
 	ft := f.Type
-	for ft.Kind() == reflect.Ptr {
+	for ft.Kind() == reflect.Pointer {
 		ft = ft.Elem()
 	}
 	if ft.Kind() != reflect.Struct {
@@ -115,7 +115,7 @@ func buildFieldDef(f reflect.StructField, yamlName, yamlTag string) FieldDef {
 	}
 	if info.Kind == KindDictionary {
 		ft := f.Type
-		for ft.Kind() == reflect.Ptr {
+		for ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 		if ft.Kind() == reflect.Map {
@@ -146,7 +146,7 @@ func fillFieldChildren(info *FieldDef, f reflect.StructField, depth int, seen ma
 // encoding.TextMarshaler. These types serialise as scalars; their struct
 // fields must not be exposed in the editor.
 func isMarshalerType(t reflect.Type) bool {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return t.Implements(yamlMarshalerType) ||
@@ -158,13 +158,19 @@ func isMarshalerType(t reflect.Type) bool {
 // providerChildren returns the FieldDef list declared by a type implementing
 // Provider, or nil if the type does not implement the interface.
 func providerChildren(t reflect.Type) []FieldDef {
-	for t.Kind() == reflect.Ptr || t.Kind() == reflect.Slice {
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice {
 		t = t.Elem()
 	}
 	if t.Kind() == reflect.Map {
 		t = t.Elem()
 	}
 	providerType := reflect.TypeOf((*Provider)(nil)).Elem()
+	// An interface type has no concrete zero value to call YeditSchema on -
+	// reflect.Zero(t).Interface() would be a nil interface and the type
+	// assertion below would panic. Such fields classify as KindAny instead.
+	if t.Kind() == reflect.Interface {
+		return nil
+	}
 	switch {
 	case t.Implements(providerType):
 		zero := reflect.Zero(t).Interface().(Provider)
@@ -178,7 +184,7 @@ func providerChildren(t reflect.Type) []FieldDef {
 
 // kindOf classifies a Go type for the FieldDef.Kind field.
 func kindOf(t reflect.Type) Kind {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		return kindOf(t.Elem())
 	}
 	if t.Kind() == reflect.Interface {
@@ -206,7 +212,7 @@ func kindOf(t reflect.Type) Kind {
 // enriches FieldDef.Scalar and the metadata package builds its hint-panel
 // labels on top of it, so the two can never name the same type differently.
 func ScalarLabel(t reflect.Type) string {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.PkgPath() == "time" && t.Name() == "Duration" {
@@ -231,7 +237,7 @@ func ScalarLabel(t reflect.Type) string {
 // unwrap removes pointer, slice, and map wrappers to reach the element type
 // that might be a struct worth recursing into.
 func unwrap(t reflect.Type) reflect.Type {
-	for t.Kind() == reflect.Ptr || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
 		t = t.Elem()
 	}
 	if t.Kind() == reflect.Map {

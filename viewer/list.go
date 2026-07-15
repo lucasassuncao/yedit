@@ -136,10 +136,12 @@ func (l *listModel) SetSize(w, h int) {
 
 func (l *listModel) ensureCursorVisible() {
 	cur := l.fieldCursor
+	visH := l.height
 	if l.mode == modePresets {
 		cur = l.presetCursor
+		visH = l.height - 2 // viewPresets reserves 2 rows for the header
 	}
-	l.scroll = theme.ClampScroll(cur, l.scroll, l.height)
+	l.scroll = theme.ClampScroll(cur, l.scroll, visH)
 }
 
 func (l *listModel) View() string {

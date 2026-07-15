@@ -63,7 +63,7 @@ func entryValueNode(node *yaml.Node, isMap bool, i int) *yaml.Node {
 // "name" field, falling back to "item N".
 func entryLabel(node *yaml.Node, isMap bool, i int) string {
 	if isMap {
-		if 2*i < len(node.Content) {
+		if i >= 0 && 2*i < len(node.Content) {
 			return node.Content[2*i].Value
 		}
 		return ""

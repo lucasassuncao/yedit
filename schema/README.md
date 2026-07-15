@@ -35,7 +35,7 @@ KnownChildren collapses a FieldDef tree into a map of dotted paths to the set of
 A nil value at a path means "free\-form" \- children at that path are not validated \(e.g. customizations.vscode.settings has no fixed schema\).
 
 <a name="ScalarLabel"></a>
-## func [ScalarLabel](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L208>)
+## func [ScalarLabel](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L214>)
 
 ```go
 func ScalarLabel(t reflect.Type) string
@@ -44,7 +44,7 @@ func ScalarLabel(t reflect.Type) string
 ScalarLabel returns a human label for a scalar Go type \("string", "int", "bool", "float", "duration", "uint"\) or "" when t is not a scalar. Named types with their own meaning \(time.Duration\) take precedence over their underlying kind. It is the single vocabulary for scalar type labels: it enriches FieldDef.Scalar and the metadata package builds its hint\-panel labels on top of it, so the two can never name the same type differently.
 
 <a name="TopLevelOrder"></a>
-## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L245>)
+## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L251>)
 
 ```go
 func TopLevelOrder(fields []FieldDef) []string

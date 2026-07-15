@@ -488,14 +488,19 @@ func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	// relayout only sizes the root list/preview; forward the resize to every
 	// stacked sub-model so each editor's panels resize too.
 	if len(m.blockEdits) > 0 {
+		// Clone the stack before updating: writing through m.blockEdits would
+		// mutate the backing array shared with prior model copies (the same
+		// copy-on-write discipline withTopBE enforces).
+		updated := make([]blockEditState, len(m.blockEdits))
 		var cmd tea.Cmd
 		for i := range m.blockEdits {
 			be, c := m.blockEdits[i].Update(msg)
-			m.blockEdits[i] = be
+			updated[i] = be
 			if i == len(m.blockEdits)-1 {
 				cmd = c
 			}
 		}
+		m.blockEdits = updated
 		return m, cmd
 	}
 	return m, nil

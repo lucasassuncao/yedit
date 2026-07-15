@@ -32,13 +32,13 @@ func GenerateExampleDocs(examplesDir string, src presets.Source, titles map[stri
 		}
 
 		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("# %s Examples\n\n", title))
+		fmt.Fprintf(&sb, "# %s Examples\n\n", title)
 		for _, name := range names {
 			yaml, err := src.PresetYAML(field, name)
 			if err != nil {
 				return nil, fmt.Errorf("preset yaml for %s/%s: %w", field, name, err)
 			}
-			sb.WriteString(fmt.Sprintf("## Preset: %s\n\n", name))
+			fmt.Fprintf(&sb, "## Preset: %s\n\n", name)
 			sb.WriteString("```yaml\n")
 			sb.WriteString(yaml)
 			if !strings.HasSuffix(yaml, "\n") {

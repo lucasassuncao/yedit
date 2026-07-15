@@ -221,7 +221,7 @@ func GenerateIndex(baseDir string, files []GeneratedFile) error {
 		if err != nil {
 			return fmt.Errorf("compute relative path for %s: %w", f.Name, err)
 		}
-		sb.WriteString(fmt.Sprintf("- [%s](./%s)\n", f.Name, filepath.ToSlash(rel)))
+		fmt.Fprintf(&sb, "- [%s](./%s)\n", f.Name, filepath.ToSlash(rel))
 	}
 	out := filepath.Join(baseDir, "README.md")
 	valid, ok := validatePathWithinBase(baseDir, out)
@@ -266,7 +266,7 @@ func typeName(v any) string {
 	if t == nil {
 		return ""
 	}
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return t.Name()

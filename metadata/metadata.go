@@ -105,7 +105,7 @@ func New(v any) (editor.MetadataSource, error) {
 	tree := p.Metadata()
 	// Step 3: unwrap pointer so reflect.Type always refers to a struct.
 	baseType := reflect.TypeOf(v)
-	for baseType.Kind() == reflect.Ptr {
+	for baseType.Kind() == reflect.Pointer {
 		baseType = baseType.Elem()
 	}
 	// Step 4: auto-compose Children for nested MetadataProvider fields.
@@ -235,7 +235,7 @@ func fill(node *Node, t reflect.Type, path string, visited map[*Node]bool) error
 		return nil
 	}
 	visited[node] = true
-	for t != nil && t.Kind() == reflect.Ptr {
+	for t != nil && t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t != nil && node.Type == "" {
@@ -262,12 +262,12 @@ func fill(node *Node, t reflect.Type, path string, visited map[*Node]bool) error
 // elemType resolves the struct type that children of t belong to: slices and
 // maps yield their element type, pointers are unwrapped.
 func elemType(t reflect.Type) reflect.Type {
-	for t != nil && (t.Kind() == reflect.Ptr || t.Kind() == reflect.Slice) {
+	for t != nil && (t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice) {
 		t = t.Elem()
 	}
 	if t != nil && t.Kind() == reflect.Map {
 		t = t.Elem()
-		for t.Kind() == reflect.Ptr {
+		for t.Kind() == reflect.Pointer {
 			t = t.Elem()
 		}
 	}
@@ -286,7 +286,7 @@ func isProvider(t reflect.Type) bool {
 // fieldTypeByYAML finds the Go type of the field with yaml tag yamlName in
 // struct type t. Returns nil when not found or t is not a struct.
 func fieldTypeByYAML(t reflect.Type, yamlName string) reflect.Type {
-	for t != nil && t.Kind() == reflect.Ptr {
+	for t != nil && t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t == nil || t.Kind() != reflect.Struct {
@@ -314,7 +314,7 @@ func fieldTypeByYAML(t reflect.Type, yamlName string) reflect.Type {
 // come from schema.ScalarLabel - the shared vocabulary - so the hint panel and
 // the discovered schema can never name the same type differently.
 func typeLabel(t reflect.Type) string {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if s := schema.ScalarLabel(t); s != "" {
@@ -323,7 +323,7 @@ func typeLabel(t reflect.Type) string {
 	switch t.Kind() {
 	case reflect.Slice, reflect.Array:
 		elem := t.Elem()
-		for elem.Kind() == reflect.Ptr {
+		for elem.Kind() == reflect.Pointer {
 			elem = elem.Elem()
 		}
 		if elem.Kind() == reflect.Struct {

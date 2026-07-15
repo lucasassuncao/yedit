@@ -205,6 +205,11 @@ func collectUnknownNodes(valueNode *yaml.Node, defs []schema.FieldDef) []treeNod
 // the (possibly new) node; the caller must assign the result back. Returns
 // valueNode unchanged when the toggle produces no structural change.
 func toggleNodeField(valueNode *yaml.Node, ctx toggleCtx, node treeNode, checked bool) *yaml.Node {
+	// Rows without a path (add-new, separators) carry nothing to toggle. The UI
+	// never targets them, but a replayed action log (replayBlock) can.
+	if len(node.yamlPath) == 0 {
+		return valueNode
+	}
 	cloned := yamlnode.CloneNode(valueNode)
 	if cloned.Kind != yaml.MappingNode {
 		cloned.Kind = yaml.MappingNode

@@ -649,6 +649,10 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 // repeated Ctrl+S is idempotent. For collection blocks it re-derives the entry
 // list (and tree, when the entry count changed); otherwise it reloads the raw
 // YAML. The committed baseline is reset either way, so dirty reads clean.
+//
+// Currently unused at runtime: commitAll returns to the list and discards the
+// editor stack instead of keeping the editor open. Kept (with its test) for a
+// future commit-in-place flow.
 func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 	if !be.isCollectionNav() {
 		if v := blockValueNodeOrNil(fresh); v != nil {
@@ -733,8 +737,8 @@ func (be blockEditState) commit() (blockEditState, *yaml.Node, bool) {
 	// flushTopToRoot during drill-in/out, where the edits have only reached
 	// editRoot — not the document. Clearing dirty here would bypass the
 	// "Discard changes?" guard if the user later Escs from the parent editor.
-	// dirty is cleared only by resyncAfterCommit, which runs after the content
-	// has been successfully committed to the document.
+	// A successful document commit (commitAll) returns to the list and discards
+	// the editor stack, so the flag dies with it.
 
 	return be, val, true
 }

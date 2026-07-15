@@ -135,6 +135,9 @@ func (be blockEditState) refreshCollectionFromNode(node *yaml.Node) blockEditSta
 	newCount := entryCount(&be.node, isMap)
 	if newCount != oldCount {
 		be.tree.nodes = be.collectionTreeNodes()
+		// The rebuilt tree may be shorter than the cursor position (e.g. entries
+		// pruned during drill-out); clamp so the cursor stays on a real row.
+		be.tree = be.tree.clampCursor()
 		be.coll.current = reanchorCollCursor(&old, &be.node, isMap, be.coll.current)
 	}
 	be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
@@ -266,6 +269,9 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 // caller aborts the navigation/commit.
 func (m model) flushTopToRoot() (model, bool) {
 	top := m.topBE()
+	if top == nil {
+		return m, false
+	}
 	committed, val, ok := top.commit()
 	m = m.withTopBE(committed)
 	if !ok {
@@ -332,6 +338,9 @@ func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
 // (flushTopToRoot); editRoot is cloned here so the pruning never mutates the
 // live edit session. Mirrors commitAll's serialization, minus the effects.
 func (m model) docWithEditorContent() (document.Document, error) {
+	if len(m.blockEdits) == 0 {
+		return m.doc, nil
+	}
 	root := yamlnode.CloneNode(m.editRoot)
 	pruneEmptyContent(root)
 	blockIsEmpty := len(root.Content) == 0 &&
