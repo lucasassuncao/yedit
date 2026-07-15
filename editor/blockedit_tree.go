@@ -58,24 +58,27 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 		return be.handleTreeOpenChild()
 	case treeToggled:
 		be = be.handleTreeToggleDispatch()
-		return be, nil
 	case treeAddNew:
 		be = be.dispatch(AddEntry{})
-		return be, nil
 	case treeDeleted:
 		be = be.handleTreeDeleteDispatch()
-		return be, nil
-	}
-
-	// Collection entries are shown one at a time; moving to a different entry
-	// requires flushing the current buffer and loading the new entry.
-	if be.isCollectionNav() && (action == treeNoAction || action == treeExpanded || action == treeCollapsed) {
-		newSeqIdx := be.tree.NearestSeqItem()
-		if newSeqIdx != prevSeqIdx {
-			be = be.dispatch(NavigateEntry{Idx: newSeqIdx})
+	default:
+		// Collection entries are shown one at a time; moving to a different entry
+		// requires flushing the current buffer and loading the new entry.
+		if be.isCollectionNav() {
+			newSeqIdx := be.tree.NearestSeqItem()
+			if newSeqIdx != prevSeqIdx {
+				be = be.dispatch(NavigateEntry{Idx: newSeqIdx})
+			}
 		}
 	}
 
+	// Follow the selection: the cursor landed on a different node, or a toggle
+	// changed which line the current node lives on. Expand/collapse keeps the
+	// node and the buffer unchanged, so it triggers no jump.
+	if be.tree.currentNodeIdx() != prevNodeIdx || action == treeToggled {
+		be = be.followTreeSelection()
+	}
 	return be, nil
 }
 

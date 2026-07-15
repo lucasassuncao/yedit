@@ -88,6 +88,7 @@ type blockEditState struct {
 	active          blockEditPanel
 	prevActive      blockEditPanel // panel to return to when leaving hint focus
 	hintScroll      int            // scroll offset in hint panel when active == blockEditPanelHint
+	previewScroll   int            // 1-based YAML line the Preview keeps visible; 0 = top
 
 	isEdit        bool   // false = add new block, true = edit existing
 	dirty         bool   // uncommitted changes since last ctrl+s
@@ -758,12 +759,14 @@ func (be blockEditState) View(parentSegs []string) string {
 	var topTitle, topContent string
 	if !yamlActive && be.kind == schema.KindObject {
 		topTitle = "Preview"
-		topContent = renderPreviewYAML(be.yamlEditor.Value(), be.previewRenderer)
+		// The preview window follows the tree selection: scrollLinesTo keeps
+		// previewScroll visible (rendered preview lines map ~1:1 to YAML lines).
+		topContent = scrollLinesTo(renderPreviewYAML(be.yamlEditor.Value(), be.previewRenderer), be.editorH(), be.previewScroll)
 	} else {
 		topTitle = "Editing YAML"
-		topContent = be.yamlEditor.View()
+		topContent = clampLines(be.yamlEditor.View(), be.editorH())
 	}
-	topPanel := theme.RenderTitledPanelWith(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, clampLines(topContent, be.editorH()), be.theme.colors)
+	topPanel := theme.RenderTitledPanelWith(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, topContent, be.theme.colors)
 
 	rightPanel := topPanel
 	if be.cfg.EnableHints {
