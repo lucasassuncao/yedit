@@ -50,18 +50,32 @@ func RenderHeader(title, subtitle, right string, width int) string {
 
 // TwoColumnWidths computes left and right column widths for the standard
 // two-panel layout: left is totalWidth/3, clamped to [30, 60]; right gets
-// the remainder minus 4 chars for the two border pairs.
+// the remainder minus 4 chars for the two border pairs. Terminals narrower
+// than the floors get a proportional split instead of an overflowing layout.
 func TwoColumnWidths(totalWidth int) (listW, rightW int) {
+	const minList, minRight, borderSlack = 30, 10, 4
+	if totalWidth < minList+minRight+borderSlack {
+		avail := totalWidth - borderSlack
+		if avail < 2 {
+			avail = 2
+		}
+		listW = avail / 3
+		if listW < 1 {
+			listW = 1
+		}
+		rightW = avail - listW
+		return listW, rightW
+	}
 	listW = totalWidth / 3
-	if listW < 30 {
-		listW = 30
+	if listW < minList {
+		listW = minList
 	}
 	if listW > 60 {
 		listW = 60
 	}
-	rightW = totalWidth - listW - 4
-	if rightW < 10 {
-		rightW = 10
+	rightW = totalWidth - listW - borderSlack
+	if rightW < minRight {
+		rightW = minRight
 	}
 	return listW, rightW
 }
@@ -120,6 +134,21 @@ func RenderTitledPanelWith(title string, size Size, active bool, content string,
 	borderInk := lipgloss.NewStyle().Foreground(borderColor)
 	top := borderInk.Render("╭─") + titleSegment + borderInk.Render(strings.Repeat("─", fillLen)+"╮")
 
+	// Clip content to the inner box: lines longer than innerW would wrap and
+	// lines beyond the inner height would grow the panel, both of which break
+	// the side-by-side column join.
+	innerH := height - 2
+	lines := strings.Split(content, "\n")
+	if len(lines) > innerH {
+		lines = lines[:innerH]
+	}
+	for i, l := range lines {
+		if ansi.StringWidth(l) > innerW {
+			lines[i] = ansi.Truncate(l, innerW, "…")
+		}
+	}
+	content = strings.Join(lines, "\n")
+
 	body := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderTop(false).
@@ -146,10 +175,16 @@ func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string
 		rightRendered = infoStyle.Render(right)
 	}
 	spacerW := width - lipgloss.Width(left) - lipgloss.Width(rightRendered)
-	if spacerW < 1 {
-		spacerW = 1
+	if spacerW < 0 {
+		spacerW = 0
 	}
-	return left + strings.Repeat(" ", spacerW) + rightRendered
+	line := left + strings.Repeat(" ", spacerW) + rightRendered
+	// A header wider than the terminal wraps and pushes the layout down a
+	// row; truncate instead so the line always fits.
+	if width > 0 && lipgloss.Width(line) > width {
+		line = ansi.Truncate(line, width, "…")
+	}
+	return line
 }
 
 // Composite overlays fg on top of bg at position (x, y). For each line in fg,

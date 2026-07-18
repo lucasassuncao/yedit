@@ -398,16 +398,88 @@ func TestParseBlocks_withAnchors(t *testing.T) {
 }
 
 func TestParseBlocks_multiDocument(t *testing.T) {
+	is := assert.New(t)
+	// Block line ranges span the whole file but only the first document is
+	// decoded, so mutations would silently destroy every document after the
+	// first. Multi-document input must be rejected with a clear error.
+	raw := "key1: val1\n---\nkey2: val2\n"
+	_, err := ParseBlocks([]byte(raw))
+	is.ErrorContains(err, "multi-document", "ParseBlocks must reject multi-document YAML")
+}
+
+// TestParseBlocks_indentedCommentInLiteralScalar guards the block trimming
+// rules: a comment-looking line indented inside a literal scalar is content
+// and must stay with its block; trimming it silently truncated the scalar and
+// made Replace of the block fail its round-trip check with a bogus error.
+func TestParseBlocks_indentedCommentInLiteralScalar(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
-	// Only the first YAML document should be returned; no panic.
-	raw := "key1: val1\n---\nkey2: val2\n"
-	blocks, err := ParseBlocks([]byte(raw))
-	must.NoError(err, "ParseBlocks with multi-document")
-	// yaml.Unmarshal into a single node only reads the first document.
-	for _, b := range blocks {
-		is.NotEqual("key2", b.Key, "ParseBlocks returned a block from the second document")
-	}
+	doc, err := New([]byte("a: |\n  line1\n  # not a comment\nb: 2\n"), nil)
+	must.NoError(err)
+
+	content, err := doc.BlockContent("a")
+	must.NoError(err, "BlockContent")
+	is.Equal("a: |\n  line1\n  # not a comment\n", content, "indented comment-looking line must belong to the block")
+
+	doc, err = doc.Replace("a", "a: |\n  line1\n  # still not a comment\n")
+	must.NoError(err, "Replace of a literal-scalar block must round-trip")
+	is.Equal("a: |\n  line1\n  # still not a comment\nb: 2\n", string(doc.Raw()))
+}
+
+// TestParseBlocks_rootLevelTrailingCommentStillTrimmed pins the counterpart of
+// the indented-comment fix: a column-0 comment above the next key still
+// belongs to the next block.
+func TestParseBlocks_rootLevelTrailingCommentStillTrimmed(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	blocks, err := ParseBlocks([]byte("a: 1\n\n# documents b\nb: 2\n"))
+	must.NoError(err)
+	must.Len(blocks, 2)
+	is.Equal(1, blocks[0].EndLine, "blank line and root-level comment belong to the next block")
+}
+
+// TestReplace_lastBlockPreservesTail guards the last block's EndLine: it must
+// end where its content ends, so Replace keeps the file's trailing newline and
+// trailing root-level comments (Replace's documented contract).
+func TestReplace_lastBlockPreservesTail(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	doc, err := New([]byte("name: web\nimage: alpine\n# trailing note\n"), canonicalOrder)
+	must.NoError(err)
+	doc, err = doc.Replace("image", "image: ubuntu\n")
+	must.NoError(err, "Replace of the last block")
+	is.Equal("name: web\nimage: ubuntu\n# trailing note\n", string(doc.Raw()),
+		"trailing newline and trailing comments must survive replacing the last block")
+}
+
+// TestRemove_lastBlockPreservesTrailingNewline guards Remove of the last
+// block: the file must keep its final newline.
+func TestRemove_lastBlockPreservesTrailingNewline(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	doc, err := New([]byte("name: web\nimage: alpine\n"), canonicalOrder)
+	must.NoError(err)
+	doc, err = doc.Remove("image")
+	must.NoError(err)
+	is.Equal("name: web\n", string(doc.Raw()), "removing the last block must not eat the trailing newline")
+}
+
+// TestParseBlocks_flowRootRejected: a flow-style root mapping has no per-block
+// line ranges, so block mutations would corrupt it. It must be rejected.
+func TestParseBlocks_flowRootRejected(t *testing.T) {
+	is := assert.New(t)
+	_, err := ParseBlocks([]byte("{a: 1, b: 2}\n"))
+	is.ErrorContains(err, "flow-style", "ParseBlocks must reject a flow-style root mapping")
+}
+
+// TestParseBlocks_explicitEmptyDocument: "---" is an explicit null document
+// and must load like an empty file, not fail with "expected mapping at root".
+func TestParseBlocks_explicitEmptyDocument(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	blocks, err := ParseBlocks([]byte("---\n"))
+	must.NoError(err, "explicit empty document must parse")
+	is.Empty(blocks)
 }
 
 func TestParseBlocks_tabIndented(t *testing.T) {
@@ -666,6 +738,92 @@ func TestRollback_restoresConsistencyAfterRawMutation(t *testing.T) {
 	is.Equal("a: 1\n", string(d.raw), "rollback restored raw to pre-mutation state")
 	must.Len(d.blocks, 1, "rollback restored blocks via re-parse")
 	is.Equal("a", d.blocks[0].Key, "restored block key matches original content")
+}
+
+// TestUndo_independentCopies guards the copy-on-write undo stacks: Document is
+// copied by value, so sibling copies share the history's backing array and an
+// in-place pop by one copy used to corrupt the other (its Undo returned
+// ok=true with raw == "").
+func TestUndo_independentCopies(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	doc, err := New([]byte("name: mydev\n"), canonicalOrder)
+	must.NoError(err)
+	doc, err = doc.Insert("image: ubuntu:22.04\n")
+	must.NoError(err)
+
+	copy1, copy2 := doc, doc
+	undone1, ok := copy1.Undo()
+	must.True(ok, "first copy's Undo")
+	is.Equal("name: mydev\n", string(undone1.Raw()))
+
+	undone2, ok := copy2.Undo()
+	must.True(ok, "second copy's Undo")
+	is.Equal("name: mydev\n", string(undone2.Raw()), "sibling copy's Undo corrupted by shared history backing array")
+}
+
+// TestUndo_unparseableSnapshotFailsExplicitly guards finding: Undo must not
+// silently keep stale blocks when the snapshot fails to re-parse; it returns
+// ok=false and leaves the current consistent state untouched.
+func TestUndo_unparseableSnapshotFailsExplicitly(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	d, err := New([]byte("a: 1\n"), nil)
+	must.NoError(err)
+	d.history = [][]byte{[]byte("bad: [\n")} // unparseable snapshot
+
+	got, ok := d.Undo()
+	is.False(ok, "Undo of an unparseable snapshot must fail explicitly")
+	is.Equal("a: 1\n", string(got.Raw()), "raw must be left untouched")
+	must.Len(got.Blocks(), 1, "blocks must stay consistent with raw")
+}
+
+// TestInsert_duplicateKeyRejected: inserting a key that already exists must
+// fail with a clear error instead of producing a duplicate-key document or a
+// misleading round-trip failure.
+func TestInsert_duplicateKeyRejected(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	doc, err := New([]byte("image: alpine\nname: web\n"), canonicalOrder) // disk order differs from knownOrder
+	must.NoError(err)
+	_, err = doc.Insert("name: other\n")
+	is.ErrorContains(err, "already exists", "Insert of an existing key must be rejected")
+}
+
+// TestInsert_multiKeySnippet guards the round-trip verification: a valid
+// multi-key snippet lands as one block per key and must not be falsely
+// rejected by comparing the whole snippet against only its first block.
+func TestInsert_multiKeySnippet(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	doc, err := New([]byte("name: web\n"), canonicalOrder)
+	must.NoError(err)
+	doc, err = doc.Insert("image: alpine\nremoteUser: vscode\n")
+	must.NoError(err, "multi-key snippet must not be falsely rejected")
+	is.Equal("name: web\nimage: alpine\nremoteUser: vscode\n", string(doc.Raw()))
+}
+
+// TestInsertReplace_normalizeCRLFSnippets guards snippet CRLF normalization:
+// on a usedCRLF document Save rewrites every LF to CRLF, so an embedded CRLF
+// left in a snippet would become CRCRLF on disk.
+func TestInsertReplace_normalizeCRLFSnippets(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+	path := filepath.Join(t.TempDir(), "crlf.yaml")
+	must.NoError(os.WriteFile(path, []byte("name: web\r\n"), 0o600))
+	doc, err := Load(path, canonicalOrder)
+	must.NoError(err)
+
+	doc, err = doc.Insert("image: alpine\r\n")
+	must.NoError(err, "Insert with CRLF snippet")
+	doc, err = doc.Replace("name", "name: api\r\n")
+	must.NoError(err, "Replace with CRLF snippet")
+	is.NotContains(string(doc.Raw()), "\r", "snippet CR must be normalized away")
+
+	_, err = doc.Save()
+	must.NoError(err)
+	data, _ := os.ReadFile(path)
+	is.NotContains(string(data), "\r\r", "CRLF snippet must not become CRCRLF on save")
 }
 
 // TestSetPath_reloadReadsSourcePath guards the SavePath flow: Reload must

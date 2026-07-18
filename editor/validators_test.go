@@ -3,6 +3,7 @@ package editor
 import (
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/lucasassuncao/yedit/document"
@@ -3255,4 +3256,116 @@ func TestNotOneOfFromMetadata(t *testing.T) {
 	check("proto: \"https\"\n", []string{"ftp", "ws"}, false)
 	check("proto: \"FTP\"\n", []string{"ftp"}, false) // case-sensitive
 	check("proto: \"\"\n", []string{"ftp"}, false)    // empty skipped
+}
+
+// ---------------------------------------------------------------------------
+// Explicit null handling: "key: null" / "key: ~" must behave like an absent
+// or empty value, never as the literal string "null"/"~".
+// ---------------------------------------------------------------------------
+
+func TestValueMatches_explicitNullSkipped(t *testing.T) {
+	v := ValueMatches("server.host", `^[a-z.]+$`)
+	for _, raw := range []string{"server:\n  host: null\n", "server:\n  host: ~\n"} {
+		if errs := v.Validate(NewValidationInput([]byte(raw), nil)); len(errs) != 0 {
+			t.Errorf("raw=%q: explicit null must be skipped, got %v", raw, errs)
+		}
+	}
+}
+
+func TestPatternFromMetadata_explicitNullSkipped(t *testing.T) {
+	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+		if block == "server" && fieldPath == "host" {
+			return FieldMeta{Pattern: `^[a-z.]+$`}
+		}
+		return FieldMeta{}
+	})
+	runMetadataRule(t, PatternFromMetadata(), hints, "server:\n  host: null\n", nil)
+	runMetadataRule(t, PatternFromMetadata(), hints, "server:\n  host: ~\n", nil)
+}
+
+func TestCountRange_explicitNullIsEmptyCollection(t *testing.T) {
+	v := CountRange("tags", 1, -1)
+	errs := v.Validate(NewValidationInput([]byte("tags: null\n"), nil))
+	if len(errs) != 1 {
+		t.Fatalf("want exactly one count violation, got %v", errs)
+	}
+	if strings.Contains(errs[0].Message, "expected a list or mapping") {
+		t.Errorf("null must count as an empty collection, not a shape error: %v", errs[0])
+	}
+}
+
+func TestCountFromMetadata_explicitNullIsEmptyCollection(t *testing.T) {
+	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+		if block == "tags" && fieldPath == "" {
+			return FieldMeta{MinCount: 1}
+		}
+		return FieldMeta{}
+	})
+	v := wireMetadataRule(t, CountFromMetadata(), hints)
+	errs := v.Validate(NewValidationInput([]byte("tags: null\n"), nil))
+	for _, e := range errs {
+		if strings.Contains(e.Message, "expected a list or mapping") {
+			t.Errorf("null must count as an empty collection, not a shape error: %v", e)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// parseSize strictness: a numeric prefix followed by garbage must be rejected
+// so malformed values are reported as not comparable instead of compared.
+// ---------------------------------------------------------------------------
+
+func TestParseSize_rejectsTrailingGarbage(t *testing.T) {
+	for _, bad := range []string{"10xB", "1.5junkGB", "x10MB", "MB", ""} {
+		if got, ok := parseSize(bad); ok {
+			t.Errorf("parseSize(%q) accepted malformed input as %d", bad, got)
+		}
+	}
+	cases := []struct {
+		in   string
+		want int64
+	}{
+		{"10MB", 10_000_000},
+		{"1.5KB", 1500},
+		{"256MiB", 256 << 20},
+		{"8B", 8},
+		{" 2 GB ", 2_000_000_000},
+	}
+	for _, tc := range cases {
+		got, ok := parseSize(tc.in)
+		if !ok || got != tc.want {
+			t.Errorf("parseSize(%q) = %d,%v want %d,true", tc.in, got, ok, tc.want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Wire's goroutine-safety promise: concurrent RunAll over validators wired
+// from the same PatternFromMetadata instance must not race on the shared
+// regex cache (run with -race).
+// ---------------------------------------------------------------------------
+
+func TestPatternFromMetadata_concurrentRunAll(t *testing.T) {
+	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+		if block == "server" && fieldPath == "host" {
+			return FieldMeta{Pattern: `^[a-z.]+$`}
+		}
+		return FieldMeta{}
+	})
+	base := []Validator{PatternFromMetadata()}
+	tree := schema.Discover(&hintsConfig{})
+	raw := []byte("server:\n  host: localhost\n")
+
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			wired := WireWithSchema(base, tree, hints)
+			for i := 0; i < 50; i++ {
+				RunAll(wired, raw, nil)
+			}
+		}()
+	}
+	wg.Wait()
 }

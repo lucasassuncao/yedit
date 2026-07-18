@@ -46,7 +46,9 @@ func walkChildren(out map[string]map[string]bool, prefix string, fields []FieldD
 // schema described by known. Free-form sub-trees (paths missing from known)
 // are not validated. Returns an error if raw does not parse as YAML.
 func UnknownKeys(raw []byte, known map[string]map[string]bool) ([]string, error) {
-	var doc map[string]any
+	// Decode into map[any]any so documents with non-string keys still parse;
+	// keys are stringified for path purposes during the walk.
+	var doc map[any]any
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		return nil, fmt.Errorf("parsing yaml: %w", err)
 	}
@@ -66,12 +68,13 @@ var reservedTopLevelKeys = map[string]bool{
 // displayPath for error reporting. The two paths diverge when a sequence is
 // encountered: the schema path stays as "categories" (the registered key)
 // while the display path becomes "categories[0]", "categories[1]", etc.
-func walkKnown(obj map[string]any, schemaPath, displayPath string, known map[string]map[string]bool, unknown *[]string) {
+func walkKnown(obj map[any]any, schemaPath, displayPath string, known map[string]map[string]bool, unknown *[]string) {
 	allowed, validated := known[schemaPath]
 	if !validated {
 		return
 	}
-	for key, val := range obj {
+	for rawKey, val := range obj {
+		key := fmt.Sprint(rawKey)
 		if schemaPath == "" && reservedTopLevelKeys[key] {
 			continue
 		}
@@ -87,15 +90,32 @@ func walkKnown(obj map[string]any, schemaPath, displayPath string, known map[str
 			*unknown = append(*unknown, displayKey)
 			continue
 		}
-		switch v := val.(type) {
-		case map[string]any:
-			walkKnown(v, schemaKey, displayKey, known, unknown)
-		case []any:
-			for i, item := range v {
-				if nested, ok := item.(map[string]any); ok {
+		if nested, ok := asMap(val); ok {
+			walkKnown(nested, schemaKey, displayKey, known, unknown)
+		} else if items, ok := val.([]any); ok {
+			for i, item := range items {
+				if nested, ok := asMap(item); ok {
 					walkKnown(nested, schemaKey, fmt.Sprintf("%s[%d]", displayKey, i), known, unknown)
 				}
 			}
 		}
 	}
+}
+
+// asMap normalises a decoded YAML mapping to map[any]any. yaml.v3 decodes a
+// mapping into map[string]any when every key is a string and falls back to
+// map[any]any otherwise; both must keep being walked so string-keyed siblings
+// of non-string keys are still validated.
+func asMap(v any) (map[any]any, bool) {
+	switch m := v.(type) {
+	case map[any]any:
+		return m, true
+	case map[string]any:
+		out := make(map[any]any, len(m))
+		for k, val := range m {
+			out[k] = val
+		}
+		return out, true
+	}
+	return nil, false
 }

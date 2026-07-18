@@ -163,7 +163,6 @@ func TestForceBlockStyle_preservesFlowSequence(t *testing.T) {
 func TestApplyToggleAt_complexSnippetArray(t *testing.T) {
 	// Simulates adding a field like "tags: []string" via toggle.
 	// The snippet is a complex structure (array), not a simple scalar.
-	// Verify that the resulting YAML is valid.
 	snippet := `  - name: "item"
 `
 	result := withYAMLRoot("workers:\n"+snippet, func(root *yaml.Node) bool {
@@ -171,13 +170,13 @@ func TestApplyToggleAt_complexSnippetArray(t *testing.T) {
 		seqNode := mapping.Content[1]
 		itemMapping := seqNode.Content[0]
 
-		// Simulate adding a field with an array snippet.
+		// Simulate adding a field with an array snippet ("<field>: ..." form).
 		m := map[string]string{"tags": "tags:\n  - critical\n  - high\n"}
 		ctx := toggleCtx{
 			key:      "workers",
 			snippets: func(s string) string { return m[s] },
 		}
-		return applyToggleAt(itemMapping, []string{}, "tags", true, ctx, false)
+		return applyToggleAt(itemMapping, []string{}, "tags", true, ctx)
 	})
 
 	// The result should be valid YAML.
@@ -186,8 +185,42 @@ func TestApplyToggleAt_complexSnippetArray(t *testing.T) {
 		t.Errorf("resulting YAML is invalid: %v\nYAML:\n%s", err, result)
 	}
 
-	// Verify that "tags" is present with the array value.
-	assert.Contains(t, result, "tags", "field 'tags' not found in result")
+	// The snippet's actual array values must be inserted, not just the key:
+	// the key-only assertion masked the snippet being dropped entirely.
+	assert.Contains(t, result, "- critical", "snippet array value missing from result:\n"+result)
+	assert.Contains(t, result, "- high", "snippet array value missing from result:\n"+result)
+}
+
+// TestApplyToggleAt_snippetForms covers the documented FieldMeta.Snippet
+// conventions: "<field>: value", a bare scalar, and an indented list. All of
+// them were previously discarded (the field was inserted with an empty value).
+func TestApplyToggleAt_snippetForms(t *testing.T) {
+	cases := []struct {
+		name    string
+		field   string
+		snippet string
+		want    string
+	}{
+		{"field colon value", "enabled", "enabled: true", "enabled: true"},
+		{"bare scalar", "port", "8080", "port: 8080"},
+		{"indented list", "levels", "  - critical\n  - high\n", "- critical"},
+		{"indented mapping children", "server", "  host: localhost\n  port: 8080\n", "host: localhost"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := withYAMLRoot("cfg:\n  name: x\n", func(root *yaml.Node) bool {
+				mapping := root.Content[0].Content[1]
+				m := map[string]string{tc.field: tc.snippet}
+				ctx := toggleCtx{key: "cfg", snippets: func(s string) string { return m[s] }}
+				return applyToggleAt(mapping, []string{}, tc.field, true, ctx)
+			})
+			var check any
+			if err := yaml.Unmarshal([]byte(result), &check); err != nil {
+				t.Fatalf("resulting YAML is invalid: %v\nYAML:\n%s", err, result)
+			}
+			assert.Contains(t, result, tc.want, "snippet value missing from result:\n"+result)
+		})
+	}
 }
 
 // TestToggleChildUnderEmptyParent reproduces the movelooper bug: a sequence item

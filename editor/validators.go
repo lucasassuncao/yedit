@@ -311,21 +311,34 @@ func parseSize(s string) (int64, bool) {
 	for _, u := range sizeUnits {
 		if strings.HasSuffix(upper, u.suffix) {
 			numStr := strings.TrimSpace(strings.TrimSuffix(upper, u.suffix))
-			var n float64
-			if _, err := fmt.Sscanf(numStr, "%f", &n); err == nil && n >= 0 {
+			// ParseFloat rejects trailing garbage that Sscanf would accept as a
+			// prefix ("10xB", "1.5junkGB"), so malformed values are reported as
+			// not comparable instead of silently compared. The longest suffix
+			// wins; a shorter one must not reinterpret the malformed rest.
+			n, err := strconv.ParseFloat(numStr, 64)
+			if err == nil && n >= 0 {
 				return int64(n * float64(u.mult)), true
 			}
+			return 0, false
 		}
 	}
 	return 0, false
 }
 
+// isEmptyScalar reports whether a scalar node carries no usable value: an
+// explicit null ("key: null", "key: ~", or a bare "key:") or an empty string.
+// yaml.v3 gives explicit nulls the literal Value "null"/"~" with Tag "!!null",
+// so checking Value alone would feed the literal string to value rules.
+func isEmptyScalar(n *yaml.Node) bool {
+	return n.Value == "" || n.Tag == "!!null"
+}
+
 // forEachScalar visits every scalar reached by the dotted path - sequences and
 // dict-style mappings along the path are expanded automatically - and calls fn
 // with the value and its expanded path. It encodes the shared contract of the
-// value validators: a non-scalar leaf is flagged as a violation, and absent or
-// empty values report nothing (combine with Required when the field is
-// mandatory).
+// value validators: a non-scalar leaf is flagged as a violation, and absent,
+// null, or empty values report nothing (combine with Required when the field
+// is mandatory).
 func forEachScalar(root *yaml.Node, path string, errs *[]Violation, fn func(value, where string)) {
 	if root == nil {
 		return
@@ -335,7 +348,7 @@ func forEachScalar(root *yaml.Node, path string, errs *[]Violation, fn func(valu
 			*errs = append(*errs, Violation{Path: where, Message: "expected a scalar value"})
 			return
 		}
-		if node.Value == "" {
+		if isEmptyScalar(node) {
 			return
 		}
 		fn(node.Value, where)

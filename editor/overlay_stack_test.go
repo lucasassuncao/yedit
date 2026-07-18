@@ -503,6 +503,88 @@ func TestDrillOutFromEmptyList(t *testing.T) {
 	is.NotContains(string(snap), "servers", "empty servers list must be pruned on drill-out")
 }
 
+// TestDrillOutPrunePreservesSequenceIndices guards against the drill-out prune
+// removing empty sequence entries elsewhere in the tree: editors still on the
+// stack address collection entries by index (segIdx), so removing the "- {}"
+// entry would shift every entry behind it and silently re-point the middle
+// editor at a different entry's content (r9 instead of r1), corrupting the
+// entry it later flushes into.
+func TestDrillOutPrunePreservesSequenceIndices(t *testing.T) {
+	must := require.New(t)
+	is := assert.New(t)
+
+	type ruleProbe struct {
+		Target string `yaml:"target,omitempty"`
+	}
+	type filterProbe struct {
+		Name  string               `yaml:"name,omitempty"`
+		Rules map[string]ruleProbe `yaml:"rules,omitempty"`
+	}
+	type rootProbe struct {
+		Filters []filterProbe `yaml:"filters,omitempty"`
+	}
+
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	must.NoError(os.WriteFile(path, []byte(`filters:
+  - {}
+  - name: b
+  - name: c
+    rules:
+      r1:
+        target: x
+  - name: d
+    rules:
+      r9:
+        target: z
+`), 0o600))
+	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
+	must.NoError(err)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	// A: open the "filters" collection block.
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "filters", Existing: true}})
+	m = updated.(model)
+	must.Len(m.blockEdits, 1)
+
+	ruleDefs := []schema.FieldDef{{YAMLName: "target", Kind: schema.KindPrimitive}}
+
+	// B: drill into entry [2]'s "rules" (focus carries segIdx(2)).
+	updated, _ = m.Update(openChildMsg{
+		key:     "rules",
+		defs:    ruleDefs,
+		kind:    schema.KindDictionary,
+		relSegs: []pathSeg{segIdx(2), segKey("rules")},
+	})
+	m = updated.(model)
+	must.Len(m.blockEdits, 2)
+
+	// C: drill one level deeper into map entry "r1".
+	updated, _ = m.Update(openChildMsg{
+		key:     "r1",
+		defs:    ruleDefs,
+		kind:    schema.KindObject,
+		relSegs: []pathSeg{segMapKey("r1")},
+	})
+	m = updated.(model)
+	must.Len(m.blockEdits, 3)
+
+	// Esc from C: the drill-out prune must not remove the "- {}" entry, or B's
+	// segIdx(2) focus would resolve to entry d instead of entry c.
+	updated, _ = m.Update(drillOutMsg{})
+	m = updated.(model)
+	must.Len(m.blockEdits, 2)
+
+	b := m.topBE()
+	must.NotNil(b)
+	is.Equal(errNone, b.editorErr.kind, "drill-out must not lose B's focus path")
+	is.Contains(b.yamlEditor.Value(), "r1", "B must still show entry c's rules")
+	is.NotContains(b.yamlEditor.Value(), "r9", "B must not show entry d's rules")
+
+	snap := nodeToContent("filters", m.editRoot)
+	is.Contains(snap, "- {}", "the empty entry must survive the drill-out prune")
+}
+
 // ---------------------------------------------------------------------------
 // Nested toggle combinations - deep nesting, pruning, and interaction probes
 // ---------------------------------------------------------------------------
@@ -682,4 +764,55 @@ func TestReanchorCollCursor(t *testing.T) {
 	// No change in position when entries were only appended.
 	newS3 := seqCollNode("1", "2", "3", "4")
 	is.Equal(1, reanchorCollCursor(oldS, newS3, false, 1), "seq: append keeps cursor on same entry")
+}
+
+// TestDrillOutCascadePreservesParentFocus: drilling two levels into fields the
+// parent mapping holds nothing but, then backing out without typing, must not
+// let the cascade prune remove the parent editor's own focus node (which left
+// the parent stuck on "focus path lost" with stale content).
+func TestDrillOutCascadePreservesParentFocus(t *testing.T) {
+	must := require.New(t)
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	must.NoError(os.WriteFile(path, []byte("gateway:\n"), 0o600))
+
+	type bDef struct {
+		X string `yaml:"x,omitempty"`
+	}
+	type aDef struct {
+		B *bDef `yaml:"b,omitempty"`
+	}
+	type gatewayDef struct {
+		A *aDef `yaml:"a,omitempty"`
+	}
+	type rootProbe struct {
+		Gateway *gatewayDef `yaml:"gateway,omitempty"`
+	}
+
+	m, err := newModel(Config{Path: path, Schema: &rootProbe{}})
+	must.NoError(err)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "gateway", Existing: true}})
+	m = updated.(model)
+	must.Len(m.blockEdits, 1)
+
+	aDefs := []schema.FieldDef{{YAMLName: "b", Kind: schema.KindObject, Children: []schema.FieldDef{{YAMLName: "x", Kind: schema.KindPrimitive}}}}
+	updated, _ = m.Update(openChildMsg{key: "a", defs: aDefs, kind: schema.KindObject, relSegs: []pathSeg{segKey("a")}})
+	m = updated.(model)
+	must.Len(m.blockEdits, 2)
+
+	bDefs := []schema.FieldDef{{YAMLName: "x", Kind: schema.KindPrimitive}}
+	updated, _ = m.Update(openChildMsg{key: "b", defs: bDefs, kind: schema.KindObject, relSegs: []pathSeg{segKey("b")}})
+	m = updated.(model)
+	must.Len(m.blockEdits, 3)
+
+	// Esc from b without typing: the prune removes the empty b, but must stop
+	// before removing a - the new top editor's own focus node.
+	updated, _ = m.Update(drillOutMsg{})
+	m = updated.(model)
+	must.Len(m.blockEdits, 2)
+	must.Equal("a", m.topBE().key)
+	must.Equal(errNone, m.topBE().editorErr.kind, "drill-out lost the parent focus: %s", m.topBE().editorErr.message)
+	must.NotNil(nodeAt(m.editRoot, m.topBE().focus), "parent focus node must survive the prune")
 }

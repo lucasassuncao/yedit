@@ -166,7 +166,7 @@ func (m *docTUIModel) handleViewportKey(key string) {
 		m.vp.ScrollDown(1)
 	case "pgup":
 		m.vp.ScrollUp(m.vpH / 2)
-	case "pgdn":
+	case "pgdown":
 		m.vp.ScrollDown(m.vpH / 2)
 	}
 }
@@ -228,7 +228,9 @@ func (m *docTUIModel) loadCurrent() {
 }
 
 // extractTopicLinks scans raw markdown for (./name.md) links and returns
-// the topic names in appearance order, limited to known pages.
+// the topic names in appearance order, limited to known pages. Link targets
+// are lowercased on generation, so they are resolved back to page keys
+// case-insensitively.
 func extractTopicLinks(raw string, known map[string]string) []string {
 	var topics []string
 	seen := map[string]bool{}
@@ -243,8 +245,7 @@ func extractTopicLinks(raw string, known map[string]string) []string {
 			if j < 0 {
 				break
 			}
-			name := rest[:j]
-			if _, ok := known[name]; ok && !seen[name] {
+			if name, ok := resolvePageKey(rest[:j], known); ok && !seen[name] {
 				topics = append(topics, name)
 				seen[name] = true
 			}
@@ -252,6 +253,21 @@ func extractTopicLinks(raw string, known map[string]string) []string {
 		}
 	}
 	return topics
+}
+
+// resolvePageKey maps a link target to a page key: exact match first, then a
+// case-insensitive scan (link targets are lowercased filenames while page keys
+// keep their original casing).
+func resolvePageKey(target string, known map[string]string) (string, bool) {
+	if _, ok := known[target]; ok {
+		return target, true
+	}
+	for key := range known {
+		if strings.EqualFold(key, target) {
+			return key, true
+		}
+	}
+	return "", false
 }
 
 func (m *docTUIModel) navigateTo(name string) {

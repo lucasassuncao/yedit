@@ -5,6 +5,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/lucasassuncao/yedit/yamlnode"
 
@@ -198,21 +199,37 @@ func reportInvalidHintRange(lo, hi, path string, errs *[]Violation) {
 // instance; an invalid pattern is reported as a misconfiguration violation
 // wherever the hint declares it.
 func PatternFromMetadata() Validator {
-	cache := map[string]*regexp.Regexp{} // pattern → compiled; nil marks invalid
+	cache := &patternCache{m: map[string]*regexp.Regexp{}}
 	return &metadataRuleValidator{check: func(meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
 		checkHintPattern(cache, meta, child, path, errs)
 	}}
 }
 
-func checkHintPattern(cache map[string]*regexp.Regexp, meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
+// patternCache memoizes compiled patterns behind a mutex. WireWithSchema
+// shallow-copies the validator but every copy shares this cache, and Wire's
+// doc promises the same validator slice is safe across goroutines, so the map
+// must be safe for concurrent RunAll calls.
+type patternCache struct {
+	mu sync.Mutex
+	m  map[string]*regexp.Regexp // pattern → compiled; nil marks invalid
+}
+
+func (c *patternCache) get(pattern string) *regexp.Regexp {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	re, seen := c.m[pattern]
+	if !seen {
+		re, _ = regexp.Compile(pattern)
+		c.m[pattern] = re
+	}
+	return re
+}
+
+func checkHintPattern(cache *patternCache, meta FieldMeta, child *yaml.Node, path string, errs *[]Violation) {
 	if meta.Pattern == "" {
 		return
 	}
-	re, seen := cache[meta.Pattern]
-	if !seen {
-		re, _ = regexp.Compile(meta.Pattern)
-		cache[meta.Pattern] = re
-	}
+	re := cache.get(meta.Pattern)
 	if re == nil {
 		*errs = append(*errs, Violation{Path: path, Message: fmt.Sprintf("invalid pattern %q in hint", meta.Pattern)})
 		return
@@ -237,11 +254,11 @@ func checkHintCount(meta FieldMeta, child *yaml.Node, path string, errs *[]Viola
 	}
 	count, ok := collectionCount(child)
 	if !ok {
-		if child.Value != "" { // a non-null scalar is not a collection
+		if !isEmptyScalar(child) { // a non-null, non-empty scalar is not a collection
 			*errs = append(*errs, Violation{Path: path, Message: "expected a list or mapping"})
 			return
 		}
-		// null scalar: an empty collection - count stays 0
+		// null/empty scalar: an empty collection - count stays 0
 	}
 	maxCount := meta.MaxCount
 	if maxCount == 0 {
@@ -361,8 +378,8 @@ func checkHintNotOneOf(meta FieldMeta, child *yaml.Node, path string, errs *[]Vi
 }
 
 // hintScalarValue applies the shared value-rule contract to a hint-checked
-// field: nil or empty children report nothing (combine with Required when the
-// field is mandatory); a non-scalar child is flagged.
+// field: nil, null, or empty children report nothing (combine with Required
+// when the field is mandatory); a non-scalar child is flagged.
 func hintScalarValue(child *yaml.Node, path string, errs *[]Violation) (string, bool) {
 	if child == nil {
 		return "", false
@@ -371,7 +388,7 @@ func hintScalarValue(child *yaml.Node, path string, errs *[]Violation) (string, 
 		*errs = append(*errs, Violation{Path: path, Message: "expected a scalar value"})
 		return "", false
 	}
-	if child.Value == "" {
+	if isEmptyScalar(child) {
 		return "", false
 	}
 	return child.Value, true

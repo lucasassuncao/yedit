@@ -6,6 +6,7 @@ package viewer
 import (
 	"fmt"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 
@@ -33,8 +34,8 @@ type Model struct {
 
 	active pane
 
-	renderer     *glamour.TermRenderer
-	renderedPane string
+	renderer *glamour.TermRenderer
+	vp       viewport.Model
 }
 
 // NewModel constructs the TUI from a presets.Source.
@@ -77,12 +78,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.active == paneList {
 				m.list.MoveUp()
 				m.refreshRendered()
+			} else {
+				m.vp.ScrollUp(1)
 			}
 			return m, nil
 		case "down", "j":
 			if m.active == paneList {
 				m.list.MoveDown()
 				m.refreshRendered()
+			} else {
+				m.vp.ScrollDown(1)
+			}
+			return m, nil
+		case "pgup":
+			if m.active == paneViewport {
+				m.vp.ScrollUp(m.vp.Height / 2)
+			}
+			return m, nil
+		case "pgdown":
+			if m.active == paneViewport {
+				m.vp.ScrollDown(m.vp.Height / 2)
 			}
 			return m, nil
 		case "enter", "l", "right":
@@ -114,13 +129,15 @@ func (m *Model) relayout() {
 	}
 	m.list.SetSize(m.listW-2, innerH)
 
+	m.vp.Width = m.vpW - 2
+	m.vp.Height = innerH
+
 	if r, err := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
 		glamour.WithWordWrap(m.vpW-2),
 	); err == nil {
 		m.renderer = r
 	}
-	m.renderedPane = ""
 }
 
 func (m *Model) refreshRendered() {
@@ -133,7 +150,8 @@ func (m *Model) refreshRendered() {
 			yaml = "# error: " + err.Error()
 		}
 	}
-	m.renderedPane = renderYAML(yaml, m.renderer)
+	m.vp.SetContent(renderYAML(yaml, m.renderer))
+	m.vp.GotoTop()
 }
 
 func (m *Model) View() string {
@@ -156,10 +174,12 @@ func (m *Model) View() string {
 	}
 
 	leftPanel := theme.RenderTitledPanel("Fields", theme.Size{W: m.listW, H: innerH + 2}, m.active == paneList, m.list.View())
-	rightPanel := theme.RenderTitledPanel(rightTitle, theme.Size{W: m.vpW, H: innerH + 2}, m.active == paneViewport, m.renderedPane)
+	rightPanel := theme.RenderTitledPanel(rightTitle, theme.Size{W: m.vpW, H: innerH + 2}, m.active == paneViewport, m.vp.View())
 
 	legendText := "[↑/↓] navigate • [Enter/→] open • [Esc/←] back • [Tab] panel • [q] quit"
-	if m.list.Mode() == modePresets {
+	if m.active == paneViewport {
+		legendText = "[↑/↓] scroll • [PgUp/PgDn] half-page • [Tab] panel • [q] quit"
+	} else if m.list.Mode() == modePresets {
 		legendText = "[↑/↓] navigate • [Esc/←] back to fields • [Tab] panel • [q] quit"
 	}
 	header := theme.RenderHeader("yedit", "presets", "", m.width)

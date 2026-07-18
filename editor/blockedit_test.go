@@ -5,9 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/atotto/clipboard"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
@@ -1259,4 +1261,31 @@ func TestComputedDirty_CollectionRevertReadsClean(t *testing.T) {
 	be.yamlEditor.SetValue(original)
 	be = be.dispatch(SyncYAML{Content: original, Checkpoint: false})
 	is.False(be.dirty, "reverting the entry to its original content must read clean again")
+}
+
+// TestPasteUndoRestoresBufferAndNode guards the non-key (paste) buffer path:
+// the undo checkpoint must pair the pre-paste buffer with the pre-paste node.
+// Before the fix it captured the post-paste buffer, so ctrl+u restored the old
+// node but left the pasted text in the editor.
+func TestPasteUndoRestoresBufferAndNode(t *testing.T) {
+	if err := clipboard.WriteAll("  extra: value\n"); err != nil {
+		t.Skipf("clipboard unavailable: %v", err)
+	}
+	be := newBlockEdit(Config{}, structSpec(), 100, 40)
+	be = be.switchPanel() // focus the YAML panel (checkpoints, like a real Tab)
+	prevBuf := be.yamlEditor.Value()
+	prevNode := nodeToContent(be.key, &be.node)
+
+	be2, _ := be.updateEditing(textarea.Paste())
+	if be2.yamlEditor.Value() == prevBuf {
+		t.Skip("paste message did not mutate the buffer")
+	}
+
+	be3 := be2.dispatch(Undo{})
+	if be3.yamlEditor.Value() != prevBuf {
+		t.Errorf("undo after paste left the buffer at %q, want pre-paste %q", be3.yamlEditor.Value(), prevBuf)
+	}
+	if got := nodeToContent(be3.key, &be3.node); got != prevNode {
+		t.Errorf("undo after paste left the node at %q, want pre-paste %q", got, prevNode)
+	}
 }

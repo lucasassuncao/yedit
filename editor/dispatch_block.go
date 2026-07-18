@@ -45,8 +45,11 @@ func (be blockEditState) applyAction(a BlockAction) blockEditState {
 
 	case SyncYAML:
 		if act.Checkpoint {
-			// Snapshot BEFORE applying the change so undo returns to the
-			// pre-paste/pre-batch-edit state, not the post-change state.
+			// Snapshot before applying so undo returns to the pre-change node.
+			// Callers whose buffer has already changed by the time they dispatch
+			// (e.g. a paste applied by the textarea) must push their own
+			// pre-change snapshot instead of setting Checkpoint, because this
+			// one would capture the post-change buffer (see updateEditing).
 			be = be.saveUndo()
 		}
 		updated, parsed := be.syncParsedNode(act.Content)

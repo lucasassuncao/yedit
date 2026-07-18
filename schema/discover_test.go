@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/schema"
 )
@@ -196,6 +197,13 @@ func TestDiscover_recursiveTypeLimit2(t *testing.T) {
 
 // ── item 6: embedded / inline promotion ──────────────────────────────────────
 
+// EmbeddedBase is exported: yaml.v3 marshals a bare exported embed under the
+// lowercased type name instead of inlining its fields.
+type EmbeddedBase struct {
+	CreatedBy  string `yaml:"created-by"`
+	VersionTag string `yaml:"version-tag"`
+}
+
 type embeddedBase struct {
 	CreatedBy  string `yaml:"created-by"`
 	VersionTag string `yaml:"version-tag"`
@@ -207,8 +215,13 @@ type inlineBase struct {
 }
 
 type anonymousEmbedConfig struct {
-	embeddedBase
+	EmbeddedBase
 	Port int `yaml:"port"`
+}
+
+type unexportedEmbedConfig struct {
+	embeddedBase     // presence is the point: yaml.v3 cannot marshal a bare unexported embed
+	Port         int `yaml:"port"`
 }
 
 type inlineEmbedConfig struct {
@@ -218,10 +231,30 @@ type inlineEmbedConfig struct {
 
 func TestDiscover_anonymousEmbed(t *testing.T) {
 	is := assert.New(t)
+	must := require.New(t)
 	fields := schema.Discover(&anonymousEmbedConfig{})
 	got := schema.TopLevelOrder(fields)
-	want := []string{"created-by", "version-tag", "port"}
+	// yaml.v3 does not inline a bare anonymous embed: it marshals it under
+	// the lowercased type name, like a named field. Cross-checked below.
+	want := []string{"embeddedbase", "port"}
 	is.Equal(want, got)
+	must.NotEmpty(fields)
+	is.Equal([]string{"created-by", "version-tag"}, schema.TopLevelOrder(fields[0].Children))
+
+	out, err := yaml.Marshal(anonymousEmbedConfig{EmbeddedBase{"me", "v1"}, 8080})
+	must.NoError(err)
+	var doc map[string]any
+	must.NoError(yaml.Unmarshal(out, &doc))
+	is.Contains(doc, "embeddedbase", "yaml.v3 must key the embed by its lowercased type name")
+	is.Contains(doc, "port")
+}
+
+func TestDiscover_unexportedBareEmbedOmitted(t *testing.T) {
+	is := assert.New(t)
+	// yaml.v3 panics when marshaling a bare unexported embed, so the schema
+	// must omit it entirely.
+	fields := schema.Discover(&unexportedEmbedConfig{})
+	is.Equal([]string{"port"}, schema.TopLevelOrder(fields))
 }
 
 func TestDiscover_inlineEmbed(t *testing.T) {
@@ -312,6 +345,69 @@ func TestDiscover_marshalerIsKindPrimitive(t *testing.T) {
 	is.Empty(m["background"].Children, "background should have no children")
 	is.Equal(schema.KindPrimitive, m["gateway"].Kind)
 	is.Empty(m["gateway"].Children, "gateway should have no children")
+}
+
+// ── map-wrapped Provider elements ─────────────────────────────────────────────
+
+// mapUnionItem implements Provider with a value receiver, so calling
+// YeditSchema on a typed nil pointer would panic.
+type mapUnionItem struct{}
+
+func (mapUnionItem) YeditSchema() []schema.FieldDef {
+	return []schema.FieldDef{
+		{YAMLName: "kind", Kind: schema.KindPrimitive},
+	}
+}
+
+type mapProviderConfig struct {
+	ByName map[string]*mapUnionItem  `yaml:"by-name"`
+	Groups map[string][]mapUnionItem `yaml:"groups"`
+}
+
+func TestDiscover_mapOfProviderPointer(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	// map[string]*T where T implements Provider with a value receiver used to
+	// panic (typed nil receiver). It must resolve the provider's schema.
+	fields := schema.Discover(&mapProviderConfig{})
+	m := map[string]schema.FieldDef{}
+	for _, f := range fields {
+		m[f.YAMLName] = f
+	}
+	is.Equal(schema.KindVariant, m["by-name"].Kind)
+	must.Len(m["by-name"].Children, 1)
+	is.Equal("kind", m["by-name"].Children[0].YAMLName)
+}
+
+func TestDiscover_mapOfProviderSlice(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	// map[string][]T used to never reach T (silent false negative).
+	fields := schema.Discover(&mapProviderConfig{})
+	m := map[string]schema.FieldDef{}
+	for _, f := range fields {
+		m[f.YAMLName] = f
+	}
+	is.Equal(schema.KindVariant, m["groups"].Kind)
+	must.Len(m["groups"].Children, 1)
+	is.Equal("kind", m["groups"].Children[0].YAMLName)
+}
+
+// ── name-less tag with options ───────────────────────────────────────────────
+
+type namelessTagConfig struct {
+	Replicas int    `yaml:",omitempty"`
+	Name     string `yaml:"name"`
+}
+
+func TestDiscover_namelessTagFallsBackToFieldName(t *testing.T) {
+	is := assert.New(t)
+	// yaml.v3 keys a tag with options but no name (yaml:",omitempty") by the
+	// lowercased field name; it must not be dropped from the schema.
+	fields := schema.Discover(&namelessTagConfig{})
+	got := schema.TopLevelOrder(fields)
+	is.Equal([]string{"replicas", "name"}, got)
+	is.True(fields[0].OmitEmpty, "replicas.OmitEmpty should be true")
 }
 
 // ── item 10: interface{}/any → KindAny ───────────────────────────────────────

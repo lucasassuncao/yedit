@@ -75,7 +75,9 @@ func (p *FieldPresets[T]) PresetYAML(field, name string) (string, error) {
 }
 
 // Combine merges multiple Sources into one. Fields are enumerated in
-// declaration order; the first source that owns a field handles its presets.
+// declaration order; preset lookups try each source in order and the first
+// successful answer wins, so non-enumerating sources (e.g. Func) still
+// resolve presets that no earlier source answered.
 func Combine(sources ...Source) Source {
 	return &multiPresets{sources: sources}
 }
@@ -108,10 +110,21 @@ func (m *multiPresets) ListPresets(field string) []string {
 }
 
 func (m *multiPresets) PresetYAML(field, name string) (string, error) {
+	// Try every source in order and return the first successful answer.
+	// Sources such as Func do not enumerate presets, so routing by
+	// ListPresets alone would make them unreachable.
+	var fieldErr error
 	for _, s := range m.sources {
-		if len(s.ListPresets(field)) > 0 {
-			return s.PresetYAML(field, name)
+		out, err := s.PresetYAML(field, name)
+		if err == nil {
+			return out, nil
 		}
+		if fieldErr == nil && len(s.ListPresets(field)) > 0 {
+			fieldErr = err
+		}
+	}
+	if fieldErr != nil {
+		return "", fieldErr
 	}
 	return "", fmt.Errorf("presets: unknown field %q", field)
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/lucasassuncao/yedit/schema"
 )
 
@@ -31,13 +33,21 @@ func (be blockEditState) collectionDeriveTree() treeModel {
 		}
 		seqIdx := nodes[i].seqIdx
 		label := entryLabel(&be.node, isMap, seqIdx)
-		if label != "" {
-			nodes[i].label = label
+		// A map entry whose key is the empty string still exists and must
+		// refresh the row: keeping the previous label would leave a stale
+		// label/yamlPath pointing at a key that no longer exists.
+		hasLabel := label != "" || (isMap && seqIdx < entryCount(&be.node, isMap))
+		if hasLabel {
+			display := label
+			if display == "" {
+				display = `""` // visible placeholder for an empty map key
+			}
+			nodes[i].label = display
 			nodes[i].yamlPath = []string{label}
 		}
 		var childIdx []int
 		for j := i + 1; j < len(nodes) && nodes[j].depth > 0; j++ {
-			if label != "" && len(nodes[j].yamlPath) > 0 {
+			if hasLabel && len(nodes[j].yamlPath) > 0 {
 				p := append([]string(nil), nodes[j].yamlPath...)
 				p[0] = label
 				nodes[j].yamlPath = p
@@ -61,10 +71,18 @@ func (be blockEditState) collectionDeriveTree() treeModel {
 // the canonical node. saveUndo runs before either is mutated, so the snapshot
 // captures the pre-deletion state directly and ctrl+u restores the entry.
 func (be blockEditState) performEntryDelete(seqIdx int) blockEditState {
-	// Flush the current entry so unsaved edits are not lost when we delete
-	// a different entry that shifts the canonical node.
-	be = be.flushCurrentEntry()
-	be.editorErr = editorError{} // deletion overrides a pending parse error
+	// Deleting a different entry flushes the current one first so its edits
+	// survive the index shift. A flush failure means those edits are invalid
+	// and deleting would silently revert them, so refuse and surface the error
+	// instead. Deleting the current entry itself discards its buffer by design
+	// (that is the remedy the flush errors point the user to).
+	if seqIdx != be.coll.current {
+		be = be.flushCurrentEntry()
+		if be.editorErr.kind == errParse {
+			return be
+		}
+	}
+	be.editorErr = editorError{}
 	be = be.saveUndo()
 	be.tree = be.tree.WithDeletedSeqItem(seqIdx)
 	removeEntry(&be.node, be.coll.isMap, seqIdx)
@@ -119,19 +137,31 @@ func (be blockEditState) collectionTreeNodes() []treeNode {
 }
 
 // flushCurrentEntry parses the current entry's editor text back into the
-// canonical node. It is a no-op when there is no current entry or the editor is
-// empty. When the text cannot be parsed into an entry (e.g. the user deleted the
-// "key:" header, or it is mid-edit invalid), be.editorErr is set so callers block
-// navigation or commit - the parse gate that keeps the node valid.
+// canonical node. It is a no-op when there is no current entry and the editor
+// holds only the untouched placeholder. When the text cannot be parsed into an
+// entry (e.g. the user deleted the "key:" header, or it is mid-edit invalid),
+// be.editorErr is set so callers block navigation or commit - the parse gate
+// that keeps the node valid.
 func (be blockEditState) flushCurrentEntry() blockEditState {
 	cur := be.coll.current
+	view := be.yamlEditor.Value()
 	if cur < 0 || cur >= entryCount(&be.node, be.coll.isMap) {
-		be.editorErr = editorError{}
+		// No current entry. A blank buffer or the pristine placeholder is a
+		// clean no-op. Anything else is text that never parsed into a first
+		// entry (applyParsedEntry appends it the moment it parses), and
+		// committing now would silently drop it.
+		if strings.TrimSpace(view) == "" || view == be.entryYAML(-1) {
+			be.editorErr = editorError{}
+			return be
+		}
+		be.editorErr = editorError{kind: errParse, message: "Invalid YAML - fix this entry before committing."}
 		return be
 	}
-	view := be.yamlEditor.Value()
 	if strings.TrimSpace(view) == "" {
-		be.editorErr = editorError{}
+		// The user emptied the buffer of an existing entry. Treating that as a
+		// no-op would silently resurrect the old content on the next load, so
+		// require an explicit action instead.
+		be.editorErr = editorError{kind: errParse, message: "Entry is empty - press ctrl+d on it in the tree to delete it, or restore its content."}
 		return be
 	}
 	if !be.coll.isMap && viewHasMultipleSeqItems(view) {
@@ -150,19 +180,26 @@ func (be blockEditState) flushCurrentEntry() blockEditState {
 	// Guard against map key renames that would create a duplicate: if the new
 	// key already exists at a different position in the canonical node, reject
 	// the flush to prevent a corrupt YAML mapping with two identical keys.
-	if be.coll.isMap {
-		newKey := kn.Value
-		count := entryCount(&be.node, be.coll.isMap)
-		for i := 0; i < count; i++ {
-			if i != cur && entryLabel(&be.node, true, i) == newKey {
-				be.editorErr = editorError{kind: errParse, message: fmt.Sprintf("Duplicate map key %q - rename it to a unique key first.", newKey)}
-				return be
-			}
-		}
+	if be.coll.isMap && duplicateMapKey(&be.node, cur, kn.Value) {
+		be.editorErr = editorError{kind: errParse, message: fmt.Sprintf("Duplicate map key %q - rename it to a unique key first.", kn.Value)}
+		return be
 	}
 	setEntry(&be.node, be.coll.isMap, cur, kn, vn)
 	be.editorErr = editorError{}
 	return be
+}
+
+// duplicateMapKey reports whether key already exists in the map collection
+// node at an index other than except. Shared by the flush and per-keystroke
+// sync guards against duplicate mapping keys.
+func duplicateMapKey(node *yaml.Node, except int, key string) bool {
+	count := entryCount(node, true)
+	for i := 0; i < count; i++ {
+		if i != except && entryLabel(node, true, i) == key {
+			return true
+		}
+	}
+	return false
 }
 
 // loadEntry shows entry idx in the editor.

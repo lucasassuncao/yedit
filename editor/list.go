@@ -156,8 +156,10 @@ func (lm listModel) clampFCursorToFiltered() listModel {
 	} else {
 		lm.fCursor = len(filtered) - 1
 	}
+	// Re-scroll the clamped cursor into view: resetting the offset alone can
+	// leave the selection row rendered off-screen until the next arrow key.
 	lm.fOffset = 0
-	return lm
+	return lm.clampFScroll()
 }
 
 // Rebuild refreshes the list after blocks change without losing cursor position.

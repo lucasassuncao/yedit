@@ -7,16 +7,68 @@ package yamlnode
 import "gopkg.in/yaml.v3"
 
 // ChildByKey returns the value node mapped to key in a MappingNode, or nil.
+// Alias values are resolved to their anchor targets, and when the direct key
+// is absent the mappings merged in via a "<<" merge key are searched.
 func ChildByKey(mapping *yaml.Node, key string) *yaml.Node {
-	if mapping == nil || mapping.Kind != yaml.MappingNode {
+	return childByKey(mapping, key, nil)
+}
+
+// childByKey implements ChildByKey. seen guards against merge cycles in
+// hand-built trees (the parser cannot produce them); it is allocated lazily
+// on the first merge-key descent.
+func childByKey(mapping *yaml.Node, key string, seen map[*yaml.Node]bool) *yaml.Node {
+	mapping = resolveAlias(mapping)
+	if mapping == nil || mapping.Kind != yaml.MappingNode || seen[mapping] {
 		return nil
 	}
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
 		if mapping.Content[i].Value == key {
-			return mapping.Content[i+1]
+			return resolveAlias(mapping.Content[i+1])
+		}
+	}
+	// Direct key absent: look through the mappings merged in via "<<".
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		k := mapping.Content[i]
+		if k.Tag != "!!merge" && k.Value != "<<" {
+			continue
+		}
+		if seen == nil {
+			seen = make(map[*yaml.Node]bool)
+		}
+		seen[mapping] = true
+		v := resolveAlias(mapping.Content[i+1])
+		if v == nil {
+			continue
+		}
+		sources := []*yaml.Node{v}
+		if v.Kind == yaml.SequenceNode {
+			sources = v.Content
+		}
+		for _, src := range sources {
+			if c := childByKey(src, key, seen); c != nil {
+				return c
+			}
 		}
 	}
 	return nil
+}
+
+// resolveAlias follows alias links to the anchored node, guarding against
+// cycles in hand-built trees. Non-alias nodes are returned as-is; nil stays
+// nil, and a broken or cyclic alias resolves to nil ("absent").
+func resolveAlias(n *yaml.Node) *yaml.Node {
+	var seen map[*yaml.Node]bool
+	for n != nil && n.Kind == yaml.AliasNode {
+		if seen[n] {
+			return nil
+		}
+		if seen == nil {
+			seen = make(map[*yaml.Node]bool)
+		}
+		seen[n] = true
+		n = n.Alias
+	}
+	return n
 }
 
 // NodeAtPath navigates node following string segs and returns the terminal
@@ -79,20 +131,43 @@ func JoinPath(prefix, key string) string {
 }
 
 // CloneNode returns a deep copy of n so a snapshot can be mutated
-// independently of the live tree. Returns nil for a nil input.
+// independently of the live tree. Returns nil for a nil input. Alias nodes in
+// the clone point at the cloned counterpart of their anchor target, preserving
+// anchor/alias identity; a target outside the cloned subtree is deep-copied.
 func CloneNode(n *yaml.Node) *yaml.Node {
+	clones := make(map[*yaml.Node]*yaml.Node)
+	cp := cloneTree(n, clones)
+	// Re-point each cloned alias at the cloned counterpart of its target. The
+	// pairs are collected first because an out-of-tree target grows the map.
+	type pair struct{ orig, clone *yaml.Node }
+	var fixups []pair
+	for orig, c := range clones {
+		if orig.Alias != nil {
+			fixups = append(fixups, pair{orig, c})
+		}
+	}
+	for _, p := range fixups {
+		p.clone.Alias = cloneTree(p.orig.Alias, clones)
+	}
+	return cp
+}
+
+// cloneTree deep-copies n's content, recording every original->clone pair in
+// clones. Alias pointers are left for CloneNode to re-point after the walk.
+func cloneTree(n *yaml.Node, clones map[*yaml.Node]*yaml.Node) *yaml.Node {
 	if n == nil {
 		return nil
 	}
+	if c, ok := clones[n]; ok {
+		return c
+	}
 	cp := *n
+	clones[n] = &cp
 	if n.Content != nil {
 		cp.Content = make([]*yaml.Node, len(n.Content))
 		for i, c := range n.Content {
-			cp.Content[i] = CloneNode(c)
+			cp.Content[i] = cloneTree(c, clones)
 		}
-	}
-	if n.Alias != nil {
-		cp.Alias = CloneNode(n.Alias)
 	}
 	return &cp
 }

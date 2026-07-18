@@ -196,7 +196,7 @@ func Color(c string) lipgloss.Color
 Color converts a color string to a lipgloss.Color, returning an empty color \(terminal default\) when NoColor is active so rendering stays monochrome.
 
 <a name="Composite"></a>
-## func [Composite](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L158>)
+## func [Composite](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L193>)
 
 ```go
 func Composite(fg, bg string, x, y int) string
@@ -205,7 +205,7 @@ func Composite(fg, bg string, x, y int) string
 Composite overlays fg on top of bg at position \(x, y\). For each line in fg, the corresponding bg line has its \(x … x\+fgW\) segment replaced by the fg line, preserving ANSI color sequences in both strings.
 
 <a name="CompositeCenter"></a>
-## func [CompositeCenter](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L185>)
+## func [CompositeCenter](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L220>)
 
 ```go
 func CompositeCenter(fg, bg string) string
@@ -232,7 +232,7 @@ func RenderHeader(title, subtitle, right string, width int) string
 RenderHeader returns a single\-line header. title is rendered bold on the left, subtitle \(if non\-empty\) follows after a separator, right \(if non\-empty\) is right\-aligned for context such as filenames.
 
 <a name="RenderHeaderWith"></a>
-## func [RenderHeaderWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L136>)
+## func [RenderHeaderWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L165>)
 
 ```go
 func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string
@@ -241,7 +241,7 @@ func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string
 RenderHeaderWith is like RenderHeader but derives title and info colors from c instead of the package\-level palette vars.
 
 <a name="RenderTitledPanel"></a>
-## func [RenderTitledPanel](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L79>)
+## func [RenderTitledPanel](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L93>)
 
 ```go
 func RenderTitledPanel(title string, size Size, active bool, content string) string
@@ -250,7 +250,7 @@ func RenderTitledPanel(title string, size Size, active bool, content string) str
 RenderTitledPanel renders a rounded\-border panel with the title embedded in the top edge: ╭─ Title ──────╮. size holds the OUTER dimensions \(including the border rows/cols\).
 
 <a name="RenderTitledPanelWith"></a>
-## func [RenderTitledPanelWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L90>)
+## func [RenderTitledPanelWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L104>)
 
 ```go
 func RenderTitledPanelWith(title string, size Size, active bool, content string, c Colors) string
@@ -259,7 +259,7 @@ func RenderTitledPanelWith(title string, size Size, active bool, content string,
 RenderTitledPanelWith is like RenderTitledPanel but derives border and title colors from c instead of the package\-level palette vars.
 
 <a name="RenderTwoColumnView"></a>
-## func [RenderTwoColumnView](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L71>)
+## func [RenderTwoColumnView](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L85>)
 
 ```go
 func RenderTwoColumnView(layout TwoColumnLayout) string
@@ -268,13 +268,13 @@ func RenderTwoColumnView(layout TwoColumnLayout) string
 RenderTwoColumnView assembles the standard two\-panel screen: header, panels side by side, a feedback line, and a legend line.
 
 <a name="TwoColumnWidths"></a>
-## func [TwoColumnWidths](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L54>)
+## func [TwoColumnWidths](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L55>)
 
 ```go
 func TwoColumnWidths(totalWidth int) (listW, rightW int)
 ```
 
-TwoColumnWidths computes left and right column widths for the standard two\-panel layout: left is totalWidth/3, clamped to \[30, 60\]; right gets the remainder minus 4 chars for the two border pairs.
+TwoColumnWidths computes left and right column widths for the standard two\-panel layout: left is totalWidth/3, clamped to \[30, 60\]; right gets the remainder minus 4 chars for the two border pairs. Terminals narrower than the floors get a proportional split instead of an overflowing layout.
 
 <a name="Colors"></a>
 ## type [Colors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L45-L52>)

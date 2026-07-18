@@ -219,8 +219,14 @@ func (v *countRangeValidator) Validate(in ValidationInput) []Violation {
 	yamlnode.ForEachLeaf(root, v.path, func(node *yaml.Node, where string) {
 		count, ok := collectionCount(node)
 		if !ok {
-			errs = append(errs, Violation{Path: where, Message: "expected a list or mapping"})
-			return
+			// A null or empty scalar ("key:", "key: null", "key: ~") is an
+			// empty collection, consistent with checkHintCount; anything else
+			// scalar really is the wrong shape.
+			if node.Kind != yaml.ScalarNode || !isEmptyScalar(node) {
+				errs = append(errs, Violation{Path: where, Message: "expected a list or mapping"})
+				return
+			}
+			count = 0
 		}
 		countRangeViolation(count, v.min, v.max, where, &errs)
 	})

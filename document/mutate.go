@@ -6,7 +6,10 @@ import (
 	"strings"
 )
 
-// BlockContent returns the raw lines for a given block key.
+// BlockContent returns the raw lines for a given block key. The content
+// always ends with a single trailing newline, whatever the block's position:
+// a block is a complete run of lines, and a literal scalar parsed without its
+// final line break would silently lose it.
 func BlockContent(raw []byte, blocks []Block, key string) (string, error) {
 	lines := strings.Split(string(raw), "\n")
 	return blockContentFromLines(lines, blocks, key)
@@ -18,7 +21,7 @@ func blockContentFromLines(lines []string, blocks []Block, key string) (string, 
 			start := b.Line - 1
 			end := b.EndLine
 			start, end = clampRange(start, end, len(lines))
-			return strings.Join(lines[start:end], "\n"), nil
+			return strings.TrimRight(strings.Join(lines[start:end], "\n"), "\n") + "\n", nil
 		}
 	}
 	return "", fmt.Errorf("key %q not found", key)
@@ -44,6 +47,7 @@ func ReplaceBlock(raw []byte, blocks []Block, key, snippet string) ([]byte, erro
 	end := target.EndLine // exclusive upper bound (0-based = EndLine)
 	start, end = clampRange(start, end, len(lines))
 
+	snippet = strings.ReplaceAll(snippet, "\r\n", "\n")
 	snippetLines := strings.Split(strings.TrimRight(snippet, "\n"), "\n")
 	merged := make([]string, 0, len(lines)-(end-start)+len(snippetLines))
 	merged = append(merged, lines[:start]...)
@@ -97,10 +101,23 @@ func clampRange(start, end, n int) (int, int) {
 func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error) {
 	// Collapse trailing blank lines to a single newline so neither the append nor
 	// the ordered path wedges a blank line between blocks.
+	snippet = strings.ReplaceAll(snippet, "\r\n", "\n")
 	snippet = strings.TrimRight(snippet, "\n") + "\n"
 	snippetBlocks, err := ParseBlocks([]byte(snippet))
 	if err != nil {
 		return nil, err
+	}
+	blocks, blocksErr := ParseBlocks(raw)
+	if blocksErr == nil {
+		// Inserting a key that already exists would produce a duplicate-key
+		// document (or a misleading round-trip failure); reject it up front.
+		for _, sb := range snippetBlocks {
+			for _, b := range blocks {
+				if b.Key == sb.Key {
+					return nil, fmt.Errorf("key %q already exists", sb.Key)
+				}
+			}
+		}
 	}
 	if len(snippetBlocks) == 0 {
 		return appendBlock(raw, snippet), nil
@@ -116,8 +133,7 @@ func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error
 		return appendBlock(raw, snippet), nil
 	}
 
-	blocks, err := ParseBlocks(raw)
-	if err != nil || len(blocks) == 0 {
+	if blocksErr != nil || len(blocks) == 0 {
 		return appendBlock(raw, snippet), nil
 	}
 

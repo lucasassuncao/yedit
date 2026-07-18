@@ -82,12 +82,12 @@ func (a Model) Update(msg tea.KeyMsg) (Model, tea.Cmd) {
 		case "left", "h", "right", "l", "tab":
 			a.confirmYes = !a.confirmYes
 		case "y", "Y":
-			return a, a.confirmCmd
+			return a, a.confirm()
 		case "n", "N", "esc", "q":
 			return a, func() tea.Msg { return DismissedMsg{} }
 		case "enter", " ":
 			if a.confirmYes {
-				return a, a.confirmCmd
+				return a, a.confirm()
 			}
 			return a, func() tea.Msg { return DismissedMsg{} }
 		}
@@ -98,6 +98,16 @@ func (a Model) Update(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return a, func() tea.Msg { return DismissedMsg{} }
 	}
 	return a, nil
+}
+
+// confirm returns the command to run when the user picks Yes. A nil
+// confirmCmd falls back to dismissing the modal so the confirm key is never
+// silently eaten.
+func (a Model) confirm() tea.Cmd {
+	if a.confirmCmd != nil {
+		return a.confirmCmd
+	}
+	return func() tea.Msg { return DismissedMsg{} }
 }
 
 // Box renders the modal box without any positioning.

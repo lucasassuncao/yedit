@@ -95,6 +95,12 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 	childWasDirty := m.topBE().dirty
 	// Capture child focus before the stack is popped so we can scope pruning.
 	childFocus := append([]pathSeg(nil), m.topBE().focus...)
+	// The cascade below must never remove the parent editor's own focus node:
+	// when the parent's mapping contained nothing but the drilled-into child,
+	// pruning all the way up would delete it and refreshTopFromRoot would land
+	// on a lost focus path. Everything at or above the parent's focus is the
+	// parent's to prune on its own drill-out.
+	parentFocusLen := len(m.blockEdits[len(m.blockEdits)-2].focus)
 
 	var ok bool
 	if m, ok = m.flushTopToRoot(); !ok {
@@ -103,12 +109,16 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	// Narrow prune: target the child's own node first so we don't accidentally
-	// remove empty placeholders the user left in sibling fields, then prune the
-	// root level for any top-level empties the flush may have introduced.
+	// remove empty placeholders the user left in sibling fields, then remove any
+	// mapping pairs along the child's path that the flush left empty (e.g. the
+	// phantom "<key>:" of a drilled-into field the user never filled). The prune
+	// must stay on this path and must never remove sequence items: editors still
+	// on the stack address entries by index (segIdx), so removing an empty entry
+	// elsewhere in a collection would silently re-point them at a different entry.
 	if childNode := nodeAt(m.editRoot, childFocus); childNode != nil {
 		pruneEmptyMappings(childNode)
 	}
-	pruneEmptyMappings(m.editRoot)
+	pruneEmptyAlongFocus(m.editRoot, childFocus, parentFocusLen)
 
 	m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
 
@@ -181,6 +191,12 @@ func findEntryIndex(oldNode, newNode *yaml.Node, isMap bool, cur int) int {
 	val := entryValueNode(oldNode, false, cur)
 	if val == nil {
 		return -1
+	}
+	// Prefer the same position: with structurally identical duplicate entries
+	// (e.g. right after duplicating one) a first-match scan would re-anchor the
+	// cursor onto a different entry than the one the user was viewing.
+	if cur < newCount && reflect.DeepEqual(entryValueNode(newNode, false, cur), val) {
+		return cur
 	}
 	for i := 0; i < newCount; i++ {
 		if reflect.DeepEqual(entryValueNode(newNode, false, i), val) {
@@ -388,6 +404,7 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 	blockIsEmpty := len(m.editRoot.Content) == 0 &&
 		(m.editRoot.Kind == yaml.MappingNode || m.editRoot.Kind == yaml.SequenceNode)
 	var err error
+	unchanged := false
 	switch {
 	case blockIsEmpty && isEdit:
 		m.doc, err = m.doc.Remove(m.editBlockKey)
@@ -399,8 +416,16 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 	case !blockIsEmpty:
 		final := nodeToContent(m.editBlockKey, m.editRoot)
 		if isEdit {
-			if current, _ := m.doc.BlockContent(m.editBlockKey); normalizeBlockContent(m.editBlockKey, current) != final {
+			current, readErr := m.doc.BlockContent(m.editBlockKey)
+			if readErr != nil {
+				// A failed read must not be treated as "content changed" - the
+				// Replace below would run against unknown document state.
+				return m.withTopBEError(errCommit, fmt.Sprintf("Apply error: %v", readErr)), nil
+			}
+			if normalizeBlockContent(m.editBlockKey, current) != final {
 				m.doc, err = m.doc.Replace(m.editBlockKey, final)
+			} else {
+				unchanged = true
 			}
 		} else {
 			m.doc, err = m.doc.Insert(final)
@@ -411,5 +436,8 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 	}
 	m = m.syncView()
 	m = m.enterList()
+	if unchanged {
+		return m.withStatus("No changes to commit.")
+	}
 	return m.withStatus("Changes committed (not saved yet) - ctrl+s to save.")
 }

@@ -182,6 +182,176 @@ func TestNew_notAProvider(t *testing.T) {
 	must.ErrorContains(err, "does not implement MetadataProvider")
 }
 
+// ── inline embeds ─────────────────────────────────────────────────────────────
+
+type limitsBase struct {
+	MaxItems int `yaml:"max-items"`
+}
+
+type inlineHost struct {
+	limitsBase `yaml:",inline"`
+	Name       string `yaml:"name"`
+}
+
+type inlineRoot struct {
+	Host inlineHost `yaml:"host"`
+}
+
+func TestNewFromTree_inlinePromotedFields(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	tr := map[string]*metadata.Node{
+		"host": {Children: map[string]*metadata.Node{
+			"max-items": {FieldMeta: editor.FieldMeta{Min: "1"}},
+			"name":      {FieldMeta: editor.FieldMeta{Required: true}},
+		}},
+	}
+	src, err := metadata.NewFromTree(&inlineRoot{}, tr)
+	must.NoError(err, "fields promoted by yaml:\",inline\" embeds must resolve")
+	is.Equal("int", src.FieldMeta("host", "max-items").Type, "promoted field Type")
+	is.True(src.FieldMeta("host", "name").Required)
+}
+
+type inlineWithProvider struct {
+	Filter filter `yaml:"filter"`
+}
+
+type inlineProviderRoot struct {
+	inlineWithProvider `yaml:",inline"`
+	Output             string `yaml:"output"`
+}
+
+func (inlineProviderRoot) Metadata() map[string]*metadata.Node {
+	return map[string]*metadata.Node{
+		"output": {},
+		"filter": {},
+	}
+}
+
+func TestNew_composesThroughInlineEmbed(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	src, err := metadata.New(inlineProviderRoot{})
+	must.NoError(err, "New must resolve fields promoted by inline embeds")
+	is.Equal("regex", src.FieldMeta("filter", "regex").Description,
+		"auto-composition must descend into inline embeds")
+}
+
+// ── explicit Children still compose deeper ────────────────────────────────────
+
+type innerWithMeta struct {
+	Regex string `yaml:"regex"`
+}
+
+func (innerWithMeta) Metadata() map[string]*metadata.Node {
+	return map[string]*metadata.Node{
+		"regex": {FieldMeta: editor.FieldMeta{Description: "re"}},
+	}
+}
+
+// wrapper does not implement MetadataProvider; its node's Children are set
+// explicitly by the root.
+type wrapper struct {
+	Inner innerWithMeta `yaml:"inner"`
+}
+
+type explicitRoot struct {
+	Wrap wrapper `yaml:"wrap"`
+}
+
+func (explicitRoot) Metadata() map[string]*metadata.Node {
+	return map[string]*metadata.Node{
+		"wrap": {Children: map[string]*metadata.Node{
+			"inner": {},
+		}},
+	}
+}
+
+func TestNew_composesGrandchildUnderExplicitChildren(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	src, err := metadata.New(explicitRoot{})
+	must.NoError(err, "New")
+	is.Equal("re", src.FieldMeta("wrap", "inner.regex").Description,
+		"grandchild MetadataProvider under explicit Children must be composed")
+}
+
+// ── nil nodes are rejected ────────────────────────────────────────────────────
+
+func TestNewFromTree_nilTopLevelNode(t *testing.T) {
+	must := require.New(t)
+	tr := map[string]*metadata.Node{"output": nil}
+	_, err := metadata.NewFromTree(&config{}, tr)
+	must.ErrorContains(err, `"output"`, "nil top-level node must be rejected at build time")
+	must.ErrorContains(err, "nil node")
+}
+
+func TestNewFromTree_nilNestedNode(t *testing.T) {
+	must := require.New(t)
+	tr := map[string]*metadata.Node{
+		"categories": {Children: map[string]*metadata.Node{
+			"name": nil,
+		}},
+	}
+	_, err := metadata.NewFromTree(&config{}, tr)
+	must.ErrorContains(err, "categories.name", "nil nested node must be rejected at build time")
+	must.ErrorContains(err, "nil node")
+}
+
+// ── caller-owned maps stay pristine ───────────────────────────────────────────
+
+func TestNewFromTree_doesNotMutateCallerTree(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	tr := tree()
+	_, err := metadata.NewFromTree(&config{}, tr)
+	must.NoError(err, "Build")
+	is.Empty(tr["output"].Type, "caller's node Type must not be written")
+	is.Empty(tr["categories"].Type, "caller's node Type must not be written")
+	is.Empty(tr["categories"].Children["name"].Type, "caller's nested node Type must not be written")
+}
+
+// memoRoot returns the same memoized tree from every Metadata() call, like a
+// provider that builds its tree once in a package-level var.
+type memoRoot struct {
+	Inner innerWithMeta `yaml:"inner"`
+}
+
+var memoRootTree = map[string]*metadata.Node{
+	"inner": {},
+}
+
+func (memoRoot) Metadata() map[string]*metadata.Node { return memoRootTree }
+
+func TestNew_doesNotMutateMemoizedMetadata(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	src, err := metadata.New(memoRoot{})
+	must.NoError(err, "New")
+	is.Equal("re", src.FieldMeta("inner", "regex").Description, "composition still works")
+	is.Nil(memoRootTree["inner"].Children, "memoized Metadata() result must not be written")
+	is.Empty(memoRootTree["inner"].Type, "memoized Metadata() result must not be written")
+}
+
+// ── shared node under differently typed fields ────────────────────────────────
+
+type dualTypeRoot struct {
+	A string        `yaml:"a"`
+	B time.Duration `yaml:"b"`
+}
+
+func TestNewFromTree_sharedNodeTypedPerPosition(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	shared := &metadata.Node{}
+	tr := map[string]*metadata.Node{"a": shared, "b": shared}
+	src, err := metadata.NewFromTree(&dualTypeRoot{}, tr)
+	must.NoError(err, "Build")
+	is.Equal("string", src.FieldMeta("a", "").Type, "each position must derive its own Type")
+	is.Equal("duration", src.FieldMeta("b", "").Type, "each position must derive its own Type")
+	is.Empty(shared.Type, "the caller's shared node must stay untouched")
+}
+
 func TestNew_missingCoverage(t *testing.T) {
 	// We need a type to implement MetadataProvider with a missing field.
 	// Use a named local type that wraps partial and adds Metadata() via embedding trick:

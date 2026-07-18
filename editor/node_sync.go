@@ -218,13 +218,51 @@ func toggleNodeField(valueNode *yaml.Node, ctx toggleCtx, node treeNode, checked
 		cloned.Content = nil
 	}
 	path := node.yamlPath
-	asStruct := node.depth == 0 && node.def.Kind == schema.KindObject
-	if !applyToggleAt(cloned, path[:len(path)-1], path[len(path)-1], checked, ctx, asStruct) {
+	if !applyToggleAt(cloned, path[:len(path)-1], path[len(path)-1], checked, ctx) {
 		return valueNode
 	}
 	pruneEmptyMappings(cloned)
 	reorderNestedMappingKeys(cloned, ctx.childDefs)
 	return cloned
+}
+
+// findDuplicateMappingKey walks a value node depth-first and returns the
+// dotted path of the first mapping key that appears more than once within the
+// same mapping. schema.UnknownKeys cannot detect duplicates (yaml.v3 keeps the
+// last value when decoding), so commit uses this as the final gate against
+// persisting a corrupt mapping.
+func findDuplicateMappingKey(n *yaml.Node) (string, bool) {
+	return findDupKeyAt(n, nil)
+}
+
+func findDupKeyAt(n *yaml.Node, path []string) (string, bool) {
+	if n == nil {
+		return "", false
+	}
+	switch n.Kind {
+	case yaml.MappingNode:
+		seen := make(map[string]bool, len(n.Content)/2)
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			key := n.Content[i].Value
+			if seen[key] {
+				return strings.Join(append(append([]string{}, path...), key), "."), true
+			}
+			seen[key] = true
+		}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			child := append(append([]string{}, path...), n.Content[i].Value)
+			if p, ok := findDupKeyAt(n.Content[i+1], child); ok {
+				return p, true
+			}
+		}
+	case yaml.SequenceNode, yaml.DocumentNode:
+		for _, c := range n.Content {
+			if p, ok := findDupKeyAt(c, path); ok {
+				return p, true
+			}
+		}
+	}
+	return "", false
 }
 
 // nodeHasContent reports whether a value node carries real content. It is the

@@ -36,29 +36,35 @@ func (g *SchemaGenerator) writeFieldsTableLinked(sb *strings.Builder, fields []s
 			continue
 		}
 		meta := g.fieldMeta(nil, name)
-		description := strings.ReplaceAll(meta.Description, "|", "\\|")
-		description = strings.Join(strings.Fields(description), " ")
+		description := cellText(meta.Description)
 		required := "No"
 		if meta.Required {
 			required = "Yes"
 		}
 		defaultValue := "-"
 		if meta.Default != "" {
-			defaultValue = meta.Default
+			defaultValue = cellText(meta.Default)
 		}
-		displayName := name
+		displayName := cellText(name)
 		if len(f.Children) > 0 {
-			displayName = fmt.Sprintf("[%s](./%s.md)", name, name)
+			displayName = fmt.Sprintf("[%s](./%s.md)", cellText(name), strings.ToLower(name))
 		}
 		if hasFormat {
 			fmt.Fprintf(sb, "| %s | %s | %s | %s | %s | %s |\n",
-				displayName, docTypeLabel(f, meta), formatLabels(meta), description, required, defaultValue)
+				displayName, cellText(docTypeLabel(f, meta)), formatLabels(meta), description, required, defaultValue)
 		} else {
 			fmt.Fprintf(sb, "| %s | %s | %s | %s | %s |\n",
-				displayName, docTypeLabel(f, meta), description, required, defaultValue)
+				displayName, cellText(docTypeLabel(f, meta)), description, required, defaultValue)
 		}
 	}
 	sb.WriteString("\n")
+}
+
+// cellText collapses whitespace (including newlines) and escapes pipes so an
+// interpolated value cannot break a markdown table row.
+func cellText(s string) string {
+	s = strings.ReplaceAll(s, "|", "\\|")
+	return strings.Join(strings.Fields(s), " ")
 }
 
 func (g *SchemaGenerator) generateMarkdown(typeName string, fields []schema.FieldDef, sectionPath []string) string {
@@ -109,8 +115,7 @@ func (g *SchemaGenerator) writeFieldsTable(sb *strings.Builder, fields []schema.
 
 		meta := g.fieldMeta(sectionPath, name)
 
-		description := strings.ReplaceAll(meta.Description, "|", "\\|")
-		description = strings.Join(strings.Fields(description), " ")
+		description := cellText(meta.Description)
 
 		required := "No"
 		if meta.Required {
@@ -119,17 +124,17 @@ func (g *SchemaGenerator) writeFieldsTable(sb *strings.Builder, fields []schema.
 
 		defaultValue := "-"
 		if meta.Default != "" {
-			defaultValue = meta.Default
+			defaultValue = cellText(meta.Default)
 		}
 
-		displayName := name
+		displayName := cellText(name)
 
 		if hasFormat {
 			fmt.Fprintf(sb, "| %s | %s | %s | %s | %s | %s |\n",
-				displayName, docTypeLabel(f, meta), formatLabels(meta), description, required, defaultValue)
+				displayName, cellText(docTypeLabel(f, meta)), formatLabels(meta), description, required, defaultValue)
 		} else {
 			fmt.Fprintf(sb, "| %s | %s | %s | %s | %s |\n",
-				displayName, docTypeLabel(f, meta), description, required, defaultValue)
+				displayName, cellText(docTypeLabel(f, meta)), description, required, defaultValue)
 		}
 	}
 	sb.WriteString("\n")
@@ -168,17 +173,19 @@ func (g *SchemaGenerator) anyHasFormat(fields []schema.FieldDef, sectionPath []s
 }
 
 // formatLabels returns the joined format labels for a field, or "-" when none.
+// Labels are joined with ", " and pipe-escaped so they cannot split the
+// markdown table row into extra columns.
 func formatLabels(meta editor.FieldMeta) string {
 	var labels []string
 	for _, f := range meta.Formats {
 		if !f.IsZero() {
-			labels = append(labels, f.Label())
+			labels = append(labels, cellText(f.Label()))
 		}
 	}
 	if len(labels) == 0 {
 		return "-"
 	}
-	return strings.Join(labels, " | ")
+	return strings.Join(labels, ", ")
 }
 
 // docTypeLabel returns the type label for the markdown table, honouring

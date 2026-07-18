@@ -134,6 +134,62 @@ func TestCloneNode(t *testing.T) {
 	}
 }
 
+// TestAliasAndMergeResolution guards alias/merge-key handling: alias values
+// resolve to their anchor targets, and a key absent from a mapping is looked
+// up through its "<<" merge key.
+func TestAliasAndMergeResolution(t *testing.T) {
+	root := mustRoot(t, "defaults: &d\n  port: 8080\nservice:\n  <<: *d\n  name: web\nalias: *d\n")
+
+	if got := ScalarAt(root, []string{"service", "port"}); got != "8080" {
+		t.Errorf("ScalarAt through merge key = %q, want 8080", got)
+	}
+	if got := ScalarAt(root, []string{"service", "name"}); got != "web" {
+		t.Errorf("ScalarAt direct key = %q, want web", got)
+	}
+	if n := ChildByKey(root, "alias"); n == nil || n.Kind != yaml.MappingNode {
+		t.Errorf("ChildByKey on an alias value = %v, want the resolved mapping", n)
+	}
+
+	var paths []string
+	Navigate(root, []string{"service", "port"}, "", func(n *yaml.Node, p string) {
+		paths = append(paths, p+"="+n.Value)
+	})
+	if len(paths) != 1 || paths[0] != "service.port=8080" {
+		t.Errorf("Navigate through merge key = %v, want [service.port=8080]", paths)
+	}
+}
+
+// TestResolveAlias_cycleGuard: a hand-built self-referential alias must
+// resolve to nil ("absent") instead of hanging.
+func TestResolveAlias_cycleGuard(t *testing.T) {
+	a := &yaml.Node{Kind: yaml.AliasNode}
+	a.Alias = a
+	if n := ChildByKey(a, "x"); n != nil {
+		t.Errorf("ChildByKey on a cyclic alias = %v, want nil", n)
+	}
+}
+
+// TestCloneNode_aliasIdentity guards anchor/alias identity in clones: a cloned
+// alias must point at the cloned counterpart of its anchor target, not at a
+// detached copy or back into the original tree.
+func TestCloneNode_aliasIdentity(t *testing.T) {
+	root := mustRoot(t, "base: &b\n  v: 1\nref: *b\n")
+	clone := CloneNode(root)
+
+	origAnchor := root.Content[1] // value of "base"
+	cloneAnchor := clone.Content[1]
+	cloneAlias := clone.Content[3] // value of "ref"
+	if cloneAlias.Kind != yaml.AliasNode {
+		t.Fatalf("cloned ref value kind = %d, want AliasNode", cloneAlias.Kind)
+	}
+	if cloneAlias.Alias == origAnchor {
+		t.Error("cloned alias still points into the original tree")
+	}
+	if cloneAlias.Alias != cloneAnchor {
+		t.Error("cloned alias must point at the cloned anchor target (identity broken)")
+	}
+}
+
 func TestNavigate(t *testing.T) {
 	t.Run("plain path", func(t *testing.T) {
 		root := mustRoot(t, "server:\n  tls:\n    cert: x\n")
@@ -177,6 +233,24 @@ func TestNavigate(t *testing.T) {
 		Navigate(root, []string{"nope", "deeper"}, "", func(_ *yaml.Node, _ string) { called = true })
 		if called {
 			t.Error("Navigate should not arrive anywhere for an absent path")
+		}
+	})
+
+	t.Run("nil root is absent", func(t *testing.T) {
+		called := false
+		Navigate(nil, []string{"a"}, "", func(_ *yaml.Node, _ string) { called = true })
+		if called {
+			t.Error("Navigate on a nil root must produce no calls, not panic")
+		}
+	})
+
+	t.Run("no document-wide search for a missing top-level key", func(t *testing.T) {
+		root := mustRoot(t, "outer:\n  source: a\n")
+		called := false
+		// "source" exists only nested; the root segment must not fall back.
+		Navigate(root, []string{"source"}, "", func(_ *yaml.Node, _ string) { called = true })
+		if called {
+			t.Error("Navigate must not search the whole document for a missing root key")
 		}
 	})
 }
@@ -233,6 +307,14 @@ func TestForEachLeaf(t *testing.T) {
 		ForEachLeaf(root, "a.nope", func(_ *yaml.Node, _ string) { called = true })
 		if called {
 			t.Error("ForEachLeaf should not call fn for an absent leaf")
+		}
+	})
+
+	t.Run("nil root is absent", func(t *testing.T) {
+		called := false
+		ForEachLeaf(nil, "a.b", func(_ *yaml.Node, _ string) { called = true })
+		if called {
+			t.Error("ForEachLeaf on a nil root must produce no calls, not panic")
 		}
 	})
 }

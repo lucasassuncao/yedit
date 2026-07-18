@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -118,18 +119,30 @@ func (d Document) snapshot() Document {
 	return d
 }
 
-// appendCapped appends snap to stack, dropping (and nil-ing, so the backing
-// array does not pin evicted snapshots) the oldest entries beyond HistoryLimit.
+// appendCapped returns a new stack with snap appended, dropping the oldest
+// entries beyond HistoryLimit. The result never shares a backing array with
+// stack: Document is copied by value, so an in-place append or eviction would
+// corrupt sibling copies sharing the array.
 func appendCapped(stack [][]byte, snap []byte) [][]byte {
-	stack = append(stack, snap)
-	if len(stack) > HistoryLimit {
-		drop := len(stack) - HistoryLimit
-		for i := range drop {
-			stack[i] = nil
-		}
-		stack = stack[drop:]
+	start := 0
+	if len(stack)+1 > HistoryLimit {
+		start = len(stack) + 1 - HistoryLimit
 	}
-	return stack
+	out := make([][]byte, 0, len(stack)-start+1)
+	out = append(out, stack[start:]...)
+	out = append(out, snap)
+	return out
+}
+
+// cloneStack returns a copy of stack's slice header contents so a pop never
+// mutates a backing array shared with another Document copy (copy-on-write).
+func cloneStack(stack [][]byte) [][]byte {
+	if len(stack) == 0 {
+		return nil
+	}
+	out := make([][]byte, len(stack))
+	copy(out, stack)
+	return out
 }
 
 // Insert adds snippet to the document, positioned by the canonical key order.
@@ -137,6 +150,7 @@ func appendCapped(stack [][]byte, snap []byte) [][]byte {
 // post-write round-trip check detects that the stored block diverges from the
 // submitted snippet.
 func (d Document) Insert(snippet string) (Document, error) {
+	snippet = strings.ReplaceAll(snippet, "\r\n", "\n")
 	newRaw, err := InsertBlock(d.raw, snippet, d.knownOrder)
 	if err != nil {
 		return d, err
@@ -152,13 +166,17 @@ func (d Document) Insert(snippet string) (Document, error) {
 	}
 	d.blocks = blocks
 
-	if sBlocks, err2 := ParseBlocks([]byte(snippet)); err2 == nil && len(sBlocks) > 0 {
-		key := sBlocks[0].Key
-		if recovered, err2 := BlockContent(d.raw, d.blocks, key); err2 == nil {
-			if !blockSemanticEqual(snippet, recovered) {
+	// Verify every key the snippet carries - a multi-key snippet lands as one
+	// block per key, so comparing the whole snippet against a single block
+	// would falsely reject it.
+	if sBlocks, err2 := ParseBlocks([]byte(snippet)); err2 == nil {
+		for _, sb := range sBlocks {
+			part, errPart := BlockContent([]byte(snippet), sBlocks, sb.Key)
+			recovered, errRec := BlockContent(d.raw, d.blocks, sb.Key)
+			if errPart != nil || errRec != nil || !blockSemanticEqual(part, recovered) {
 				d = d.rollback()
 				d.future = savedFuture
-				return d, fmt.Errorf("round-trip verification failed after insert of %q", key)
+				return d, fmt.Errorf("round-trip verification failed after insert of %q", sb.Key)
 			}
 		}
 	}
@@ -191,6 +209,7 @@ func (d Document) Remove(key string) (Document, error) {
 // Returns an error (and rolls back) if a post-write round-trip check detects
 // that the stored block diverges from the submitted snippet.
 func (d Document) Replace(key, snippet string) (Document, error) {
+	snippet = strings.ReplaceAll(snippet, "\r\n", "\n")
 	replaced, err := ReplaceBlock(d.raw, d.blocks, key, snippet)
 	if err != nil {
 		return d, err
@@ -256,56 +275,64 @@ func (d Document) ReplaceRaw(raw []byte) (Document, error) {
 }
 
 // Undo restores the previous raw from history and pushes the undone state onto
-// the redo stack. Returns false if history is empty.
+// the redo stack. Returns false if history is empty or the snapshot no longer
+// parses - the current consistent state is kept rather than diverging silently.
+// The pop is copy-on-write: sibling Document copies share the stack's backing
+// array and must not observe the mutation.
 func (d Document) Undo() (Document, bool) {
 	if len(d.history) == 0 {
 		return d, false
 	}
-	d.future = appendCapped(d.future, copyBytes(d.raw))
-	last := len(d.history) - 1
-	prev := d.history[last]
-	d.history[last] = nil
-	d.history = d.history[:last]
-	d.raw = prev
-	if blocks, err := ParseBlocks(prev); err == nil {
-		d.blocks = blocks
+	prev := d.history[len(d.history)-1]
+	blocks, err := ParseBlocks(prev)
+	if err != nil {
+		return d, false
 	}
+	d.future = appendCapped(d.future, copyBytes(d.raw))
+	d.history = cloneStack(d.history[:len(d.history)-1])
+	d.raw = prev
+	d.blocks = blocks
 	return d, true
 }
 
 // Redo re-applies the most recently undone change. Returns false if there is
-// nothing to redo. The current state is pushed onto the undo history so the
-// redo itself can be undone.
+// nothing to redo or the snapshot no longer parses - the current consistent
+// state is kept rather than diverging silently. The current state is pushed
+// onto the undo history so the redo itself can be undone; the pop is
+// copy-on-write, mirroring Undo.
 func (d Document) Redo() (Document, bool) {
 	if len(d.future) == 0 {
 		return d, false
 	}
-	d.history = appendCapped(d.history, copyBytes(d.raw))
-	last := len(d.future) - 1
-	prev := d.future[last]
-	d.future[last] = nil
-	d.future = d.future[:last]
-	d.raw = prev
-	if blocks, err := ParseBlocks(prev); err == nil {
-		d.blocks = blocks
+	prev := d.future[len(d.future)-1]
+	blocks, err := ParseBlocks(prev)
+	if err != nil {
+		return d, false
 	}
+	d.history = appendCapped(d.history, copyBytes(d.raw))
+	d.future = cloneStack(d.future[:len(d.future)-1])
+	d.raw = prev
+	d.blocks = blocks
 	return d, true
 }
 
 // rollback undoes the last snapshot without recording a redo entry. Used when
 // a mutation fails its round-trip check: the rejected state must not be
-// reachable via Redo.
+// reachable via Redo. If the snapshot no longer parses (it was parseable when
+// taken, so this should not happen), the current state is kept rather than
+// leaving raw and blocks divergent. The pop is copy-on-write, mirroring Undo.
 func (d Document) rollback() Document {
 	if len(d.history) == 0 {
 		return d
 	}
 	snap := d.history[len(d.history)-1]
-	d.history[len(d.history)-1] = nil
-	d.history = d.history[:len(d.history)-1]
-	d.raw = snap
-	if blocks, err := ParseBlocks(snap); err == nil {
-		d.blocks = blocks
+	blocks, err := ParseBlocks(snap)
+	if err != nil {
+		return d
 	}
+	d.history = cloneStack(d.history[:len(d.history)-1])
+	d.raw = snap
+	d.blocks = blocks
 	return d
 }
 

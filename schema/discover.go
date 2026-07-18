@@ -21,8 +21,11 @@ var (
 
 // Discover walks the type of v by reflection and returns the editable schema
 // of its exported fields. Fields without a yaml tag, with yaml:"-", or with a
-// name in defaultSkip are omitted. Nested struct fields recurse one level
-// deeper.
+// name in defaultSkip are omitted. Anonymous embeds follow yaml.v3: only
+// yaml:",inline" promotes an embed's fields; a bare exported embed is a
+// regular field named after its lowercased type name, and a bare unexported
+// embed is skipped (yaml.v3 cannot marshal it). Nested struct fields recurse
+// one level deeper.
 //
 // Only the yaml tag is read. Field metadata (required, allowed values, ranges,
 // descriptions) is not derived from struct tags - declare it through the
@@ -32,11 +35,13 @@ var (
 // struct OR a map), make the wrapper type implement Provider - its
 // YeditSchema() return value is used in place of reflective traversal.
 //
-// The optional recursionLimit controls how many extra levels a self-referential
-// type expands beyond the first. Omitted, it defaults to 1, which allows one
-// recursive level so that fields like "any []CategoryFilter" are navigable.
-// Passing 0 explicitly selects strict mode: recursive occurrences are not
-// expanded at all.
+// The optional recursionLimit controls how many extra times each individual
+// type may re-enter the traversal beyond its first visit. Omitted, it defaults
+// to 1, which allows one recursive level so that fields like "any
+// []CategoryFilter" are navigable. Passing 0 explicitly selects strict mode:
+// recursive occurrences are not expanded at all. The bound is counted per
+// type, so mutually recursive chains (A contains B contains A) may expand
+// deeper overall than a single self-referential type would.
 func Discover(v any, recursionLimit ...int) []FieldDef {
 	limit := 1 // default: one extra recursive level beyond the first visit
 	if len(recursionLimit) > 0 {
@@ -62,19 +67,33 @@ func discoverFields(t reflect.Type, depth int, seen map[reflect.Type]int, limit 
 	var out []FieldDef
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
+		yamlTag := f.Tag.Get("yaml")
+		yamlName := strings.Split(yamlTag, ",")[0]
+		inline := yamlName == "" && strings.Contains(yamlTag, "inline")
 		if !f.IsExported() {
-			if f.Anonymous {
+			// yaml.v3 can only serialise an unexported embed through an
+			// explicit yaml:",inline" tag (the promoted exported fields are
+			// reachable); a bare unexported embed panics at Marshal time.
+			if f.Anonymous && inline {
 				out = append(out, embedFields(f, depth, seen, limit)...)
 			}
 			continue
 		}
-		yamlTag := f.Tag.Get("yaml")
-		yamlName := strings.Split(yamlTag, ",")[0]
-		if yamlName == "" || yamlName == "-" {
-			if yamlName == "" && (f.Anonymous || strings.Contains(yamlTag, "inline")) {
-				out = append(out, embedFields(f, depth, seen, limit)...)
-			}
+		if yamlName == "-" {
 			continue
+		}
+		if inline {
+			out = append(out, embedFields(f, depth, seen, limit)...)
+			continue
+		}
+		if yamlName == "" {
+			if yamlTag == "" && !f.Anonymous {
+				continue // untagged plain fields are not part of the editable schema
+			}
+			// yaml.v3 keys a bare anonymous embed and a name-less tag such as
+			// yaml:",omitempty" by the lowercased field name (for an embed the
+			// field name is the type name).
+			yamlName = strings.ToLower(f.Name)
 		}
 		if defaultSkip[yamlName] {
 			continue
@@ -158,22 +177,22 @@ func isMarshalerType(t reflect.Type) bool {
 // providerChildren returns the FieldDef list declared by a type implementing
 // Provider, or nil if the type does not implement the interface.
 func providerChildren(t reflect.Type) []FieldDef {
-	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice {
-		t = t.Elem()
-	}
-	if t.Kind() == reflect.Map {
+	// Unwrap wrappers until stable so map[string]*T, map[string][]T, []*T,
+	// and other combinations all reach the element type T.
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Map {
 		t = t.Elem()
 	}
 	providerType := reflect.TypeOf((*Provider)(nil)).Elem()
-	// An interface type has no concrete zero value to call YeditSchema on -
-	// reflect.Zero(t).Interface() would be a nil interface and the type
-	// assertion below would panic. Such fields classify as KindAny instead.
+	// An interface type has no concrete value to call YeditSchema on - such
+	// fields classify as KindAny instead.
 	if t.Kind() == reflect.Interface {
 		return nil
 	}
+	// Instantiate via reflect.New so the receiver is never a typed nil
+	// pointer, which would panic when YeditSchema has a value receiver.
 	switch {
 	case t.Implements(providerType):
-		zero := reflect.Zero(t).Interface().(Provider)
+		zero := reflect.New(t).Elem().Interface().(Provider)
 		return zero.YeditSchema()
 	case reflect.PointerTo(t).Implements(providerType):
 		zero := reflect.New(t).Interface().(Provider)

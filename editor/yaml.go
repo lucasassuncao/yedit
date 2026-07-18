@@ -20,10 +20,10 @@ type toggleCtx struct {
 }
 
 // applyToggleAt navigates start through navPath (creating mappings as needed),
-// then adds or removes leafName at that location. asStruct=true uses the
-// snippet as a full subtree (for depth-0 struct fields); asStruct=false treats
-// the snippet as a scalar value.
-func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked bool, ctx toggleCtx, asStruct bool) bool {
+// then adds or removes leafName at that location. When toggling on, the
+// field's snippet resolves to its value (see snippetValue); an empty or
+// unresolvable snippet falls back to an empty scalar.
+func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked bool, ctx toggleCtx) bool {
 	cur := start
 	for _, k := range navPath {
 		cur = findOrCreateMappingChild(cur, k)
@@ -40,18 +40,8 @@ func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked 
 		removeMappingKey(cur, leafName)
 	case hasMappingKey(cur, leafName):
 		// already present - keep as is
-	case asStruct:
-		// Use leafName (not ctx.key) as the parent key so the snippet is parsed
-		// as "leafName:\n  <snippet>" — the correct wrapping for depth-0 struct fields.
-		if snippet == "" || !appendFieldFromSnippet(cur, leafName, snippet) {
-			appendLeafToMapping(cur, leafName, "")
-		}
 	default:
-		// Try to append as a structured field first (for complex snippets like arrays/maps).
-		// Fall back to a simple scalar if the snippet is empty or not a valid structure.
-		if snippet != "" && appendFieldFromSnippet(cur, leafName, snippet) {
-			// Successfully appended the complex structure
-		} else {
+		if snippet == "" || !appendFieldFromSnippet(cur, leafName, snippet) {
 			appendLeafToMapping(cur, leafName, "")
 		}
 	}
@@ -390,6 +380,35 @@ func emptyCollection(v *yaml.Node) bool {
 	return (v.Kind == yaml.MappingNode || v.Kind == yaml.SequenceNode) && len(v.Content) == 0
 }
 
+// pruneEmptyAlongFocus walks focus bottom-up and removes each traversed mapping
+// pair whose value is empty (empty mapping/sequence or null scalar), so a pair
+// emptied at one level can cascade into removing its parent's pair too. The
+// cascade stops after focus[keep]: the first keep segments belong to editors
+// still on the stack, whose own focus nodes must survive the prune. Index
+// segments are skipped: sequence items are intentionally never removed here,
+// because stacked editors address collection entries by index (segIdx) and
+// removing an item would shift every entry behind it out from under those
+// focus paths. Used by handleDrillOut in place of a whole-tree prune.
+func pruneEmptyAlongFocus(root *yaml.Node, focus []pathSeg, keep int) {
+	if keep < 0 {
+		keep = 0
+	}
+	for i := len(focus); i > keep; i-- {
+		seg := focus[i-1]
+		if seg.isIndex {
+			continue
+		}
+		parent := nodeAt(root, focus[:i-1])
+		if parent == nil || parent.Kind != yaml.MappingNode {
+			continue
+		}
+		child := yamlnode.ChildByKey(parent, seg.key)
+		if child != nil && (emptyCollection(child) || child.Kind == yaml.ScalarNode && child.Tag == "!!null") {
+			removeMappingKey(parent, seg.key)
+		}
+	}
+}
+
 // pruneEmpty is the shared depth-first traversal behind pruneEmptyMappings and
 // pruneEmptyContent: it recurses into nested nodes first (so the cleanup
 // propagates upward), then removes mapping pairs whose value emptyPair reports
@@ -529,35 +548,60 @@ func snippetValueNode(snippet, key string) *yaml.Node {
 	return yamlnode.ChildByKey(m, key)
 }
 
-// appendFieldFromSnippet parses snippet under parentKey and appends the
+// appendFieldFromSnippet resolves snippet (see snippetValue) and appends the
 // (parentKey, value) key-value pair to valueNode, so the field is correctly
-// nested under parentKey rather than flattened as siblings.  Returns false if
-// the snippet is malformed, the value has no fields, or the key already exists
-// in valueNode (duplicate-key guard — callers should check hasMappingKey first
-// when they want an update-or-insert semantic instead).
+// nested under parentKey rather than flattened as siblings. Returns false when
+// the snippet is unresolvable or the key already exists in valueNode
+// (duplicate-key guard — callers should check hasMappingKey first when they
+// want an update-or-insert semantic instead).
 func appendFieldFromSnippet(valueNode *yaml.Node, parentKey, snippet string) bool {
-	var templateRoot yaml.Node
-	if err := yaml.Unmarshal([]byte(parentKey+":\n"+snippet), &templateRoot); err != nil {
-		return false
-	}
-	if templateRoot.Kind == 0 || len(templateRoot.Content) == 0 {
-		return false
-	}
-	tMapping := templateRoot.Content[0]
-	if tMapping.Kind != yaml.MappingNode || len(tMapping.Content) < 2 {
-		return false
-	}
-	tValue := tMapping.Content[1]
-	if tValue.Kind != yaml.MappingNode || len(tValue.Content) < 2 {
-		return false
-	}
-	// Guard against duplicate keys: if parentKey already exists in valueNode,
-	// do not append a second copy.
 	if hasMappingKey(valueNode, parentKey) {
 		return false
 	}
-	// Append the (parentKey, value) pair — nesting the snippet under parentKey
-	// rather than splicing its children directly into valueNode.
-	valueNode.Content = append(valueNode.Content, tMapping.Content[0], tMapping.Content[1])
+	v := snippetValue(parentKey, snippet)
+	if v == nil {
+		return false
+	}
+	valueNode.Content = append(valueNode.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Value: parentKey}, v)
 	return true
+}
+
+// snippetValue resolves a FieldMeta.Snippet to the value node to insert under
+// key, preserving type tags (!!bool, !!int, ...). Accepted forms:
+//
+//   - "<key>: value"       the snippet names the field explicitly
+//   - indented children    "  host: localhost\n  port: 8080" (mapping subtree)
+//   - a list               "  - critical" or "- critical"
+//   - a bare scalar        "true", "8080", "text"
+//
+// Returns nil when the snippet is empty or resolves to no usable value, so
+// callers can fall back to an empty scalar.
+func snippetValue(key, snippet string) *yaml.Node {
+	if snippet == "" {
+		return nil
+	}
+	// "<key>: value" form first: the snippet names the field explicitly.
+	if v := snippetValueNode(snippet, key); v != nil {
+		return v
+	}
+	// Mapping children or list forms: parse the snippet nested under the key.
+	// A null value here means the snippet did not actually nest (e.g. a bare
+	// scalar lands as a sibling), so fall through to the scalar form.
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(key+":\n"+snippet), &root); err == nil && len(root.Content) > 0 {
+		if m := root.Content[0]; m.Kind == yaml.MappingNode && len(m.Content) >= 2 && m.Content[0].Value == key {
+			if v := m.Content[1]; v.Kind != yaml.ScalarNode || (v.Tag != "!!null" && v.Value != "") {
+				return v
+			}
+		}
+	}
+	// Bare scalar form.
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(snippet), &doc); err == nil && len(doc.Content) > 0 {
+		if v := doc.Content[0]; v.Kind == yaml.ScalarNode && v.Value != "" {
+			return v
+		}
+	}
+	return nil
 }

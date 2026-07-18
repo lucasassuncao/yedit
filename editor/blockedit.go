@@ -400,17 +400,35 @@ func (be blockEditState) updateEditing(msg tea.Msg) (blockEditState, tea.Cmd) {
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
 		if be.active == blockEditPanelYAML {
-			prev := be.yamlEditor.Value()
-			var cmd tea.Cmd
-			be.yamlEditor, cmd = be.yamlEditor.Update(msg)
-			if be.yamlEditor.Value() != prev {
-				be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value(), Checkpoint: true})
-			}
-			return be, cmd
+			return be.updateNonKeyBuffer(msg)
 		}
 		return be, nil
 	}
 	return be.updateKey(key)
+}
+
+// updateNonKeyBuffer applies a non-key message (e.g. a paste delivered by the
+// textarea's clipboard command) to the YAML editor. When the buffer changed,
+// the undo checkpoint must pair the pre-change buffer with the pre-change
+// node; capturing after the textarea update would pair the post-paste buffer
+// with the pre-paste node, so undo would restore the node but leave the pasted
+// text in place. The node is untouched by the textarea update, so capture
+// after it and rewind only the buffer before pushing.
+func (be blockEditState) updateNonKeyBuffer(msg tea.Msg) (blockEditState, tea.Cmd) {
+	prev := be.yamlEditor.Value()
+	var cmd tea.Cmd
+	be.yamlEditor, cmd = be.yamlEditor.Update(msg)
+	if be.yamlEditor.Value() == prev {
+		return be, cmd
+	}
+	snap := be.captureSnap()
+	snap.yamlValue = prev
+	if n := len(be.undoStack); n == 0 || !snapEqual(be.undoStack[n-1], snap) {
+		be.undoStack = appendSnapCapped(be.undoStack, snap)
+		be.redoStack = nil
+	}
+	be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value(), Checkpoint: false})
+	return be, cmd
 }
 
 // handleHintKey handles ctrl+h (toggle hint focus) and navigation when the hint
@@ -578,11 +596,18 @@ func (be blockEditState) syncParsedNode(content string) (blockEditState, bool) {
 func (be blockEditState) applyParsedEntry(kn, vn *yaml.Node) blockEditState {
 	cur := be.coll.current
 	count := entryCount(&be.node, be.coll.isMap)
-	if cur >= 0 && cur < count {
-		setEntry(&be.node, be.coll.isMap, cur, kn, vn)
+	// A map key renamed to one that already exists elsewhere would splice a
+	// second identical key into the canonical mapping. flushCurrentEntry guards
+	// navigation/commit, but this per-keystroke path writes into the node too,
+	// so it needs the same gate: keep the last good node and surface the error.
+	if be.coll.isMap && kn != nil && duplicateMapKey(&be.node, cur, kn.Value) {
+		be.editorErr = editorError{kind: errParse, message: fmt.Sprintf("Duplicate map key %q - rename it to a unique key first.", kn.Value)}
 		return be
 	}
-	if count == 0 {
+	switch {
+	case cur >= 0 && cur < count:
+		setEntry(&be.node, be.coll.isMap, cur, kn, vn)
+	case count == 0:
 		if be.coll.isMap {
 			be.node.Content = append(be.node.Content, kn, vn)
 		} else {
@@ -590,6 +615,13 @@ func (be blockEditState) applyParsedEntry(kn, vn *yaml.Node) blockEditState {
 		}
 		be.coll.current = 0
 		be.tree.nodes = be.collectionTreeNodes()
+	default:
+		return be
+	}
+	// The write succeeded; a stale duplicate-key error from a previous
+	// keystroke no longer applies.
+	if be.editorErr.kind == errParse {
+		be.editorErr = editorError{}
 	}
 	return be
 }
@@ -720,6 +752,14 @@ func (be blockEditState) commit() (blockEditState, *yaml.Node, bool) {
 			return be, nil, false
 		}
 		val = v
+	}
+
+	// Final gate against duplicate mapping keys: schema.UnknownKeys cannot see
+	// them (yaml.v3 keeps the last value when decoding), so a duplicate that
+	// slipped past the flush guards would otherwise be persisted verbatim.
+	if path, dup := findDuplicateMappingKey(val); dup {
+		be.editorErr = editorError{kind: errCommit, message: fmt.Sprintf("Duplicate key %q - remove or rename it first.", path)}
+		return be, nil, false
 	}
 
 	if be.knownByPath != nil {

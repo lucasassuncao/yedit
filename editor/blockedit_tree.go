@@ -7,7 +7,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/alert"
-	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
@@ -207,10 +206,7 @@ func (be blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked 
 	// leave the entry in a partially-modified state (mirrors toggleNodeField).
 	cloned := yamlnode.CloneNode(entryNode)
 	fieldPath := node.yamlPath[1:]
-	// asStruct=true for KindObject fields at depth 1 so their snippet is nested
-	// correctly under the field name (same logic as toggleNodeField for structs).
-	asStruct := node.def.Kind == schema.KindObject && len(fieldPath) == 1
-	if !applyToggleAt(cloned, fieldPath[:len(fieldPath)-1], fieldPath[len(fieldPath)-1], checked, ctx, asStruct) {
+	if !applyToggleAt(cloned, fieldPath[:len(fieldPath)-1], fieldPath[len(fieldPath)-1], checked, ctx) {
 		return be
 	}
 	pruneEmptyMappings(cloned)

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/schema"
 )
@@ -276,5 +277,141 @@ func TestCollectionDerive_perEntryLabels(t *testing.T) {
 	}
 	if labels[1] != "beta_edited" {
 		t.Errorf("entry 1 label = %q, want beta_edited", labels[1])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Duplicate map keys: neither the per-keystroke sync path nor any error-
+// clearing escape path (add-new, delete, preset) may persist a mapping with
+// two identical keys.
+// ---------------------------------------------------------------------------
+
+// TestMapSyncRejectsDuplicateKey guards the per-keystroke sync path: renaming
+// the current entry's key to one that already exists must keep the last good
+// node and surface an error instead of splicing a second identical key.
+func TestMapSyncRejectsDuplicateKey(t *testing.T) {
+	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
+	// Current entry is "3000"; rename it to the existing "8080" via the
+	// dispatch path used on every keystroke.
+	be = be.dispatch(SyncYAML{Content: "portsAttributes:\n  \"8080\":\n    label: web\n"})
+	if dup, ok := findDuplicateMappingKey(&be.node); ok {
+		t.Fatalf("duplicate key %q reached the canonical node", dup)
+	}
+	if be.editorErr.kind != errParse {
+		t.Errorf("expected errParse feedback, got kind=%d msg=%q", be.editorErr.kind, be.editorErr.message)
+	}
+	// Escape path: [+ add new] clears the sticky error and commits cleanly;
+	// the earlier duplicate attempt must still not be present.
+	be = be.dispatch(AddEntry{})
+	committed, val, ok := be.commit()
+	if !ok {
+		t.Fatalf("commit after add-new should succeed, got %q", committed.editorErr.message)
+	}
+	if dup, has := findDuplicateMappingKey(val); has {
+		t.Fatalf("commit produced duplicate key %q", dup)
+	}
+}
+
+// TestCommitRejectsDuplicateMappingKey guards the commit backstop: a duplicate
+// that reached the canonical node through any path must not be committed.
+func TestCommitRejectsDuplicateMappingKey(t *testing.T) {
+	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
+	kn := &yaml.Node{Kind: yaml.ScalarNode, Value: "8080"}
+	vn := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "label"}, {Kind: yaml.ScalarNode, Value: "x"},
+	}}
+	be.node.Content = append(be.node.Content, kn, vn)
+	committed, _, ok := be.commit()
+	if ok {
+		t.Fatal("commit must fail on duplicate mapping keys")
+	}
+	if committed.editorErr.kind != errCommit {
+		t.Errorf("expected errCommit, got kind=%d msg=%q", committed.editorErr.kind, committed.editorErr.message)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// flushCurrentEntry data-loss holes.
+// ---------------------------------------------------------------------------
+
+// TestFlushEmptyCollectionRejectsUnparsedText: with an empty collection, text
+// that never parsed into a first entry must block the commit instead of being
+// silently dropped.
+func TestFlushEmptyCollectionRejectsUnparsedText(t *testing.T) {
+	spec := mapSpec()
+	spec.content = ""
+	be := newBlockEdit(Config{}, spec, 100, 40)
+	if be.coll.current != -1 {
+		t.Fatalf("empty collection should open with current=-1, got %d", be.coll.current)
+	}
+	be.yamlEditor.SetValue("portsAttributes:\n  \"3000\"\n  broken indent\n")
+	committed, _, ok := be.commit()
+	if ok {
+		t.Fatal("commit must be blocked when unparsed buffer text would be dropped")
+	}
+	if committed.editorErr.kind != errParse {
+		t.Errorf("expected errParse, got kind=%d msg=%q", committed.editorErr.kind, committed.editorErr.message)
+	}
+}
+
+// TestFlushEmptyCollectionPlaceholderIsClean: the untouched placeholder of an
+// empty collection is a clean no-op at commit time.
+func TestFlushEmptyCollectionPlaceholderIsClean(t *testing.T) {
+	spec := mapSpec()
+	spec.content = ""
+	be := newBlockEdit(Config{}, spec, 100, 40)
+	if _, _, ok := be.commit(); !ok {
+		t.Fatal("committing the pristine empty-collection placeholder must succeed")
+	}
+}
+
+// TestFlushEmptiedBufferBlocks: emptying the buffer of an existing entry must
+// surface an error instead of silently resurrecting the old content.
+func TestFlushEmptiedBufferBlocks(t *testing.T) {
+	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
+	be.yamlEditor.SetValue("")
+	be = be.flushCurrentEntry()
+	if be.editorErr.kind != errParse {
+		t.Fatalf("expected errParse for emptied buffer, got kind=%d", be.editorErr.kind)
+	}
+}
+
+// TestDeleteOtherEntryBlockedByInvalidCurrent: deleting a different entry
+// while the current one holds invalid unsaved edits must refuse instead of
+// silently reverting those edits. Deleting the current entry itself proceeds.
+func TestDeleteOtherEntryBlockedByInvalidCurrent(t *testing.T) {
+	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
+	be.yamlEditor.SetValue("portsAttributes:\n  \"3000\": [broken\n")
+	before := seqItemLabels(be)
+
+	blocked := be.performEntryDelete(1) // delete "8080" while "3000" is invalid
+	if got := seqItemLabels(blocked); len(got) != len(before) {
+		t.Fatalf("delete of another entry must be blocked, labels=%v", got)
+	}
+	if blocked.editorErr.kind != errParse {
+		t.Errorf("expected errParse, got kind=%d", blocked.editorErr.kind)
+	}
+
+	deleted := be.performEntryDelete(0) // deleting the invalid current entry is the remedy
+	if got := seqItemLabels(deleted); len(got) != len(before)-1 {
+		t.Errorf("deleting the current invalid entry must proceed, labels=%v", got)
+	}
+}
+
+// TestEmptyMapKeyRefreshesTreeRow: a map entry whose key becomes the empty
+// string must refresh its tree row (visible placeholder), not keep the stale
+// previous label.
+func TestEmptyMapKeyRefreshesTreeRow(t *testing.T) {
+	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
+	be.yamlEditor.SetValue("portsAttributes:\n  \"\":\n    label: web\n")
+	if kn, vn, ok := parseEntryFromView(be.yamlEditor.Value(), be.coll.isMap); ok {
+		setEntry(&be.node, be.coll.isMap, be.coll.current, kn, vn)
+	} else {
+		t.Fatal("entry with empty key should parse")
+	}
+	be.tree = be.resyncTreeFromYAML()
+	labels := seqItemLabels(be)
+	if len(labels) == 0 || labels[0] != `""` {
+		t.Errorf("labels = %v, want first = %q placeholder", labels, `""`)
 	}
 }
