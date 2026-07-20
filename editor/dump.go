@@ -25,7 +25,7 @@ func newDumpWriter(path string) (*dumpWriter, error) {
 	if path == "" {
 		path = filepath.Join(os.TempDir(), fmt.Sprintf("yedit-dump-%d.jsonl", time.Now().UnixNano()))
 	}
-	f, err := os.Create(path) // #nosec G304 -- path is supplied by the embedding application (Config.DumpPath) or generated internally
+	f, err := os.Create(path) // #nosec G304 -- path is supplied by the embedding application (Config.Trace.DumpPath) or generated internally
 	if err != nil {
 		return nil, err
 	}
@@ -136,28 +136,28 @@ func redactModelAction(a ModelAction) ModelAction {
 func (d *dumpWriter) path() string { return d.f.Name() }
 func (d *dumpWriter) close() error { return d.f.Close() }
 
-// wireDump composes cfg's OnAction/OnModelAction/OnMsg tracing hooks with d,
-// preserving any hooks the caller already set so Config.Dump and manual
+// wireDump composes cfg.Trace's OnAction/OnModelAction/OnMsg hooks with d,
+// preserving any hooks the caller already set so Config.Trace.Dump and manual
 // hooks can be used together.
 func wireDump(cfg *Config, d *dumpWriter) {
-	prevAction := cfg.OnAction
-	cfg.OnAction = func(blockKey string, a BlockAction) {
+	prevAction := cfg.Trace.OnAction
+	cfg.Trace.OnAction = func(blockKey string, a BlockAction) {
 		d.writeAction("block", blockKey, a)
 		if prevAction != nil {
 			prevAction(blockKey, a)
 		}
 	}
 
-	prevModelAction := cfg.OnModelAction
-	cfg.OnModelAction = func(a ModelAction) {
+	prevModelAction := cfg.Trace.OnModelAction
+	cfg.Trace.OnModelAction = func(a ModelAction) {
 		d.writeAction("model", "", redactModelAction(a))
 		if prevModelAction != nil {
 			prevModelAction(a)
 		}
 	}
 
-	prevMsg := cfg.OnMsg
-	cfg.OnMsg = func(where string, msg tea.Msg) {
+	prevMsg := cfg.Trace.OnMsg
+	cfg.Trace.OnMsg = func(where string, msg tea.Msg) {
 		if !isDumpNoise(msg) {
 			d.writeMsg(where, msg)
 		}

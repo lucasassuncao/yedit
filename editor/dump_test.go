@@ -46,9 +46,9 @@ func TestWireDump_CapturesKeyBlockAndModelEvents(t *testing.T) {
 	cfg := Config{}
 	wireDump(&cfg, d)
 
-	cfg.OnMsg("list", tea.KeyMsg{Type: tea.KeyEnter})
-	cfg.OnAction("server", ToggleField{NodeIdx: 2, Checked: true})
-	cfg.OnModelAction(DrillOut{})
+	cfg.Trace.OnMsg("list", tea.KeyMsg{Type: tea.KeyEnter})
+	cfg.Trace.OnAction("server", ToggleField{NodeIdx: 2, Checked: true})
+	cfg.Trace.OnModelAction(DrillOut{})
 	must.NoError(d.close())
 
 	events := readDumpEvents(t, path)
@@ -86,10 +86,10 @@ func TestWireDump_CapturesGapMessages(t *testing.T) {
 	cfg := Config{}
 	wireDump(&cfg, d)
 
-	cfg.OnMsg("list", openItemMsg{Item: listItem{Key: "server"}})
-	cfg.OnMsg("block:server:tree:editing", commitRequestedMsg{})
-	cfg.OnMsg("list", confirmedDocPresetMsg{Name: "minimal", Content: "a: 1\n"})
-	cfg.OnMsg("block:server:tree:editing", validateRequestedMsg{})
+	cfg.Trace.OnMsg("list", openItemMsg{Item: listItem{Key: "server"}})
+	cfg.Trace.OnMsg("block:server:tree:editing", commitRequestedMsg{})
+	cfg.Trace.OnMsg("list", confirmedDocPresetMsg{Name: "minimal", Content: "a: 1\n"})
+	cfg.Trace.OnMsg("block:server:tree:editing", validateRequestedMsg{})
 	must.NoError(d.close())
 
 	events := readDumpEvents(t, path)
@@ -122,11 +122,11 @@ func TestWireDump_FiltersNoise(t *testing.T) {
 	blinkCanceledCmd := cm.BlinkCmd()
 	_ = cm.BlinkCmd() // cancels the context blinkCanceledCmd is waiting on
 
-	cfg.OnMsg("block:server:tree:editing", cursor.BlinkMsg{})
-	cfg.OnMsg("block:server:tree:editing", cursor.Blink())     // unexported cursor.initialBlinkMsg
-	cfg.OnMsg("block:server:tree:editing", blinkCanceledCmd()) // unexported cursor.blinkCanceled
-	cfg.OnMsg("list", clearStatusMsg{})
-	cfg.OnMsg("list", tea.KeyMsg{Type: tea.KeyEnter}) // control: must still be recorded
+	cfg.Trace.OnMsg("block:server:tree:editing", cursor.BlinkMsg{})
+	cfg.Trace.OnMsg("block:server:tree:editing", cursor.Blink())     // unexported cursor.initialBlinkMsg
+	cfg.Trace.OnMsg("block:server:tree:editing", blinkCanceledCmd()) // unexported cursor.blinkCanceled
+	cfg.Trace.OnMsg("list", clearStatusMsg{})
+	cfg.Trace.OnMsg("list", tea.KeyMsg{Type: tea.KeyEnter}) // control: must still be recorded
 	must.NoError(d.close())
 
 	events := readDumpEvents(t, path)
@@ -145,15 +145,17 @@ func TestWireDump_PreservesExistingHooks(t *testing.T) {
 
 	var gotAction, gotModelAction, gotMsg bool
 	cfg := Config{
-		OnAction:      func(string, BlockAction) { gotAction = true },
-		OnModelAction: func(ModelAction) { gotModelAction = true },
-		OnMsg:         func(string, tea.Msg) { gotMsg = true },
+		Trace: Trace{
+			OnAction:      func(string, BlockAction) { gotAction = true },
+			OnModelAction: func(ModelAction) { gotModelAction = true },
+			OnMsg:         func(string, tea.Msg) { gotMsg = true },
+		},
 	}
 	wireDump(&cfg, d)
 
-	cfg.OnAction("server", AddEntry{})
-	cfg.OnModelAction(DrillOut{})
-	cfg.OnMsg("list", tea.KeyMsg{Type: tea.KeyEnter})
+	cfg.Trace.OnAction("server", AddEntry{})
+	cfg.Trace.OnModelAction(DrillOut{})
+	cfg.Trace.OnMsg("list", tea.KeyMsg{Type: tea.KeyEnter})
 	must.NoError(d.close())
 
 	must.True(gotAction)

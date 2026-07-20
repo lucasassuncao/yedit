@@ -9,8 +9,8 @@ import (
 // dispatch applies a ModelAction and returns the updated model and any Cmd.
 // All model-level mutations pass through here.
 func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
-	if m.cfg.OnModelAction != nil {
-		m.cfg.OnModelAction(a)
+	if m.cfg.Trace.OnModelAction != nil {
+		m.cfg.Trace.OnModelAction(a)
 	}
 	switch act := a.(type) {
 	case OpenBlock:

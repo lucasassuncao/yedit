@@ -47,6 +47,7 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 - [type SyncYAML](<#SyncYAML>)
 - [type ToggleField](<#ToggleField>)
 - [type ToggleHints](<#ToggleHints>)
+- [type Trace](<#Trace>)
 - [type Undo](<#Undo>)
 - [type ValidationInput](<#ValidationInput>)
   - [func NewValidationInput\(raw \[\]byte, blocks \[\]document.Block\) ValidationInput](<#NewValidationInput>)
@@ -267,7 +268,7 @@ var FormatUUID = FormatCustom("uuid", func(v string) bool {
 ```
 
 <a name="NewModelForTest"></a>
-## func [NewModelForTest](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L37>)
+## func [NewModelForTest](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L38>)
 
 ```go
 func NewModelForTest(cfg Config) (tea.Model, error)
@@ -332,7 +333,7 @@ type CommitBlock struct{}
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L178-L200>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L191-L209>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -348,27 +349,23 @@ FieldMeta.PreChecked lists sub\-fields that start checked when a new block overl
 
 ```go
 type Config struct {
-    Path                 string                               // YAML file to load; also the default save target when SavePath is empty
-    Schema               any                                  // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
-    Title                string                               // label shown in the TUI header
-    BlockPresets         presets.Source                       // optional; nil disables the preset picker inside block editors
-    DocPresets           presets.Source                       // optional; when set, p on the root list opens a whole-document template picker
-    EnableHints          bool                                 // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
-    Metadata             MetadataSource                       // field metadata displayed in the hint panel and enforced by the FromMetadata validators
-    Validators           []Validator                          // rules evaluated before every save and on the validate shortcut
-    Hidden               []string                             // top-level keys to omit from the UI entirely
-    PassthroughKeys      []string                             // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
-    Theme                theme.Theme                          // zero-value resolves to ThemeDark
-    NoDeleteConfirm      bool                                 // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
-    NoValidateOnSave     bool                                 // allow saving even when validators report errors; a warning alert is shown but does not block
-    NoSaveConfirm        bool                                 // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
-    SavePath             string                               // write to this path instead of Path; Path is still used for loading
-    SchemaRecursionDepth int                                  // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
-    OnAction             func(blockKey string, a BlockAction) // optional; called synchronously after every BlockAction is dispatched, with the key of the block editor it was applied to (e.g. for session tracing)
-    OnModelAction        func(ModelAction)                    // optional; called synchronously after every ModelAction is dispatched (e.g. for session tracing)
-    OnMsg                func(where string, msg tea.Msg)      // optional; called synchronously for every raw tea.Msg the program receives (every keystroke, resize, etc.), before it is routed. where describes the active pane/block/panel at the time (e.g. "list", "block:categories:tree:editing")
-    Dump                 bool                                 // when true, records every action and keystroke to a JSONL file; the path is reported in Result.DumpPath. Composes with OnAction/OnModelAction/OnMsg if those are also set.
-    DumpPath             string                               // optional explicit path for the Dump trace file; ignored when Dump is false. Empty falls back to a timestamped file in the OS temp dir.
+    Path                 string         // YAML file to load; also the default save target when SavePath is empty
+    Schema               any            // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
+    Title                string         // label shown in the TUI header
+    BlockPresets         presets.Source // optional; nil disables the preset picker inside block editors
+    DocPresets           presets.Source // optional; when set, p on the root list opens a whole-document template picker
+    EnableHints          bool           // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
+    Metadata             MetadataSource // field metadata displayed in the hint panel and enforced by the FromMetadata validators
+    Validators           []Validator    // rules evaluated before every save and on the validate shortcut
+    Hidden               []string       // top-level keys to omit from the UI entirely
+    PassthroughKeys      []string       // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
+    Theme                theme.Theme    // zero-value resolves to ThemeDark
+    NoDeleteConfirm      bool           // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
+    NoValidateOnSave     bool           // allow saving even when validators report errors; a warning alert is shown but does not block
+    NoSaveConfirm        bool           // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
+    SavePath             string         // write to this path instead of Path; Path is still used for loading
+    SchemaRecursionDepth int            // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
+    Trace                Trace          // session-observability hooks (OnAction/OnModelAction/OnMsg) and the built-in Dump recorder
 }
 ```
 
@@ -619,7 +616,7 @@ type Reload struct{}
 ```
 
 <a name="Result"></a>
-## type [Result](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L12-L20>)
+## type [Result](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L12-L21>)
 
 Result reports the outcome of an editor session.
 
@@ -629,14 +626,15 @@ type Result struct {
     // session. It stays true even if the user keeps editing afterwards and
     // quits with unsaved changes.
     Saved bool
-    // DumpPath is the path of the session trace file, set when Config.Dump
-    // is true. Empty when Dump is false or the dump file could not be created.
+    // DumpPath is the path of the session trace file, set when
+    // Config.Trace.Dump is true. Empty when Dump is false or the dump file
+    // could not be created.
     DumpPath string
 }
 ```
 
 <a name="Run"></a>
-### func [Run](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L30>)
+### func [Run](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L31>)
 
 ```go
 func Run(cfg Config) (Result, error)
@@ -647,7 +645,7 @@ Run starts the editor TUI and blocks until the user quits. The Config must have 
 Returns the session Result on a clean quit, or the underlying tea.Program error. A panic inside the editor is recovered and returned as an error instead of crashing the embedding program: Bubble Tea restores the terminal before the panic propagates here, so the host is left with a usable terminal and a normal error to handle.
 
 <a name="RunContext"></a>
-### func [RunContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L45>)
+### func [RunContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L46>)
 
 ```go
 func RunContext(ctx context.Context, cfg Config) (res Result, err error)
@@ -695,6 +693,21 @@ type ToggleField struct {
 
 ```go
 type ToggleHints struct{}
+```
+
+<a name="Trace"></a>
+## type [Trace](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L162-L168>)
+
+Trace bundles the editor's session\-observability hooks: the OnAction/ OnModelAction/OnMsg callbacks and the built\-in Dump\-to\-JSONL recorder built on top of them. See docs/SESSION\-TRACING.md for the full picture.
+
+```go
+type Trace struct {
+    OnAction      func(blockKey string, a BlockAction) // optional; called synchronously after every BlockAction is dispatched, with the key of the block editor it was applied to (e.g. for session tracing)
+    OnModelAction func(ModelAction)                    // optional; called synchronously after every ModelAction is dispatched (e.g. for session tracing)
+    OnMsg         func(where string, msg tea.Msg)      // optional; called synchronously for every raw tea.Msg the program receives (every keystroke, resize, etc.), before it is routed. where describes the active pane/block/panel at the time (e.g. "list", "block:categories:tree:editing")
+    Dump          bool                                 // when true, records every action and keystroke to a JSONL file; the path is reported in Result.DumpPath. Composes with OnAction/OnModelAction/OnMsg if those are also set.
+    DumpPath      string                               // optional explicit path for the Dump trace file; ignored when Dump is false. Empty falls back to a timestamped file in the OS temp dir.
+}
 ```
 
 <a name="Undo"></a>

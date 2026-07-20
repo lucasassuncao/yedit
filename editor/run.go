@@ -14,8 +14,9 @@ type Result struct {
 	// session. It stays true even if the user keeps editing afterwards and
 	// quits with unsaved changes.
 	Saved bool
-	// DumpPath is the path of the session trace file, set when Config.Dump
-	// is true. Empty when Dump is false or the dump file could not be created.
+	// DumpPath is the path of the session trace file, set when
+	// Config.Trace.Dump is true. Empty when Dump is false or the dump file
+	// could not be created.
 	DumpPath string
 }
 
@@ -49,8 +50,8 @@ func RunContext(ctx context.Context, cfg Config) (res Result, err error) {
 		}
 	}()
 
-	if cfg.Dump {
-		dumper, dumpErr := newDumpWriter(cfg.DumpPath)
+	if cfg.Trace.Dump {
+		dumper, dumpErr := newDumpWriter(cfg.Trace.DumpPath)
 		if dumpErr != nil {
 			return Result{}, fmt.Errorf("yedit: creating session dump file: %w", dumpErr)
 		}

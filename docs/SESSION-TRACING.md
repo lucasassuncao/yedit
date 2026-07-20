@@ -1,18 +1,18 @@
 # Session tracing (Dump)
 
-This document explains `editor.Config.Dump` and the lower-level `OnAction` / `OnModelAction` / `OnMsg` hooks it is built on. Use these to record what a user did in a session - keystrokes and the semantic actions they produced - for bug reports and reproduction.
+This document explains `editor.Config.Trace.Dump` and the lower-level `OnAction` / `OnModelAction` / `OnMsg` hooks it is built on. Use these to record what a user did in a session - keystrokes and the semantic actions they produced - for bug reports and reproduction.
 
 ---
 
 ## Quick start
 
-Set `Config.Dump: true`. When the session ends, `Result.DumpPath` holds the path of a JSONL trace file written to the OS temp dir (`yedit-dump-<timestamp>.jsonl`):
+Set `Config.Trace.Dump: true`. When the session ends, `Result.DumpPath` holds the path of a JSONL trace file written to the OS temp dir (`yedit-dump-<timestamp>.jsonl`):
 
 ```go
 res, err := editor.Run(editor.Config{
     Path:   "config.yaml",
     Schema: &MyConfig{},
-    Dump:   true,
+    Trace:  editor.Trace{Dump: true},
 })
 if err != nil {
     log.Fatal(err)
@@ -24,13 +24,15 @@ if res.DumpPath != "" {
 
 No other wiring is required - `Dump` composes the trace writer internally on top of the same hooks described below.
 
-Set `Config.DumpPath` to write to a specific file instead of the OS temp dir default:
+Set `Config.Trace.DumpPath` to write to a specific file instead of the OS temp dir default:
 
 ```go
 editor.Config{
     // ...
-    Dump:     true,
-    DumpPath: "./trace.jsonl", // optional; empty falls back to the temp dir default
+    Trace: editor.Trace{
+        Dump:     true,
+        DumpPath: "./trace.jsonl", // optional; empty falls back to the temp dir default
+    },
 }
 ```
 
@@ -71,7 +73,7 @@ Example: `block:categories:tree:editing` means the cursor is in the tree panel o
 
 ## Coverage: every action is captured
 
-`Config.Dump` is designed for 100% coverage - every message the editor's `Update` loop ever receives is recorded, because `OnMsg` fires unconditionally on the first line of `model.Update`, before any routing happens. Concretely this means, on top of the `"key"`/`"block"`/`"model"` events:
+`Config.Trace.Dump` is designed for 100% coverage - every message the editor's `Update` loop ever receives is recorded, because `OnMsg` fires unconditionally on the first line of `model.Update`, before any routing happens. Concretely this means, on top of the `"key"`/`"block"`/`"model"` events:
 
 - Opening a block from the root list (`openItemMsg`) - `ModelAction` has an `OpenBlock{Key}` type for this, but that path is never actually dispatched through `model.dispatch`; it shows up as `scope:"msg"`, `type:"editor.openItemMsg"` instead.
 - Ctrl+S commit/save (`commitRequestedMsg`, `doSaveMsg`, `saveResultMsg`).
@@ -95,10 +97,10 @@ Reading this: pressing `down` (seq 33) while the cursor was on the entries list 
 
 ## Lower-level hooks
 
-`Dump` is a convenience built on three `Config` fields you can also use directly (they compose with `Dump` - both fire if both are set):
+`Dump` is a convenience built on three `Config.Trace` fields you can also use directly (they compose with `Dump` - both fire if both are set):
 
 ```go
-type Config struct {
+type Trace struct {
     // ...
     OnAction      func(blockKey string, a BlockAction) // every BlockAction, with the block it applied to
     OnModelAction func(a ModelAction)                   // every ModelAction

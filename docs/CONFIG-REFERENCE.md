@@ -52,6 +52,8 @@ Every field of `editor.Config`, in one table. See the linked guide for each conc
 
 ## Session tracing
 
+All session-observability options live under `Config.Trace` (type `Trace`):
+
 | Field | Type | Description |
 |---|---|---|
 | `Dump` | `bool` | When true, records every action and keystroke to a JSONL file; the path is reported in `Result.DumpPath`. |
@@ -69,4 +71,4 @@ See [Session Tracing](SESSION-TRACING.md) for the full event schema and coverage
 | Field | Type | Description |
 |---|---|---|
 | `Saved` | `bool` | True when at least one save to disk succeeded during the session. |
-| `DumpPath` | `string` | Path of the session trace file, set when `Config.Dump` is true. |
+| `DumpPath` | `string` | Path of the session trace file, set when `Config.Trace.Dump` is true. |

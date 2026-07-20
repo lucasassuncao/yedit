@@ -142,7 +142,7 @@ func main() {
 | [Undo & Redo](docs/UNDO.md) | The two-level undo model (block editor vs document) and what is and isn't tracked |
 | [Themes](docs/THEMES.md) | Built-in themes and how to customize colors |
 | [Doc Generation](docs/DOC-GENERATION.md) | Generating Markdown reference docs and a TUI doc browser from your schema |
-| [Session Tracing](docs/SESSION-TRACING.md) | `Config.Dump` and the `OnAction`/`OnModelAction`/`OnMsg` hooks for recording a session |
+| [Session Tracing](docs/SESSION-TRACING.md) | `Config.Trace.Dump` and the `OnAction`/`OnModelAction`/`OnMsg` hooks for recording a session |
 
 Internals (for contributing to yedit itself, not for embedding it):
 

@@ -321,8 +321,8 @@ func (m model) traceLocation() string {
 func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.cfg.OnMsg != nil {
-		m.cfg.OnMsg(m.traceLocation(), msg)
+	if m.cfg.Trace.OnMsg != nil {
+		m.cfg.Trace.OnMsg(m.traceLocation(), msg)
 	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:

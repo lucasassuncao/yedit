@@ -154,6 +154,19 @@ func (f ValidatorFunc) Validate(in ValidationInput) []Violation {
 	return f(in)
 }
 
+// ─── Session tracing ─────────────────────────────────────────────────────────
+
+// Trace bundles the editor's session-observability hooks: the OnAction/
+// OnModelAction/OnMsg callbacks and the built-in Dump-to-JSONL recorder built
+// on top of them. See docs/SESSION-TRACING.md for the full picture.
+type Trace struct {
+	OnAction      func(blockKey string, a BlockAction) // optional; called synchronously after every BlockAction is dispatched, with the key of the block editor it was applied to (e.g. for session tracing)
+	OnModelAction func(ModelAction)                    // optional; called synchronously after every ModelAction is dispatched (e.g. for session tracing)
+	OnMsg         func(where string, msg tea.Msg)      // optional; called synchronously for every raw tea.Msg the program receives (every keystroke, resize, etc.), before it is routed. where describes the active pane/block/panel at the time (e.g. "list", "block:categories:tree:editing")
+	Dump          bool                                 // when true, records every action and keystroke to a JSONL file; the path is reported in Result.DumpPath. Composes with OnAction/OnModelAction/OnMsg if those are also set.
+	DumpPath      string                               // optional explicit path for the Dump trace file; ignored when Dump is false. Empty falls back to a timestamped file in the OS temp dir.
+}
+
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 // Config bundles everything the editor needs from the embedding application.
@@ -176,25 +189,21 @@ func (f ValidatorFunc) Validate(in ValidationInput) []Violation {
 // overlay opens. FieldMeta.Snippet provides the YAML inserted when a sub-field
 // is toggled on; falls back to "<fieldName>: \n" when empty.
 type Config struct {
-	Path                 string                               // YAML file to load; also the default save target when SavePath is empty
-	Schema               any                                  // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
-	Title                string                               // label shown in the TUI header
-	BlockPresets         presets.Source                       // optional; nil disables the preset picker inside block editors
-	DocPresets           presets.Source                       // optional; when set, p on the root list opens a whole-document template picker
-	EnableHints          bool                                 // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
-	Metadata             MetadataSource                       // field metadata displayed in the hint panel and enforced by the FromMetadata validators
-	Validators           []Validator                          // rules evaluated before every save and on the validate shortcut
-	Hidden               []string                             // top-level keys to omit from the UI entirely
-	PassthroughKeys      []string                             // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
-	Theme                theme.Theme                          // zero-value resolves to ThemeDark
-	NoDeleteConfirm      bool                                 // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
-	NoValidateOnSave     bool                                 // allow saving even when validators report errors; a warning alert is shown but does not block
-	NoSaveConfirm        bool                                 // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
-	SavePath             string                               // write to this path instead of Path; Path is still used for loading
-	SchemaRecursionDepth int                                  // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
-	OnAction             func(blockKey string, a BlockAction) // optional; called synchronously after every BlockAction is dispatched, with the key of the block editor it was applied to (e.g. for session tracing)
-	OnModelAction        func(ModelAction)                    // optional; called synchronously after every ModelAction is dispatched (e.g. for session tracing)
-	OnMsg                func(where string, msg tea.Msg)      // optional; called synchronously for every raw tea.Msg the program receives (every keystroke, resize, etc.), before it is routed. where describes the active pane/block/panel at the time (e.g. "list", "block:categories:tree:editing")
-	Dump                 bool                                 // when true, records every action and keystroke to a JSONL file; the path is reported in Result.DumpPath. Composes with OnAction/OnModelAction/OnMsg if those are also set.
-	DumpPath             string                               // optional explicit path for the Dump trace file; ignored when Dump is false. Empty falls back to a timestamped file in the OS temp dir.
+	Path                 string         // YAML file to load; also the default save target when SavePath is empty
+	Schema               any            // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
+	Title                string         // label shown in the TUI header
+	BlockPresets         presets.Source // optional; nil disables the preset picker inside block editors
+	DocPresets           presets.Source // optional; when set, p on the root list opens a whole-document template picker
+	EnableHints          bool           // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
+	Metadata             MetadataSource // field metadata displayed in the hint panel and enforced by the FromMetadata validators
+	Validators           []Validator    // rules evaluated before every save and on the validate shortcut
+	Hidden               []string       // top-level keys to omit from the UI entirely
+	PassthroughKeys      []string       // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
+	Theme                theme.Theme    // zero-value resolves to ThemeDark
+	NoDeleteConfirm      bool           // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
+	NoValidateOnSave     bool           // allow saving even when validators report errors; a warning alert is shown but does not block
+	NoSaveConfirm        bool           // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
+	SavePath             string         // write to this path instead of Path; Path is still used for loading
+	SchemaRecursionDepth int            // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
+	Trace                Trace          // session-observability hooks (OnAction/OnModelAction/OnMsg) and the built-in Dump recorder
 }
