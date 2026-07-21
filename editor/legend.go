@@ -96,12 +96,39 @@ type dynamicKeyMap []key.Binding
 func (d dynamicKeyMap) ShortHelp() []key.Binding  { return []key.Binding(d) }
 func (d dynamicKeyMap) FullHelp() [][]key.Binding { return nil }
 
+// dynamicRows is the row-grouped counterpart of dynamicKeyMap: used when a
+// rowKeyMap's binding list varies at runtime (the root list legend inserts
+// kbTemplates only when Config.DocPresets is set). ShortHelp flattens the
+// rows for callers that only need the full binding list (width calculations,
+// tests); Rows preserves the grouping for legend rendering.
+type dynamicRows [][]key.Binding
+
+func (d dynamicRows) ShortHelp() []key.Binding {
+	var out []key.Binding
+	for _, row := range d {
+		out = append(out, row...)
+	}
+	return out
+}
+func (d dynamicRows) FullHelp() [][]key.Binding { return nil }
+func (d dynamicRows) Rows() [][]key.Binding     { return d }
+
 type saveTailMap struct{}
 
 func (saveTailMap) ShortHelp() []key.Binding {
 	return []key.Binding{kbTab, kbCtrlUUndo, kbCtrlYRedo, kbCtrlSSaveCh, kbEscBack}
 }
 func (saveTailMap) FullHelp() [][]key.Binding { return nil }
+
+// Rows: see listExistingMap.Rows for the split rationale (navigation vs.
+// document actions). tab/esc only move focus; undo/redo/save all mutate or
+// persist the block.
+func (saveTailMap) Rows() [][]key.Binding {
+	return [][]key.Binding{
+		{kbTab, kbEscBack},
+		{kbCtrlUUndo, kbCtrlYRedo, kbCtrlSSaveCh},
+	}
+}
 
 type listPreviewMap struct{}
 
@@ -124,6 +151,16 @@ func (k listUnknownMap) ShortHelp() []key.Binding {
 }
 func (k listUnknownMap) FullHelp() [][]key.Binding { return nil }
 
+// Rows groups the legend into two lines: navigation/inspection (never
+// mutates the document) and document actions (mutation/persistence/
+// validation). See listExistingMap.Rows for the rationale.
+func (k listUnknownMap) Rows() [][]key.Binding {
+	return [][]key.Binding{
+		{kbNav, kbFilter, k.hint},
+		{kbCtrlSSave, kbCtrlDDelete, kbCtrlUUndo, kbCtrlYRedo, kbCtrlRReload, kbCtrlLValid},
+	}
+}
+
 type listExistingMap struct{ hint key.Binding }
 
 func (k listExistingMap) ShortHelp() []key.Binding {
@@ -131,12 +168,32 @@ func (k listExistingMap) ShortHelp() []key.Binding {
 }
 func (k listExistingMap) FullHelp() [][]key.Binding { return nil }
 
+// Rows groups the root list legend into two lines, split by whether the key
+// can change the document: row 0 is pure navigation/inspection, row 1 is
+// mutation/persistence/validation. Forcing this split (instead of wrapping
+// the flat ShortHelp list by width) keeps the two categories on stable,
+// predictable lines regardless of terminal width.
+func (k listExistingMap) Rows() [][]key.Binding {
+	return [][]key.Binding{
+		{kbNav, kbEnterOpen, kbFilter, k.hint},
+		{kbCtrlSSave, kbCtrlDDelete, kbCtrlUUndo, kbCtrlYRedo, kbCtrlRReload, kbCtrlLValid},
+	}
+}
+
 type listNewMap struct{ hint key.Binding }
 
 func (k listNewMap) ShortHelp() []key.Binding {
 	return []key.Binding{kbNav, kbFilter, kbEnterAdd, kbCtrlUUndo, kbCtrlYRedo, kbCtrlRReload, kbCtrlSSave, kbCtrlLValid, k.hint}
 }
 func (k listNewMap) FullHelp() [][]key.Binding { return nil }
+
+// Rows: see listExistingMap.Rows.
+func (k listNewMap) Rows() [][]key.Binding {
+	return [][]key.Binding{
+		{kbNav, kbEnterAdd, kbFilter, k.hint},
+		{kbCtrlSSave, kbCtrlUUndo, kbCtrlYRedo, kbCtrlRReload, kbCtrlLValid},
+	}
+}
 
 type presetPreviewMap struct{}
 

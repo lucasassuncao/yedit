@@ -720,7 +720,7 @@ func (tm treeModel) fieldLine(nd treeNode, ni, vi int, th resolvedTheme) string 
 	case !nd.isLeaf:
 		mark = "▸"
 	case nd.checked && nd.emptyValue:
-		mark = "◌" // present but empty: a draft that is pruned at save unless filled
+		mark = "◐" // present but empty: a draft that is pruned at save unless filled
 	case nd.checked:
 		mark = "●"
 	default:
@@ -738,9 +738,10 @@ func (tm treeModel) fieldLine(nd treeNode, ni, vi int, th resolvedTheme) string 
 		}
 		return th.availableItem.Render("  " + label)
 	case nd.checked && nd.emptyValue:
-		// Muted like an available field: it lives under ADDED but will not persist
-		// while empty, so it must not read as a committed value.
-		return th.availableItem.Render("  " + label)
+		// Warning-colored, distinct from both available (unchecked) and existing
+		// (committed): it lives under ADDED but will not persist while empty, so
+		// it must not read as either "not toggled" or "committed value".
+		return th.draftItem.Render("  " + label)
 	case nd.checked:
 		return th.existingItem.Render("  " + label)
 	case !nd.isLeaf && hasCheckedDescendant(tm.nodes, ni):

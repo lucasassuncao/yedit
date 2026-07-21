@@ -12,16 +12,18 @@ type resolvedTheme struct {
 	colors theme.Colors
 
 	// internal derived styles - computed from colors, not user-configurable
-	existingItem  lipgloss.Style
-	availableItem lipgloss.Style
-	unknownItem   lipgloss.Style
-	selectedItem  lipgloss.Style
-	sectionLabel  lipgloss.Style
-	status        lipgloss.Style
-	filterPrompt  lipgloss.Style
-	hintKey       lipgloss.Style
-	hintDim       lipgloss.Style
-	errorText     lipgloss.Style
+	existingItem    lipgloss.Style
+	availableItem   lipgloss.Style
+	unknownItem     lipgloss.Style
+	passthroughItem lipgloss.Style
+	draftItem       lipgloss.Style // checked-but-empty tree fields: will be pruned at save unless filled
+	selectedItem    lipgloss.Style
+	sectionLabel    lipgloss.Style
+	status          lipgloss.Style
+	filterPrompt    lipgloss.Style
+	hintKey         lipgloss.Style
+	hintDim         lipgloss.Style
+	errorText       lipgloss.Style
 }
 
 // resolveTheme merges t into a concrete resolvedTheme. Merge order:
@@ -61,15 +63,17 @@ func buildDerivedStyles(c theme.Colors) resolvedTheme {
 	danger := theme.Color(c.ErrorColor)
 
 	return resolvedTheme{
-		existingItem:  lipgloss.NewStyle().Foreground(success),
-		availableItem: lipgloss.NewStyle().Foreground(dim),
-		unknownItem:   lipgloss.NewStyle().Foreground(danger),
-		selectedItem:  lipgloss.NewStyle().Bold(true).Foreground(accentBright),
-		sectionLabel:  lipgloss.NewStyle().Bold(true).Foreground(accent).PaddingLeft(1),
-		status:        lipgloss.NewStyle().Foreground(muted).PaddingLeft(1),
-		filterPrompt:  lipgloss.NewStyle().Bold(true).Foreground(accentBright),
-		hintKey:       lipgloss.NewStyle().Bold(true).Foreground(accent),
-		hintDim:       lipgloss.NewStyle().Foreground(muted),
-		errorText:     lipgloss.NewStyle().Foreground(danger),
+		existingItem:    lipgloss.NewStyle().Foreground(success),
+		availableItem:   lipgloss.NewStyle().Foreground(dim),
+		unknownItem:     lipgloss.NewStyle().Foreground(danger),
+		passthroughItem: lipgloss.NewStyle().Foreground(dim),
+		draftItem:       lipgloss.NewStyle().Foreground(theme.Warning),
+		selectedItem:    lipgloss.NewStyle().Bold(true).Foreground(accentBright),
+		sectionLabel:    lipgloss.NewStyle().Bold(true).Foreground(accent).PaddingLeft(1),
+		status:          lipgloss.NewStyle().Foreground(muted).PaddingLeft(1),
+		filterPrompt:    lipgloss.NewStyle().Bold(true).Foreground(accentBright),
+		hintKey:         lipgloss.NewStyle().Bold(true).Foreground(accent),
+		hintDim:         lipgloss.NewStyle().Foreground(muted),
+		errorText:       lipgloss.NewStyle().Foreground(danger),
 	}
 }

@@ -14,10 +14,15 @@ import (
 
 // listItem represents one row in the left panel of the root editor view.
 type listItem struct {
-	Key       string
-	Existing  bool
-	Unknown   bool // key present in YAML but not in schema
-	Separator bool // visual divider row, not selectable
+	Key      string
+	Existing bool
+	Unknown  bool // key present in YAML but not in schema; not openable, excluded from AddedCount
+	// Passthrough marks a key declared in Config.PassthroughKeys: display-only.
+	// It is intentionally preserved, not a problem, so it is styled distinctly
+	// from Unknown even though it shares the same "not openable" behavior
+	// (Passthrough items also set Unknown, since there is no schema to open).
+	Passthrough bool
+	Separator   bool // visual divider row, not selectable
 }
 
 // openItemMsg is sent when the user presses Enter on a list item.
@@ -111,7 +116,7 @@ func buildListItems(knownKeys []string, existing []document.Block, passthrough m
 	var passthroughItems []listItem
 	for _, b := range existing {
 		if passthrough[b.Key] && !knownSet[b.Key] {
-			passthroughItems = append(passthroughItems, listItem{Key: b.Key, Existing: true, Unknown: true})
+			passthroughItems = append(passthroughItems, listItem{Key: b.Key, Existing: true, Unknown: true, Passthrough: true})
 		}
 	}
 	if len(passthroughItems) > 0 {
@@ -397,12 +402,18 @@ func (lm listModel) jumpToLast() listModel {
 func renderListItem(it listItem, selected bool, th resolvedTheme) string {
 	if selected {
 		mark := "+"
-		if it.Unknown {
+		switch {
+		case it.Passthrough:
+			mark = "○"
+		case it.Unknown:
 			mark = "⚠"
-		} else if it.Existing {
+		case it.Existing:
 			mark = "●"
 		}
 		return th.selectedItem.Render("▶ " + mark + "  " + it.Key)
+	}
+	if it.Passthrough {
+		return th.passthroughItem.Render("  ○  " + it.Key)
 	}
 	if it.Unknown {
 		return th.unknownItem.Render("  ⚠  " + it.Key)
