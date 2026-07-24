@@ -325,7 +325,7 @@ func (m *docTUIModel) View() tea.View {
 
 // RenderMarkdownDocsInTerminal launches the two-panel documentation TUI.
 // appName is displayed in the header bar. An optional theme.Theme controls
-// colors; zero value resolves to ThemeDark.
+// colors; zero value resolves to ThemePlain.
 func RenderMarkdownDocsInTerminal(docs DocSet, appName string, t ...theme.Theme) error {
 	if len(docs.Pages) == 0 {
 		return fmt.Errorf("no documentation to display")

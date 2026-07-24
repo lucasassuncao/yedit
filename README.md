@@ -143,6 +143,7 @@ func main() {
 | [Themes](docs/THEMES.md) | Built-in themes and how to customize colors |
 | [Doc Generation](docs/DOC-GENERATION.md) | Generating Markdown reference docs and a TUI doc browser from your schema |
 | [Session Tracing](docs/SESSION-TRACING.md) | `Config.Trace.Dump` and the `OnAction`/`OnModelAction`/`OnMsg` hooks for recording a session |
+| [Known Limitations](docs/LIMITATIONS.md) | Dependency behaviors that can surprise you, including a silent data-rewrite caveat |
 
 Internals (for contributing to yedit itself, not for embedding it):
 

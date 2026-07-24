@@ -27,7 +27,7 @@ type resolvedTheme struct {
 }
 
 // resolveTheme merges t into a concrete resolvedTheme. Merge order:
-//  1. ThemeDark defaults
+//  1. ThemePlain defaults
 //  2. t.Base.Colors (if non-nil)
 //  3. t.Colors (non-"" fields win)
 //  4. Build derived styles from resolved colors

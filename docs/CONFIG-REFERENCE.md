@@ -48,7 +48,7 @@ Every field of `editor.Config`, in one table. See the linked guide for each conc
 
 | Field | Type | Description |
 |---|---|---|
-| `Theme` | `theme.Theme` | Zero-value resolves to `ThemeDark`. See [Themes](THEMES.md). |
+| `Theme` | `theme.Theme` | Zero-value resolves to `ThemePlain`. See [Themes](THEMES.md). |
 
 ## Session tracing
 

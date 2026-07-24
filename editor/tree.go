@@ -187,9 +187,16 @@ func (tm treeModel) visibleNodes() []int {
 
 // currentNodeIdx returns the tm.nodes index under the cursor, or -1.
 func (tm treeModel) currentNodeIdx() int {
-	vis := tm.visibleNodes()
-	if tm.cursor >= 0 && tm.cursor < len(vis) {
-		return vis[tm.cursor]
+	return cursorNodeIdx(tm.cursor, tm.visibleNodes())
+}
+
+// cursorNodeIdx maps a cursor position into a precomputed visible-node index
+// list, or -1 when out of range. Factored out so Update's key handlers can
+// reuse the single visibleNodes() call Update already made instead of each
+// recomputing it via currentNodeIdx().
+func cursorNodeIdx(cursor int, vis []int) int {
+	if cursor >= 0 && cursor < len(vis) {
+		return vis[cursor]
 	}
 	return -1
 }
@@ -345,24 +352,27 @@ func (tm treeModel) Update(msg tea.KeyMsg) (treeModel, treeAction) {
 
 	switch {
 	case key.Matches(msg, kbUp):
-		return tm.moveUp(), treeNoAction
+		return tm.moveUp(vis), treeNoAction
 	case key.Matches(msg, kbDown):
-		return tm.moveDown(), treeNoAction
+		return tm.moveDown(vis), treeNoAction
 	case key.Matches(msg, kbRight):
-		return tm.handleRight()
+		return tm.handleRight(vis)
 	case key.Matches(msg, kbLeft):
 		return tm.handleLeft(vis)
 	case key.Matches(msg, kbEnter):
-		return tm.handleEnter()
+		return tm.handleEnter(vis)
 	case key.Matches(msg, kbCtrlDRemove):
-		return tm.handleRemove()
+		return tm.handleRemove(vis)
 	}
 
 	return tm, treeNoAction
 }
 
-func (tm treeModel) moveUp() treeModel {
-	vis := tm.visibleNodes()
+// moveUp/moveDown/handleRight/handleEnter/handleRemove take the caller's
+// already-computed visibleNodes() result (vis) rather than recomputing it -
+// Update calls each of these with the state unchanged since its own
+// visibleNodes() call, so a second walk of tm.nodes would just repeat it.
+func (tm treeModel) moveUp(vis []int) treeModel {
 	if len(vis) == 0 {
 		return tm
 	}
@@ -384,8 +394,7 @@ func (tm treeModel) moveUp() treeModel {
 	return tm
 }
 
-func (tm treeModel) moveDown() treeModel {
-	vis := tm.visibleNodes()
+func (tm treeModel) moveDown(vis []int) treeModel {
 	if len(vis) == 0 {
 		return tm
 	}
@@ -431,8 +440,8 @@ func (tm treeModel) clampCursor() treeModel {
 	return tm
 }
 
-func (tm treeModel) handleRight() (treeModel, treeAction) {
-	idx := tm.currentNodeIdx()
+func (tm treeModel) handleRight(vis []int) (treeModel, treeAction) {
+	idx := cursorNodeIdx(tm.cursor, vis)
 	if idx < 0 {
 		return tm, treeNoAction
 	}
@@ -448,7 +457,7 @@ func (tm treeModel) handleRight() (treeModel, treeAction) {
 }
 
 func (tm treeModel) handleLeft(vis []int) (treeModel, treeAction) {
-	idx := tm.currentNodeIdx()
+	idx := cursorNodeIdx(tm.cursor, vis)
 	if idx < 0 {
 		return tm, treeNoAction
 	}
@@ -472,8 +481,8 @@ func (tm treeModel) handleLeft(vis []int) (treeModel, treeAction) {
 // handleEnter adds the field under the cursor (Enter = universal add).
 // For treeNodeAddNew it fires treeAddNew; for unchecked leaf fields it checks
 // them; for everything else it does nothing (expand/collapse is arrows-only).
-func (tm treeModel) handleEnter() (treeModel, treeAction) {
-	idx := tm.currentNodeIdx()
+func (tm treeModel) handleEnter(vis []int) (treeModel, treeAction) {
+	idx := cursorNodeIdx(tm.cursor, vis)
 	if idx < 0 {
 		return tm, treeNoAction
 	}
@@ -506,8 +515,8 @@ func (tm treeModel) handleEnter() (treeModel, treeAction) {
 
 // handleRemove removes the item under the cursor (ctrl+d = universal remove).
 // For seq items it fires treeDeleted; for checked fields it unchecks them.
-func (tm treeModel) handleRemove() (treeModel, treeAction) {
-	idx := tm.currentNodeIdx()
+func (tm treeModel) handleRemove(vis []int) (treeModel, treeAction) {
+	idx := cursorNodeIdx(tm.cursor, vis)
 	if idx < 0 {
 		return tm, treeNoAction
 	}
@@ -626,6 +635,30 @@ func hasCheckedDescendant(nodes []treeNode, parentIdx int) bool {
 	return false
 }
 
+// checkedDescendants computes, for every node, whether hasCheckedDescendant
+// would report true - in one pass instead of one subtree walk per parent.
+// View calls this once and looks up the result per visible row; calling
+// hasCheckedDescendant directly per row would re-walk each parent's subtree
+// on every render, which is quadratic for deeply-nested schemas. Ancestor
+// bookkeeping is a stack bounded by maxTreeDepth, so this is O(n) in
+// practice regardless of nesting shape.
+func checkedDescendants(nodes []treeNode) []bool {
+	has := make([]bool, len(nodes))
+	var ancestors []int // indices of currently-open ancestors, shallowest first
+	for i, n := range nodes {
+		for len(ancestors) > 0 && nodes[ancestors[len(ancestors)-1]].depth >= n.depth {
+			ancestors = ancestors[:len(ancestors)-1]
+		}
+		if (n.isLeaf || n.openable) && n.checked {
+			for _, anc := range ancestors {
+				has[anc] = true
+			}
+		}
+		ancestors = append(ancestors, i)
+	}
+	return has
+}
+
 // View renders the tree panel content.
 func (tm treeModel) View(th resolvedTheme) string {
 	vis := tm.visibleNodes()
@@ -649,10 +682,11 @@ func (tm treeModel) View(th resolvedTheme) string {
 		end = len(vis)
 	}
 
+	checkedDesc := checkedDescendants(tm.nodes)
 	var sb strings.Builder
 	for vi := tm.offset; vi < end; vi++ {
 		ni := vis[vi]
-		sb.WriteString(tm.nodeLine(tm.nodes[ni], ni, vi, th) + "\n")
+		sb.WriteString(tm.nodeLine(tm.nodes[ni], ni, vi, th, checkedDesc) + "\n")
 	}
 
 	if hasMore {
@@ -670,7 +704,7 @@ func (tm treeModel) View(th resolvedTheme) string {
 
 // nodeLine renders a single tree row. vi is the visible index (compared against
 // the cursor); ni indexes tm.nodes (for descendant lookups).
-func (tm treeModel) nodeLine(nd treeNode, ni, vi int, th resolvedTheme) string {
+func (tm treeModel) nodeLine(nd treeNode, ni, vi int, th resolvedTheme, checkedDesc []bool) string {
 	switch nd.kind {
 	case treeNodeSeparator:
 		if nd.label == "" {
@@ -703,13 +737,13 @@ func (tm treeModel) nodeLine(nd treeNode, ni, vi int, th resolvedTheme) string {
 		}
 		return th.unknownItem.Render(indent + "⚠ " + nd.label)
 	default: // treeNodeField
-		return tm.fieldLine(nd, ni, vi, th)
+		return tm.fieldLine(nd, ni, vi, th, checkedDesc)
 	}
 }
 
 // fieldLine renders a treeNodeField row, choosing its mark and colour from the
 // node's leaf/openable/checked/expanded state.
-func (tm treeModel) fieldLine(nd treeNode, ni, vi int, th resolvedTheme) string {
+func (tm treeModel) fieldLine(nd treeNode, ni, vi int, th resolvedTheme, checkedDesc []bool) string {
 	indent := strings.Repeat("  ", nd.depth)
 	var mark string
 	switch {
@@ -744,7 +778,7 @@ func (tm treeModel) fieldLine(nd treeNode, ni, vi int, th resolvedTheme) string 
 		return th.draftItem.Render("  " + label)
 	case nd.checked:
 		return th.existingItem.Render("  " + label)
-	case !nd.isLeaf && hasCheckedDescendant(tm.nodes, ni):
+	case !nd.isLeaf && checkedDesc[ni]:
 		return th.existingItem.Render("  " + label)
 	case !nd.isLeaf:
 		return th.availableItem.Render("  " + label)

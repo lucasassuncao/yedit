@@ -44,8 +44,8 @@ type TwoColumnLayout struct {
 // is right-aligned for context such as filenames.
 func RenderHeader(title, subtitle, right string, width int) string {
 	return RenderHeaderWith(title, subtitle, right, width, Colors{
-		SelectionColor:     ThemeDark.Colors.SelectionColor,
-		AvailableItemColor: ThemeDark.Colors.AvailableItemColor,
+		SelectionColor:     ThemePlain.Colors.SelectionColor,
+		AvailableItemColor: ThemePlain.Colors.AvailableItemColor,
 	})
 }
 
@@ -93,10 +93,10 @@ func RenderTwoColumnView(layout TwoColumnLayout) string {
 // the border rows/cols).
 func RenderTitledPanel(title string, size Size, active bool, content string) string {
 	return RenderTitledPanelWith(title, size, active, content, Colors{
-		ActiveBorderColor:   ThemeDark.Colors.ActiveBorderColor,
-		InactiveBorderColor: ThemeDark.Colors.InactiveBorderColor,
-		SelectionColor:      ThemeDark.Colors.SelectionColor,
-		AvailableItemColor:  ThemeDark.Colors.AvailableItemColor,
+		ActiveBorderColor:   ThemePlain.Colors.ActiveBorderColor,
+		InactiveBorderColor: ThemePlain.Colors.InactiveBorderColor,
+		SelectionColor:      ThemePlain.Colors.SelectionColor,
+		AvailableItemColor:  ThemePlain.Colors.AvailableItemColor,
 	})
 }
 

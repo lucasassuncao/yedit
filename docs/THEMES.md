@@ -16,22 +16,54 @@ for name, t := range theme.All() {
 
 | Name | Name | Name | Name |
 |---|---|---|---|
-| `plain` | `dark` | `light` | `dracula` |
-| `monokai` | `solarized` | `banana` | `mint` |
-| `strawberry` | `blueberry` | `mango` | `watermelon` |
-| `peach` | `kiwi` | `lemon` | `orange` |
-| `grape` | `cherry` | `pineapple` | `raspberry` |
-| `lime` | `pomegranate` | `apple` | `plum` |
-| `apricot` | `dragonfruit` | `blackberry` | `tangerine` |
-| `fig` | `guava` | `acai` | `coconut` |
-| `guarana` | | | |
+| `plain` | `banana` | `mint` | `strawberry` |
+| `blueberry` | `mango` | `watermelon` | `peach` |
+| `kiwi` | `lemon` | `orange` | `grape` |
+| `cherry` | `pineapple` | `raspberry` | `lime` |
+| `pomegranate` | `apple` | `plum` | `apricot` |
+| `dragonfruit` | `blackberry` | `tangerine` | `fig` |
+| `guava` | `acai` | `coconut` | `guarana` |
+| `farzenith` | `banuk` | `nora` | `carja` |
+| `oseram` | `utaru` | `tenakth` | `quen` |
+| `mario` | `luigi` | `princesspeach` | `daisy` |
+| `yoshi` | `toad` | `rosalina` | `toadette` |
+| `wario` | `waluigi` | `bowser` | `sonic` |
+| `tails` | `knuckles` | `shadow` | `amyrose` |
+| `cream` | `rouge` | `eggman` | |
 
-`dark` (`theme.ThemeDark`) is the default when `Config.Theme` is left at its zero value. `plain` uses only ANSI 16-color codes (`"4"`, `"6"`, `"8"`, `"2"`, `"1"`) instead of hex/256-color values, for terminals with limited color support.
+`plain` (`theme.ThemePlain`) is the default when `Config.Theme` is left at its zero value. It uses only ANSI 16-color codes (`"4"`, `"6"`, `"8"`, `"2"`, `"1"`) instead of hex/256-color values, for terminals with limited color support.
+
+Note: the Super Mario character is `theme.ThemePrincessPeach` / `"princesspeach"`, not `"peach"` - that name is already taken by the fruit preset.
+
+### Grouped listing
+
+`theme.Categories()` returns the same built-in themes organized into named groups, for a `--list-themes` that wants headings instead of one flat list:
+
+```go
+for _, cat := range theme.Categories() {
+    fmt.Println(cat.Name + ":")
+    for _, name := range cat.Themes {
+        fmt.Println("  " + name)
+    }
+}
+```
+
+`plain` has no siblings of its own, so it lives under a "Miscellaneous" category rather than being left ungrouped. A test (`TestThemeRegistryHasNoDuplicateNames`) guards against a theme name being listed in two categories at once.
+
+### Interactive browser
+
+`themebrowser.BrowseInTerminal(t ...theme.Theme)` renders an inline (not full-screen) scrollable table (`↑`/`↓` or `j`/`k`, `q`/`esc`/`ctrl+c` to quit) listing every built-in theme name next to its `theme.Categories()` category. Wire it directly to a host CLI's `--list-themes` flag instead of printing plain text:
+
+```go
+import "github.com/lucasassuncao/yedit/themebrowser"
+
+themebrowser.BrowseInTerminal()
+```
 
 ```go
 editor.Run(editor.Config{
     Schema: &MyConfig{},
-    Theme:  theme.ThemeDracula,
+    Theme:  theme.ThemeGrape,
 })
 ```
 
@@ -41,7 +73,7 @@ A `Theme` is a three-layer appearance configuration:
 
 ```go
 type Theme struct {
-    Base   *Theme // optional preset to inherit from (nil → ThemeDark)
+    Base   *Theme // optional preset to inherit from (nil → ThemePlain)
     Colors Colors // per-field overrides applied on top of Base.Colors
     Styles Styles // lipgloss overrides applied on top of derived defaults
 }
@@ -70,9 +102,9 @@ Start from a built-in preset and override only what you need:
 
 ```go
 myTheme := theme.Theme{
-    Base: &theme.ThemeDracula,
+    Base: &theme.ThemeGrape,
     Colors: theme.Colors{
-        SelectionColor: "#FFB86C", // orange instead of Dracula's pink
+        SelectionColor: "#FFB86C", // orange instead of Grape's default
     },
 }
 
@@ -84,7 +116,7 @@ editor.Run(editor.Config{
 
 ## Custom theme from scratch
 
-Set every `Colors` field directly, with no `Base` (falls back to `ThemeDark` for any field left empty):
+Set every `Colors` field directly, with no `Base` (falls back to `ThemePlain` for any field left empty):
 
 ```go
 myTheme := theme.Theme{

@@ -359,7 +359,7 @@ type Config struct {
     Validators           []Validator    // rules evaluated before every save and on the validate shortcut
     Hidden               []string       // top-level keys to omit from the UI entirely
     PassthroughKeys      []string       // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
-    Theme                theme.Theme    // zero-value resolves to ThemeDark
+    Theme                theme.Theme    // zero-value resolves to ThemePlain
     NoDeleteConfirm      bool           // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
     NoValidateOnSave     bool           // allow saving even when validators report errors; a warning alert is shown but does not block
     NoSaveConfirm        bool           // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
