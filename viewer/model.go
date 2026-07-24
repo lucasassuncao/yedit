@@ -6,9 +6,9 @@ package viewer
 import (
 	"fmt"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
 
 	"github.com/lucasassuncao/yedit/presets"
 	"github.com/lucasassuncao/yedit/theme"
@@ -92,12 +92,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "pgup":
 			if m.active == paneViewport {
-				m.vp.ScrollUp(m.vp.Height / 2)
+				m.vp.ScrollUp(m.vp.Height() / 2)
 			}
 			return m, nil
 		case "pgdown":
 			if m.active == paneViewport {
-				m.vp.ScrollDown(m.vp.Height / 2)
+				m.vp.ScrollDown(m.vp.Height() / 2)
 			}
 			return m, nil
 		case "enter", "l", "right":
@@ -129,11 +129,11 @@ func (m *Model) relayout() {
 	}
 	m.list.SetSize(m.listW-2, innerH)
 
-	m.vp.Width = m.vpW - 2
-	m.vp.Height = innerH
+	m.vp.SetWidth(m.vpW - 2)
+	m.vp.SetHeight(innerH)
 
 	if r, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStylePath("dark"),
 		glamour.WithWordWrap(m.vpW-2),
 	); err == nil {
 		m.renderer = r
@@ -154,12 +154,16 @@ func (m *Model) refreshRendered() {
 	m.vp.GotoTop()
 }
 
-func (m *Model) View() string {
+func (m *Model) View() tea.View {
 	if m.width == 0 {
-		return "Loading..."
+		v := tea.NewView("Loading...")
+		v.AltScreen = true
+		return v
 	}
 	if len(m.fields) == 0 {
-		return "No presets available."
+		v := tea.NewView("No presets available.")
+		v.AltScreen = true
+		return v
 	}
 
 	field, preset := m.list.Selected()
@@ -183,13 +187,16 @@ func (m *Model) View() string {
 		legendText = "[↑/↓] navigate • [Esc/←] back to fields • [Tab] panel • [q] quit"
 	}
 	header := theme.RenderHeader("yedit", "presets", "", m.width)
-	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: "", Legend: theme.StatusBar.Render(legendText)})
+	content := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: "", Legend: theme.StatusBar.Render(legendText)})
+	v := tea.NewView(content)
+	v.AltScreen = true
+	return v
 }
 
 // Run starts the viewer TUI as a blocking call.
 func Run(src presets.Source) error {
 	m := NewModel(src)
-	p := tea.NewProgram(&m, tea.WithAltScreen())
+	p := tea.NewProgram(&m)
 	_, err := p.Run()
 	return err
 }

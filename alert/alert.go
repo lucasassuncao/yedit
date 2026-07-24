@@ -5,10 +5,11 @@
 package alert
 
 import (
+	"image/color"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/lucasassuncao/yedit/theme"
 )
@@ -61,7 +62,7 @@ func NewConfirm(title, message string, confirmCmd tea.Cmd) Model {
 	}
 }
 
-func (a Model) accentColor() lipgloss.Color {
+func (a Model) accentColor() color.Color {
 	switch a.kind {
 	case KindSuccess:
 		return theme.Success

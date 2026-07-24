@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/lucasassuncao/yedit/alert"
 )
@@ -69,7 +69,7 @@ func TestPreviewIsReadOnly(t *testing.T) {
 	m = updated.(model)
 
 	// Enter the read-only preview pane via Tab.
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(model)
 	must.Equal(panePreview, m.mode, "expected panePreview after Tab")
 
@@ -78,7 +78,7 @@ func TestPreviewIsReadOnly(t *testing.T) {
 
 	// Type characters - a read-only preview must ignore them.
 	for _, r := range "xyz: hello" {
-		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		updated, _ = m.Update(tea.KeyPressMsg{Text: string(r), Code: r})
 		m = updated.(model)
 	}
 
@@ -113,7 +113,7 @@ func TestCtrlU_blockEditorNoSnapDoesNotTouchDocument(t *testing.T) {
 	canUndoBefore := m.doc.CanUndo()
 
 	// ctrl+u with an empty undo stack must be a no-op.
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	m = updated.(model)
 
 	is.Equal(paneBlockEdit, m.mode, "ctrl+u changed pane")
@@ -178,16 +178,16 @@ f: 6
 	// Short viewport so the 6-line document overflows and can actually scroll.
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
 	m = updated.(model)
-	must.Equal(0, m.preview.YOffset, "initial YOffset should be 0")
+	must.Equal(0, m.preview.YOffset(), "initial YOffset should be 0")
 	// Navigate down to "c" (third block, line 3).
 	for i := 0; i < 2; i++ {
-		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 		m = updated.(model)
 	}
 	it := m.list.SelectedItem()
 	must.NotNil(it, "selected item should not be nil")
 	must.Equal("c", it.Key, "expected selected item c")
-	is.Equal(2, m.preview.YOffset, "YOffset following \"c\" should be 2 (block at line 3)")
+	is.Equal(2, m.preview.YOffset(), "YOffset following \"c\" should be 2 (block at line 3)")
 }
 
 // checkScreenInvariant asserts the two screen invariants that the enter* helpers
@@ -232,15 +232,15 @@ func TestScreenInvariantAcrossTransitions(t *testing.T) {
 	checkScreenInvariant(t, m, "after discard")
 
 	// list → preview → list
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(model)
 	checkScreenInvariant(t, m, "after tab to preview")
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(model)
 	checkScreenInvariant(t, m, "after tab back to list")
 
 	// list → alert (save confirm) → list (dismiss)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	m = updated.(model)
 	checkScreenInvariant(t, m, "after ctrl+s save confirm")
 	if m.mode != paneAlert {
@@ -257,10 +257,10 @@ func TestListFilterByTyping(t *testing.T) {
 	must := require.New(t)
 	lm := newListModel([]string{"alpha", "beta", "gamma"}, nil, nil, 10)
 	must.False(lm.IsFiltering(), "should not start in filtering mode")
-	lm, _ = lm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	lm, _ = lm.Update(tea.KeyPressMsg{Text: "/", Code: '/'})
 	must.True(lm.IsFiltering(), `"/" should enter filtering mode`)
 	for _, r := range "be" {
-		lm, _ = lm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		lm, _ = lm.Update(tea.KeyPressMsg{Text: string(r), Code: r})
 	}
 	got := lm.filteredItems()
 	if is.Len(got, 1, `filter "be" should match exactly one item`) {
@@ -290,21 +290,21 @@ func TestRootHintPanelToggle(t *testing.T) {
 
 	// EnableHints: true → panel visible on start.
 	must.True(m.showHint, "EnableHints: true should show the hint panel on start")
-	view := m.View()
+	view := m.viewContent()
 	is.Contains(view, "Hint/Example", "view should show the Hint/Example panel when EnableHints is true")
 	is.Contains(view, "object", "hint should show the selected field's type (server → object)")
 
 	// "h" hides the panel.
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	updated, _ = m.Update(tea.KeyPressMsg{Text: "h", Code: 'h'})
 	m = updated.(model)
 	must.False(m.showHint, "pressing h should hide the hint panel")
-	is.NotContains(m.View(), "Hint/Example", "hint panel should be hidden after pressing h")
+	is.NotContains(m.viewContent(), "Hint/Example", "hint panel should be hidden after pressing h")
 
 	// "h" again shows it.
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	updated, _ = m.Update(tea.KeyPressMsg{Text: "h", Code: 'h'})
 	m = updated.(model)
 	must.True(m.showHint, "pressing h again should re-enable the hint panel")
-	is.Contains(m.View(), "Hint/Example", "hint panel should be visible after toggling back on")
+	is.Contains(m.viewContent(), "Hint/Example", "hint panel should be visible after toggling back on")
 }
 
 // TestReloadFromDisk covers ctrl+r in the main list: a clean document reloads
@@ -322,7 +322,7 @@ func TestReloadFromDisk(t *testing.T) {
 	// Clean document: ctrl+r dispatches an async reload cmd; execute it.
 	must.NoError(os.WriteFile(path, []byte("server:\n  host: b\n"), 0o600))
 	var reloadCmd tea.Cmd
-	updated, reloadCmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	updated, reloadCmd = m.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
 	m = updated.(model)
 	must.Equal(paneList, m.mode, "clean reload should not prompt")
 	if reloadCmd != nil {
@@ -335,10 +335,10 @@ func TestReloadFromDisk(t *testing.T) {
 	m.doc, err = m.doc.Insert("extra: 1\n")
 	must.NoError(err, "Insert")
 	must.NoError(os.WriteFile(path, []byte("server:\n  host: c\n"), 0o600))
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
 	m = updated.(model)
 	must.Equal(paneAlert, m.mode, "dirty reload should prompt")
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "y", Code: 'y'})
 	m = updated.(model)
 	must.NotNil(cmd, "confirming the alert should produce a command")
 	// cmd() fires confirmedReloadMsg → execReload returns cmdReload
@@ -368,14 +368,14 @@ func TestFilterAcceptsJK(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	updated, _ = m.Update(tea.KeyPressMsg{Text: "/", Code: '/'})
 	m = updated.(model)
 	for _, r := range "unknown" {
-		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		updated, _ = m.Update(tea.KeyPressMsg{Text: string(r), Code: r})
 		m = updated.(model)
 	}
 	must.Equal("unknown", m.list.filter, "filter text after typing")
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(model)
 
 	sel := m.list.SelectedItem()

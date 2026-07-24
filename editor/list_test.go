@@ -3,7 +3,7 @@ package editor
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -28,7 +28,7 @@ func TestFilterEnter_clampScrollApplied(t *testing.T) {
 	lm.filtering = true
 	lm.fCursor = 7 // "h" is at index 7 in the full list (no separators)
 
-	lm, _ = lm.updateFilter(tea.KeyMsg{Type: tea.KeyEnter})
+	lm, _ = lm.updateFilter(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	is.False(lm.filtering, "filtering should be cleared after enter")
 	is.Equal(7, lm.cursor, "cursor should point to the selected item")
@@ -47,7 +47,7 @@ func TestFilterBackspace_removesWholeRune(t *testing.T) {
 	lm.filtering = true
 	lm.filter = "conç"
 
-	lm, _ = lm.updateFilter(tea.KeyMsg{Type: tea.KeyBackspace})
+	lm, _ = lm.updateFilter(tea.KeyPressMsg{Code: tea.KeyBackspace})
 
 	is.Equal("con", lm.filter, "backspace must remove the whole multibyte rune")
 }

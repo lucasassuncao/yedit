@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/schema"
@@ -240,7 +240,7 @@ func TestToggleChildUnderEmptyParent(t *testing.T) {
 	}, 120, 40)
 	be = expandAll(be)
 	be = cursorToLabel(be, "path")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	is.Contains(be.yamlEditor.Value(), "path:", "toggling source.path did not add the field")
 }
 

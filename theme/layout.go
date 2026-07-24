@@ -1,9 +1,10 @@
 package theme
 
 import (
+	"image/color"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -43,8 +44,8 @@ type TwoColumnLayout struct {
 // is right-aligned for context such as filenames.
 func RenderHeader(title, subtitle, right string, width int) string {
 	return RenderHeaderWith(title, subtitle, right, width, Colors{
-		SelectionColor:     string(AccentBright),
-		AvailableItemColor: string(Dim),
+		SelectionColor:     ThemeDark.Colors.SelectionColor,
+		AvailableItemColor: ThemeDark.Colors.AvailableItemColor,
 	})
 }
 
@@ -92,10 +93,10 @@ func RenderTwoColumnView(layout TwoColumnLayout) string {
 // the border rows/cols).
 func RenderTitledPanel(title string, size Size, active bool, content string) string {
 	return RenderTitledPanelWith(title, size, active, content, Colors{
-		ActiveBorderColor:   string(Accent),
-		InactiveBorderColor: string(Muted),
-		SelectionColor:      string(AccentBright),
-		AvailableItemColor:  string(Dim),
+		ActiveBorderColor:   ThemeDark.Colors.ActiveBorderColor,
+		InactiveBorderColor: ThemeDark.Colors.InactiveBorderColor,
+		SelectionColor:      ThemeDark.Colors.SelectionColor,
+		AvailableItemColor:  ThemeDark.Colors.AvailableItemColor,
 	})
 }
 
@@ -110,7 +111,7 @@ func RenderTitledPanelWith(title string, size Size, active bool, content string,
 		height = 3
 	}
 
-	var borderColor, titleColor lipgloss.Color
+	var borderColor, titleColor color.Color
 	if active {
 		borderColor = lipgloss.Color(c.ActiveBorderColor)
 		titleColor = lipgloss.Color(c.SelectionColor)
@@ -149,12 +150,16 @@ func RenderTitledPanelWith(title string, size Size, active bool, content string,
 	}
 	content = strings.Join(lines, "\n")
 
+	// v2's Width/Height now describe the total block size including active
+	// border edges (v1 sized only the content and added the border on top),
+	// so left/right border cells must be added back to keep innerW the
+	// actual content width.
 	body := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderTop(false).
 		BorderForeground(borderColor).
-		Width(innerW).
-		Height(height - 2).
+		Width(innerW + 2).
+		Height(height - 1).
 		Render(content)
 
 	return lipgloss.JoinVertical(lipgloss.Left, top, body)

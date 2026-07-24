@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/schema"
@@ -83,7 +83,7 @@ func TestNestedMapFieldIsOpenable(t *testing.T) {
 func TestEnterOnNestedMapEmitsOpenChild(t *testing.T) {
 	be := newBlockEdit(Config{}, ceStructSpec(), 100, 40)
 	be = cursorToLabel(be, "httproutes")
-	_, cmd := be.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := be.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("Enter on httproutes produced no command")
 	}
@@ -147,7 +147,7 @@ func TestDrillInCommitsThroughCanonicalTree(t *testing.T) {
 
 	// Ctrl+S emits a commit request; the model commits the whole stack through the
 	// canonical tree and returns to the list.
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	m = updated.(model)
 	must.NotNil(cmd, "ctrl+s should emit a commit request")
 	updated, _ = m.Update(cmd())
@@ -219,7 +219,7 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 	is.True(m.topBE().dirty, "block should be dirty after keeping child edits")
 
 	// Ctrl+S then persists the kept edit through the canonical tree.
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	m = updated.(model)
 	must.NotNil(cmd, "ctrl+s should emit a commit request")
 	updated, _ = m.Update(cmd())
@@ -338,7 +338,7 @@ func TestEscKeyFromSeqNavInsideMapNav(t *testing.T) {
 
 	// Send the actual ESC key — updateKey must emit drillOutMsg as a cmd
 	// (not drillOutMsg directly) because len(be.focus) > 0.
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2, "after ESC key: stack not yet popped (cmd pending)")
 	must.NotNil(cmd, "ESC in a nested editor must return a non-nil cmd (drillOutMsg)")
@@ -398,7 +398,7 @@ func TestDrillOutFromEmptyParent(t *testing.T) {
 	must.Len(m.blockEdits, 2, "stack depth after drilling into servers")
 
 	// ESC from the child editor must pop back to gateway, not abort.
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(model)
 	must.NotNil(cmd, "ESC in nested editor must return drillOutMsg cmd")
 	msg := cmd()
@@ -491,7 +491,7 @@ func TestDrillOutFromEmptyList(t *testing.T) {
 	must.Len(m.blockEdits, 2)
 
 	// Drill back out immediately.
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(model)
 	must.NotNil(cmd)
 	updated, _ = m.Update(cmd())
@@ -619,7 +619,7 @@ func TestMapNavDrillEmitsMapEntrySeg(t *testing.T) {
 	// Expand the k1 entry so its "inner" child becomes visible, then drill in.
 	be.tree = be.tree.withNodeMutated(0, func(n *treeNode) { n.expanded = true })
 	be = cursorToLabel(be, "inner")
-	_, cmd := be.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := be.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	must.NotNil(cmd, "Enter on an openable field must emit a command")
 	msg, ok := cmd().(openChildMsg)
 	must.True(ok, "expected openChildMsg, got %T", cmd())

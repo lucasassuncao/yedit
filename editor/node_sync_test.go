@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/schema"
@@ -95,7 +95,7 @@ func TestSOT_ToggleWhileBufferInvalid(t *testing.T) {
 	// Toggle a field via the tree.
 	be.active = blockEditPanelTree
 	be = cursorToLabel(be, "output")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	if n, ok := nodeByLabel(be, "output"); !ok || !n.checked {
 		t.Error("output should be checked after toggling it on")
@@ -114,7 +114,7 @@ func TestSOT_ToggleSequenceConsistency(t *testing.T) {
 
 	for _, label := range []string{"output", "regex", "path", "log-file"} {
 		be = cursorToLabel(be, label)
-		be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+		be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 		be = expandAll(be)
 		assertTreeMatchesNode(t, be)
 	}
@@ -184,7 +184,7 @@ func TestSOT_CollectionToggleWhileBufferInvalid(t *testing.T) {
 
 	be.active = blockEditPanelTree
 	be = cursorToLabel(be, "path")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	entry := entryValueNode(&be.node, false, 0)
 	if !keyExistsInNode(entry, []string{"source", "path"}) {
@@ -214,7 +214,7 @@ func TestSOT_CollectionAddDeleteConsistency(t *testing.T) {
 
 	// Add an entry via the [+ add new] row.
 	be = cursorToAddNew(be)
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if got := entryCount(&be.node, false); got != 3 {
 		t.Fatalf("after add, entry count = %d, want 3", got)
 	}
@@ -272,7 +272,7 @@ func TestSOT_ToggleRoundTripNode(t *testing.T) {
 	be = expandAll(be)
 
 	be = cursorToLabel(be, "regex")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !keyExistsInNode(&be.node, []string{"source", "filter", "regex"}) {
 		t.Fatalf("regex not created:\n%s", be.yamlEditor.Value())
 	}

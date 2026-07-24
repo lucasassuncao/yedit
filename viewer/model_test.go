@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // tallSource returns a preset far taller than any test viewport so the right
@@ -20,15 +20,15 @@ func (tallSource) PresetYAML(f, n string) (string, error) {
 func key(s string) tea.KeyMsg {
 	switch s {
 	case "tab":
-		return tea.KeyMsg{Type: tea.KeyTab}
+		return tea.KeyPressMsg{Code: tea.KeyTab}
 	case "up":
-		return tea.KeyMsg{Type: tea.KeyUp}
+		return tea.KeyPressMsg{Code: tea.KeyUp}
 	case "down":
-		return tea.KeyMsg{Type: tea.KeyDown}
+		return tea.KeyPressMsg{Code: tea.KeyDown}
 	case "pgdn":
-		return tea.KeyMsg{Type: tea.KeyPgDown}
+		return tea.KeyPressMsg{Code: tea.KeyPgDown}
 	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	return tea.KeyPressMsg{Text: s, Code: []rune(s)[0]}
 }
 
 func newTallModel(t *testing.T) *Model {
@@ -46,20 +46,20 @@ func TestViewportPaneScrolls(t *testing.T) {
 	}
 
 	m.Update(key("down"))
-	if m.vp.YOffset != 1 {
-		t.Errorf("YOffset after down = %d, want 1", m.vp.YOffset)
+	if m.vp.YOffset() != 1 {
+		t.Errorf("YOffset after down = %d, want 1", m.vp.YOffset())
 	}
 
 	m.Update(key("pgdn"))
-	if m.vp.YOffset <= 1 {
-		t.Errorf("YOffset after pgdn = %d, want > 1", m.vp.YOffset)
+	if m.vp.YOffset() <= 1 {
+		t.Errorf("YOffset after pgdn = %d, want > 1", m.vp.YOffset())
 	}
 
 	m.Update(key("up"))
-	after := m.vp.YOffset
+	after := m.vp.YOffset()
 	m.Update(key("up"))
-	if m.vp.YOffset >= after && after > 0 {
-		t.Errorf("up did not scroll back (offset %d -> %d)", after, m.vp.YOffset)
+	if m.vp.YOffset() >= after && after > 0 {
+		t.Errorf("up did not scroll back (offset %d -> %d)", after, m.vp.YOffset())
 	}
 }
 
@@ -67,14 +67,14 @@ func TestViewportScrollResetsOnSelectionChange(t *testing.T) {
 	m := newTallModel(t)
 	m.Update(key("tab"))
 	m.Update(key("pgdn"))
-	if m.vp.YOffset == 0 {
+	if m.vp.YOffset() == 0 {
 		t.Fatal("precondition: viewport should be scrolled")
 	}
 
 	m.Update(key("tab"))  // back to the list
 	m.Update(key("down")) // select another field
-	if m.vp.YOffset != 0 {
-		t.Errorf("YOffset after selection change = %d, want 0", m.vp.YOffset)
+	if m.vp.YOffset() != 0 {
+		t.Errorf("YOffset after selection change = %d, want 0", m.vp.YOffset())
 	}
 }
 
@@ -85,7 +85,7 @@ func TestListPaneIgnoresViewportKeysWhenUnfocused(t *testing.T) {
 	if f != "beta" {
 		t.Errorf("field after down = %q, want beta", f)
 	}
-	if m.vp.YOffset != 0 {
-		t.Errorf("viewport scrolled while list focused: YOffset = %d", m.vp.YOffset)
+	if m.vp.YOffset() != 0 {
+		t.Errorf("viewport scrolled while list focused: YOffset = %d", m.vp.YOffset())
 	}
 }

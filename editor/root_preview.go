@@ -1,12 +1,14 @@
 package editor
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/glamour/styles"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
+	"charm.land/glamour/v2/styles"
 
 	"github.com/lucasassuncao/yedit/render"
 	"github.com/lucasassuncao/yedit/theme"
@@ -60,16 +62,19 @@ func (m model) scrollPreviewToSelected() model {
 // It starts from the dark style (or the colorless ASCII style under NO_COLOR)
 // and trims glamour's default chrome: the document and code-block left margins
 // stack to ~4 columns and the block prefix/suffix add blank lines, all wasteful
-// inside a panel that already has its own border. A single-column margin is
-// kept. Returns nil on error, in which case renderPreviewYAML falls back to
-// plain text.
+// inside a panel that already has its own border. No margin is kept - the
+// gutter rendered alongside the content (previewGutter, numberPreviewLines,
+// or the YAML editor's own line-number prompt) already ends in a space, so an
+// extra glamour margin would double that gap and misalign Preview against the
+// YAML editor. Returns nil on error, in which case renderPreviewYAML falls
+// back to plain text.
 func newPreviewRenderer(wrap int) *glamour.TermRenderer {
 	cfg := styles.DarkStyleConfig
 	if theme.NoColor() {
 		cfg = styles.NoTTYStyleConfig
 	}
-	one, zero := uint(1), uint(0)
-	cfg.Document.Margin = &one
+	zero := uint(0)
+	cfg.Document.Margin = &zero
 	cfg.Document.BlockPrefix = ""
 	cfg.Document.BlockSuffix = ""
 	cfg.CodeBlock.Margin = &zero
@@ -136,4 +141,22 @@ func clampLines(s string, maxLines int) string {
 func (m model) refreshPreview() model {
 	m.preview.SetContent(renderPreviewYAML(string(m.doc.Raw()), m.previewRenderer))
 	return m
+}
+
+// previewGutterWidth is the fixed real-width, in cells, of previewGutter's
+// output ("%4d │ "). The viewport's own gutter-width probe calls the
+// GutterFunc with a zero-value GutterContext, so the format must not depend
+// on ctx.TotalLines or the probed width would mismatch the width used when
+// actually rendering lines.
+const previewGutterWidth = 7
+
+// previewGutter renders a fixed-width line-number column for the YAML
+// preview, styled to match the rest of the muted/secondary UI text.
+func previewGutter(rt resolvedTheme) viewport.GutterFunc {
+	return func(ctx viewport.GutterContext) string {
+		if ctx.Index >= ctx.TotalLines {
+			return rt.hintDim.Render("     │ ")
+		}
+		return rt.hintDim.Render(fmt.Sprintf("%4d │ ", ctx.Index+1))
+	}
 }

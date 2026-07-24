@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/lucasassuncao/yedit/schema"
 )
 
@@ -114,7 +114,7 @@ func TestScrollLinesTo(t *testing.T) {
 
 // pressDown drives one down-arrow through the tree panel handler.
 func pressDown(be blockEditState) blockEditState {
-	be2, _ := be.updateTreePanel(tea.KeyMsg{Type: tea.KeyDown})
+	be2, _ := be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyDown})
 	return be2
 }
 
@@ -158,9 +158,9 @@ func TestToggleOnFollowsInsertedField(t *testing.T) {
 	be = cursorToVisibleNode(t, be, "source")
 
 	// Expand the inline struct parent, then check its leaf via Enter.
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyRight})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyRight})
 	be = cursorToVisibleNode(t, be, "filter")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	line := be.followTargetLine()
 	must.Greater(line, 0, "toggled-on field must exist in the buffer now")

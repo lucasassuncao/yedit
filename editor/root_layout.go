@@ -22,7 +22,7 @@ func (m model) relayout() model {
 		m.innerH = 1
 	}
 	m.list = m.list.SetHeight(m.innerH)
-	m.preview.Width = previewW - 2
+	m.preview.SetWidth(previewW - 2)
 	ph := m.innerH
 	if m.showHint {
 		ph = m.previewPanelH()
@@ -30,13 +30,17 @@ func (m model) relayout() model {
 	if ph < 1 {
 		ph = 1
 	}
-	m.preview.Height = ph
-	m.previewRenderer = newPreviewRenderer(m.preview.Width)
+	m.preview.SetHeight(ph)
+	wrap := m.preview.Width() - previewGutterWidth
+	if wrap < 1 {
+		wrap = 1
+	}
+	m.previewRenderer = newPreviewRenderer(wrap)
 	m = m.refreshPreview()
 	// After a resize the viewport height may have shrunk; clamp the scroll so
 	// it cannot exceed the new view boundary.
-	if m.preview.YOffset > m.preview.TotalLineCount()-m.preview.Height {
-		maxOffset := m.preview.TotalLineCount() - m.preview.Height
+	if m.preview.YOffset() > m.preview.TotalLineCount()-m.preview.Height() {
+		maxOffset := m.preview.TotalLineCount() - m.preview.Height()
 		if maxOffset < 0 {
 			maxOffset = 0
 		}

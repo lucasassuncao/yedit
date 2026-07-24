@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textarea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
 )
@@ -131,7 +131,7 @@ func TestCtrlDOnFilledOpenableAsksRemove(t *testing.T) {
 	be.tree = be.collectionDeriveTree()
 	be = cursorToFieldExpanded(be, "any")
 
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be, _ = be.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	is.Equal(modeConfirming, be.mode, "ctrl+d on a filled openable should open the remove confirm")
 }
 
@@ -145,7 +145,7 @@ func TestCtrlDOnEmptyOpenableNoop(t *testing.T) {
 	be.tree = be.collectionDeriveTree()
 	be = cursorToFieldExpanded(be, "any")
 
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be, _ = be.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	is.Equal(modeEditing, be.mode, "ctrl+d on an empty openable should be a no-op")
 }
 
@@ -173,13 +173,13 @@ func TestPresetBrowser_updateAndSelection(t *testing.T) {
 	keyOf := func(s string) tea.KeyMsg {
 		switch s {
 		case "enter":
-			return tea.KeyMsg{Type: tea.KeyEnter}
+			return tea.KeyPressMsg{Code: tea.KeyEnter}
 		case "esc":
-			return tea.KeyMsg{Type: tea.KeyEsc}
+			return tea.KeyPressMsg{Code: tea.KeyEsc}
 		case "tab":
-			return tea.KeyMsg{Type: tea.KeyTab}
+			return tea.KeyPressMsg{Code: tea.KeyTab}
 		default:
-			return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+			return tea.KeyPressMsg{Text: s, Code: []rune(s)[0]}
 		}
 	}
 
@@ -187,7 +187,7 @@ func TestPresetBrowser_updateAndSelection(t *testing.T) {
 		action presetAction
 		name   string
 	)
-	pb, action, _ = pb.Update(tea.KeyMsg{Type: tea.KeyUp}, false)
+	pb, action, _ = pb.Update(tea.KeyPressMsg{Code: tea.KeyUp}, false)
 	is.Equal(presetNone, action, "up should not trigger action")
 	is.Equal(0, pb.cursor, "up should move cursor to 0")
 
@@ -381,7 +381,7 @@ func TestUndo_structFieldRemove(t *testing.T) {
 	be := newBlockEdit(Config{}, spec, 100, 40)
 	want := be.yamlEditor.Value()
 
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be, _ = be.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 
 	must.NotEmpty(be.undoStack, "undoStack must be non-empty after field remove")
 	is.NotContains(be.yamlEditor.Value(), "output:", "output still present after remove")
@@ -400,7 +400,7 @@ func TestUndo_structFieldRemoveWithContent(t *testing.T) {
 	want := be.yamlEditor.Value()
 
 	// ctrl+d on output (value "both") → shows confirm dialog.
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be, _ = be.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	must.Equal(modeConfirming, be.mode, "expected modeConfirming after ctrl+d on field with content")
 	// YAML unchanged until the user confirms.
 	is.Contains(be.yamlEditor.Value(), "output:", "YAML must not change before confirmation")
@@ -441,8 +441,8 @@ func TestUndo_structFieldAdd(t *testing.T) {
 	want := be.yamlEditor.Value()
 
 	// Navigate to output (AVAILABLE section) and add it with Enter.
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyDown})
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	be, _ = be.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	must.NotEmpty(be.undoStack, "undoStack must be non-empty after field add")
 	is.Contains(be.yamlEditor.Value(), "output:", "output missing after add")
@@ -461,7 +461,7 @@ func TestUndo_seqItemDelete(t *testing.T) {
 	wantBase := nodeToContent("categories", &be.node)
 
 	// ctrl+d on the first item (alpha) now confirms before deleting.
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be, _ = be.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	must.Equal(modeConfirming, be.mode, "ctrl+d on a seq item should confirm first")
 	be = be.dispatch(DeleteEntry{SeqIdx: 0})
 
@@ -483,8 +483,8 @@ func TestUndo_seqItemAdd(t *testing.T) {
 	wantBase := nodeToContent("categories", &be.node)
 
 	// Navigate to [+ add new] and press Enter.
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyDown})
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	be, _ = be.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	must.NotEmpty(be.undoStack, "undoStack must be non-empty after seq item add")
 	is.Equal(2, seqItemCount(be), "after add seq item count")
@@ -789,7 +789,7 @@ func TestCtrlDRemovesNestedParentBlock(t *testing.T) {
 	}
 	be = cursorToLabel(be, "before")
 
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	must.Equal(modeConfirming, be.mode, "ctrl+d on nested parent did not offer removal")
 
 	// Locate the captured "before" node index and confirm the removal.
@@ -830,7 +830,7 @@ func TestRedo_structFieldRemove(t *testing.T) {
 	be := newBlockEdit(Config{}, spec, 100, 40)
 	original := be.yamlEditor.Value()
 
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be, _ = be.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	removed := be.yamlEditor.Value()
 	must.NotContains(removed, "output:", "output still present after remove")
 
@@ -865,12 +865,12 @@ func TestRedo_clearedByNewMutation(t *testing.T) {
 	}
 	be := newBlockEdit(Config{}, spec, 100, 40)
 
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be, _ = be.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	be = be.restoreUndo()
 	must.NotEmpty(be.redoStack, "redoStack must be non-empty after undo")
 
 	// New mutation (remove again) must clear the redo stack.
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be, _ = be.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	is.Empty(be.redoStack, "redoStack must be cleared by a new mutation")
 }
 
@@ -891,17 +891,17 @@ func TestUndo_treelessRetypeAfterUndo(t *testing.T) {
 	baseline := be.yamlEditor.Value()
 
 	typeRune := func(r rune) {
-		be, _ = be.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		be, _ = be.Update(tea.KeyPressMsg{Text: string(r), Code: r})
 	}
 
 	typeRune('x')
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	be, _ = be.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	must.Equal(baseline, be.yamlEditor.Value(), "first undo must restore the opening content")
 
 	typeRune('y')
 	is.Empty(be.redoStack, "a new edit after undo must discard the redo entry")
 
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	be, _ = be.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	is.Equal("Undone.", be.statusMsg, "second undo must work after retyping")
 	is.Equal(baseline, be.yamlEditor.Value(), "second undo must restore the pre-retype content")
 }
@@ -1097,7 +1097,7 @@ func TestTreelessBlock_UndoRestoresInitialContent(t *testing.T) {
 	must.Empty(be.undoStack, "a freshly opened editor must have an empty undo stack")
 	original := be.yamlEditor.Value()
 
-	be, _ = be.updateKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	be, _ = be.updateKey(tea.KeyPressMsg{Text: "x", Code: 'x'})
 	must.NotEqual(original, be.yamlEditor.Value(), "typing must change the buffer")
 
 	be = be.restoreUndo()
@@ -1126,11 +1126,52 @@ func TestHintScroll_ReachesEndOfLongContent(t *testing.T) {
 	wantMax := lines - be.hintH()
 	must.Greater(wantMax, be.hintH()-1, "test setup: content must exceed twice the panel height")
 
-	down := tea.KeyMsg{Type: tea.KeyDown}
+	down := tea.KeyPressMsg{Code: tea.KeyDown}
 	for range lines * 2 {
 		be, _ = be.handleHintKey(down)
 	}
 	is.Equal(wantMax, be.hintScroll, "scroll must reach the last panel-full of the hint content")
+}
+
+// TestHintToggle_HKeyShowsAndHides guards the overlay's "h" hint-visibility
+// toggle: it must mirror the root list view (show/hide, restore focus off a
+// hidden panel) and must not fire while the YAML panel has focus, where "h"
+// is a character to type.
+func TestHintToggle_HKeyShowsAndHides(t *testing.T) {
+	is := assert.New(t)
+	must := require.New(t)
+	cfg := Config{
+		EnableHints: true,
+		Metadata: MetadataFunc(func(block, fieldPath string) FieldMeta {
+			return FieldMeta{Description: "toggle"}
+		}),
+	}
+	be := newBlockEdit(cfg, blockSpec{key: "debug", kind: schema.KindPrimitive, content: "debug: false\n"}, 100, 40)
+	must.True(be.showHint, "EnableHints: true should show the hint panel on start")
+	be.active = blockEditPanelTree // debug is tree-less and opens on the YAML panel; move off it to test the toggle
+
+	h := tea.KeyPressMsg{Text: "h", Code: 'h'}
+	be, _ = be.updateKey(h)
+	must.False(be.showHint, "pressing h should hide the hint panel")
+	is.NotContains(be.View(nil), "Hint/Example", "hint panel should be hidden after pressing h")
+
+	be, _ = be.updateKey(h)
+	must.True(be.showHint, "pressing h again should re-enable the hint panel")
+	is.Contains(be.View(nil), "Hint/Example", "hint panel should be visible after toggling back on")
+
+	// Hiding while the hint panel has focus must restore focus to the panel
+	// that had it before.
+	be.prevActive = blockEditPanelTree
+	be.active = blockEditPanelHint
+	be, _ = be.updateKey(h)
+	is.Equal(blockEditPanelTree, be.active, "hiding the focused hint panel should restore the previous focus")
+
+	// "h" typed into the YAML editor must insert the character, not toggle.
+	be.showHint = true
+	be.active = blockEditPanelYAML
+	before := be.showHint
+	be, _ = be.updateKey(h)
+	is.Equal(before, be.showHint, "h while the YAML panel is focused must not toggle the hint panel")
 }
 
 // FuzzStructInvariants feeds random action sequences into a struct block editor
@@ -1181,11 +1222,11 @@ func applyFuzzAction(be blockEditState, a byte) blockEditState {
 	vis := be.tree.visibleNodes()
 	switch a % 5 {
 	case 0:
-		be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyDown})
+		be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyDown})
 	case 1:
-		be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyUp})
+		be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyUp})
 	case 2:
-		be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+		be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 		be = expandAll(be)
 	case 3:
 		if be.tree.cursor >= 0 && be.tree.cursor < len(vis) {
@@ -1202,7 +1243,7 @@ func applyFuzzAction(be blockEditState, a byte) blockEditState {
 			}
 		}
 	case 4:
-		be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyRight})
+		be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyRight})
 	}
 	return be
 }

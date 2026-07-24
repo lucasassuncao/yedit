@@ -3,7 +3,7 @@ package editor
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -177,7 +177,7 @@ func TestNavigateBlocked_CursorSnapsBack(t *testing.T) {
 	be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value(), Checkpoint: false})
 	must.True(be.dirty, "an unparseable buffer must read dirty")
 
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyDown})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyDown})
 
 	is.Equal(0, be.coll.current, "the loaded entry must not change")
 	is.Equal(errParse, be.editorErr.kind, "navigation must be refused with a parse error")

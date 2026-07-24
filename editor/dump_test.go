@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/cursor"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/cursor"
+	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -46,7 +46,7 @@ func TestWireDump_CapturesKeyBlockAndModelEvents(t *testing.T) {
 	cfg := Config{}
 	wireDump(&cfg, d)
 
-	cfg.Trace.OnMsg("list", tea.KeyMsg{Type: tea.KeyEnter})
+	cfg.Trace.OnMsg("list", tea.KeyPressMsg{Code: tea.KeyEnter})
 	cfg.Trace.OnAction("server", ToggleField{NodeIdx: 2, Checked: true})
 	cfg.Trace.OnModelAction(DrillOut{})
 	must.NoError(d.close())
@@ -119,14 +119,14 @@ func TestWireDump_FiltersNoise(t *testing.T) {
 	wireDump(&cfg, d)
 
 	cm := cursor.New()
-	blinkCanceledCmd := cm.BlinkCmd()
-	_ = cm.BlinkCmd() // cancels the context blinkCanceledCmd is waiting on
+	blinkCanceledCmd := cm.Blink()
+	_ = cm.Blink() // cancels the context blinkCanceledCmd is waiting on
 
 	cfg.Trace.OnMsg("block:server:tree:editing", cursor.BlinkMsg{})
 	cfg.Trace.OnMsg("block:server:tree:editing", cursor.Blink())     // unexported cursor.initialBlinkMsg
 	cfg.Trace.OnMsg("block:server:tree:editing", blinkCanceledCmd()) // unexported cursor.blinkCanceled
 	cfg.Trace.OnMsg("list", clearStatusMsg{})
-	cfg.Trace.OnMsg("list", tea.KeyMsg{Type: tea.KeyEnter}) // control: must still be recorded
+	cfg.Trace.OnMsg("list", tea.KeyPressMsg{Code: tea.KeyEnter}) // control: must still be recorded
 	must.NoError(d.close())
 
 	events := readDumpEvents(t, path)
@@ -155,7 +155,7 @@ func TestWireDump_PreservesExistingHooks(t *testing.T) {
 
 	cfg.Trace.OnAction("server", AddEntry{})
 	cfg.Trace.OnModelAction(DrillOut{})
-	cfg.Trace.OnMsg("list", tea.KeyMsg{Type: tea.KeyEnter})
+	cfg.Trace.OnMsg("list", tea.KeyPressMsg{Code: tea.KeyEnter})
 	must.NoError(d.close())
 
 	must.True(gotAction)

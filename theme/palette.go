@@ -3,9 +3,10 @@
 package theme
 
 import (
+	"image/color"
 	"os"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // NoColor reports whether the NO_COLOR environment variable is set - the
@@ -14,7 +15,7 @@ func NoColor() bool { return os.Getenv("NO_COLOR") != "" }
 
 // Color converts a color string to a lipgloss.Color, returning an empty color
 // (terminal default) when NoColor is active so rendering stays monochrome.
-func Color(c string) lipgloss.Color {
+func Color(c string) color.Color {
 	if NoColor() {
 		return lipgloss.Color("")
 	}

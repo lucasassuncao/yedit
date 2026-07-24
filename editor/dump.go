@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/charmbracelet/bubbles/cursor"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/cursor"
+	tea "charm.land/bubbletea/v2"
 )
 
 // dumpWriter records every BlockAction/ModelAction/keystroke dispatched
@@ -103,7 +103,7 @@ func (d *dumpWriter) writeMsg(where string, msg tea.Msg) {
 //
 // cursor's initialBlinkMsg (fires once per textarea focus) and blinkCanceled
 // (fires on every keystroke typed into a textarea - it cancels the pending
-// blink) are unexported types in charmbracelet/bubbles/cursor, so they
+// blink) are unexported types in charm.land/bubbles/v2/cursor, so they
 // cannot be named in a type switch from this package; they are matched by
 // their %T name instead.
 func isDumpNoise(msg tea.Msg) bool {

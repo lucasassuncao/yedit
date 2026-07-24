@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"fmt"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -109,7 +110,7 @@ func (be blockEditState) withEditorCursorAt(line int) blockEditState {
 			break
 		}
 	}
-	be.yamlEditor.SetCursor(0)
+	be.yamlEditor.SetCursorColumn(0)
 	if !be.yamlEditor.Focused() {
 		// The textarea repositions its viewport only inside a focused Update;
 		// direct cursor moves on a blurred editor leave the visible window
@@ -147,4 +148,15 @@ func scrollLinesTo(s string, height, targetLine int) string {
 		offset = 0
 	}
 	return strings.Join(lines[offset:offset+height], "\n")
+}
+
+// numberPreviewLines prefixes each line of s with a fixed-width line-number
+// gutter, matching the root preview's viewport-based gutter (previewGutter).
+// Must run before scrollLinesTo so line numbers stay absolute once windowed.
+func numberPreviewLines(s string, rt resolvedTheme) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = rt.hintDim.Render(fmt.Sprintf("%4d │ ", i+1)) + line
+	}
+	return strings.Join(lines, "\n")
 }

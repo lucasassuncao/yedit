@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/schema"
@@ -64,9 +64,9 @@ func TestMapBlockOpensAsNavigator(t *testing.T) {
 func TestMapBlockAddEntry(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	// Move to the [+ add new] row (third visible) and press Enter.
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyDown})
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyDown})
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	be, _ = be.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	be, _ = be.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	labels := seqItemLabels(be)
 	if len(labels) != 3 {
 		t.Fatalf("after add, entries = %v, want 3", labels)
@@ -89,9 +89,9 @@ func fieldNodeChecked(be blockEditState, entryLabel, field string) (checked, fou
 // seeded field must show checked in the tree.
 func TestMapBlockAddEntrySeedsCheckedField(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyDown})
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyDown})
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	be, _ = be.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	be, _ = be.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	checked, found := fieldNodeChecked(be, "key3", "label")
 	if !found {
 		t.Fatal("new entry's label node not found")

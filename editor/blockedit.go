@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textarea"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textarea"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/alert"
@@ -84,9 +84,10 @@ type blockEditState struct {
 	node yaml.Node
 
 	yamlEditor      textarea.Model
-	previewRenderer *glamour.TermRenderer // non-nil only for KindObject blocks
+	previewRenderer *glamour.TermRenderer
 	active          blockEditPanel
 	prevActive      blockEditPanel // panel to return to when leaving hint focus
+	showHint        bool           // split the right column to show the Hint/Example panel
 	hintScroll      int            // scroll offset in hint panel when active == blockEditPanelHint
 	previewScroll   int            // 1-based YAML line the Preview keeps visible; 0 = top
 
@@ -143,9 +144,10 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 		width:         w,
 		height:        h,
 		theme:         resolveTheme(cfg.Theme),
+		showHint:      cfg.EnableHints,
 	}
 	be.help = newHelpModel(be.theme)
-	be.help.Width = w - 1
+	be.help.SetWidth(w - 1)
 	_, be.legendLines = renderLegend(be.help, be.currentKeyMap(), w-1)
 	be = be.relayout()
 
@@ -234,10 +236,23 @@ func (be blockEditState) computeDirty() bool {
 
 func (be blockEditState) newYAMLEditor(content string) textarea.Model {
 	ta := textarea.New()
+	ta.ShowLineNumbers = false
+	// A custom prompt takes the place of the built-in line-number gutter so
+	// it matches the Preview panel's "%4d │ " gutter (numberPreviewLines)
+	// exactly instead of the library's own plain-number style.
+	rt := be.theme
+	ta.SetPromptFunc(previewGutterWidth, func(info textarea.PromptInfo) string {
+		return rt.hintDim.Render(fmt.Sprintf("%4d │ ", info.LineNumber+1))
+	})
+	// The library defaults MaxHeight to 99: past that it silently caps both
+	// the visible viewport height (so hiding the hint panel could not grow
+	// the editor further) and, worse, the number of logical lines the buffer
+	// accepts at all - truncating any YAML block longer than 99 lines. We
+	// manage height ourselves via SetHeight below, so disable the cap.
+	ta.MaxHeight = 0
 	ta.SetWidth(be.rightW - 2)
 	ta.SetHeight(be.editorH() - 1)
 	ta.CharLimit = 0
-	ta.ShowLineNumbers = false
 	ta.Blur()
 	if content != "" {
 		ta.SetValue(strings.ReplaceAll(content, "\r\n", "\n"))
@@ -247,9 +262,7 @@ func (be blockEditState) newYAMLEditor(content string) textarea.Model {
 
 func (be blockEditState) relayout() blockEditState {
 	be.listW, be.rightW = theme.TwoColumnWidths(be.width)
-	if be.kind == schema.KindObject {
-		be.previewRenderer = newPreviewRenderer(be.rightW - 2)
-	}
+	be.previewRenderer = newPreviewRenderer(be.rightW - 2 - previewGutterWidth)
 	return be
 }
 
@@ -266,10 +279,10 @@ func (be blockEditState) innerH() int {
 }
 
 // hintH returns the content height of the hint panel (bottom-right).
-// Returns 0 when EnableHints is false (panel is not rendered).
+// Returns 0 when EnableHints is false or the panel is toggled hidden.
 // Otherwise the hint takes ~1/3 of the right column, floored at 5 lines.
 func (be blockEditState) hintH() int {
-	if !be.cfg.EnableHints {
+	if !be.cfg.EnableHints || !be.showHint {
 		return 0
 	}
 	total := be.innerH() - 2 // subtract 2 for the extra border row from stacking
@@ -288,7 +301,7 @@ func (be blockEditState) hintH() int {
 
 // editorH returns the content height of the top-right panel (editor/preview).
 func (be blockEditState) editorH() int {
-	if !be.cfg.EnableHints {
+	if !be.cfg.EnableHints || !be.showHint {
 		return be.innerH()
 	}
 	h := be.innerH() - 2 - be.hintH()
@@ -321,7 +334,7 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	if m, ok := msg.(tea.WindowSizeMsg); ok {
 		be.width = m.Width
 		be.height = m.Height
-		be.help.Width = be.width - 1
+		be.help.SetWidth(be.width - 1)
 		_, be.legendLines = renderLegend(be.help, be.currentKeyMap(), be.width-1)
 		be = be.relayout()
 		be.yamlEditor.SetWidth(be.rightW - 2)
@@ -434,7 +447,7 @@ func (be blockEditState) updateNonKeyBuffer(msg tea.Msg) (blockEditState, tea.Cm
 // handleHintKey handles ctrl+h (toggle hint focus) and navigation when the hint
 // panel is focused. Returns (state, true) when it consumed the key.
 func (be blockEditState) handleHintKey(msg tea.KeyMsg) (blockEditState, bool) {
-	if key.Matches(msg, kbCtrlHHint) && be.cfg.EnableHints {
+	if key.Matches(msg, kbCtrlHHint) && be.cfg.EnableHints && be.showHint {
 		if be.active == blockEditPanelHint {
 			be.active = be.prevActive
 		} else {
@@ -517,7 +530,22 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 		return be.dispatch(Redo{}), nil
 	}
 
-	// Ctrl+H toggles the hint panel; when focused it also captures navigation.
+	// H toggles whether the hint panel is shown at all, mirroring the root
+	// list view. Checked before handleHintKey, which otherwise captures every
+	// key while the hint panel has focus. Guarded off the YAML panel so
+	// typing "h" there still inserts the character.
+	if key.Matches(msg, kbHint) && be.cfg.EnableHints && be.active != blockEditPanelYAML {
+		be.showHint = !be.showHint
+		if !be.showHint && be.active == blockEditPanelHint {
+			be.active = be.prevActive
+		}
+		// editorH() changed with showHint; the YAML editor's own height was
+		// set once at creation/resize and won't pick that up on its own.
+		be.yamlEditor.SetHeight(be.editorH() - 1)
+		return be, nil
+	}
+
+	// Ctrl+H toggles hint focus; when focused it also captures navigation.
 	if be2, handled := be.handleHintKey(msg); handled {
 		return be2, nil
 	}
@@ -801,11 +829,12 @@ func (be blockEditState) View(parentSegs []string) string {
 
 	yamlActive := be.active == blockEditPanelYAML
 	var topTitle, topContent string
-	if !yamlActive && be.kind == schema.KindObject {
+	if !yamlActive {
 		topTitle = "Preview"
 		// The preview window follows the tree selection: scrollLinesTo keeps
 		// previewScroll visible (rendered preview lines map ~1:1 to YAML lines).
-		topContent = scrollLinesTo(renderPreviewYAML(be.yamlEditor.Value(), be.previewRenderer), be.editorH(), be.previewScroll)
+		preview := numberPreviewLines(renderPreviewYAML(be.yamlEditor.Value(), be.previewRenderer), be.theme)
+		topContent = scrollLinesTo(preview, be.editorH(), be.previewScroll)
 	} else {
 		topTitle = "Editing YAML"
 		topContent = clampLines(be.yamlEditor.View(), be.editorH())
@@ -813,7 +842,7 @@ func (be blockEditState) View(parentSegs []string) string {
 	topPanel := theme.RenderTitledPanelWith(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, topContent, be.theme.colors)
 
 	rightPanel := topPanel
-	if be.cfg.EnableHints {
+	if be.cfg.EnableHints && be.showHint {
 		hintActive := be.active == blockEditPanelHint
 		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, hintActive, be.scrolledHintContent(), be.theme.colors)
 		rightPanel = lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)

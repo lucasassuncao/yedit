@@ -3,7 +3,7 @@ package editor
 import (
 	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // dispatch applies a ModelAction and returns the updated model and any Cmd.

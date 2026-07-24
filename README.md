@@ -1,6 +1,6 @@
 <!-- markdownlint-disable MD033 -->
 <p align="center">
-  <img src="docs/yedit2.png" alt="Movelooper logo" width="190" height="227">
+  <img src="docs/yedit2.png" alt="yedit logo" width="190" height="227">
 </p>
 <!-- markdownlint-enable MD033 -->
 

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/lucasassuncao/yedit/schema"
 )
@@ -45,7 +45,7 @@ func TestAudit_DeepNestToggleUnderEmptyAncestors(t *testing.T) {
 	}, 120, 40)
 	be = expandAll(be)
 	be = cursorToLabel(be, "regex")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	is.Contains(be.yamlEditor.Value(), "filter:", "deep nested toggle failed")
 	is.Contains(be.yamlEditor.Value(), "regex:", "deep nested toggle failed")
 }
@@ -83,7 +83,7 @@ func TestAudit_ToggleRoundTrip(t *testing.T) {
 	}, 120, 40)
 	be = expandAll(be)
 	be = cursorToLabel(be, "regex")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	be = expandAll(be)
 	idx := -1
 	for i, n := range be.tree.nodes {
@@ -110,7 +110,7 @@ func TestAudit_MapEntryDeepNestSymmetry(t *testing.T) {
 	}, 120, 40)
 	be = expandAll(be)
 	be = cursorToLabel(be, "regex")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	is.Contains(be.yamlEditor.Value(), "filter:", "map entry deep nested toggle failed")
 	is.Contains(be.yamlEditor.Value(), "regex:", "map entry deep nested toggle failed")
 }
@@ -125,10 +125,10 @@ func TestAudit_ToggleSecondSiblingKeepsFirst(t *testing.T) {
 	}, 120, 40)
 	be = expandAll(be)
 	be = cursorToLabel(be, "path")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	be = expandAll(be)
 	be = cursorToLabel(be, "extensions")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	is.Contains(be.yamlEditor.Value(), "path:", "second sibling clobbered first")
 	is.Contains(be.yamlEditor.Value(), "extensions:", "second sibling not added")
 }
@@ -144,7 +144,7 @@ func TestAudit_ToggleParentStructOnThenChild(t *testing.T) {
 	}, 120, 40)
 	be = expandAll(be)
 	be = cursorToLabel(be, "shell")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	is.Contains(be.yamlEditor.Value(), "hooks:", "triple-nested struct creation failed")
 	is.Contains(be.yamlEditor.Value(), "before:", "triple-nested struct creation failed")
 	is.Contains(be.yamlEditor.Value(), "shell:", "triple-nested struct creation failed")
@@ -180,7 +180,7 @@ func TestAudit_EnterThenCtrlDOnInlineParent(t *testing.T) {
 	be = cursorToLabel(be, "source")
 
 	// Enter on an inline parent must expand it, not insert a stray empty "source:".
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	is.NotContains(be.yamlEditor.Value(), "source:", "Enter on inline parent created stray empty key")
 	// And it must not leave a phantom checked state on the parent node.
 	if n, ok := nodeByLabel(be, "source"); ok {
@@ -201,10 +201,10 @@ func TestAudit_UndoAfterTwoTogglesKeepsFirst(t *testing.T) {
 	be = expandAll(be)
 
 	be = cursorToLabel(be, "path")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	be = expandAll(be)
 	be = cursorToLabel(be, "extensions")
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyEnter})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	t.Logf("after two toggles:\n%s", be.yamlEditor.Value())
 
 	be = be.restoreUndo()
@@ -266,7 +266,7 @@ func TestAudit_EntryDeleteConfirms(t *testing.T) {
 
 	// Default: confirm, then delete on confirm.
 	be := newBlockEdit(Config{}, spec, 120, 40)
-	be, _ = be.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be, _ = be.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	if be.mode != modeConfirming {
 		t.Fatalf("entry delete should confirm; mode=%d", be.mode)
 	}
@@ -280,7 +280,7 @@ func TestAudit_EntryDeleteConfirms(t *testing.T) {
 
 	// NoDeleteConfirm: delete immediately, no confirm dialog.
 	be2 := newBlockEdit(Config{NoDeleteConfirm: true}, spec, 120, 40)
-	be2, _ = be2.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be2, _ = be2.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	if be2.mode == modeConfirming {
 		t.Error("NoDeleteConfirm should skip the entry-delete confirm")
 	}
@@ -313,7 +313,7 @@ func confirmsOnCtrlD(content, label string) bool {
 	be := newBlockEdit(Config{}, blockSpec{key: "categories", defs: catDefs(), kind: schema.KindList, content: content}, 120, 40)
 	be = expandAll(be)
 	be = cursorToLabel(be, label)
-	be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyCtrlD})
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	return be.mode == modeConfirming
 }
 
@@ -370,7 +370,7 @@ func TestAudit_RemoveParentResetsDescendantChecks(t *testing.T) {
 		be := newBlockEdit(Config{}, blockSpec{key: "categories", defs: catDefs(), kind: schema.KindList, content: full}, 120, 40)
 		be = expandAll(be)
 		be = cursorToLabel(be, parent)
-		be, _ = be.updateTreePanel(tea.KeyMsg{Type: tea.KeyCtrlD})
+		be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 		idx := -1
 		for i, n := range be.tree.nodes {
 			if n.kind == treeNodeField && n.label == parent {

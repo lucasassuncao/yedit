@@ -15,7 +15,7 @@ Package theme provides the palette, base lipgloss styles, and shared layout prim
 - [Variables](<#variables>)
 - [func All\(\) map\[string\]Theme](<#All>)
 - [func ClampScroll\(cursor, offset, height int\) int](<#ClampScroll>)
-- [func Color\(c string\) lipgloss.Color](<#Color>)
+- [func Color\(c string\) color.Color](<#Color>)
 - [func Composite\(fg, bg string, x, y int\) string](<#Composite>)
 - [func CompositeCenter\(fg, bg string\) string](<#CompositeCenter>)
 - [func NoColor\(\) bool](<#NoColor>)
@@ -169,7 +169,7 @@ var (
 ```
 
 <a name="All"></a>
-## func [All](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L107>)
+## func [All](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L108>)
 
 ```go
 func All() map[string]Theme
@@ -178,7 +178,7 @@ func All() map[string]Theme
 All returns all built\-in theme presets keyed by their CLI name. Useful for \-\-theme flag validation and \-\-list\-themes output in host CLIs.
 
 <a name="ClampScroll"></a>
-## func [ClampScroll](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L19>)
+## func [ClampScroll](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L20>)
 
 ```go
 func ClampScroll(cursor, offset, height int) int
@@ -187,16 +187,16 @@ func ClampScroll(cursor, offset, height int) int
 ClampScroll adjusts a scroll offset so that the cursor row stays within the visible window of height rows, and returns the corrected offset. It scrolls up when the cursor sits above the window and down when it sits below, and never returns a negative offset. A non\-positive height leaves the offset untouched \(apart from the floor at zero\).
 
 <a name="Color"></a>
-## func [Color](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L17>)
+## func [Color](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L18>)
 
 ```go
-func Color(c string) lipgloss.Color
+func Color(c string) color.Color
 ```
 
 Color converts a color string to a lipgloss.Color, returning an empty color \(terminal default\) when NoColor is active so rendering stays monochrome.
 
 <a name="Composite"></a>
-## func [Composite](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L193>)
+## func [Composite](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L198>)
 
 ```go
 func Composite(fg, bg string, x, y int) string
@@ -205,7 +205,7 @@ func Composite(fg, bg string, x, y int) string
 Composite overlays fg on top of bg at position \(x, y\). For each line in fg, the corresponding bg line has its \(x … x\+fgW\) segment replaced by the fg line, preserving ANSI color sequences in both strings.
 
 <a name="CompositeCenter"></a>
-## func [CompositeCenter](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L220>)
+## func [CompositeCenter](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L225>)
 
 ```go
 func CompositeCenter(fg, bg string) string
@@ -214,7 +214,7 @@ func CompositeCenter(fg, bg string) string
 CompositeCenter centers fg over bg, replacing the bg cells behind it.
 
 <a name="NoColor"></a>
-## func [NoColor](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L13>)
+## func [NoColor](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L14>)
 
 ```go
 func NoColor() bool
@@ -223,7 +223,7 @@ func NoColor() bool
 NoColor reports whether the NO\_COLOR environment variable is set \- the single switch for monochrome mode across all yedit rendering.
 
 <a name="RenderHeader"></a>
-## func [RenderHeader](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L44>)
+## func [RenderHeader](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L45>)
 
 ```go
 func RenderHeader(title, subtitle, right string, width int) string
@@ -232,7 +232,7 @@ func RenderHeader(title, subtitle, right string, width int) string
 RenderHeader returns a single\-line header. title is rendered bold on the left, subtitle \(if non\-empty\) follows after a separator, right \(if non\-empty\) is right\-aligned for context such as filenames.
 
 <a name="RenderHeaderWith"></a>
-## func [RenderHeaderWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L165>)
+## func [RenderHeaderWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L170>)
 
 ```go
 func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string
@@ -241,7 +241,7 @@ func RenderHeaderWith(title, subtitle, right string, width int, c Colors) string
 RenderHeaderWith is like RenderHeader but derives title and info colors from c instead of the package\-level palette vars.
 
 <a name="RenderTitledPanel"></a>
-## func [RenderTitledPanel](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L93>)
+## func [RenderTitledPanel](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L94>)
 
 ```go
 func RenderTitledPanel(title string, size Size, active bool, content string) string
@@ -250,7 +250,7 @@ func RenderTitledPanel(title string, size Size, active bool, content string) str
 RenderTitledPanel renders a rounded\-border panel with the title embedded in the top edge: ╭─ Title ──────╮. size holds the OUTER dimensions \(including the border rows/cols\).
 
 <a name="RenderTitledPanelWith"></a>
-## func [RenderTitledPanelWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L104>)
+## func [RenderTitledPanelWith](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L105>)
 
 ```go
 func RenderTitledPanelWith(title string, size Size, active bool, content string, c Colors) string
@@ -259,7 +259,7 @@ func RenderTitledPanelWith(title string, size Size, active bool, content string,
 RenderTitledPanelWith is like RenderTitledPanel but derives border and title colors from c instead of the package\-level palette vars.
 
 <a name="RenderTwoColumnView"></a>
-## func [RenderTwoColumnView](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L85>)
+## func [RenderTwoColumnView](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L86>)
 
 ```go
 func RenderTwoColumnView(layout TwoColumnLayout) string
@@ -268,7 +268,7 @@ func RenderTwoColumnView(layout TwoColumnLayout) string
 RenderTwoColumnView assembles the standard two\-panel screen: header, panels side by side, a feedback line, and a legend line.
 
 <a name="TwoColumnWidths"></a>
-## func [TwoColumnWidths](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L55>)
+## func [TwoColumnWidths](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L56>)
 
 ```go
 func TwoColumnWidths(totalWidth int) (listW, rightW int)
@@ -277,7 +277,7 @@ func TwoColumnWidths(totalWidth int) (listW, rightW int)
 TwoColumnWidths computes left and right column widths for the standard two\-panel layout: left is totalWidth/3, clamped to \[30, 60\]; right gets the remainder minus 4 chars for the two border pairs. Terminals narrower than the floors get a proportional split instead of an overflowing layout.
 
 <a name="Colors"></a>
-## type [Colors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L45-L52>)
+## type [Colors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L46-L53>)
 
 Colors holds the six palette values that drive all editor styling. Each field is a lipgloss\-compatible color string: a hex value \("\#7C3AED"\), an ANSI 256\-color code \("63"\), or a named terminal color. Empty string means "inherit from Base" during theme resolution.
 
@@ -293,7 +293,7 @@ type Colors struct {
 ```
 
 <a name="ResolveColors"></a>
-### func [ResolveColors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L75>)
+### func [ResolveColors](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L76>)
 
 ```go
 func ResolveColors(t Theme) Colors
@@ -302,7 +302,7 @@ func ResolveColors(t Theme) Colors
 ResolveColors merges t into a concrete Colors value, starting from ThemeDark as the default base. Use this when building a TUI that needs concrete color values without importing the editor package.
 
 <a name="Size"></a>
-## type [Size](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L12>)
+## type [Size](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L13>)
 
 Size holds a width/height pair. Used wherever a terminal or panel dimension is passed as a unit \(picker, RenderTitledPanel\).
 
@@ -311,7 +311,7 @@ type Size struct{ W, H int }
 ```
 
 <a name="Styles"></a>
-## type [Styles](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L56-L60>)
+## type [Styles](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L57-L61>)
 
 Styles holds optional per\-element lipgloss overrides. Nil fields are ignored during theme resolution and the default derived from Colors is used instead.
 
@@ -324,7 +324,7 @@ type Styles struct {
 ```
 
 <a name="Theme"></a>
-## type [Theme](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L66-L70>)
+## type [Theme](<https://github.com/lucasassuncao/yedit/blob/main/theme/palette.go#L67-L71>)
 
 Theme is a three\-layer appearance configuration:
 
@@ -341,7 +341,7 @@ type Theme struct {
 ```
 
 <a name="TwoColumnLayout"></a>
-## type [TwoColumnLayout](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L33-L39>)
+## type [TwoColumnLayout](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L34-L40>)
 
 TwoColumnLayout carries the five sections of the standard two\-panel screen.
 

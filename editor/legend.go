@@ -1,6 +1,6 @@
 package editor
 
-import "github.com/charmbracelet/bubbles/key"
+import "charm.land/bubbles/v2/key"
 
 // msgUncommittedChanges is shown in the feedback line when there are uncommitted changes.
 const msgUncommittedChanges = "Uncommitted changes - ctrl+s to commit"
@@ -82,7 +82,7 @@ var (
 	kbTypeFilter = key.NewBinding(key.WithHelp("type", "filter"))
 	kbPreset     = key.NewBinding(key.WithKeys(keyP), key.WithHelp("p", "preset"))
 
-	kbHint     = key.NewBinding(key.WithKeys(keyH), key.WithHelp("h", "hint"))
+	kbHint     = key.NewBinding(key.WithKeys(keyH), key.WithHelp("h", "show hint"))
 	kbHintHide = key.NewBinding(key.WithKeys(keyH), key.WithHelp("h", "hide hint"))
 
 	kbTemplates = key.NewBinding(key.WithKeys(keyP), key.WithHelp("p", "templates"))

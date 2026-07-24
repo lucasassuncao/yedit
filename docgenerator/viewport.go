@@ -5,10 +5,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/lucasassuncao/yedit/theme"
 )
@@ -181,14 +181,14 @@ func (m *docTUIModel) relayout() {
 	m.listH = innerH
 	m.vpH = innerH
 
-	m.vp.Width = m.vpColW - 2
-	m.vp.Height = m.vpH
+	m.vp.SetWidth(m.vpColW - 2)
+	m.vp.SetHeight(m.vpH)
 
 	m.listOffset = theme.ClampScroll(m.cursor, m.listOffset, m.listH)
 
 	r, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(m.vp.Width),
+		glamour.WithStylePath("dark"),
+		glamour.WithWordWrap(m.vp.Width()),
 	)
 	if err == nil {
 		m.renderer = r
@@ -218,7 +218,7 @@ func (m *docTUIModel) renderDoc(name string) string {
 }
 
 func (m *docTUIModel) loadCurrent() {
-	if len(m.names) == 0 || m.cursor >= len(m.names) || m.vp.Width == 0 {
+	if len(m.names) == 0 || m.cursor >= len(m.names) || m.vp.Width() == 0 {
 		return
 	}
 	name := m.names[m.cursor]
@@ -281,9 +281,11 @@ func (m *docTUIModel) navigateTo(name string) {
 	}
 }
 
-func (m *docTUIModel) View() string {
+func (m *docTUIModel) View() tea.View {
 	if m.width == 0 {
-		return "Loading…"
+		v := tea.NewView("Loading…")
+		v.AltScreen = true
+		return v
 	}
 
 	var listSB strings.Builder
@@ -315,7 +317,10 @@ func (m *docTUIModel) View() string {
 
 	legend := statusStyle.Render("[Tab] switch panel  [↑/↓ j/k] navigate / scroll  [PgUp/PgDn] half-page  [1-9] jump to linked topic  [q] quit")
 	header := theme.RenderHeaderWith(m.appName, "docs", "", m.width, m.colors)
-	return theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: "", Legend: legend})
+	content := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: "", Legend: legend})
+	view := tea.NewView(content)
+	view.AltScreen = true
+	return view
 }
 
 // RenderMarkdownDocsInTerminal launches the two-panel documentation TUI.
@@ -330,7 +335,7 @@ func RenderMarkdownDocsInTerminal(docs DocSet, appName string, t ...theme.Theme)
 		th = t[0]
 	}
 	m := newDocTUIModel(docs, appName, theme.ResolveColors(th))
-	p := tea.NewProgram(&m, tea.WithAltScreen())
+	p := tea.NewProgram(&m)
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("failed to run docs TUI: %w", err)
 	}

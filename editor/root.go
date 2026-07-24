@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/alert"
@@ -98,10 +98,11 @@ func newModel(cfg Config) (model, error) {
 
 	list := newListModel(knownOrder, doc.Blocks(), passthrough, 0)
 
-	preview := viewport.New(0, 0)
+	preview := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
 	preview.SetContent(renderPreviewYAML(string(doc.Raw()), nil))
 
 	rt := resolveTheme(cfg.Theme)
+	preview.LeftGutterFunc = previewGutter(rt)
 	return model{
 		cfg:             cfg,
 		doc:             doc,
@@ -483,7 +484,7 @@ func (m model) handlePreviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.width = msg.Width
 	m.height = msg.Height
-	m.help.Width = m.width - 1
+	m.help.SetWidth(m.width - 1)
 	m = m.relayout()
 	// relayout only sizes the root list/preview; forward the resize to every
 	// stacked sub-model so each editor's panels resize too.
@@ -540,7 +541,13 @@ func (m model) showConfirmAlert(title, message string, confirmCmd tea.Cmd) (tea.
 	return m, nil
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
+	v := tea.NewView(m.viewContent())
+	v.AltScreen = true
+	return v
+}
+
+func (m model) viewContent() string {
 	if m.width == 0 {
 		return "Loading..."
 	}

@@ -3,13 +3,13 @@ package alert
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 type confirmedMsg struct{}
 
-func keyY() tea.KeyMsg     { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}} }
-func keyEnter() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyEnter} }
+func keyY() tea.KeyMsg     { return tea.KeyPressMsg{Text: "y", Code: 'y'} }
+func keyEnter() tea.KeyMsg { return tea.KeyPressMsg{Code: tea.KeyEnter} }
 
 func TestConfirmNilCmdDismissesOnY(t *testing.T) {
 	a := NewConfirm("Title", "Message", nil)

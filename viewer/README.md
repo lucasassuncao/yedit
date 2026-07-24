@@ -17,11 +17,11 @@ Package viewer is a read\-only TUI that browses the presets exposed by a presets
   - [func NewModel\(src presets.Source\) Model](<#NewModel>)
   - [func \(m \*Model\) Init\(\) tea.Cmd](<#Model.Init>)
   - [func \(m \*Model\) Update\(msg tea.Msg\) \(tea.Model, tea.Cmd\)](<#Model.Update>)
-  - [func \(m \*Model\) View\(\) string](<#Model.View>)
+  - [func \(m \*Model\) View\(\) tea.View](<#Model.View>)
 
 
 <a name="Run"></a>
-## func [Run](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L190>)
+## func [Run](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L197>)
 
 ```go
 func Run(src presets.Source) error
@@ -71,7 +71,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
 ### func \(\*Model\) [View](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L157>)
 
 ```go
-func (m *Model) View() string
+func (m *Model) View() tea.View
 ```
 
 

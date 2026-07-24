@@ -1,7 +1,7 @@
 // Package render holds rendering helpers shared by the editor and viewer TUIs.
 package render
 
-import "github.com/charmbracelet/glamour"
+import "charm.land/glamour/v2"
 
 // YAMLFence wraps yaml in a ```yaml code fence and renders it through r for
 // syntax-highlighted display. It returns yaml unchanged when r is nil, yaml is

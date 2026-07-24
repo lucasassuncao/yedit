@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // Result reports the outcome of an editor session.
@@ -64,7 +64,7 @@ func RunContext(ctx context.Context, cfg Config) (res Result, err error) {
 	if err != nil {
 		return Result{}, err
 	}
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx))
+	p := tea.NewProgram(m, tea.WithContext(ctx))
 	final, err := p.Run()
 	if fm, ok := final.(model); ok {
 		res.Saved = fm.saved

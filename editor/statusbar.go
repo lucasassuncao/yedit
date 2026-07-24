@@ -3,9 +3,9 @@ package editor
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/lipgloss/v2"
 )
 
 // renderStatusLine wraps text in style and constrains it to width. Used for
@@ -166,6 +166,13 @@ func (be blockEditState) currentKeyMap() help.KeyMap {
 	nav := []key.Binding{kbNav, kbExpand}
 	if be.cfg.BlockPresets != nil && len(be.cfg.BlockPresets.ListPresets(be.key)) > 0 {
 		nav = append(nav, kbPreset)
+	}
+	if be.cfg.EnableHints {
+		hint := kbHint
+		if be.showHint {
+			hint = kbHintHide
+		}
+		nav = append(nav, hint)
 	}
 	nav = append(nav, kbTab, kbEscBack)
 

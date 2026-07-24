@@ -5,8 +5,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/lucasassuncao/yedit/document"
 	"github.com/lucasassuncao/yedit/theme"
@@ -331,8 +331,8 @@ func (lm listModel) updateFilter(km tea.KeyMsg) (listModel, tea.Cmd) {
 	case key.Matches(km, kbDown):
 		lm = lm.moveFCursor(1)
 	default:
-		if r := km.Runes; len(r) == 1 && r[0] >= 32 {
-			lm.filter += string(r)
+		if text := km.Key().Text; utf8.RuneCountInString(text) == 1 {
+			lm.filter += text
 			lm.fCursor = 0
 			lm.fOffset = 0
 		}
