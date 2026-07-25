@@ -19,7 +19,7 @@ A TUI YAML editor library for Go applications, built on [bubbletea](https://gith
 - Validates the YAML on save with a declarative rule set.
 - Flags unknown keys that aren't part of your schema.
 - Supports presets, two-level undo/redo, nested drill-in editing, and theming.
-- Generates Markdown reference docs and a TUI doc browser from your schema.
+- Generates Markdown reference docs from your schema.
 
 ## Install
 
@@ -141,7 +141,7 @@ func main() {
 | [Interaction Model](docs/INTERACTION.md) | Key bindings and tree action matrix |
 | [Undo & Redo](docs/UNDO.md) | The two-level undo model (block editor vs document) and what is and isn't tracked |
 | [Themes](docs/THEMES.md) | Built-in themes and how to customize colors |
-| [Doc Generation](docs/DOC-GENERATION.md) | Generating Markdown reference docs and a TUI doc browser from your schema |
+| [Doc Generation](docs/DOC-GENERATION.md) | Generating Markdown reference docs from your schema |
 | [Session Tracing](docs/SESSION-TRACING.md) | `Config.Trace.Dump` and the `OnAction`/`OnModelAction`/`OnMsg` hooks for recording a session |
 | [Known Limitations](docs/LIMITATIONS.md) | Dependency behaviors that can surprise you, including a silent data-rewrite caveat |
 
@@ -163,8 +163,8 @@ Internals (for contributing to yedit itself, not for embedding it):
 
 ```sh
 cd examples/test
-go run . [--theme dracula]   # open the editor
-go run . show-docs           # browse schema docs in the TUI
+go run . [--theme grape]     # open the editor
+go run . generate-docs       # write docs/ markdown files
 ```
 
 See [`examples/`](examples/README.md) for focused, recorded demos of each feature.

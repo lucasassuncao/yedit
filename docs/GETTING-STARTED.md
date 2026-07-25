@@ -241,10 +241,6 @@ import "github.com/lucasassuncao/yedit/docgenerator"
 
 gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(src))
 
-// Browse docs in the terminal:
-docs := gen.GenerateDocsInMemory([]docgenerator.Entry{{Config: Config{}, SplitStructs: true}})
-docgenerator.RenderMarkdownDocsInTerminal(docs, "myapp")
-
 // Write markdown files to disk:
 files, err := gen.GenerateDocsForEach([]docgenerator.Entry{{Config: Config{}, DocsDir: "docs/reference", SplitStructs: true}})
 if err != nil {
@@ -253,7 +249,7 @@ if err != nil {
 docgenerator.GenerateIndex("docs/reference", files)
 ```
 
-Wire these as subcommands in your CLI so users can run `myapp show-docs` and `myapp generate-docs`. See [Doc Generation](DOC-GENERATION.md) for the full API (including the single-call `Generate`/`GenerateInMemory` variants for structs that implement `MetadataProvider`) and `examples/test/main.go` for a complete cobra integration.
+Wire this as a subcommand in your CLI so users can run `myapp generate-docs`. See [Doc Generation](DOC-GENERATION.md) for the full API (including the single-call `Generate` variant for structs that implement `MetadataProvider`) and `examples/test/main.go` for a complete cobra integration.
 
 ---
 
@@ -290,5 +286,5 @@ Both `metadata.New` and `metadata.NewFromTree` are cycle-aware and handle shared
 - [Validators Reference](VALIDATORS.md) - all 25+ built-in validators
 - [Undo & Redo](UNDO.md) - the two-level undo model and what is and isn't tracked
 - [Themes](THEMES.md) - built-in themes and how to customize colors
-- [Doc Generation](DOC-GENERATION.md) - generating Markdown reference docs and a TUI doc browser from your schema
+- [Doc Generation](DOC-GENERATION.md) - generating Markdown reference docs from your schema
 - [Architecture](dev/ARCHITECTURE.md) - package layout and import relationships (for contributing to yedit itself)

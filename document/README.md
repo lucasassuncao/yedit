@@ -61,7 +61,7 @@ func BlockContent(raw []byte, blocks []Block, key string) (string, error)
 BlockContent returns the raw lines for a given block key. The content always ends with a single trailing newline, whatever the block's position: a block is a complete run of lines, and a literal scalar parsed without its final line break would silently lose it.
 
 <a name="InsertBlock"></a>
-## func [InsertBlock](<https://github.com/lucasassuncao/yedit/blob/main/document/mutate.go#L101>)
+## func [InsertBlock](<https://github.com/lucasassuncao/yedit/blob/main/document/mutate.go#L127>)
 
 ```go
 func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error)
@@ -70,13 +70,13 @@ func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error
 InsertBlock inserts a YAML snippet into raw, respecting the canonical key order in knownOrder. The snippet is placed before the first existing block whose key follows the new key in knownOrder. If the new key is unknown to knownOrder, or no later block exists, the snippet is appended at the end.
 
 <a name="RemoveBlock"></a>
-## func [RemoveBlock](<https://github.com/lucasassuncao/yedit/blob/main/document/mutate.go#L60>)
+## func [RemoveBlock](<https://github.com/lucasassuncao/yedit/blob/main/document/mutate.go#L61>)
 
 ```go
 func RemoveBlock(raw []byte, blocks []Block, key string) ([]byte, error)
 ```
 
-RemoveBlock deletes the lines belonging to key from raw YAML bytes.
+RemoveBlock deletes the lines belonging to key from raw YAML bytes, together with the comment lines that document it \(see leadingCommentStart\).
 
 <a name="ReplaceBlock"></a>
 ## func [ReplaceBlock](<https://github.com/lucasassuncao/yedit/blob/main/document/mutate.go#L33>)

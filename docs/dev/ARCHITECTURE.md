@@ -13,7 +13,7 @@ yamltui/
 ├── schema/             - schema.Discover: reflects a Go struct into a []FieldDef tree
 ├── document/           - raw YAML bytes, block list, undo/redo history
 ├── presets/            - ForField, Combine, Func: struct-backed and ad-hoc preset sources
-├── docgenerator/       - generates Markdown reference tables; TUI doc browser
+├── docgenerator/       - generates Markdown reference tables
 ├── theme/              - color palette, layout helpers
 ├── viewer/             - reusable list+viewport model (used by docgenerator TUI)
 ├── alert/              - modal alert overlay (bubbletea component)
@@ -35,7 +35,7 @@ your app
   └── metadata        ← NewFromTree / New (→ MetadataSource)
         └── editor    ← FieldMeta, MetadataSource
 
-  └── docgenerator    ← SchemaGenerator, RenderMarkdownDocsInTerminal
+  └── docgenerator    ← SchemaGenerator, Generate, GenerateIndex
         ├── editor    ← MetadataSource
         └── schema    ← Discover
 
@@ -128,7 +128,7 @@ A round-trip guard validates each `Insert`/`Replace` by re-parsing the stored bl
 
 ## docgenerator
 
-Generates Markdown reference tables from a Go struct and a `MetadataSource`. Used for `show-docs` (TUI browser) and `generate-docs` (write files to disk) CLI subcommands. `docgenerator` depends on `editor` (for `MetadataSource`) and `schema` (for `Discover`), but not the other way around - no import cycle.
+Generates Markdown reference tables from a Go struct and a `MetadataSource`. Used for a `generate-docs` CLI subcommand that writes the files into the repository. `docgenerator` depends on `editor` (for `MetadataSource`) and `schema` (for `Discover`), but not the other way around - no import cycle.
 
 This is a user-facing feature, not an implementation detail - see [Doc Generation](../DOC-GENERATION.md) for the full API and usage examples.
 

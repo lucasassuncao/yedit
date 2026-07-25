@@ -11,7 +11,6 @@ import (
 	"charm.land/glamour/v2/styles"
 
 	"github.com/lucasassuncao/yedit/render"
-	"github.com/lucasassuncao/yedit/theme"
 )
 
 func (m model) togglePreviewPane() (tea.Model, tea.Cmd) {
@@ -59,8 +58,8 @@ func (m model) scrollPreviewToSelected() model {
 }
 
 // newPreviewRenderer builds a glamour renderer that word-wraps to wrap columns.
-// It starts from the dark style (or the colorless ASCII style under NO_COLOR)
-// and trims glamour's default chrome: the document and code-block left margins
+// It starts from the dark style and trims glamour's default chrome: the
+// document and code-block left margins
 // stack to ~4 columns and the block prefix/suffix add blank lines, all wasteful
 // inside a panel that already has its own border. No margin is kept - the
 // gutter rendered alongside the content (previewGutter, numberPreviewLines,
@@ -70,9 +69,6 @@ func (m model) scrollPreviewToSelected() model {
 // back to plain text.
 func newPreviewRenderer(wrap int) *glamour.TermRenderer {
 	cfg := styles.DarkStyleConfig
-	if theme.NoColor() {
-		cfg = styles.NoTTYStyleConfig
-	}
 	zero := uint(0)
 	cfg.Document.Margin = &zero
 	cfg.Document.BlockPrefix = ""

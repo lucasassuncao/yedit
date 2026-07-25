@@ -74,7 +74,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.active = paneList
 			}
 			return m, nil
-		case "up", "k":
+		case "up":
 			if m.active == paneList {
 				m.list.MoveUp()
 				m.refreshRendered()
@@ -82,7 +82,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.vp.ScrollUp(1)
 			}
 			return m, nil
-		case "down", "j":
+		case "down":
 			if m.active == paneList {
 				m.list.MoveDown()
 				m.refreshRendered()
@@ -100,7 +100,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.vp.ScrollDown(m.vp.Height() / 2)
 			}
 			return m, nil
-		case "enter", "l", "right":
+		case "enter", "right":
 			if m.active == paneList {
 				if m.list.Mode() == modeFields {
 					m.list.DrillIn()
@@ -108,7 +108,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case "esc", "h", "left":
+		case "esc", "left":
 			if m.active == paneList {
 				if m.list.Mode() == modePresets {
 					m.list.Back()

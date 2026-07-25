@@ -1,6 +1,5 @@
-// Package docgenerator generates markdown documentation from a struct-based
-// schema (via schema.Discover) and a MetadataSource, and provides a TUI viewer
-// for browsing the generated docs.
+// Package docgenerator generates markdown documentation files from a
+// struct-based schema (via schema.Discover) and a MetadataSource.
 package docgenerator
 
 import (
@@ -51,51 +50,6 @@ func NewSchemaGenerator(opts ...Option) *SchemaGenerator {
 		opt(g)
 	}
 	return g
-}
-
-// DocSet holds the generated pages and their parent-child relationships.
-// Children maps a parent page name to its child page names in schema order.
-type DocSet struct {
-	Pages    map[string]string   // name → raw markdown
-	Children map[string][]string // parent → children in schema order (split-struct entries only)
-}
-
-// GenerateDocsInMemory generates markdown for each entry.
-// DocsDir is ignored; only Config and SplitStructs are used.
-// For SplitStructs entries the parent-child relationship is recorded in DocSet.Children.
-func (g *SchemaGenerator) GenerateDocsInMemory(entries []Entry) DocSet {
-	ds := DocSet{Pages: map[string]string{}, Children: map[string][]string{}}
-	for _, e := range entries {
-		g.addEntryPages(&ds, e)
-	}
-	return ds
-}
-
-// addEntryPages generates the pages for a single entry into ds. When a split
-// child's page key is already taken (two entries with a same-named child), the
-// new page is re-keyed as "<parent>.<child>" and the parent page's links are
-// rewritten to match, so TUI navigation resolves to the right page.
-func (g *SchemaGenerator) addEntryPages(ds *DocSet, e Entry) {
-	fields := discoverEntry(e)
-	name := typeName(e.Config)
-	if !e.SplitStructs {
-		ds.Pages[name] = g.generateMarkdown(name, fields, nil)
-		return
-	}
-	ds.Pages[name] = g.generateRootMarkdown(name, fields)
-	for _, f := range fields {
-		if f.YAMLName == "" || f.YAMLName == "-" || len(f.Children) == 0 {
-			continue
-		}
-		key := f.YAMLName
-		if _, taken := ds.Pages[key]; taken {
-			key = name + "." + f.YAMLName
-			ds.Pages[name] = strings.ReplaceAll(ds.Pages[name],
-				"(./"+strings.ToLower(f.YAMLName)+".md)", "(./"+strings.ToLower(key)+".md)")
-		}
-		ds.Pages[key] = g.generateMarkdown(f.YAMLName, f.Children, []string{f.YAMLName})
-		ds.Children[name] = append(ds.Children[name], key)
-	}
 }
 
 // Entry pairs a struct with the directory where its documentation should be written.
@@ -187,21 +141,6 @@ func (g *SchemaGenerator) writeRawOnce(written map[string]bool, docsDir, name, m
 	}
 	written[out] = true
 	return g.writeRaw(docsDir, name, md)
-}
-
-// GenerateInMemory builds the MetadataSource for each entry and generates a DocSet
-// in memory. Each Entry.Config must implement metadata.MetadataProvider.
-// DocsDir is ignored.
-func GenerateInMemory(entries []Entry) (DocSet, error) {
-	ds := DocSet{Pages: map[string]string{}, Children: map[string][]string{}}
-	for _, e := range entries {
-		src, err := metadata.New(e.Config)
-		if err != nil {
-			return DocSet{}, fmt.Errorf("build metadata for %T: %w", e.Config, err)
-		}
-		NewSchemaGenerator(WithMetadata(src)).addEntryPages(&ds, e)
-	}
-	return ds, nil
 }
 
 // Generate builds the MetadataSource for each entry, generates documentation,

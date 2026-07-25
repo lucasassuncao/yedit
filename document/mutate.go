@@ -56,7 +56,8 @@ func ReplaceBlock(raw []byte, blocks []Block, key, snippet string) ([]byte, erro
 	return []byte(strings.Join(merged, "\n")), nil
 }
 
-// RemoveBlock deletes the lines belonging to key from raw YAML bytes.
+// RemoveBlock deletes the lines belonging to key from raw YAML bytes, together
+// with the comment lines that document it (see leadingCommentStart).
 func RemoveBlock(raw []byte, blocks []Block, key string) ([]byte, error) {
 	var target *Block
 	for i := range blocks {
@@ -73,8 +74,33 @@ func RemoveBlock(raw []byte, blocks []Block, key string) ([]byte, error) {
 	start := target.Line - 1
 	end := target.EndLine // exclusive upper bound (0-based = EndLine)
 	start, end = clampRange(start, end, len(lines))
+	start = leadingCommentStart(lines, start)
 	lines = append(lines[:start:start], lines[end:]...)
 	return []byte(strings.Join(lines, "\n")), nil
+}
+
+// leadingCommentStart walks back from keyIdx over the contiguous run of comment
+// lines that document the block, and returns the index the removal should start
+// at. It mirrors ParseBlocks' convention exactly: a comment directly above a key
+// documents that key, and only lines starting with '#' at column 0 qualify (an
+// indented comment-looking line may be content inside a literal scalar).
+//
+// A blank line ends the run, so a section header separated from the key by an
+// empty line survives the removal:
+//
+//	# ---- Network ----   <- kept (blank line below)
+//
+//	# listen port         <- removed with the block
+//	port: 8080
+//
+// Limitation: a header glued directly to the first key with no blank line is
+// indistinguishable from that key's own comment and is removed with it.
+func leadingCommentStart(lines []string, keyIdx int) int {
+	start := keyIdx
+	for start > 0 && strings.HasPrefix(lines[start-1], "#") {
+		start--
+	}
+	return start
 }
 
 // clampRange bounds a [start, end) line range to [0, n], guarding against blocks

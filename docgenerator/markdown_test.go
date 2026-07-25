@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/lucasassuncao/yedit/editor"
+	"github.com/lucasassuncao/yedit/schema"
 )
 
 func TestFormatLabelsDoesNotEmitTablePipes(t *testing.T) {
@@ -38,8 +39,8 @@ func TestFieldsTableEscapesMetadataCells(t *testing.T) {
 			Formats:     []editor.Format{editor.FormatURL},
 		}
 	})
-	ds := NewSchemaGenerator(WithMetadata(src)).GenerateDocsInMemory([]Entry{{Config: pipeConfig{}}})
-	page := ds.Pages["pipeConfig"]
+	g := NewSchemaGenerator(WithMetadata(src))
+	page := g.generateMarkdown("pipeConfig", schema.Discover(pipeConfig{}), nil)
 	if !strings.Contains(page, "| a\\|b |") {
 		t.Errorf("default cell not pipe-escaped:\n%s", page)
 	}
@@ -57,8 +58,7 @@ type upperConfig struct {
 }
 
 func TestLinkedFieldsTableLowercasesLinkTarget(t *testing.T) {
-	ds := NewSchemaGenerator().GenerateDocsInMemory([]Entry{{Config: upperConfig{}, SplitStructs: true}})
-	root := ds.Pages["upperConfig"]
+	root := NewSchemaGenerator().generateRootMarkdown("upperConfig", schema.Discover(upperConfig{}))
 	if !strings.Contains(root, "[Settings](./settings.md)") {
 		t.Errorf("link target not lowercased:\n%s", root)
 	}

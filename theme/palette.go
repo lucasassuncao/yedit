@@ -3,35 +3,19 @@
 package theme
 
 import (
-	"image/color"
-	"os"
-
 	"charm.land/lipgloss/v2"
 )
-
-// NoColor reports whether the NO_COLOR environment variable is set - the
-// single switch for monochrome mode across all yedit rendering.
-func NoColor() bool { return os.Getenv("NO_COLOR") != "" }
-
-// Color converts a color string to a lipgloss.Color, returning an empty color
-// (terminal default) when NoColor is active so rendering stays monochrome.
-func Color(c string) color.Color {
-	if NoColor() {
-		return lipgloss.Color("")
-	}
-	return lipgloss.Color(c)
-}
 
 // Palette - narrow on purpose. Clients can extend it with their own colours;
 // add to this list only when at least two yedit components need it.
 var (
-	Accent       = Color("63")  // blue - active borders, primary highlight
-	AccentBright = Color("212") // pink - titles, selection
-	Muted        = Color("240") // grey - inactive borders, status hints
-	Dim          = Color("245") // light grey - secondary text
-	Success      = Color("82")  // green - existing/added items, success alerts
-	Warning      = Color("220") // yellow - save-with-warnings alerts
-	Danger       = Color("196") // red - error alerts
+	Accent       = lipgloss.Color("63")  // blue - active borders, primary highlight
+	AccentBright = lipgloss.Color("212") // pink - titles, selection
+	Muted        = lipgloss.Color("240") // grey - inactive borders, status hints
+	Dim          = lipgloss.Color("245") // light grey - secondary text
+	Success      = lipgloss.Color("82")  // green - existing/added items, success alerts
+	Warning      = lipgloss.Color("220") // yellow - save-with-warnings alerts
+	Danger       = lipgloss.Color("196") // red - error alerts
 )
 
 // Common item styles. Each TUI is free to compose its own variants on top.
@@ -131,6 +115,7 @@ var themeRegistry = []struct {
 		{"apricot", ThemeApricot}, {"dragonfruit", ThemeDragonfruit}, {"blackberry", ThemeBlackberry},
 		{"tangerine", ThemeTangerine}, {"fig", ThemeFig}, {"guava", ThemeGuava},
 		{"acai", ThemeAcai}, {"coconut", ThemeCoconut}, {"guarana", ThemeGuarana},
+		{"melon", ThemeMelon},
 	}},
 	{"Horizon", []namedTheme{
 		{"farzenith", ThemeFarZenith}, {"banuk", ThemeBanuk}, {"nora", ThemeNora},
@@ -288,6 +273,13 @@ var (
 	}}
 	ThemeGuarana = Theme{Colors: Colors{
 		ActiveBorderColor: "#A83220", SelectionColor: "#D4503C", InactiveBorderColor: "#5C2A1A", AvailableItemColor: "#3A1408", ExistingItemColor: "#4A7C2F", ErrorColor: "#C0392B",
+	}}
+	// ThemeMelon: cantaloupe - salmon-orange flesh with the netted rind's sage
+	// green on the borders. The green is deliberate: peach, apricot, and mango
+	// all pair an orange accent with brown borders, so a fourth orange fruit
+	// needs the rind to tell itself apart from them at a glance.
+	ThemeMelon = Theme{Colors: Colors{
+		ActiveBorderColor: "#E8845A", SelectionColor: "#F7D9A8", InactiveBorderColor: "#8A9A6B", AvailableItemColor: "#5A6B45", ExistingItemColor: "#7BB661", ErrorColor: "#C0392B",
 	}}
 	// ThemeFarZenith: white-and-gold, after the Far Zenith enclave's polished
 	// ivory architecture and bronze trim in Horizon Forbidden West. Unfocused

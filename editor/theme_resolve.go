@@ -53,14 +53,14 @@ func resolveTheme(t theme.Theme) resolvedTheme {
 }
 
 // buildDerivedStyles creates the internal lipgloss styles from the resolved
-// color palette. Respects NO_COLOR (via theme.Color) by producing empty colors.
+// color palette.
 func buildDerivedStyles(c theme.Colors) resolvedTheme {
-	accent := theme.Color(c.ActiveBorderColor)
-	accentBright := theme.Color(c.SelectionColor)
-	muted := theme.Color(c.InactiveBorderColor)
-	dim := theme.Color(c.AvailableItemColor)
-	success := theme.Color(c.ExistingItemColor)
-	danger := theme.Color(c.ErrorColor)
+	accent := lipgloss.Color(c.ActiveBorderColor)
+	accentBright := lipgloss.Color(c.SelectionColor)
+	muted := lipgloss.Color(c.InactiveBorderColor)
+	dim := lipgloss.Color(c.AvailableItemColor)
+	success := lipgloss.Color(c.ExistingItemColor)
+	danger := lipgloss.Color(c.ErrorColor)
 
 	return resolvedTheme{
 		existingItem:    lipgloss.NewStyle().Foreground(success),

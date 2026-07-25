@@ -367,3 +367,41 @@ func TestNew_missingCoverage(t *testing.T) {
 	// If labels were missing, New would return an error - verified manually.
 	t.Log("coverage enforcement is verified by TestNew_basic succeeding with all fields present")
 }
+
+// mapSliceInner is the struct reached only by unwrapping BOTH the map and the
+// slice in map[string][]mapSliceInner.
+type mapSliceInner struct {
+	Name string `yaml:"name"`
+}
+
+type mapSliceRoot struct {
+	Groups map[string][]mapSliceInner `yaml:"groups"`
+}
+
+// TestNewFromTree_ValidatesUnderMapOfSlice guards the elemType regression: a
+// map whose value is a slice of structs must still be walked into, so a typo in
+// the metadata tree below it is reported instead of becoming dead metadata.
+func TestNewFromTree_ValidatesUnderMapOfSlice(t *testing.T) {
+	is := assert.New(t)
+
+	_, err := metadata.NewFromTree(&mapSliceRoot{}, map[string]*metadata.Node{
+		"groups": {Children: map[string]*metadata.Node{
+			"does-not-exist": {}, // no such field on mapSliceInner
+		}},
+	})
+	is.Error(err, "an unknown key under map[string][]Struct must be rejected")
+	if err != nil {
+		is.Contains(err.Error(), "does-not-exist", "the error should name the offending key")
+	}
+
+	src, err := metadata.NewFromTree(&mapSliceRoot{}, map[string]*metadata.Node{
+		"groups": {Children: map[string]*metadata.Node{
+			"name": {FieldMeta: editor.FieldMeta{Description: "the group name"}},
+		}},
+	})
+	is.NoError(err, "the correct key must be accepted")
+	if err == nil {
+		is.Equal("the group name", src.FieldMeta("groups", "name").Description)
+		is.Equal("string", src.FieldMeta("groups", "name").Type, "Type must be filled from the Go type")
+	}
+}

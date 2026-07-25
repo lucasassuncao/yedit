@@ -90,14 +90,11 @@ func newBrowserModel(colors theme.Colors) *browserModel {
 // it's the difference between an obvious highlight bar and looking like
 // navigation silently does nothing.
 func tableStyles(c theme.Colors) table.Styles {
-	selected := lipgloss.NewStyle().Bold(true)
-	if !theme.NoColor() {
-		selected = selected.
-			Background(theme.Color(c.SelectionColor)).
-			Foreground(contrastText(c.SelectionColor))
-	}
+	selected := lipgloss.NewStyle().Bold(true).
+		Background(lipgloss.Color(c.SelectionColor)).
+		Foreground(contrastText(c.SelectionColor))
 	return table.Styles{
-		Header: lipgloss.NewStyle().Bold(true).Foreground(theme.Color(c.InactiveBorderColor)).Padding(0, 1),
+		Header: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(c.InactiveBorderColor)).Padding(0, 1),
 		// Cell intentionally carries no Foreground: table.renderRow renders
 		// each cell through Cell first (self-contained, with its own reset
 		// code) and only wraps the *result* in Selected for the cursor row.
@@ -146,9 +143,9 @@ func (m *browserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch keyMsg.String() {
 	case "q", "ctrl+c", "esc":
 		return m, tea.Quit
-	case "up", "k":
+	case "up":
 		m.tbl.MoveUp(1)
-	case "down", "j":
+	case "down":
 		m.tbl.MoveDown(1)
 	}
 	return m, nil
@@ -161,11 +158,11 @@ func (m *browserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *browserModel) View() tea.View {
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.Color(m.colors.InactiveBorderColor))
+		BorderForeground(lipgloss.Color(m.colors.InactiveBorderColor))
 	return tea.NewView(box.Render(m.tbl.View()))
 }
 
-// BrowseInTerminal renders an inline, scrollable table (↑/↓ or j/k to
+// BrowseInTerminal renders an inline, scrollable table (↑/↓ to
 // navigate, q/esc/ctrl+c to quit) of every built-in theme name next to its
 // theme.Categories() category. It does not take over the full screen. An
 // optional theme.Theme controls colors; zero value resolves to

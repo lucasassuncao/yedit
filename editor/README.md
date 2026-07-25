@@ -13,7 +13,6 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 ## Index
 
 - [Variables](<#variables>)
-- [func NewModelForTest\(cfg Config\) \(tea.Model, error\)](<#NewModelForTest>)
 - [type AddEntry](<#AddEntry>)
 - [type AppendPreset](<#AppendPreset>)
 - [type ApplyDocPreset](<#ApplyDocPreset>)
@@ -266,15 +265,6 @@ var FormatUUID = FormatCustom("uuid", func(v string) bool {
     return reUUID.MatchString(v)
 })
 ```
-
-<a name="NewModelForTest"></a>
-## func [NewModelForTest](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L38>)
-
-```go
-func NewModelForTest(cfg Config) (tea.Model, error)
-```
-
-NewModelForTest constructs the editor model for use in external test packages. In production code use Run or RunContext; this entry point skips the bubbletea program and returns the raw tea.Model so tests can drive it via Update/View.
 
 <a name="AddEntry"></a>
 ## type [AddEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L31>)
@@ -645,7 +635,7 @@ Run starts the editor TUI and blocks until the user quits. The Config must have 
 Returns the session Result on a clean quit, or the underlying tea.Program error. A panic inside the editor is recovered and returned as an error instead of crashing the embedding program: Bubble Tea restores the terminal before the panic propagates here, so the host is left with a usable terminal and a normal error to handle.
 
 <a name="RunContext"></a>
-### func [RunContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L46>)
+### func [RunContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/run.go#L39>)
 
 ```go
 func RunContext(ctx context.Context, cfg Config) (res Result, err error)

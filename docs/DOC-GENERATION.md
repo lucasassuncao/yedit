@@ -1,6 +1,6 @@
 # Doc Generation
 
-`docgenerator` turns a Go struct and a `MetadataSource` into Markdown reference documentation - the same information shown in yedit's Hint/Example panel, as static files or a browsable in-terminal TUI. Apps embedding yedit typically wire this as `show-docs` (TUI browser) and `generate-docs` (write files to disk) CLI subcommands.
+`docgenerator` turns a Go struct and a `MetadataSource` into Markdown reference documentation - the same information shown in yedit's Hint/Example panel. Apps embedding yedit typically wire this as a `generate-docs` CLI subcommand that writes the files into the repository.
 
 `docgenerator` depends on `editor` (for `MetadataSource`) and `schema` (for `Discover`), but not the other way around - wiring doc commands does not add weight to the editor itself.
 
@@ -19,31 +19,7 @@ type Entry struct {
 }
 ```
 
-`SplitStructs: true` records the parent → children relationship in `DocSet.Children`, which the TUI browser uses for `[1-9]` link navigation between pages.
-
-## In-memory TUI browser
-
-Two paths, depending on whether your struct implements `metadata.MetadataProvider`:
-
-```go
-// Struct implements MetadataProvider - metadata.New is called for you:
-ds, err := docgenerator.GenerateInMemory([]docgenerator.Entry{
-    {Config: Config{}, SplitStructs: true},
-})
-if err != nil {
-    log.Fatal(err)
-}
-docgenerator.RenderMarkdownDocsInTerminal(ds, "myapp")
-
-// External MetadataSource:
-gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(src))
-ds = gen.GenerateDocsInMemory([]docgenerator.Entry{
-    {Config: Config{}, SplitStructs: true},
-})
-docgenerator.RenderMarkdownDocsInTerminal(ds, "myapp")
-```
-
-`RenderMarkdownDocsInTerminal(docs, appName, theme ...theme.Theme)` opens a self-contained bubbletea program (list + viewport, matching the block editor's navigation feel). An optional trailing `theme.Theme` matches it to your app's `Config.Theme` - see [Themes](THEMES.md).
+`SplitStructs: true` emits one file per nested struct instead of inlining them, cross-linked by relative Markdown links. Two entries whose split children share a name would write to the same file; that is reported as a `duplicate docs page` error rather than silently overwriting.
 
 ## Writing files to disk
 
@@ -87,22 +63,9 @@ _, err = docgenerator.GenerateExampleDocs("docs/examples", myPresetsSource, map[
 
 The file is named after the lowercased title (`category.md`) so it matches the doc page generated for the same type, and fields absent from `titles` (or with no presets) are skipped.
 
-## Wiring as CLI commands
+## Wiring as a CLI command
 
 ```go
-var showDocsCmd = &cobra.Command{
-    Use: "show-docs",
-    RunE: func(cmd *cobra.Command, args []string) error {
-        ds, err := docgenerator.GenerateInMemory([]docgenerator.Entry{
-            {Config: Config{}, SplitStructs: true},
-        })
-        if err != nil {
-            return err
-        }
-        return docgenerator.RenderMarkdownDocsInTerminal(ds, "myapp")
-    },
-}
-
 var generateDocsCmd = &cobra.Command{
     Use: "generate-docs",
     RunE: func(cmd *cobra.Command, args []string) error {

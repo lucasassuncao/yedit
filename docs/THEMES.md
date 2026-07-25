@@ -23,13 +23,13 @@ for name, t := range theme.All() {
 | `pomegranate` | `apple` | `plum` | `apricot` |
 | `dragonfruit` | `blackberry` | `tangerine` | `fig` |
 | `guava` | `acai` | `coconut` | `guarana` |
-| `farzenith` | `banuk` | `nora` | `carja` |
-| `oseram` | `utaru` | `tenakth` | `quen` |
-| `mario` | `luigi` | `princesspeach` | `daisy` |
-| `yoshi` | `toad` | `rosalina` | `toadette` |
-| `wario` | `waluigi` | `bowser` | `sonic` |
-| `tails` | `knuckles` | `shadow` | `amyrose` |
-| `cream` | `rouge` | `eggman` | |
+| `melon` | `farzenith` | `banuk` | `nora` |
+| `carja` | `oseram` | `utaru` | `tenakth` |
+| `quen` | `mario` | `luigi` | `princesspeach` |
+| `daisy` | `yoshi` | `toad` | `rosalina` |
+| `toadette` | `wario` | `waluigi` | `bowser` |
+| `sonic` | `tails` | `knuckles` | `shadow` |
+| `amyrose` | `cream` | `rouge` | `eggman` |
 
 `plain` (`theme.ThemePlain`) is the default when `Config.Theme` is left at its zero value. It uses only ANSI 16-color codes (`"4"`, `"6"`, `"8"`, `"2"`, `"1"`) instead of hex/256-color values, for terminals with limited color support.
 
@@ -52,7 +52,7 @@ for _, cat := range theme.Categories() {
 
 ### Interactive browser
 
-`themebrowser.BrowseInTerminal(t ...theme.Theme)` renders an inline (not full-screen) scrollable table (`↑`/`↓` or `j`/`k`, `q`/`esc`/`ctrl+c` to quit) listing every built-in theme name next to its `theme.Categories()` category. Wire it directly to a host CLI's `--list-themes` flag instead of printing plain text:
+`themebrowser.BrowseInTerminal(t ...theme.Theme)` renders an inline (not full-screen) scrollable table (`↑`/`↓` to navigate, `q`/`esc`/`ctrl+c` to quit) listing every built-in theme name next to its `theme.Categories()` category. Wire it directly to a host CLI's `--list-themes` flag instead of printing plain text:
 
 ```go
 import "github.com/lucasassuncao/yedit/themebrowser"
@@ -139,6 +139,6 @@ myTheme := theme.Theme{
 colors := theme.ResolveColors(myTheme)
 ```
 
-## NO_COLOR
+## Low-color terminals
 
-`theme.NoColor()` reports whether the `NO_COLOR` environment variable is set. When it is, `theme.Color(...)` returns an empty `lipgloss.Color` (terminal default) instead of the requested value, so the whole UI renders monochrome regardless of the configured theme. This is a single global switch, not per-`Theme` configurable.
+There is no `NO_COLOR` switch. Use `ThemePlain` (the default) for terminals with limited color support: it is built entirely from ANSI 16-color codes rather than hex or 256-color values, so the terminal's own palette controls how it renders.

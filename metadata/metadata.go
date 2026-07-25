@@ -333,17 +333,21 @@ func fill(node *Node, t reflect.Type, path string, visited map[fillKey]*Node) (*
 	return clone, nil
 }
 
-// elemType resolves the struct type that children of t belong to: slices and
-// maps yield their element type, pointers are unwrapped.
+// elemType resolves the struct type that children of t belong to: slices, maps,
+// arrays, and pointers are unwrapped until a non-wrapper type is reached.
+//
+// A map's value is resolved recursively rather than only pointer-unwrapped, so
+// nested wrappers such as map[string][]Inner reach Inner instead of stopping at
+// []Inner. Stopping early made fill() treat the field as unverifiable, which
+// silently skipped validation of every metadata key beneath it. Mirrors
+// schema.unwrap, so the discovered schema and the metadata tree agree on which
+// type a field's children belong to.
 func elemType(t reflect.Type) reflect.Type {
-	for t != nil && (t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice) {
+	for t != nil && (t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Array) {
 		t = t.Elem()
 	}
 	if t != nil && t.Kind() == reflect.Map {
-		t = t.Elem()
-		for t.Kind() == reflect.Pointer {
-			t = t.Elem()
-		}
+		return elemType(t.Elem())
 	}
 	return t
 }

@@ -144,7 +144,9 @@ func TestListMoveCursorClampsAtBounds(t *testing.T) {
 	first := lm.cursor
 	lm = lm.moveCursor(-1) // already at the top - must not wrap to the bottom
 	is.Equal(first, lm.cursor, "moveCursor(-1) at top should clamp, not wrap")
-	lm = lm.jumpToLast()
+	for i := 0; i < len(lm.items); i++ {
+		lm = lm.moveCursor(1) // walk to the bottom; clamps once there
+	}
 	last := lm.cursor
 	lm = lm.moveCursor(1) // at the bottom - must not wrap to the top
 	is.Equal(last, lm.cursor, "moveCursor(+1) at bottom should clamp, not wrap")

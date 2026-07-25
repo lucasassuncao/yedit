@@ -1,6 +1,7 @@
 package document_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/lucasassuncao/yedit/document"
@@ -132,5 +133,68 @@ func TestValidateSnippet(t *testing.T) {
 
 	if err := document.ValidateSnippet("remoteUser: :\n  broken:"); err == nil {
 		t.Error("expected invalid snippet to fail validation")
+	}
+}
+
+// TestRemoveBlockTakesLeadingComments verifies that the comment lines
+// documenting a block are removed with it, instead of being left behind
+// pointing at whatever block follows.
+func TestRemoveBlockTakesLeadingComments(t *testing.T) {
+	raw := []byte("a: 1\n\n# documents b\n# second line\nb: 2\n\nc: 3\n")
+	blocks, err := document.ParseBlocks(raw)
+	if err != nil {
+		t.Fatalf("ParseBlocks: %v", err)
+	}
+	out, err := document.RemoveBlock(raw, blocks, "b")
+	if err != nil {
+		t.Fatalf("RemoveBlock: %v", err)
+	}
+	if strings.Contains(string(out), "documents b") {
+		t.Errorf("leading comment survived the removal:\n%q", out)
+	}
+	if strings.Contains(string(out), "second line") {
+		t.Errorf("second comment line survived the removal:\n%q", out)
+	}
+	if !strings.Contains(string(out), "a: 1") || !strings.Contains(string(out), "c: 3") {
+		t.Errorf("sibling blocks were damaged:\n%q", out)
+	}
+}
+
+// TestRemoveBlockKeepsSectionHeader verifies the blank-line stop rule: a header
+// separated from the key by an empty line is not the key's own comment and must
+// survive.
+func TestRemoveBlockKeepsSectionHeader(t *testing.T) {
+	raw := []byte("# ---- Network ----\n\n# listen port\nport: 8080\n\nhost: local\n")
+	blocks, err := document.ParseBlocks(raw)
+	if err != nil {
+		t.Fatalf("ParseBlocks: %v", err)
+	}
+	out, err := document.RemoveBlock(raw, blocks, "port")
+	if err != nil {
+		t.Fatalf("RemoveBlock: %v", err)
+	}
+	if !strings.Contains(string(out), "---- Network ----") {
+		t.Errorf("section header was removed; it is separated by a blank line:\n%q", out)
+	}
+	if strings.Contains(string(out), "listen port") {
+		t.Errorf("the key's own comment survived:\n%q", out)
+	}
+}
+
+// TestRemoveBlockIndentedCommentIsContent verifies that a comment-looking line
+// indented under a previous block is treated as content, not as the removed
+// block's documentation.
+func TestRemoveBlockIndentedCommentIsContent(t *testing.T) {
+	raw := []byte("script: |\n  # not a comment, shell content\nnext: 1\n")
+	blocks, err := document.ParseBlocks(raw)
+	if err != nil {
+		t.Fatalf("ParseBlocks: %v", err)
+	}
+	out, err := document.RemoveBlock(raw, blocks, "next")
+	if err != nil {
+		t.Fatalf("RemoveBlock: %v", err)
+	}
+	if !strings.Contains(string(out), "not a comment, shell content") {
+		t.Errorf("indented content line was eaten as a comment:\n%q", out)
 	}
 }

@@ -5,8 +5,7 @@
 //
 //	go run ./examples/test                 # open the editor (seeds demo.yaml on first run)
 //	go run ./examples/test --config path.yaml
-//	go run ./examples/test --theme dracula
-//	go run ./examples/test show-docs       # browse schema docs in the TUI
+//	go run ./examples/test --theme grape
 //	go run ./examples/test generate-docs   # write docs/ markdown files
 //
 // # Schema
@@ -185,25 +184,11 @@ func buildEditCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&configPath, "config", "c", "", "YAML file to edit (default: demo.yaml, seeded on first run)")
-	cmd.Flags().StringVar(&themeName, "theme", "dark", "theme preset (--theme dracula, --theme light, …)")
+	cmd.Flags().StringVar(&themeName, "theme", "plain", "theme preset (--theme grape, --theme sonic, …)")
 	cmd.Flags().BoolVar(&noSaveConfirm, "no-save-confirm", false, "skip save confirmation dialog")
 	cmd.Flags().BoolVar(&noDeleteConfirm, "no-delete-confirm", false, "skip delete confirmation dialog")
 	cmd.Flags().BoolVar(&noValidate, "no-validate", false, "allow saving with validation errors")
 	return cmd
-}
-
-func buildShowDocsCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "show-docs",
-		Short: "Browse schema documentation in the TUI",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(testMetadata))
-			ds := gen.GenerateDocsInMemory([]docgenerator.Entry{
-				{Config: Config{}},
-			})
-			return docgenerator.RenderMarkdownDocsInTerminal(ds, "yedit test")
-		},
-	}
 }
 
 func buildGenerateDocsCmd() *cobra.Command {

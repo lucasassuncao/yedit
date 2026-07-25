@@ -389,16 +389,6 @@ func (lm listModel) clampScroll() listModel {
 	return lm
 }
 
-func (lm listModel) jumpToLast() listModel {
-	for i := len(lm.items) - 1; i >= 0; i-- {
-		if !lm.items[i].Separator {
-			lm.cursor = i
-			return lm.clampScroll()
-		}
-	}
-	return lm
-}
-
 func renderListItem(it listItem, selected bool, th resolvedTheme) string {
 	if selected {
 		mark := "+"
