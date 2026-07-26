@@ -16,6 +16,7 @@ import (
 	"github.com/lucasassuncao/yedit/document"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
+	"github.com/lucasassuncao/yedit/validate"
 )
 
 type pane int
@@ -109,7 +110,7 @@ func newModel(cfg Config) (model, error) {
 		schemaTree:      tree,
 		knownByPath:     known,
 		childrenOf:      childrenOf,
-		wiredValidators: WireWithSchema(cfg.Validators, tree, cfg.Metadata),
+		wiredValidators: validate.WireWithSchema(cfg.Validators, tree, cfg.Metadata),
 
 		list:     list,
 		preview:  preview,

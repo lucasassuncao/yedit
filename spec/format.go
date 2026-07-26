@@ -1,4 +1,4 @@
-package editor
+package spec
 
 import (
 	"net"
@@ -32,6 +32,15 @@ func (f Format) IsZero() bool { return f.name == "" }
 
 // Label returns the display name used in the hint panel and docgenerator.
 func (f Format) Label() string { return f.name }
+
+// Matches reports whether v satisfies this format. A zero Format matches
+// nothing. Exported so the validation rules can live outside this package.
+func (f Format) Matches(v string) bool {
+	if f.validate == nil {
+		return false
+	}
+	return f.validate(v)
+}
 
 // ─── Built-in formats ─────────────────────────────────────────────────────────
 

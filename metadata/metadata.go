@@ -1,5 +1,5 @@
-// Package metadata provides a tree-based implementation of editor.MetadataSource.
-// Declare each field's editor.FieldMeta in a Node tree keyed by yaml names,
+// Package metadata provides a tree-based implementation of spec.MetadataSource.
+// Declare each field's spec.FieldMeta in a Node tree keyed by yaml names,
 // then call Build to validate the tree against the schema struct and obtain
 // the MetadataSource consumed by editor.Config.Metadata and the FromMetadata
 // validator family.
@@ -10,8 +10,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/spec"
 )
 
 // Node is one field's metadata plus its children, keyed by yaml name.
@@ -19,18 +19,26 @@ import (
 // filter whose "any"/"all" children are filters again) without duplicating
 // definitions - NewFromTree handles the cycle.
 type Node struct {
-	editor.FieldMeta
+	spec.FieldMeta
 	Children map[string]*Node
 }
 
-// MetadataProvider is implemented by any struct that declares its own field metadata.
-// Each struct returns only its direct fields - Children for fields whose types also
-// implement MetadataProvider are composed automatically by New.
-type MetadataProvider interface {
+// Provider is implemented by any struct that declares its own field metadata.
+// Each struct returns only its direct fields - Children for fields whose types
+// also implement Provider are composed automatically by New.
+//
+// It answers a different question from schema.Provider: that one declares what
+// fields exist (structure, for types reflection cannot read); this one declares
+// what they mean (descriptions, defaults, constraints).
+type Provider interface {
 	Metadata() map[string]*Node
 }
 
-var metadataProviderType = reflect.TypeOf((*MetadataProvider)(nil)).Elem()
+// MetadataProvider is the previous name for Provider, kept as an alias so
+// existing implementations keep compiling.
+type MetadataProvider = Provider
+
+var metadataProviderType = reflect.TypeOf((*Provider)(nil)).Elem()
 
 // NewFromTree validates tree against the schema struct (the same pointer handed to
 // editor.Config.Schema), fills each node's FieldMeta.Type from the Go type
@@ -57,7 +65,7 @@ var metadataProviderType = reflect.TypeOf((*MetadataProvider)(nil)).Elem()
 //
 // The caller's tree is never modified: the returned source is backed by a deep
 // copy, so memoized Metadata() results and caller-assembled maps stay pristine.
-func NewFromTree(schemaPtr any, tree map[string]*Node) (editor.MetadataSource, error) {
+func NewFromTree(schemaPtr any, tree map[string]*Node) (spec.MetadataSource, error) {
 	rootType := reflect.TypeOf(schemaPtr)
 	visited := map[fillKey]*Node{}
 	filled := make(map[string]*Node, len(tree))
@@ -104,7 +112,7 @@ func NewFromTree(schemaPtr any, tree map[string]*Node) (editor.MetadataSource, e
 //
 //  5. Delegate to NewFromTree to validate tree keys against the schema struct
 //     and fill in each node's Type label from the Go type.
-func New(v any) (editor.MetadataSource, error) {
+func New(v any) (spec.MetadataSource, error) {
 	// Step 1: root must declare its own fields.
 	p, ok := v.(MetadataProvider)
 	if !ok {
@@ -258,15 +266,15 @@ func cloneNode(n *Node, memo map[*Node]*Node) *Node {
 	return c
 }
 
-// metadataSource implements editor.MetadataSource backed by a Node tree.
+// metadataSource implements spec.MetadataSource backed by a Node tree.
 type metadataSource struct {
 	tree map[string]*Node
 }
 
-func (h *metadataSource) FieldMeta(block, fieldPath string) editor.FieldMeta {
+func (h *metadataSource) FieldMeta(block, fieldPath string) spec.FieldMeta {
 	node, ok := h.tree[block]
 	if !ok {
-		return editor.FieldMeta{}
+		return spec.FieldMeta{}
 	}
 	if fieldPath == "" {
 		return node.FieldMeta
@@ -275,7 +283,7 @@ func (h *metadataSource) FieldMeta(block, fieldPath string) editor.FieldMeta {
 	for _, seg := range strings.Split(fieldPath, ".") {
 		next, ok := cur.Children[seg]
 		if !ok {
-			return editor.FieldMeta{}
+			return spec.FieldMeta{}
 		}
 		cur = next
 	}

@@ -1,7 +1,7 @@
-package editor
+package validate
 
 import (
-	"path/filepath"
+	"github.com/lucasassuncao/yedit/spec"
 	"strings"
 	"sync"
 	"testing"
@@ -39,7 +39,7 @@ func TestMutuallyExclusive(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput(nil, tc.blocks))
+			errs := v.Validate(spec.NewValidationInput(nil, tc.blocks))
 			if tc.wantViolation && len(errs) != 1 {
 				t.Fatalf("expected 1 violation, got %v", errs)
 			}
@@ -120,7 +120,7 @@ apps:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			errs := v.Validate(spec.NewValidationInput([]byte(tc.raw), nil))
 			if tc.wantViolation && len(errs) == 0 {
 				t.Fatal("expected a violation, got none")
 			}
@@ -134,7 +134,7 @@ apps:
 func TestMutuallyExclusive_topLevel_unchanged(t *testing.T) {
 	blocks := []document.Block{{Key: "image"}, {Key: "build"}}
 	v := MutuallyExclusive("image", "build")
-	if errs := v.Validate(NewValidationInput(nil, blocks)); len(errs) != 1 {
+	if errs := v.Validate(spec.NewValidationInput(nil, blocks)); len(errs) != 1 {
 		t.Errorf("top-level behavior should be unchanged, got %v", errs)
 	}
 }
@@ -142,14 +142,14 @@ func TestMutuallyExclusive_topLevel_unchanged(t *testing.T) {
 func TestMutuallyExclusive_misconfiguredPaths(t *testing.T) {
 	tests := []struct {
 		name string
-		v    Validator
+		v    spec.Validator
 	}{
 		{"diverging parents", MutuallyExclusive("server.tls", "proxy.tls")},
 		{"different depths", MutuallyExclusive("server.tls", "server.http.port")},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := tc.v.Validate(NewValidationInput([]byte("server:\n  tls: true\n"), nil))
+			errs := tc.v.Validate(spec.NewValidationInput([]byte("server:\n  tls: true\n"), nil))
 			if len(errs) != 1 {
 				t.Fatalf("expected 1 misconfiguration violation, got %v", errs)
 			}
@@ -162,7 +162,7 @@ func TestMutuallyExclusive_misconfiguredPaths(t *testing.T) {
 
 func TestAllOrNone_misconfiguredPaths(t *testing.T) {
 	v := AllOrNone("server.tls-cert", "proxy.tls-key")
-	errs := v.Validate(NewValidationInput([]byte("server:\n  tls-cert: a\n"), nil))
+	errs := v.Validate(spec.NewValidationInput([]byte("server:\n  tls-cert: a\n"), nil))
 	if len(errs) != 1 {
 		t.Fatalf("expected 1 misconfiguration violation, got %v", errs)
 	}
@@ -200,7 +200,7 @@ func TestRequiredWith(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput(nil, tc.blocks))
+			errs := v.Validate(spec.NewValidationInput(nil, tc.blocks))
 			if tc.wantViolation && len(errs) != 1 {
 				t.Fatalf("expected 1 violation, got %v", errs)
 			}
@@ -294,7 +294,7 @@ servers:
 
 func TestRequiredWith_misconfiguredPaths(t *testing.T) {
 	v := RequiredWith("server.tls-key", "proxy.tls-cert")
-	errs := v.Validate(NewValidationInput([]byte("server:\n  tls-key: a\n"), nil))
+	errs := v.Validate(spec.NewValidationInput([]byte("server:\n  tls-key: a\n"), nil))
 	if len(errs) != 1 {
 		t.Fatalf("expected 1 misconfiguration violation, got %v", errs)
 	}
@@ -335,7 +335,7 @@ func TestAtLeastOneOf(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput(nil, tc.blocks))
+			errs := v.Validate(spec.NewValidationInput(nil, tc.blocks))
 			if tc.wantViolation && len(errs) == 0 {
 				t.Fatal("expected a violation, got none")
 			}
@@ -388,7 +388,7 @@ func TestExactlyOneOf(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput(nil, tc.blocks))
+			errs := v.Validate(spec.NewValidationInput(nil, tc.blocks))
 			if tc.wantViolation && len(errs) == 0 {
 				t.Fatal("expected a violation, got none")
 			}
@@ -472,7 +472,7 @@ tls:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			errs := v.Validate(spec.NewValidationInput([]byte(tc.raw), nil))
 			if tc.wantViolation && len(errs) == 0 {
 				t.Fatal("expected a violation, got none")
 			}
@@ -546,7 +546,7 @@ configuration:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			errs := v.Validate(spec.NewValidationInput([]byte(tc.raw), nil))
 			if tc.wantViolation && len(errs) == 0 {
 				t.Fatal("expected a violation, got none")
 			}
@@ -565,7 +565,7 @@ configuration:
 func TestCrossFieldOrdered(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     Validator
+		validator     spec.Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
@@ -685,7 +685,7 @@ quota:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := tc.validator.Validate(NewValidationInput([]byte(tc.raw), nil))
+			errs := tc.validator.Validate(spec.NewValidationInput([]byte(tc.raw), nil))
 			if tc.wantViolation && len(errs) == 0 {
 				t.Fatal("expected a violation, got none")
 			}
@@ -777,7 +777,7 @@ plugins:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			errs := v.Validate(spec.NewValidationInput([]byte(tc.raw), nil))
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}
@@ -792,10 +792,10 @@ plugins:
 
 // runValidator collects the rendered violations so tests can assert on the
 // user-visible strings.
-func runValidator(t *testing.T, v Validator, raw string, blocks []document.Block) []string {
+func runValidator(t *testing.T, v spec.Validator, raw string, blocks []document.Block) []string {
 	t.Helper()
 	var out []string
-	for _, viol := range v.Validate(NewValidationInput([]byte(raw), blocks)) {
+	for _, viol := range v.Validate(spec.NewValidationInput([]byte(raw), blocks)) {
 		out = append(out, viol.String())
 	}
 	return out
@@ -804,7 +804,7 @@ func runValidator(t *testing.T, v Validator, raw string, blocks []document.Block
 func TestRequired(t *testing.T) {
 	tests := []struct {
 		name      string
-		validator Validator
+		validator spec.Validator
 		raw       string
 		want      []string // exact violation strings, in order
 	}{
@@ -871,7 +871,7 @@ plugins:
 func TestValueInRange(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     Validator
+		validator     spec.Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
@@ -958,7 +958,7 @@ func TestValueInRange(t *testing.T) {
 func TestValueMatches(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     Validator
+		validator     spec.Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
@@ -1148,14 +1148,14 @@ source:
 func TestAtLeastOneOf_ExactlyOneOf_misconfiguredPaths(t *testing.T) {
 	tests := []struct {
 		name string
-		v    Validator
+		v    spec.Validator
 	}{
 		{"AtLeastOneOf diverging parents", AtLeastOneOf("auth.token", "server.password")},
 		{"ExactlyOneOf different depths", ExactlyOneOf("source.git", "source.local.path")},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := tc.v.Validate(NewValidationInput([]byte("auth:\n  token: a\n"), nil))
+			errs := tc.v.Validate(spec.NewValidationInput([]byte("auth:\n  token: a\n"), nil))
 			if len(errs) != 1 {
 				t.Fatalf("expected 1 misconfiguration violation, got %v", errs)
 			}
@@ -1208,7 +1208,7 @@ servers:
 func TestValueHasPrefixSuffix(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     Validator
+		validator     spec.Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
@@ -1377,7 +1377,7 @@ server:
 func TestCountRange(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     Validator
+		validator     spec.Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
@@ -1504,7 +1504,7 @@ func TestUniqueValues(t *testing.T) {
 func TestDeprecated(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     Validator
+		validator     spec.Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
@@ -1621,7 +1621,7 @@ func TestValueNotOneOf(t *testing.T) {
 func TestValueHasLength(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     Validator
+		validator     spec.Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
@@ -1715,55 +1715,55 @@ func TestValueHasLength(t *testing.T) {
 func TestValueMatchesFormat(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     Validator
+		validator     spec.Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
 	}{
 		{
 			name:      "valid URL - ok",
-			validator: ValueMatchesFormat("endpoint", FormatURL),
+			validator: ValueMatchesFormat("endpoint", spec.FormatURL),
 			raw:       "endpoint: https://example.com\n",
 		},
 		{
 			name:          "invalid URL - violation",
-			validator:     ValueMatchesFormat("endpoint", FormatURL),
+			validator:     ValueMatchesFormat("endpoint", spec.FormatURL),
 			raw:           "endpoint: not-a-url\n",
 			wantViolation: true,
 			wantContains:  []string{"endpoint", "url"},
 		},
 		{
 			name:      "OR semantics - second format matches - ok",
-			validator: ValueMatchesFormat("addr", FormatURL, FormatIPv4),
+			validator: ValueMatchesFormat("addr", spec.FormatURL, spec.FormatIPv4),
 			raw:       "addr: 192.168.1.1\n",
 		},
 		{
 			name:          "OR semantics - neither matches - violation lists both",
-			validator:     ValueMatchesFormat("addr", FormatURL, FormatIPv4),
+			validator:     ValueMatchesFormat("addr", spec.FormatURL, spec.FormatIPv4),
 			raw:           "addr: not-valid\n",
 			wantViolation: true,
 			wantContains:  []string{"addr", "url", "ipv4"},
 		},
 		{
 			name:      "absent path - ok",
-			validator: ValueMatchesFormat("endpoint", FormatURL),
+			validator: ValueMatchesFormat("endpoint", spec.FormatURL),
 			raw:       "name: myapp\n",
 		},
 		{
 			name:      "empty value - ok",
-			validator: ValueMatchesFormat("endpoint", FormatURL),
+			validator: ValueMatchesFormat("endpoint", spec.FormatURL),
 			raw:       "endpoint:\n",
 		},
 		{
 			name:          "non-scalar - violation (scalar expected)",
-			validator:     ValueMatchesFormat("endpoint", FormatURL),
+			validator:     ValueMatchesFormat("endpoint", spec.FormatURL),
 			raw:           "endpoint:\n  host: example.com\n",
 			wantViolation: true,
 			wantContains:  []string{"scalar"},
 		},
 		{
 			name:          "sequence expansion - flags invalid item",
-			validator:     ValueMatchesFormat("mirrors.url", FormatURL),
+			validator:     ValueMatchesFormat("mirrors.url", spec.FormatURL),
 			raw:           "mirrors:\n  - url: https://a.com\n  - url: ftp://bad\n",
 			wantViolation: true,
 			wantContains:  []string{"mirrors[1].url"},
@@ -1791,7 +1791,7 @@ func TestValueMatchesFormat(t *testing.T) {
 func TestForbiddenIf(t *testing.T) {
 	tests := []struct {
 		name          string
-		validator     Validator
+		validator     spec.Validator
 		raw           string
 		wantViolation bool
 		wantContains  []string
@@ -1965,7 +1965,7 @@ categories:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			errs := v.Validate(spec.NewValidationInput([]byte(tc.raw), nil))
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}
@@ -2039,7 +2039,7 @@ categories:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			errs := v.Validate(spec.NewValidationInput([]byte(tc.raw), nil))
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}
@@ -2117,7 +2117,7 @@ servers:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			errs := v.Validate(spec.NewValidationInput([]byte(tc.raw), nil))
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}
@@ -2155,7 +2155,7 @@ categories:
 
 	tests := []struct {
 		name         string
-		validator    Validator
+		validator    spec.Validator
 		raw          string
 		wantCount    int
 		wantContains []string // checked against the first violation
@@ -2273,15 +2273,15 @@ servers:
 }
 
 func TestViolation_PathAndString(t *testing.T) {
-	if got := (Violation{Message: "msg"}).String(); got != "msg" {
+	if got := (spec.Violation{Message: "msg"}).String(); got != "msg" {
 		t.Errorf("String without Path = %q, want %q", got, "msg")
 	}
-	if got := (Violation{Path: "a.b", Message: "msg"}).String(); got != "a.b: msg" {
+	if got := (spec.Violation{Path: "a.b", Message: "msg"}).String(); got != "a.b: msg" {
 		t.Errorf("String with Path = %q, want %q", got, "a.b: msg")
 	}
 
 	v := ValueOneOf("configuration.log-level", "info")
-	errs := v.Validate(NewValidationInput([]byte("configuration:\n  log-level: verbose\n"), nil))
+	errs := v.Validate(spec.NewValidationInput([]byte("configuration:\n  log-level: verbose\n"), nil))
 	if len(errs) != 1 {
 		t.Fatalf("expected 1 violation, got %v", errs)
 	}
@@ -2293,7 +2293,7 @@ func TestViolation_PathAndString(t *testing.T) {
 func TestMutuallyExclusiveNested(t *testing.T) {
 	tests := []struct {
 		name      string
-		validator Validator
+		validator spec.Validator
 		raw       string
 		wantCount int
 		wantInErr []string
@@ -2415,7 +2415,7 @@ some:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := tc.validator.Validate(NewValidationInput([]byte(tc.raw), nil))
+			errs := tc.validator.Validate(spec.NewValidationInput([]byte(tc.raw), nil))
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}
@@ -2520,7 +2520,7 @@ services:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			errs := v.Validate(spec.NewValidationInput([]byte(tc.raw), nil))
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}
@@ -2586,7 +2586,7 @@ services:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			errs := v.Validate(spec.NewValidationInput([]byte(tc.raw), nil))
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}
@@ -2600,7 +2600,7 @@ func TestMutuallyExclusiveGroupsNested_allLevels(t *testing.T) {
 	// - "rule.union" fires at every "union"-parented mapping (including nested ones)
 	groupA := []string{"union", "intersect"}
 	groupB := []string{"path", "name"}
-	validators := []Validator{
+	validators := []spec.Validator{
 		MutuallyExclusiveGroupsNested("services.rule", groupA, groupB),
 		MutuallyExclusiveGroupsNested("services.rule.union", groupA, groupB),
 	}
@@ -2661,7 +2661,7 @@ services:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := RunAll(Wire(validators, Config{}), []byte(tc.raw), nil)
+			errs := RunAll(WireNoSchema(validators), []byte(tc.raw), nil)
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}
@@ -2758,7 +2758,7 @@ services:
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := v.Validate(NewValidationInput([]byte(tc.raw), nil))
+			errs := v.Validate(spec.NewValidationInput([]byte(tc.raw), nil))
 			if len(errs) != tc.wantCount {
 				t.Fatalf("want %d violations, got %v", tc.wantCount, errs)
 			}
@@ -2774,7 +2774,7 @@ services:
 // wiredRequiredFromMetadata wires RequiredFromMetadata with hintsConfig's schema and
 // a HintSource marking version (block-level), server.host, workers.name and
 // port-attrs.label as required.
-func wiredRequiredFromMetadata(t *testing.T) Validator {
+func wiredRequiredFromMetadata(t *testing.T) spec.Validator {
 	t.Helper()
 	required := map[string]bool{
 		"version|":         true,
@@ -2782,14 +2782,14 @@ func wiredRequiredFromMetadata(t *testing.T) Validator {
 		"workers|name":     true,
 		"port-attrs|label": true,
 	}
-	return wireMetadataRule(t, RequiredFromMetadata(), func(block, fieldPath string) FieldMeta {
-		return FieldMeta{Required: required[block+"|"+fieldPath]}
+	return wireMetadataRule(t, RequiredFromMetadata(), func(block, fieldPath string) spec.FieldMeta {
+		return spec.FieldMeta{Required: required[block+"|"+fieldPath]}
 	})
 }
 
 // wireMetadataRule wires any FromMetadata validator with hintsConfig's schema and the
 // given hint function.
-func wireMetadataRule(t *testing.T, v Validator, hints MetadataFunc) Validator {
+func wireMetadataRule(t *testing.T, v spec.Validator, hints spec.MetadataFunc) spec.Validator {
 	t.Helper()
 	rfh := v.(*metadataRuleValidator)
 	rfh.defs = schema.Discover(&hintsConfig{})
@@ -2858,7 +2858,7 @@ port-attrs:
 		t.Run(tc.name, func(t *testing.T) {
 			v := wiredRequiredFromMetadata(t)
 			var got []string
-			for _, viol := range v.Validate(NewValidationInput([]byte(tc.raw), nil)) {
+			for _, viol := range v.Validate(spec.NewValidationInput([]byte(tc.raw), nil)) {
 				got = append(got, viol.String())
 			}
 			if len(got) != len(tc.want) {
@@ -2874,14 +2874,14 @@ port-attrs:
 }
 
 func TestRequiredFromMetadata_inertWithoutWiring(t *testing.T) {
-	if errs := RequiredFromMetadata().Validate(NewValidationInput(nil, nil)); len(errs) != 0 {
+	if errs := RequiredFromMetadata().Validate(spec.NewValidationInput(nil, nil)); len(errs) != 0 {
 		t.Errorf("unwired validator should report nothing, got %v", errs)
 	}
 
 	// Wired schema but no HintSource: reports nothing.
 	v := RequiredFromMetadata()
 	v.(*metadataRuleValidator).defs = schema.Discover(&hintsConfig{})
-	if errs := v.Validate(NewValidationInput([]byte(""), nil)); len(errs) != 0 {
+	if errs := v.Validate(spec.NewValidationInput([]byte(""), nil)); len(errs) != 0 {
 		t.Errorf("validator without HintSource should report nothing, got %v", errs)
 	}
 }
@@ -2906,11 +2906,11 @@ type hintsConfig struct {
 
 // runMetadataRule wires v with hintsConfig's schema and hints, validates raw, and
 // compares the violation strings against want.
-func runMetadataRule(t *testing.T, v Validator, hints MetadataFunc, raw string, want []string) {
+func runMetadataRule(t *testing.T, v spec.Validator, hints spec.MetadataFunc, raw string, want []string) {
 	t.Helper()
 	wireMetadataRule(t, v, hints)
 	var got []string
-	for _, viol := range v.Validate(NewValidationInput([]byte(raw), nil)) {
+	for _, viol := range v.Validate(spec.NewValidationInput([]byte(raw), nil)) {
 		got = append(got, viol.String())
 	}
 	if len(got) != len(want) {
@@ -2924,11 +2924,11 @@ func runMetadataRule(t *testing.T, v Validator, hints MetadataFunc, raw string, 
 }
 
 func TestOneOfFromMetadata(t *testing.T) {
-	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+	hints := spec.MetadataFunc(func(block, fieldPath string) spec.FieldMeta {
 		if block == "server" && fieldPath == "host" {
-			return FieldMeta{OneOf: []string{"localhost", "0.0.0.0"}}
+			return spec.FieldMeta{OneOf: []string{"localhost", "0.0.0.0"}}
 		}
-		return FieldMeta{}
+		return spec.FieldMeta{}
 	})
 	tests := []struct {
 		name string
@@ -2951,14 +2951,14 @@ func TestOneOfFromMetadata(t *testing.T) {
 }
 
 func TestRangeFromMetadata(t *testing.T) {
-	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+	hints := spec.MetadataFunc(func(block, fieldPath string) spec.FieldMeta {
 		switch {
 		case block == "server" && fieldPath == "port":
-			return FieldMeta{Min: "1", Max: "65535"}
+			return spec.FieldMeta{Min: "1", Max: "65535"}
 		case block == "version" && fieldPath == "": // Min only, no upper bound
-			return FieldMeta{Min: "1"}
+			return spec.FieldMeta{Min: "1"}
 		}
-		return FieldMeta{}
+		return spec.FieldMeta{}
 	})
 	tests := []struct {
 		name string
@@ -2983,25 +2983,25 @@ func TestRangeFromMetadata(t *testing.T) {
 }
 
 func TestRangeFromMetadata_misconfiguredBounds(t *testing.T) {
-	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+	hints := spec.MetadataFunc(func(block, fieldPath string) spec.FieldMeta {
 		if block == "version" {
-			return FieldMeta{Min: "10MB", Max: "24h"} // mixed kinds
+			return spec.FieldMeta{Min: "10MB", Max: "24h"} // mixed kinds
 		}
-		return FieldMeta{}
+		return spec.FieldMeta{}
 	})
 	v := wireMetadataRule(t, RangeFromMetadata(), hints)
-	errs := v.Validate(NewValidationInput([]byte("version: 1\n"), nil))
+	errs := v.Validate(spec.NewValidationInput([]byte("version: 1\n"), nil))
 	if len(errs) != 1 || !strings.Contains(errs[0].Message, "invalid range") {
 		t.Fatalf("expected 1 invalid-range violation, got %v", errs)
 	}
 }
 
 func TestPatternFromMetadata(t *testing.T) {
-	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+	hints := spec.MetadataFunc(func(block, fieldPath string) spec.FieldMeta {
 		if block == "version" {
-			return FieldMeta{Pattern: `^\d+\.\d+\.\d+$`}
+			return spec.FieldMeta{Pattern: `^\d+\.\d+\.\d+$`}
 		}
-		return FieldMeta{}
+		return spec.FieldMeta{}
 	})
 	tests := []struct {
 		name string
@@ -3022,25 +3022,25 @@ func TestPatternFromMetadata(t *testing.T) {
 }
 
 func TestPatternFromMetadata_invalidPattern(t *testing.T) {
-	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+	hints := spec.MetadataFunc(func(block, fieldPath string) spec.FieldMeta {
 		if block == "version" {
-			return FieldMeta{Pattern: `^(\d+$`}
+			return spec.FieldMeta{Pattern: `^(\d+$`}
 		}
-		return FieldMeta{}
+		return spec.FieldMeta{}
 	})
 	v := wireMetadataRule(t, PatternFromMetadata(), hints)
-	errs := v.Validate(NewValidationInput([]byte("version: 1\n"), nil))
+	errs := v.Validate(spec.NewValidationInput([]byte("version: 1\n"), nil))
 	if len(errs) != 1 || !strings.Contains(errs[0].Message, "invalid pattern") {
 		t.Fatalf("expected 1 invalid-pattern violation, got %v", errs)
 	}
 }
 
 func TestCountFromMetadata(t *testing.T) {
-	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+	hints := spec.MetadataFunc(func(block, fieldPath string) spec.FieldMeta {
 		if block == "workers" && fieldPath == "" {
-			return FieldMeta{MinCount: 1, MaxCount: 2}
+			return spec.FieldMeta{MinCount: 1, MaxCount: 2}
 		}
-		return FieldMeta{}
+		return spec.FieldMeta{}
 	})
 	tests := []struct {
 		name string
@@ -3062,25 +3062,25 @@ func TestCountFromMetadata(t *testing.T) {
 }
 
 func TestCountFromMetadata_minOnlyHasNoUpperBound(t *testing.T) {
-	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+	hints := spec.MetadataFunc(func(block, fieldPath string) spec.FieldMeta {
 		if block == "workers" && fieldPath == "" {
-			return FieldMeta{MinCount: 1}
+			return spec.FieldMeta{MinCount: 1}
 		}
-		return FieldMeta{}
+		return spec.FieldMeta{}
 	})
 	v := wireMetadataRule(t, CountFromMetadata(), hints)
 	raw := "workers:\n  - name: a\n  - name: b\n  - name: c\n  - name: d\n"
-	if errs := v.Validate(NewValidationInput([]byte(raw), nil)); len(errs) != 0 {
+	if errs := v.Validate(spec.NewValidationInput([]byte(raw), nil)); len(errs) != 0 {
 		t.Errorf("MinCount-only must not cap the list, got %v", errs)
 	}
 }
 
 func TestUniqueFromMetadata(t *testing.T) {
-	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+	hints := spec.MetadataFunc(func(block, fieldPath string) spec.FieldMeta {
 		if block == "tags" {
-			return FieldMeta{Unique: true}
+			return spec.FieldMeta{Unique: true}
 		}
-		return FieldMeta{}
+		return spec.FieldMeta{}
 	})
 	tests := []struct {
 		name string
@@ -3100,11 +3100,11 @@ func TestUniqueFromMetadata(t *testing.T) {
 }
 
 func TestDeprecatedFromMetadata(t *testing.T) {
-	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+	hints := spec.MetadataFunc(func(block, fieldPath string) spec.FieldMeta {
 		if block == "version" {
-			return FieldMeta{Deprecated: "use api-version instead"}
+			return spec.FieldMeta{Deprecated: "use api-version instead"}
 		}
-		return FieldMeta{}
+		return spec.FieldMeta{}
 	})
 	tests := []struct {
 		name string
@@ -3122,33 +3122,6 @@ func TestDeprecatedFromMetadata(t *testing.T) {
 	}
 }
 
-// TestRequiredFromMetadata_wiredByNewModel verifies that newModel injects the
-// discovered schema and the HintSource into FromMetadata validators, so a plain
-// editor.RequiredFromMetadata() in Config.Validators enforces the hint markers.
-func TestRequiredFromMetadata_wiredByNewModel(t *testing.T) {
-	m, err := newModel(Config{
-		Path:   filepath.Join(t.TempDir(), "missing.yaml"), // empty document
-		Schema: &hintsConfig{},
-		Metadata: MetadataFunc(func(block, fieldPath string) FieldMeta {
-			return FieldMeta{Required: block == "version" && fieldPath == ""}
-		}),
-		Validators: []Validator{RequiredFromMetadata()},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	errs := m.collectErrors(m.doc)
-	found := false
-	for _, e := range errs {
-		if strings.Contains(e.String(), "version: required") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("collectErrors should report the hint-required field; got %v", errs)
-	}
-}
-
 func TestFormatFromMetadata(t *testing.T) {
 	type S struct {
 		URL  string `yaml:"url"`
@@ -3156,21 +3129,21 @@ func TestFormatFromMetadata(t *testing.T) {
 	}
 	defs := schema.Discover(&S{})
 
-	wire := func(formats ...Format) Validator {
+	wire := func(formats ...spec.Format) spec.Validator {
 		v := FormatFromMetadata()
-		v.(*metadataRuleValidator).hints = MetadataFunc(func(block, path string) FieldMeta {
-			return FieldMeta{Formats: formats}
+		v.(*metadataRuleValidator).hints = spec.MetadataFunc(func(block, path string) spec.FieldMeta {
+			return spec.FieldMeta{Formats: formats}
 		})
 		v.(*metadataRuleValidator).defs = defs
 		return v
 	}
 
-	validate := func(v Validator, src string) []Violation {
-		return v.Validate(NewValidationInput([]byte(src), nil))
+	validate := func(v spec.Validator, src string) []spec.Violation {
+		return v.Validate(spec.NewValidationInput([]byte(src), nil))
 	}
 
 	// valid URL: no violation
-	v := wire(FormatURL)
+	v := wire(spec.FormatURL)
 	if errs := validate(v, "url: \"https://example.com\"\n"); len(errs) != 0 {
 		t.Errorf("valid URL: want 0 violations, got %v", errs)
 	}
@@ -3190,14 +3163,14 @@ func TestFormatFromMetadata(t *testing.T) {
 		Addr string `yaml:"addr"`
 	}
 	vOr := FormatFromMetadata()
-	vOr.(*metadataRuleValidator).hints = MetadataFunc(func(block, path string) FieldMeta {
-		return FieldMeta{Formats: []Format{FormatURL, FormatIPv4}}
+	vOr.(*metadataRuleValidator).hints = spec.MetadataFunc(func(block, path string) spec.FieldMeta {
+		return spec.FieldMeta{Formats: []spec.Format{spec.FormatURL, spec.FormatIPv4}}
 	})
 	vOr.(*metadataRuleValidator).defs = schema.Discover(&Addr{})
-	if errs := vOr.Validate(NewValidationInput([]byte("addr: \"192.168.1.1\"\n"), nil)); len(errs) != 0 {
+	if errs := vOr.Validate(spec.NewValidationInput([]byte("addr: \"192.168.1.1\"\n"), nil)); len(errs) != 0 {
 		t.Errorf("IPv4 should match url|ipv4, got %v", errs)
 	}
-	if errs := vOr.Validate(NewValidationInput([]byte("addr: \"ftp://bad\"\n"), nil)); len(errs) != 1 {
+	if errs := vOr.Validate(spec.NewValidationInput([]byte("addr: \"ftp://bad\"\n"), nil)); len(errs) != 1 {
 		t.Errorf("neither format: want 1 violation, got %v", errs)
 	} else if !strings.Contains(errs[0].Message, "url | ipv4") {
 		t.Errorf("message should list both labels: %q", errs[0].Message)
@@ -3213,11 +3186,11 @@ func TestLengthFromMetadata(t *testing.T) {
 	check := func(src string, min, max int, wantViolation bool) {
 		t.Helper()
 		v := LengthFromMetadata()
-		v.(*metadataRuleValidator).hints = MetadataFunc(func(block, path string) FieldMeta {
-			return FieldMeta{MinLength: min, MaxLength: max}
+		v.(*metadataRuleValidator).hints = spec.MetadataFunc(func(block, path string) spec.FieldMeta {
+			return spec.FieldMeta{MinLength: min, MaxLength: max}
 		})
 		v.(*metadataRuleValidator).defs = defs
-		errs := v.Validate(NewValidationInput([]byte(src), nil))
+		errs := v.Validate(spec.NewValidationInput([]byte(src), nil))
 		if (len(errs) > 0) != wantViolation {
 			t.Errorf("src=%q min=%d max=%d: wantViolation=%v got %v", src, min, max, wantViolation, errs)
 		}
@@ -3242,11 +3215,11 @@ func TestNotOneOfFromMetadata(t *testing.T) {
 	check := func(src string, denied []string, wantViolation bool) {
 		t.Helper()
 		v := NotOneOfFromMetadata()
-		v.(*metadataRuleValidator).hints = MetadataFunc(func(block, path string) FieldMeta {
-			return FieldMeta{NotOneOf: denied}
+		v.(*metadataRuleValidator).hints = spec.MetadataFunc(func(block, path string) spec.FieldMeta {
+			return spec.FieldMeta{NotOneOf: denied}
 		})
 		v.(*metadataRuleValidator).defs = defs
-		errs := v.Validate(NewValidationInput([]byte(src), nil))
+		errs := v.Validate(spec.NewValidationInput([]byte(src), nil))
 		if (len(errs) > 0) != wantViolation {
 			t.Errorf("src=%q denied=%v: wantViolation=%v got %v", src, denied, wantViolation, errs)
 		}
@@ -3266,18 +3239,18 @@ func TestNotOneOfFromMetadata(t *testing.T) {
 func TestValueMatches_explicitNullSkipped(t *testing.T) {
 	v := ValueMatches("server.host", `^[a-z.]+$`)
 	for _, raw := range []string{"server:\n  host: null\n", "server:\n  host: ~\n"} {
-		if errs := v.Validate(NewValidationInput([]byte(raw), nil)); len(errs) != 0 {
+		if errs := v.Validate(spec.NewValidationInput([]byte(raw), nil)); len(errs) != 0 {
 			t.Errorf("raw=%q: explicit null must be skipped, got %v", raw, errs)
 		}
 	}
 }
 
 func TestPatternFromMetadata_explicitNullSkipped(t *testing.T) {
-	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+	hints := spec.MetadataFunc(func(block, fieldPath string) spec.FieldMeta {
 		if block == "server" && fieldPath == "host" {
-			return FieldMeta{Pattern: `^[a-z.]+$`}
+			return spec.FieldMeta{Pattern: `^[a-z.]+$`}
 		}
-		return FieldMeta{}
+		return spec.FieldMeta{}
 	})
 	runMetadataRule(t, PatternFromMetadata(), hints, "server:\n  host: null\n", nil)
 	runMetadataRule(t, PatternFromMetadata(), hints, "server:\n  host: ~\n", nil)
@@ -3285,7 +3258,7 @@ func TestPatternFromMetadata_explicitNullSkipped(t *testing.T) {
 
 func TestCountRange_explicitNullIsEmptyCollection(t *testing.T) {
 	v := CountRange("tags", 1, -1)
-	errs := v.Validate(NewValidationInput([]byte("tags: null\n"), nil))
+	errs := v.Validate(spec.NewValidationInput([]byte("tags: null\n"), nil))
 	if len(errs) != 1 {
 		t.Fatalf("want exactly one count violation, got %v", errs)
 	}
@@ -3295,14 +3268,14 @@ func TestCountRange_explicitNullIsEmptyCollection(t *testing.T) {
 }
 
 func TestCountFromMetadata_explicitNullIsEmptyCollection(t *testing.T) {
-	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+	hints := spec.MetadataFunc(func(block, fieldPath string) spec.FieldMeta {
 		if block == "tags" && fieldPath == "" {
-			return FieldMeta{MinCount: 1}
+			return spec.FieldMeta{MinCount: 1}
 		}
-		return FieldMeta{}
+		return spec.FieldMeta{}
 	})
 	v := wireMetadataRule(t, CountFromMetadata(), hints)
-	errs := v.Validate(NewValidationInput([]byte("tags: null\n"), nil))
+	errs := v.Validate(spec.NewValidationInput([]byte("tags: null\n"), nil))
 	for _, e := range errs {
 		if strings.Contains(e.Message, "expected a list or mapping") {
 			t.Errorf("null must count as an empty collection, not a shape error: %v", e)
@@ -3346,13 +3319,13 @@ func TestParseSize_rejectsTrailingGarbage(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestPatternFromMetadata_concurrentRunAll(t *testing.T) {
-	hints := MetadataFunc(func(block, fieldPath string) FieldMeta {
+	hints := spec.MetadataFunc(func(block, fieldPath string) spec.FieldMeta {
 		if block == "server" && fieldPath == "host" {
-			return FieldMeta{Pattern: `^[a-z.]+$`}
+			return spec.FieldMeta{Pattern: `^[a-z.]+$`}
 		}
-		return FieldMeta{}
+		return spec.FieldMeta{}
 	})
-	base := []Validator{PatternFromMetadata()}
+	base := []spec.Validator{PatternFromMetadata()}
 	tree := schema.Discover(&hintsConfig{})
 	raw := []byte("server:\n  host: localhost\n")
 

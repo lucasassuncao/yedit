@@ -9,9 +9,9 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/metadata"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/spec"
 )
 
 // Option configures a SchemaGenerator.
@@ -19,7 +19,7 @@ type Option func(*SchemaGenerator)
 
 // WithMetadata configures the generator to use src for field descriptions,
 // required flags, and defaults.
-func WithMetadata(src editor.MetadataSource) Option {
+func WithMetadata(src spec.MetadataSource) Option {
 	return func(g *SchemaGenerator) { g.metadata = src }
 }
 
@@ -37,7 +37,7 @@ func WithExamples(relDir string, pages map[string]bool) Option {
 // SchemaGenerator generates markdown documentation from a Go struct using
 // schema.Discover for structure and a MetadataSource for field descriptions.
 type SchemaGenerator struct {
-	metadata       editor.MetadataSource
+	metadata       spec.MetadataSource
 	examplesRelDir string
 	examplePages   map[string]bool
 }
@@ -197,9 +197,9 @@ func GenerateIndex(baseDir string, files []GeneratedFile) error {
 //   - sectionPath empty → blockKey = fieldName, fieldPath = ""
 //   - sectionPath ["build"] → blockKey = "build", fieldPath = fieldName
 //   - sectionPath ["categories","source"] → blockKey = "categories", fieldPath = "source.fieldName"
-func (g *SchemaGenerator) fieldMeta(sectionPath []string, fieldName string) editor.FieldMeta {
+func (g *SchemaGenerator) fieldMeta(sectionPath []string, fieldName string) spec.FieldMeta {
 	if g.metadata == nil {
-		return editor.FieldMeta{}
+		return spec.FieldMeta{}
 	}
 	if len(sectionPath) == 0 {
 		return g.metadata.FieldMeta(fieldName, "")

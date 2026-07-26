@@ -51,5 +51,5 @@ type FieldDef struct {
 // struct OR a map). Implementations return the FieldDef tree they want the
 // editor to see in place of the wrapper type's own fields.
 type Provider interface {
-	YeditSchema() []FieldDef
+	Schema() []FieldDef
 }

@@ -1,7 +1,8 @@
-package editor
+package validate
 
 import (
 	"fmt"
+	"github.com/lucasassuncao/yedit/spec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -15,16 +16,16 @@ import (
 	"github.com/lucasassuncao/yedit/document"
 )
 
-// # Validator families
+// # spec.Validator families
 //
 // FromMetadata family (RequiredFromMetadata, OneOfFromMetadata, etc.):
-// requires a MetadataSource in editor.Config.Metadata, built via metadata.New
+// requires a spec.MetadataSource in editor.Config.Metadata, built via metadata.New
 // (structs implement MetadataProvider) or metadata.NewFromTree (third-party
 // structs). Inert until wired — editor.Run wires automatically; for standalone
 // use call Wire before RunAll.
 //
 // Explicit family (Required, ValueOneOf, MutuallyExclusive, etc.):
-// operates directly on raw YAML via path strings. No MetadataSource or
+// operates directly on raw YAML via path strings. No spec.MetadataSource or
 // MetadataProvider needed — the only option for apps whose structs cannot
 // implement MetadataProvider, and the right choice for cross-field rules.
 //
@@ -33,64 +34,35 @@ import (
 // WiredValidators is an opaque handle produced by Wire. RunAll only accepts
 // this type, which guarantees that FromMetadata validators have been wired
 // before any validation run. The zero value is valid and produces no violations.
-type WiredValidators struct{ validators []Validator }
-
-// NewValidationInput parses raw once and bundles it with blocks for a
-// validation run. Root is nil when raw is not valid YAML; an empty document
-// yields an empty mapping so unconditional checks still run.
-func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput {
-	root, _ := yamlnode.RootMapping(raw)
-	return ValidationInput{Raw: raw, Root: root, Blocks: blocks}
-}
+type WiredValidators struct{ validators []spec.Validator }
 
 // RunAll executes all validators against raw/blocks and collects violations.
 // The document is parsed once and shared across validators.
 // w must be produced by Wire; passing a zero WiredValidators is valid and
 // always returns nil.
-func RunAll(w WiredValidators, raw []byte, blocks []document.Block) []Violation {
+func RunAll(w WiredValidators, raw []byte, blocks []document.Block) []spec.Violation {
 	if len(w.validators) == 0 {
 		return nil
 	}
-	in := NewValidationInput(raw, blocks)
-	var errs []Violation
+	in := spec.NewValidationInput(raw, blocks)
+	var errs []spec.Violation
 	for _, v := range w.validators {
 		errs = append(errs, v.Validate(in)...)
 	}
 	return errs
 }
 
-// Wire prepares a validator slice for use with RunAll. It returns a
-// WiredValidators where every FromMetadata validator (*metadataRuleValidator)
-// is replaced by a shallow copy with the schema tree and MetadataSource
-// injected. Explicit validators (MutuallyExclusive, Required, ValidatorFunc,
-// etc.) are included as-is.
+// WireNoSchema prepares a validator slice when no schema tree is available:
+// FromMetadata validators stay inert, explicit ones are included as-is. The
+// original slice is never modified, so the same global validator slice can be
+// passed from multiple call sites without interference.
 //
-// The original slice is never modified, so the same global validator slice
-// can be passed safely from multiple call sites or goroutines without
-// interference. Wire is cheap to call repeatedly — schema discovery only
-// runs when cfg.Schema is non-nil.
-//
-// Typical usage:
-//
-//	wired := editor.Wire(MyValidators, editor.Config{
-//	    Schema:   &MySchema{},
-//	    Metadata: hints,
-//	})
-//	violations := editor.RunAll(wired, raw, blocks)
-//
-// cfg.Schema must be non-nil for FromMetadata validators to fire; cfg.Metadata
-// may be nil (FromMetadata validators will report nothing without a source).
-//
-// Callers that already hold the discovered schema tree (like the editor, which
-// needs the same tree for its UI) should use WireWithSchema instead, so both
-// sides are guaranteed to see the same schema.
-func Wire(validators []Validator, cfg Config) WiredValidators {
-	if cfg.Schema == nil {
-		out := make([]Validator, len(validators))
-		copy(out, validators)
-		return WiredValidators{validators: out}
-	}
-	return WireWithSchema(validators, discoverSchema(cfg), cfg.Metadata)
+// editor.Wire is the entry point most callers want; it discovers the schema
+// from an editor.Config and delegates to WireWithSchema.
+func WireNoSchema(validators []spec.Validator) WiredValidators {
+	out := make([]spec.Validator, len(validators))
+	copy(out, validators)
+	return WiredValidators{validators: out}
 }
 
 // WireWithSchema is Wire for callers that already discovered the schema tree:
@@ -98,8 +70,8 @@ func Wire(validators []Validator, cfg Config) WiredValidators {
 // re-running discovery. The editor uses it with the exact tree that drives the
 // UI, making a divergence between what the screen shows and what the
 // validators check impossible by construction.
-func WireWithSchema(validators []Validator, tree []schema.FieldDef, metadata MetadataSource) WiredValidators {
-	out := make([]Validator, len(validators))
+func WireWithSchema(validators []spec.Validator, tree []schema.FieldDef, metadata spec.MetadataSource) WiredValidators {
+	out := make([]spec.Validator, len(validators))
 	copy(out, validators)
 	for i, v := range out {
 		if rv, ok := v.(*metadataRuleValidator); ok {
@@ -117,8 +89,8 @@ func WireWithSchema(validators []Validator, tree []schema.FieldDef, metadata Met
 // of silently never firing (same pattern as ValueMatches with a bad regex).
 type misconfiguredValidator struct{ message string }
 
-func (v *misconfiguredValidator) Validate(ValidationInput) []Violation {
-	return []Violation{{Message: v.message}}
+func (v *misconfiguredValidator) Validate(spec.ValidationInput) []spec.Violation {
+	return []spec.Violation{{Message: v.message}}
 }
 
 // walkScopedMappings navigates root to navSegs, then recursively visits every
@@ -165,14 +137,14 @@ func walkScopedRec(node *yaml.Node, curParentKey, path, target string, onMatch f
 
 // reportDuplicates appends a violation for every value that repeats an earlier
 // one. Empty values are skipped. The violation path is "<where>[<i>]<suffix>".
-func reportDuplicates(values []string, where, suffix string, errs *[]Violation) {
+func reportDuplicates(values []string, where, suffix string, errs *[]spec.Violation) {
 	seen := make(map[string]int, len(values))
 	for i, val := range values {
 		if val == "" {
 			continue
 		}
 		if firstIdx, dup := seen[val]; dup {
-			*errs = append(*errs, Violation{
+			*errs = append(*errs, spec.Violation{
 				Path:    fmt.Sprintf("%s[%d]%s", where, i, suffix),
 				Message: fmt.Sprintf("duplicate value %q (first seen at %s[%d])", val, where, firstIdx),
 			})
@@ -185,7 +157,7 @@ func reportDuplicates(values []string, where, suffix string, errs *[]Violation) 
 // reportDuplicateScalars collects the scalar values of seq (non-scalar items
 // yield empty entries, which reportDuplicates skips) and reports duplicates at
 // where+suffix. Shared by UniqueValues and UniqueFromMetadata.
-func reportDuplicateScalars(seq *yaml.Node, where, suffix string, errs *[]Violation) {
+func reportDuplicateScalars(seq *yaml.Node, where, suffix string, errs *[]spec.Violation) {
 	values := make([]string, len(seq.Content))
 	for i, item := range seq.Content {
 		if item.Kind == yaml.ScalarNode {
@@ -197,13 +169,13 @@ func reportDuplicateScalars(seq *yaml.Node, where, suffix string, errs *[]Violat
 
 // oneOfViolation appends a "value not allowed" violation when value is not
 // among allowed. Shared by ValueOneOf and OneOfFromMetadata.
-func oneOfViolation(value, where string, allowed []string, errs *[]Violation) {
+func oneOfViolation(value, where string, allowed []string, errs *[]spec.Violation) {
 	for _, a := range allowed {
 		if value == a {
 			return
 		}
 	}
-	*errs = append(*errs, Violation{
+	*errs = append(*errs, spec.Violation{
 		Path:    where,
 		Message: fmt.Sprintf("value %q is not allowed - use one of: %s", value, joinQuoted(allowed)),
 	})
@@ -212,9 +184,9 @@ func oneOfViolation(value, where string, allowed []string, errs *[]Violation) {
 // patternMatchViolation appends a "does not match pattern" violation when value
 // fails re. Shared by ValueMatches and PatternFromMetadata; each family handles
 // pattern compilation and invalid-pattern reporting on its own.
-func patternMatchViolation(value, pattern, where string, re *regexp.Regexp, errs *[]Violation) {
+func patternMatchViolation(value, pattern, where string, re *regexp.Regexp, errs *[]spec.Violation) {
 	if !re.MatchString(value) {
-		*errs = append(*errs, Violation{
+		*errs = append(*errs, spec.Violation{
 			Path:    where,
 			Message: fmt.Sprintf("value %q does not match pattern %q", value, pattern),
 		})
@@ -236,13 +208,13 @@ func collectionCount(node *yaml.Node) (int, bool) {
 // countRangeViolation appends a violation when count is below minCount or above
 // maxCount. maxCount < 0 means no upper bound. Shared by CountRange and
 // CountFromMetadata (the latter maps its MaxCount==0 sentinel to -1).
-func countRangeViolation(count, minCount, maxCount int, where string, errs *[]Violation) {
+func countRangeViolation(count, minCount, maxCount int, where string, errs *[]spec.Violation) {
 	if count < minCount || (maxCount >= 0 && count > maxCount) {
 		want := fmt.Sprintf("between %d and %d", minCount, maxCount)
 		if maxCount < 0 {
 			want = fmt.Sprintf("at least %d", minCount)
 		}
-		*errs = append(*errs, Violation{
+		*errs = append(*errs, spec.Violation{
 			Path:    where,
 			Message: fmt.Sprintf("has %d entries - expected %s", count, want),
 		})
@@ -339,13 +311,13 @@ func isEmptyScalar(n *yaml.Node) bool {
 // value validators: a non-scalar leaf is flagged as a violation, and absent,
 // null, or empty values report nothing (combine with Required when the field
 // is mandatory).
-func forEachScalar(root *yaml.Node, path string, errs *[]Violation, fn func(value, where string)) {
+func forEachScalar(root *yaml.Node, path string, errs *[]spec.Violation, fn func(value, where string)) {
 	if root == nil {
 		return
 	}
 	yamlnode.ForEachLeaf(root, path, func(node *yaml.Node, where string) {
 		if node.Kind != yaml.ScalarNode {
-			*errs = append(*errs, Violation{Path: where, Message: "expected a scalar value"})
+			*errs = append(*errs, spec.Violation{Path: where, Message: "expected a scalar value"})
 			return
 		}
 		if isEmptyScalar(node) {

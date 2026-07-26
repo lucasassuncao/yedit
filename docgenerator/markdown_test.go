@@ -4,12 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/spec"
 )
 
 func TestFormatLabelsDoesNotEmitTablePipes(t *testing.T) {
-	meta := editor.FieldMeta{Formats: []editor.Format{editor.FormatURL, editor.FormatUUID}}
+	meta := spec.FieldMeta{Formats: []spec.Format{spec.FormatURL, spec.FormatUUID}}
 	got := formatLabels(meta)
 	if got != "url, uuid" {
 		t.Errorf("formatLabels = %q, want %q", got, "url, uuid")
@@ -32,11 +32,11 @@ type pipeConfig struct {
 }
 
 func TestFieldsTableEscapesMetadataCells(t *testing.T) {
-	src := editor.MetadataFunc(func(blockKey, fieldPath string) editor.FieldMeta {
-		return editor.FieldMeta{
+	src := spec.MetadataFunc(func(blockKey, fieldPath string) spec.FieldMeta {
+		return spec.FieldMeta{
 			Description: "either a\nor b",
 			Default:     "a|b",
-			Formats:     []editor.Format{editor.FormatURL},
+			Formats:     []spec.Format{spec.FormatURL},
 		}
 	})
 	g := NewSchemaGenerator(WithMetadata(src))

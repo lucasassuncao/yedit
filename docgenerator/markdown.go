@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/spec"
 )
 
 // generateRootMarkdown generates a summary page for a root type that links to
@@ -175,7 +175,7 @@ func (g *SchemaGenerator) anyHasFormat(fields []schema.FieldDef, sectionPath []s
 // formatLabels returns the joined format labels for a field, or "-" when none.
 // Labels are joined with ", " and pipe-escaped so they cannot split the
 // markdown table row into extra columns.
-func formatLabels(meta editor.FieldMeta) string {
+func formatLabels(meta spec.FieldMeta) string {
 	var labels []string
 	for _, f := range meta.Formats {
 		if !f.IsZero() {
@@ -190,7 +190,7 @@ func formatLabels(meta editor.FieldMeta) string {
 
 // docTypeLabel returns the type label for the markdown table, honouring
 // FieldMeta.Multiline and FieldMeta.Type overrides.
-func docTypeLabel(f schema.FieldDef, meta editor.FieldMeta) string {
+func docTypeLabel(f schema.FieldDef, meta spec.FieldMeta) string {
 	if meta.Multiline && meta.Type == "" {
 		return "multiline string"
 	}

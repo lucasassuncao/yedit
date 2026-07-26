@@ -51,7 +51,7 @@ func TestDiscover_descents(t *testing.T) {
 // unionItem opts into Provider to declare its own schema.
 type unionItem struct{}
 
-func (unionItem) YeditSchema() []schema.FieldDef {
+func (unionItem) Schema() []schema.FieldDef {
 	return []schema.FieldDef{
 		{YAMLName: "type", Kind: schema.KindPrimitive},
 		{YAMLName: "target", Kind: schema.KindPrimitive},
@@ -350,10 +350,10 @@ func TestDiscover_marshalerIsKindPrimitive(t *testing.T) {
 // ── map-wrapped Provider elements ─────────────────────────────────────────────
 
 // mapUnionItem implements Provider with a value receiver, so calling
-// YeditSchema on a typed nil pointer would panic.
+// Schema on a typed nil pointer would panic.
 type mapUnionItem struct{}
 
-func (mapUnionItem) YeditSchema() []schema.FieldDef {
+func (mapUnionItem) Schema() []schema.FieldDef {
 	return []schema.FieldDef{
 		{YAMLName: "kind", Kind: schema.KindPrimitive},
 	}

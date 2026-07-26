@@ -1,7 +1,8 @@
-package editor
+package validate
 
 import (
 	"fmt"
+	"github.com/lucasassuncao/yedit/spec"
 	"regexp"
 	"strings"
 
@@ -18,7 +19,7 @@ import (
 // is not in allowed. Sequences and dict-style mappings along the path are
 // expanded automatically, so every entry in a list or every value in a map is
 // checked.
-func ValueOneOf(path string, allowed ...string) Validator {
+func ValueOneOf(path string, allowed ...string) spec.Validator {
 	return &valueOneOfValidator{path: path, allowed: allowed}
 }
 
@@ -27,8 +28,8 @@ type valueOneOfValidator struct {
 	allowed []string
 }
 
-func (v *valueOneOfValidator) Validate(in ValidationInput) []Violation {
-	var errs []Violation
+func (v *valueOneOfValidator) Validate(in spec.ValidationInput) []spec.Violation {
+	var errs []spec.Violation
 	forEachScalar(in.Root, v.path, &errs, func(value, where string) {
 		oneOfViolation(value, where, v.allowed, &errs)
 	})
@@ -43,19 +44,19 @@ func (v *valueOneOfValidator) Validate(in ValidationInput) []Violation {
 //
 //	editor.NoDuplicates("servers", "name")
 //	editor.NoDuplicates("categories.installers", "meta.name")
-func NoDuplicates(seqPath, field string) Validator {
+func NoDuplicates(seqPath, field string) spec.Validator {
 	return &noDuplicatesValidator{seqPath: seqPath, field: field}
 }
 
 type noDuplicatesValidator struct{ seqPath, field string }
 
-func (v *noDuplicatesValidator) Validate(in ValidationInput) []Violation {
+func (v *noDuplicatesValidator) Validate(in spec.ValidationInput) []spec.Violation {
 	root := in.Root
 	if root == nil {
 		return nil
 	}
 	fieldSegs := strings.Split(v.field, ".")
-	var errs []Violation
+	var errs []spec.Violation
 	yamlnode.ForEachLeaf(root, v.seqPath, func(seqNode *yaml.Node, where string) {
 		if seqNode.Kind != yaml.SequenceNode {
 			return
@@ -78,13 +79,13 @@ func (v *noDuplicatesValidator) Validate(in ValidationInput) []Violation {
 //
 //	editor.ValueInRange("server.port", "1", "65535")
 //	editor.ValueInRange("filter.max-age", "1h", "8760h")
-func ValueInRange(path, minVal, maxVal string) Validator {
+func ValueInRange(path, minVal, maxVal string) spec.Validator {
 	return &valueInRangeValidator{path: path, min: minVal, max: maxVal}
 }
 
 type valueInRangeValidator struct{ path, min, max string }
 
-func (v *valueInRangeValidator) Validate(in ValidationInput) []Violation {
+func (v *valueInRangeValidator) Validate(in spec.ValidationInput) []spec.Violation {
 	root := in.Root
 	if root == nil {
 		return nil
@@ -92,23 +93,23 @@ func (v *valueInRangeValidator) Validate(in ValidationInput) []Violation {
 	lo, loKind, okLo := parseComparable(v.min)
 	hi, hiKind, okHi := parseComparable(v.max)
 	if !okLo || !okHi || loKind != hiKind {
-		return []Violation{{
+		return []spec.Violation{{
 			Path:    v.path,
 			Message: fmt.Sprintf("invalid range [%s, %s] - bounds must both be durations, sizes, or numbers", v.min, v.max),
 		}}
 	}
-	var errs []Violation
+	var errs []spec.Violation
 	forEachScalar(root, v.path, &errs, func(value, where string) {
 		val, kind, okVal := parseComparable(value)
 		if !okVal || kind != loKind {
-			errs = append(errs, Violation{
+			errs = append(errs, spec.Violation{
 				Path:    where,
 				Message: fmt.Sprintf("value %q is not comparable with range [%s, %s]", value, v.min, v.max),
 			})
 			return
 		}
 		if val < lo || val > hi {
-			errs = append(errs, Violation{
+			errs = append(errs, spec.Violation{
 				Path:    where,
 				Message: fmt.Sprintf("value %q out of range [%s, %s]", value, v.min, v.max),
 			})
@@ -124,7 +125,7 @@ func (v *valueInRangeValidator) Validate(in ValidationInput) []Violation {
 // on the first validate.
 //
 //	editor.ValueMatches("version", `^\d+\.\d+\.\d+$`)
-func ValueMatches(path, pattern string) Validator {
+func ValueMatches(path, pattern string) spec.Validator {
 	re, err := regexp.Compile(pattern)
 	return &valueMatchesValidator{path: path, pattern: pattern, re: re, err: err}
 }
@@ -136,11 +137,11 @@ type valueMatchesValidator struct {
 	err     error // non-nil when pattern failed to compile
 }
 
-func (v *valueMatchesValidator) Validate(in ValidationInput) []Violation {
+func (v *valueMatchesValidator) Validate(in spec.ValidationInput) []spec.Violation {
 	if v.err != nil {
-		return []Violation{{Path: v.path, Message: fmt.Sprintf("invalid pattern %q: %v", v.pattern, v.err)}}
+		return []spec.Violation{{Path: v.path, Message: fmt.Sprintf("invalid pattern %q: %v", v.pattern, v.err)}}
 	}
-	var errs []Violation
+	var errs []spec.Violation
 	forEachScalar(in.Root, v.path, &errs, func(value, where string) {
 		patternMatchViolation(value, v.pattern, where, v.re, &errs)
 	})
@@ -154,7 +155,7 @@ func (v *valueMatchesValidator) Validate(in ValidationInput) []Violation {
 // Sequences and dict-style mappings along the path are expanded automatically.
 //
 //	editor.ValueHasPrefix("image", "registry.example.com/")
-func ValueHasPrefix(path, prefix string) Validator {
+func ValueHasPrefix(path, prefix string) spec.Validator {
 	return &valueAffixValidator{path: path, affix: prefix, prefix: true}
 }
 
@@ -162,7 +163,7 @@ func ValueHasPrefix(path, prefix string) Validator {
 // does not end with suffix. Same semantics as ValueHasPrefix.
 //
 //	editor.ValueHasSuffix("output", ".yaml")
-func ValueHasSuffix(path, suffix string) Validator {
+func ValueHasSuffix(path, suffix string) spec.Validator {
 	return &valueAffixValidator{path: path, affix: suffix, prefix: false}
 }
 
@@ -172,12 +173,12 @@ type valueAffixValidator struct {
 	prefix bool // true checks strings.HasPrefix, false checks strings.HasSuffix
 }
 
-func (v *valueAffixValidator) Validate(in ValidationInput) []Violation {
-	var errs []Violation
+func (v *valueAffixValidator) Validate(in spec.ValidationInput) []spec.Violation {
+	var errs []spec.Violation
 	forEachScalar(in.Root, v.path, &errs, func(value, where string) {
 		if v.prefix {
 			if !strings.HasPrefix(value, v.affix) {
-				errs = append(errs, Violation{
+				errs = append(errs, spec.Violation{
 					Path:    where,
 					Message: fmt.Sprintf("value %q does not start with %q", value, v.affix),
 				})
@@ -185,7 +186,7 @@ func (v *valueAffixValidator) Validate(in ValidationInput) []Violation {
 			return
 		}
 		if !strings.HasSuffix(value, v.affix) {
-			errs = append(errs, Violation{
+			errs = append(errs, spec.Violation{
 				Path:    where,
 				Message: fmt.Sprintf("value %q does not end with %q", value, v.affix),
 			})
@@ -201,7 +202,7 @@ func (v *valueAffixValidator) Validate(in ValidationInput) []Violation {
 //
 //	editor.CountRange("workers", 1, 10)
 //	editor.CountRange("categories", 1, -1) // at least one, no upper bound
-func CountRange(path string, minCount, maxCount int) Validator {
+func CountRange(path string, minCount, maxCount int) spec.Validator {
 	return &countRangeValidator{path: path, min: minCount, max: maxCount}
 }
 
@@ -210,12 +211,12 @@ type countRangeValidator struct {
 	min, max int
 }
 
-func (v *countRangeValidator) Validate(in ValidationInput) []Violation {
+func (v *countRangeValidator) Validate(in spec.ValidationInput) []spec.Violation {
 	root := in.Root
 	if root == nil {
 		return nil
 	}
-	var errs []Violation
+	var errs []spec.Violation
 	yamlnode.ForEachLeaf(root, v.path, func(node *yaml.Node, where string) {
 		count, ok := collectionCount(node)
 		if !ok {
@@ -223,7 +224,7 @@ func (v *countRangeValidator) Validate(in ValidationInput) []Violation {
 			// empty collection, consistent with checkHintCount; anything else
 			// scalar really is the wrong shape.
 			if node.Kind != yaml.ScalarNode || !isEmptyScalar(node) {
-				errs = append(errs, Violation{Path: where, Message: "expected a list or mapping"})
+				errs = append(errs, spec.Violation{Path: where, Message: "expected a list or mapping"})
 				return
 			}
 			count = 0
@@ -238,18 +239,18 @@ func (v *countRangeValidator) Validate(in ValidationInput) []Violation {
 // NoDuplicates to deduplicate struct entries by one of their fields.
 //
 //	editor.UniqueValues("tags")
-func UniqueValues(seqPath string) Validator {
+func UniqueValues(seqPath string) spec.Validator {
 	return &uniqueValuesValidator{seqPath: seqPath}
 }
 
 type uniqueValuesValidator struct{ seqPath string }
 
-func (v *uniqueValuesValidator) Validate(in ValidationInput) []Violation {
+func (v *uniqueValuesValidator) Validate(in spec.ValidationInput) []spec.Violation {
 	root := in.Root
 	if root == nil {
 		return nil
 	}
-	var errs []Violation
+	var errs []spec.Violation
 	yamlnode.ForEachLeaf(root, v.seqPath, func(seqNode *yaml.Node, where string) {
 		if seqNode.Kind != yaml.SequenceNode {
 			return
@@ -264,20 +265,20 @@ func (v *uniqueValuesValidator) Validate(in ValidationInput) []Violation {
 // a non-blocking warning instead of a save blocker.
 //
 //	editor.Deprecated("dockerFile", "use build.dockerfile instead")
-func Deprecated(path, message string) Validator {
+func Deprecated(path, message string) spec.Validator {
 	return &deprecatedValidator{path: path, message: message}
 }
 
 type deprecatedValidator struct{ path, message string }
 
-func (v *deprecatedValidator) Validate(in ValidationInput) []Violation {
+func (v *deprecatedValidator) Validate(in spec.ValidationInput) []spec.Violation {
 	root := in.Root
 	if root == nil {
 		return nil
 	}
-	var errs []Violation
+	var errs []spec.Violation
 	yamlnode.ForEachLeaf(root, v.path, func(_ *yaml.Node, where string) {
-		errs = append(errs, Violation{Path: where, Message: "deprecated - " + v.message})
+		errs = append(errs, spec.Violation{Path: where, Message: "deprecated - " + v.message})
 	})
 	return errs
 }
@@ -287,7 +288,7 @@ func (v *deprecatedValidator) Validate(in ValidationInput) []Violation {
 // nothing - the inverse of ValueOneOf.
 //
 //	editor.ValueNotOneOf("protocol", "ftp", "telnet")
-func ValueNotOneOf(path string, denied ...string) Validator {
+func ValueNotOneOf(path string, denied ...string) spec.Validator {
 	return &valueNotOneOfValidator{path: path, denied: denied}
 }
 
@@ -296,12 +297,12 @@ type valueNotOneOfValidator struct {
 	denied []string
 }
 
-func (v *valueNotOneOfValidator) Validate(in ValidationInput) []Violation {
-	var errs []Violation
+func (v *valueNotOneOfValidator) Validate(in spec.ValidationInput) []spec.Violation {
+	var errs []spec.Violation
 	forEachScalar(in.Root, v.path, &errs, func(value, where string) {
 		for _, d := range v.denied {
 			if value == d {
-				errs = append(errs, Violation{
+				errs = append(errs, spec.Violation{
 					Path:    where,
 					Message: fmt.Sprintf("value %q is not allowed", value),
 				})
@@ -320,7 +321,7 @@ func (v *valueNotOneOfValidator) Validate(in ValidationInput) []Violation {
 //
 //	editor.ValueHasLength("name", 3, 64)
 //	editor.ValueHasLength("description", 0, 500) // max only
-func ValueHasLength(path string, min, max int) Validator {
+func ValueHasLength(path string, min, max int) spec.Validator {
 	return &valueHasLengthValidator{path: path, min: min, max: max}
 }
 
@@ -329,17 +330,17 @@ type valueHasLengthValidator struct {
 	min, max int
 }
 
-func (v *valueHasLengthValidator) Validate(in ValidationInput) []Violation {
-	var errs []Violation
+func (v *valueHasLengthValidator) Validate(in spec.ValidationInput) []spec.Violation {
+	var errs []spec.Violation
 	forEachScalar(in.Root, v.path, &errs, func(value, where string) {
 		n := len([]rune(value))
 		switch {
 		case v.min > 0 && v.max > 0 && (n < v.min || n > v.max):
-			errs = append(errs, Violation{Path: where, Message: fmt.Sprintf("must be between %d and %d chars", v.min, v.max)})
+			errs = append(errs, spec.Violation{Path: where, Message: fmt.Sprintf("must be between %d and %d chars", v.min, v.max)})
 		case v.min > 0 && n < v.min:
-			errs = append(errs, Violation{Path: where, Message: fmt.Sprintf("must be at least %d chars", v.min)})
+			errs = append(errs, spec.Violation{Path: where, Message: fmt.Sprintf("must be at least %d chars", v.min)})
 		case v.max > 0 && n > v.max:
-			errs = append(errs, Violation{Path: where, Message: fmt.Sprintf("must be at most %d chars", v.max)})
+			errs = append(errs, spec.Violation{Path: where, Message: fmt.Sprintf("must be at most %d chars", v.max)})
 		}
 	})
 	return errs
@@ -351,20 +352,20 @@ func (v *valueHasLengthValidator) Validate(in ValidationInput) []Violation {
 // mappings along the path are expanded automatically.
 //
 //	editor.ValueMatchesFormat("endpoint", editor.FormatURL, editor.FormatHost)
-func ValueMatchesFormat(path string, formats ...Format) Validator {
+func ValueMatchesFormat(path string, formats ...spec.Format) spec.Validator {
 	return &valueMatchesFormatValidator{path: path, formats: formats}
 }
 
 type valueMatchesFormatValidator struct {
 	path    string
-	formats []Format
+	formats []spec.Format
 }
 
-func (v *valueMatchesFormatValidator) Validate(in ValidationInput) []Violation {
-	var errs []Violation
+func (v *valueMatchesFormatValidator) Validate(in spec.ValidationInput) []spec.Violation {
+	var errs []spec.Violation
 	forEachScalar(in.Root, v.path, &errs, func(value, where string) {
 		for _, f := range v.formats {
-			if !f.IsZero() && f.validate(value) {
+			if !f.IsZero() && f.Matches(value) {
 				return
 			}
 		}
@@ -374,7 +375,7 @@ func (v *valueMatchesFormatValidator) Validate(in ValidationInput) []Violation {
 				labels = append(labels, f.Label())
 			}
 		}
-		errs = append(errs, Violation{
+		errs = append(errs, spec.Violation{
 			Path:    where,
 			Message: "value does not match expected format: " + strings.Join(labels, " | "),
 		})

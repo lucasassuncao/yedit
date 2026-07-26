@@ -94,7 +94,7 @@ Discover walks the type of v by reflection and returns the editable schema of it
 
 Only the yaml tag is read. Field metadata \(required, allowed values, ranges, descriptions\) is not derived from struct tags \- declare it through the editor's MetadataSource instead \(see the yedit/metadata package\).
 
-To customise discovery for union types \(a value that can be a scalar OR a struct OR a map\), make the wrapper type implement Provider \- its YeditSchema\(\) return value is used in place of reflective traversal.
+To customise discovery for union types \(a value that can be a scalar OR a struct OR a map\), make the wrapper type implement Provider \- its Schema\(\) return value is used in place of reflective traversal.
 
 The optional recursionLimit controls how many extra times each individual type may re\-enter the traversal beyond its first visit. Omitted, it defaults to 1, which allows one recursive level so that fields like "any \[\]CategoryFilter" are navigable. Passing 0 explicitly selects strict mode: recursive occurrences are not expanded at all. The bound is counted per type, so mutually recursive chains \(A contains B contains A\) may expand deeper overall than a single self\-referential type would.
 
@@ -147,7 +147,7 @@ Provider is an opt\-in interface for types that reflection cannot introspect cor
 
 ```go
 type Provider interface {
-    YeditSchema() []FieldDef
+    Schema() []FieldDef
 }
 ```
 

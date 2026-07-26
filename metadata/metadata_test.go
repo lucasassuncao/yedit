@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/metadata"
+	"github.com/lucasassuncao/yedit/spec"
 )
 
 type filter struct {
@@ -35,10 +35,10 @@ type config struct {
 }
 
 func (filter) Metadata() map[string]*metadata.Node {
-	anyNode := &metadata.Node{FieldMeta: editor.FieldMeta{Description: "OR"}}
+	anyNode := &metadata.Node{FieldMeta: spec.FieldMeta{Description: "OR"}}
 	children := map[string]*metadata.Node{
-		"regex":   {FieldMeta: editor.FieldMeta{Description: "regex"}},
-		"min-age": {FieldMeta: editor.FieldMeta{Min: "0s", Max: "87600h"}},
+		"regex":   {FieldMeta: spec.FieldMeta{Description: "regex"}},
+		"min-age": {FieldMeta: spec.FieldMeta{Min: "0s", Max: "87600h"}},
 		"any":     anyNode,
 	}
 	anyNode.Children = children
@@ -47,10 +47,10 @@ func (filter) Metadata() map[string]*metadata.Node {
 
 func (source) Metadata() map[string]*metadata.Node {
 	return map[string]*metadata.Node{
-		"path":       {FieldMeta: editor.FieldMeta{Required: true}},
-		"extensions": {FieldMeta: editor.FieldMeta{MinCount: 1, Unique: true}},
+		"path":       {FieldMeta: spec.FieldMeta{Required: true}},
+		"extensions": {FieldMeta: spec.FieldMeta{MinCount: 1, Unique: true}},
 		"filter": {
-			FieldMeta: editor.FieldMeta{},
+			FieldMeta: spec.FieldMeta{},
 			Children:  filter{}.Metadata(), // explicit: filter is recursive
 		},
 	}
@@ -58,38 +58,38 @@ func (source) Metadata() map[string]*metadata.Node {
 
 func (category) Metadata() map[string]*metadata.Node {
 	return map[string]*metadata.Node{
-		"name":   {FieldMeta: editor.FieldMeta{Required: true}},
-		"source": {FieldMeta: editor.FieldMeta{}},
+		"name":   {FieldMeta: spec.FieldMeta{Required: true}},
+		"source": {FieldMeta: spec.FieldMeta{}},
 		// no Children: source implements MetadataProvider, composed automatically by New
 	}
 }
 
 func (config) Metadata() map[string]*metadata.Node {
 	return map[string]*metadata.Node{
-		"output":     {FieldMeta: editor.FieldMeta{OneOf: []string{"console", "file"}}},
-		"categories": {FieldMeta: editor.FieldMeta{Required: true}},
-		"labels":     {FieldMeta: editor.FieldMeta{}},
+		"output":     {FieldMeta: spec.FieldMeta{OneOf: []string{"console", "file"}}},
+		"categories": {FieldMeta: spec.FieldMeta{Required: true}},
+		"labels":     {FieldMeta: spec.FieldMeta{}},
 	}
 }
 
 // tree builds a valid metadata tree with a recursive shared-pointer child.
 func tree() map[string]*metadata.Node {
 	filterChildren := map[string]*metadata.Node{
-		"regex":   {FieldMeta: editor.FieldMeta{Description: "regex"}},
-		"min-age": {FieldMeta: editor.FieldMeta{Min: "0s", Max: "87600h"}},
+		"regex":   {FieldMeta: spec.FieldMeta{Description: "regex"}},
+		"min-age": {FieldMeta: spec.FieldMeta{Min: "0s", Max: "87600h"}},
 	}
-	anyNode := &metadata.Node{FieldMeta: editor.FieldMeta{Description: "OR"}}
+	anyNode := &metadata.Node{FieldMeta: spec.FieldMeta{Description: "OR"}}
 	anyNode.Children = filterChildren
 	filterChildren["any"] = anyNode
 	return map[string]*metadata.Node{
-		"output": {FieldMeta: editor.FieldMeta{OneOf: []string{"console", "file"}}},
+		"output": {FieldMeta: spec.FieldMeta{OneOf: []string{"console", "file"}}},
 		"categories": {
-			FieldMeta: editor.FieldMeta{Required: true},
+			FieldMeta: spec.FieldMeta{Required: true},
 			Children: map[string]*metadata.Node{
-				"name": {FieldMeta: editor.FieldMeta{Required: true}},
+				"name": {FieldMeta: spec.FieldMeta{Required: true}},
 				"source": {Children: map[string]*metadata.Node{
-					"path":       {FieldMeta: editor.FieldMeta{Required: true}},
-					"extensions": {FieldMeta: editor.FieldMeta{MinCount: 1, Unique: true}},
+					"path":       {FieldMeta: spec.FieldMeta{Required: true}},
+					"extensions": {FieldMeta: spec.FieldMeta{MinCount: 1, Unique: true}},
 					"filter":     {Children: filterChildren},
 				}},
 			},
@@ -131,7 +131,7 @@ func TestBuild_explicitTypeWins(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
 	tr := map[string]*metadata.Node{
-		"output": {FieldMeta: editor.FieldMeta{Type: "custom-label"}},
+		"output": {FieldMeta: spec.FieldMeta{Type: "custom-label"}},
 	}
 	src, err := metadata.NewFromTree(&config{}, tr)
 	must.NoError(err, "Build")
@@ -202,8 +202,8 @@ func TestNewFromTree_inlinePromotedFields(t *testing.T) {
 	must := require.New(t)
 	tr := map[string]*metadata.Node{
 		"host": {Children: map[string]*metadata.Node{
-			"max-items": {FieldMeta: editor.FieldMeta{Min: "1"}},
-			"name":      {FieldMeta: editor.FieldMeta{Required: true}},
+			"max-items": {FieldMeta: spec.FieldMeta{Min: "1"}},
+			"name":      {FieldMeta: spec.FieldMeta{Required: true}},
 		}},
 	}
 	src, err := metadata.NewFromTree(&inlineRoot{}, tr)
@@ -245,7 +245,7 @@ type innerWithMeta struct {
 
 func (innerWithMeta) Metadata() map[string]*metadata.Node {
 	return map[string]*metadata.Node{
-		"regex": {FieldMeta: editor.FieldMeta{Description: "re"}},
+		"regex": {FieldMeta: spec.FieldMeta{Description: "re"}},
 	}
 }
 
@@ -396,7 +396,7 @@ func TestNewFromTree_ValidatesUnderMapOfSlice(t *testing.T) {
 
 	src, err := metadata.NewFromTree(&mapSliceRoot{}, map[string]*metadata.Node{
 		"groups": {Children: map[string]*metadata.Node{
-			"name": {FieldMeta: editor.FieldMeta{Description: "the group name"}},
+			"name": {FieldMeta: spec.FieldMeta{Description: "the group name"}},
 		}},
 	})
 	is.NoError(err, "the correct key must be accepted")

@@ -12,6 +12,7 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 
 ## Index
 
+- [Constants](<#constants>)
 - [Variables](<#variables>)
 - [type AddEntry](<#AddEntry>)
 - [type AppendPreset](<#AppendPreset>)
@@ -29,10 +30,7 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 - [type FieldMeta](<#FieldMeta>)
 - [type Format](<#Format>)
   - [func FormatCustom\(name string, validate func\(string\) bool\) Format](<#FormatCustom>)
-  - [func \(f Format\) IsZero\(\) bool](<#Format.IsZero>)
-  - [func \(f Format\) Label\(\) string](<#Format.Label>)
 - [type MetadataFunc](<#MetadataFunc>)
-  - [func \(f MetadataFunc\) FieldMeta\(blockKey, fieldPath string\) FieldMeta](<#MetadataFunc.FieldMeta>)
 - [type MetadataSource](<#MetadataSource>)
 - [type ModelAction](<#ModelAction>)
 - [type NavigateEntry](<#NavigateEntry>)
@@ -51,219 +49,107 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 - [type ValidationInput](<#ValidationInput>)
   - [func NewValidationInput\(raw \[\]byte, blocks \[\]document.Block\) ValidationInput](<#NewValidationInput>)
 - [type Validator](<#Validator>)
-  - [func AllOrNone\(keys ...string\) Validator](<#AllOrNone>)
-  - [func AllOrNoneNested\(scopedPath string, keys ...string\) Validator](<#AllOrNoneNested>)
-  - [func AtLeastOneOf\(keys ...string\) Validator](<#AtLeastOneOf>)
-  - [func AtLeastOneOfNested\(scopedPath string, keys ...string\) Validator](<#AtLeastOneOfNested>)
-  - [func CountFromMetadata\(\) Validator](<#CountFromMetadata>)
-  - [func CountRange\(path string, minCount, maxCount int\) Validator](<#CountRange>)
-  - [func CrossFieldOrdered\(smallerPath, largerPath string\) Validator](<#CrossFieldOrdered>)
-  - [func CrossFieldOrderedNested\(scopedPath, smallerLeaf, largerLeaf string\) Validator](<#CrossFieldOrderedNested>)
-  - [func Deprecated\(path, message string\) Validator](<#Deprecated>)
-  - [func DeprecatedFromMetadata\(\) Validator](<#DeprecatedFromMetadata>)
-  - [func ExactlyOneOf\(keys ...string\) Validator](<#ExactlyOneOf>)
-  - [func ExactlyOneOfNested\(scopedPath string, keys ...string\) Validator](<#ExactlyOneOfNested>)
-  - [func ForbiddenIf\(key, condPath, condValue string\) Validator](<#ForbiddenIf>)
-  - [func FormatFromMetadata\(\) Validator](<#FormatFromMetadata>)
-  - [func LengthFromMetadata\(\) Validator](<#LengthFromMetadata>)
-  - [func MutuallyExclusive\(keys ...string\) Validator](<#MutuallyExclusive>)
-  - [func MutuallyExclusiveGroupsNested\(scopedPath string, groups ...\[\]string\) Validator](<#MutuallyExclusiveGroupsNested>)
-  - [func MutuallyExclusiveNested\(scopedPath string, keys ...string\) Validator](<#MutuallyExclusiveNested>)
-  - [func NoDuplicates\(seqPath, field string\) Validator](<#NoDuplicates>)
-  - [func NotOneOfFromMetadata\(\) Validator](<#NotOneOfFromMetadata>)
-  - [func OneOfFromMetadata\(\) Validator](<#OneOfFromMetadata>)
-  - [func PatternFromMetadata\(\) Validator](<#PatternFromMetadata>)
-  - [func RangeFromMetadata\(\) Validator](<#RangeFromMetadata>)
-  - [func Required\(paths ...string\) Validator](<#Required>)
-  - [func RequiredFromMetadata\(\) Validator](<#RequiredFromMetadata>)
-  - [func RequiredIf\(key, condPath, condValue string\) Validator](<#RequiredIf>)
-  - [func RequiredWith\(key, parent string\) Validator](<#RequiredWith>)
-  - [func UniqueFromMetadata\(\) Validator](<#UniqueFromMetadata>)
-  - [func UniqueValues\(seqPath string\) Validator](<#UniqueValues>)
-  - [func ValueHasLength\(path string, min, max int\) Validator](<#ValueHasLength>)
-  - [func ValueHasPrefix\(path, prefix string\) Validator](<#ValueHasPrefix>)
-  - [func ValueHasSuffix\(path, suffix string\) Validator](<#ValueHasSuffix>)
-  - [func ValueInRange\(path, minVal, maxVal string\) Validator](<#ValueInRange>)
-  - [func ValueMatches\(path, pattern string\) Validator](<#ValueMatches>)
-  - [func ValueMatchesFormat\(path string, formats ...Format\) Validator](<#ValueMatchesFormat>)
-  - [func ValueNotOneOf\(path string, denied ...string\) Validator](<#ValueNotOneOf>)
-  - [func ValueOneOf\(path string, allowed ...string\) Validator](<#ValueOneOf>)
 - [type ValidatorFunc](<#ValidatorFunc>)
-  - [func \(f ValidatorFunc\) Validate\(in ValidationInput\) \[\]Violation](<#ValidatorFunc.Validate>)
 - [type Violation](<#Violation>)
-  - [func RunAll\(w WiredValidators, raw \[\]byte, blocks \[\]document.Block\) \[\]Violation](<#RunAll>)
-  - [func \(v Violation\) String\(\) string](<#Violation.String>)
 - [type WiredValidators](<#WiredValidators>)
-  - [func Wire\(validators \[\]Validator, cfg Config\) WiredValidators](<#Wire>)
-  - [func WireWithSchema\(validators \[\]Validator, tree \[\]schema.FieldDef, metadata MetadataSource\) WiredValidators](<#WireWithSchema>)
+  - [func Wire\(validators \[\]spec.Validator, cfg Config\) WiredValidators](<#Wire>)
 
+
+## Constants
+
+<a name="GroupMutuallyExclusive"></a>
+
+```go
+const (
+    GroupMutuallyExclusive = spec.GroupMutuallyExclusive
+    GroupUnknownKeys       = spec.GroupUnknownKeys
+    GroupRules             = spec.GroupRules
+)
+```
 
 ## Variables
 
-<a name="FormatCIDR"></a>
+<a name="FormatCIDR"></a>Built\-in formats, re\-exported from spec.
 
 ```go
-var FormatCIDR = FormatCustom("cidr", func(v string) bool {
-    _, _, err := net.ParseCIDR(v)
-    return err == nil
-})
+var (
+    FormatCIDR            = spec.FormatCIDR
+    FormatDate            = spec.FormatDate
+    FormatDirectoryPath   = spec.FormatDirectoryPath
+    FormatDuration        = spec.FormatDuration
+    FormatEmail           = spec.FormatEmail
+    FormatFQDN            = spec.FormatFQDN
+    FormatGitRef          = spec.FormatGitRef
+    FormatHost            = spec.FormatHost
+    FormatHostPort        = spec.FormatHostPort
+    FormatIP              = spec.FormatIP
+    FormatIPv4            = spec.FormatIPv4
+    FormatIPv6            = spec.FormatIPv6
+    FormatPort            = spec.FormatPort
+    FormatPrivateKey      = spec.FormatPrivateKey
+    FormatPublicKey       = spec.FormatPublicKey
+    FormatSemver          = spec.FormatSemver
+    FormatTerraformSource = spec.FormatTerraformSource
+    FormatURL             = spec.FormatURL
+    FormatUUID            = spec.FormatUUID
+)
 ```
 
-<a name="FormatDate"></a>
+<a name="AllOrNone"></a>Explicit rules: operate directly on raw YAML via path strings.
 
 ```go
-var FormatDate = FormatCustom("date", func(v string) bool {
-    return reDate.MatchString(v)
-})
+var (
+    AllOrNone                     = validate.AllOrNone
+    AllOrNoneNested               = validate.AllOrNoneNested
+    AtLeastOneOf                  = validate.AtLeastOneOf
+    AtLeastOneOfNested            = validate.AtLeastOneOfNested
+    CountRange                    = validate.CountRange
+    CrossFieldOrdered             = validate.CrossFieldOrdered
+    CrossFieldOrderedNested       = validate.CrossFieldOrderedNested
+    Deprecated                    = validate.Deprecated
+    ExactlyOneOf                  = validate.ExactlyOneOf
+    ExactlyOneOfNested            = validate.ExactlyOneOfNested
+    ForbiddenIf                   = validate.ForbiddenIf
+    MutuallyExclusive             = validate.MutuallyExclusive
+    MutuallyExclusiveGroupsNested = validate.MutuallyExclusiveGroupsNested
+    MutuallyExclusiveNested       = validate.MutuallyExclusiveNested
+    NoDuplicates                  = validate.NoDuplicates
+    Required                      = validate.Required
+    RequiredIf                    = validate.RequiredIf
+    RequiredWith                  = validate.RequiredWith
+    UniqueValues                  = validate.UniqueValues
+    ValueHasLength                = validate.ValueHasLength
+    ValueHasPrefix                = validate.ValueHasPrefix
+    ValueHasSuffix                = validate.ValueHasSuffix
+    ValueInRange                  = validate.ValueInRange
+    ValueMatches                  = validate.ValueMatches
+    ValueMatchesFormat            = validate.ValueMatchesFormat
+    ValueNotOneOf                 = validate.ValueNotOneOf
+    ValueOneOf                    = validate.ValueOneOf
+)
 ```
 
-<a name="FormatDirectoryPath"></a>
+<a name="CountFromMetadata"></a>FromMetadata rules: driven by Config.Metadata, inert until wired.
 
 ```go
-var FormatDirectoryPath = FormatCustom("directory", func(v string) bool {
-    return v != "" && !strings.ContainsRune(v, 0)
-})
+var (
+    CountFromMetadata      = validate.CountFromMetadata
+    DeprecatedFromMetadata = validate.DeprecatedFromMetadata
+    FormatFromMetadata     = validate.FormatFromMetadata
+    LengthFromMetadata     = validate.LengthFromMetadata
+    NotOneOfFromMetadata   = validate.NotOneOfFromMetadata
+    OneOfFromMetadata      = validate.OneOfFromMetadata
+    PatternFromMetadata    = validate.PatternFromMetadata
+    RangeFromMetadata      = validate.RangeFromMetadata
+    RequiredFromMetadata   = validate.RequiredFromMetadata
+    UniqueFromMetadata     = validate.UniqueFromMetadata
+)
 ```
 
-<a name="FormatDuration"></a>FormatDuration accepts any time.ParseDuration value \("1h30m", "1.5h", "0"\), the same parser used by the range validators \(ValueInRange / RangeFromMetadata\), so the two rules can never disagree on the same field.
+<a name="RunAll"></a>RunAll executes all validators against raw/blocks. See validate.RunAll.
 
 ```go
-var FormatDuration = FormatCustom("duration", func(v string) bool {
-    _, err := time.ParseDuration(v)
-    return err == nil
-})
-```
-
-<a name="FormatEmail"></a>
-
-```go
-var FormatEmail = FormatCustom("email", func(v string) bool {
-    return reEmail.MatchString(v)
-})
-```
-
-<a name="FormatFQDN"></a>
-
-```go
-var FormatFQDN = FormatCustom("fqdn", func(v string) bool {
-    return reFQDN.MatchString(v)
-})
-```
-
-<a name="FormatGitRef"></a>
-
-```go
-var FormatGitRef = FormatCustom("git-ref", func(v string) bool {
-    return reGitRef.MatchString(v)
-})
-```
-
-<a name="FormatHost"></a>
-
-```go
-var FormatHost = FormatCustom("host", func(v string) bool {
-    if net.ParseIP(v) != nil {
-        return true
-    }
-    return reHostname.MatchString(v)
-})
-```
-
-<a name="FormatHostPort"></a>
-
-```go
-var FormatHostPort = FormatCustom("host:port", func(v string) bool {
-    _, p, err := net.SplitHostPort(v)
-    if err != nil {
-        return false
-    }
-    port, err := strconv.Atoi(p)
-    return err == nil && port >= 1 && port <= 65535
-})
-```
-
-<a name="FormatIP"></a>
-
-```go
-var FormatIP = FormatCustom("ip", func(v string) bool {
-    return net.ParseIP(v) != nil
-})
-```
-
-<a name="FormatIPv4"></a>
-
-```go
-var FormatIPv4 = FormatCustom("ipv4", func(v string) bool {
-    ip := net.ParseIP(v)
-    return ip != nil && ip.To4() != nil
-})
-```
-
-<a name="FormatIPv6"></a>
-
-```go
-var FormatIPv6 = FormatCustom("ipv6", func(v string) bool {
-    ip := net.ParseIP(v)
-    return ip != nil && ip.To4() == nil
-})
-```
-
-<a name="FormatPort"></a>
-
-```go
-var FormatPort = FormatCustom("port", func(v string) bool {
-    n, err := strconv.Atoi(v)
-    return err == nil && n >= 1 && n <= 65535
-})
-```
-
-<a name="FormatPrivateKey"></a>
-
-```go
-var FormatPrivateKey = FormatCustom("private-key", func(v string) bool {
-    return rePEMPrivate.MatchString(v)
-})
-```
-
-<a name="FormatPublicKey"></a>
-
-```go
-var FormatPublicKey = FormatCustom("public-key", func(v string) bool {
-    return rePEMPublic.MatchString(v)
-})
-```
-
-<a name="FormatSemver"></a>
-
-```go
-var FormatSemver = FormatCustom("semver", func(v string) bool {
-    return reSemver.MatchString(v)
-})
-```
-
-<a name="FormatTerraformSource"></a>
-
-```go
-var FormatTerraformSource = FormatCustom("terraform-source", func(v string) bool {
-    return reTerraformSource.MatchString(v)
-})
-```
-
-<a name="FormatURL"></a>
-
-```go
-var FormatURL = FormatCustom("url", func(v string) bool {
-    u, err := url.Parse(v)
-    return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
-})
-```
-
-<a name="FormatUUID"></a>
-
-```go
-var FormatUUID = FormatCustom("uuid", func(v string) bool {
-    return reUUID.MatchString(v)
-})
+var RunAll = validate.RunAll
 ```
 
 <a name="AddEntry"></a>
@@ -323,7 +209,7 @@ type CommitBlock struct{}
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L191-L209>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L108-L126>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -419,143 +305,48 @@ type DrillOut struct{}
 ```
 
 <a name="FieldMeta"></a>
-## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L23-L71>)
+## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L21>)
 
-FieldMeta carries a single field's metadata: displayed in the Hint/Example panel and enforced by the FromMetadata validator family. Fields at their zero value declare nothing \- no panel line, no enforcement. MetadataSource is the sole authority: yedit never auto\-populates any FieldMeta field from struct tags. If no MetadataSource is configured, the hint panel shows only a generated example.
+These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
 
 ```go
-type FieldMeta struct {
-    Description string
-    Type        string   // human-readable Go type: "string", "bool", "int", "[]string", "duration", "object", etc.
-    Required    bool     // enforced by RequiredFromMetadata
-    Default     string   // display only - no enforcement rule exists for defaults
-    OneOf       []string // enforced by OneOfFromMetadata
-    Example     string   // YAML snippet shown verbatim in the Example section
-
-    // Value constraints, enforced by the FromMetadata validator family.
-    Min, Max string // RangeFromMetadata - number, duration, or size strings (ValueInRange semantics)
-    Pattern  string // PatternFromMetadata - RE2 regular expression (ValueMatches semantics)
-    // Collection constraints. MinCount/MaxCount both zero means no rule;
-    // MinCount > 0 with MaxCount == 0 means "at least MinCount, no upper bound".
-    MinCount, MaxCount int  // CountFromMetadata (CountRange semantics)
-    Unique             bool // UniqueFromMetadata - scalar list items must not repeat
-    // Deprecation: non-empty marks the field deprecated; the value is the
-    // migration hint shown to the user (DeprecatedFromMetadata).
-    Deprecated string
-
-    // Formats lists the acceptable string formats for this field.
-    // FormatFromMetadata validates the field's value against each format
-    // using OR semantics: valid if any format's validator returns true.
-    // Empty means no format rule. Use FormatCustom for app-specific formats.
-    Formats []Format
-    // MinLength and MaxLength constrain string length in Unicode code points.
-    // 0 means no rule. Enforced by LengthFromMetadata.
-    MinLength int
-    MaxLength int
-    // NotOneOf is a case-sensitive denylist. Enforced by NotOneOfFromMetadata.
-    // Skipped when empty or when the field value is empty.
-    NotOneOf []string
-    // Presentation overrides how the field's children are shown in the tree panel.
-    // PresentationOverlay: field opens in a dedicated overlay editor (drill-in).
-    // PresentationInline: children are expanded inline in the tree.
-    // PresentationFlat: field is shown as a leaf with no children.
-    // Zero value (PresentationDefault) derives behavior from Kind.
-    Presentation schema.Presentation
-    // Multiline is display-only: sets Type to "multiline string" when Type is
-    // empty, and auto-generates a block-scalar example when Example is empty.
-    // Does not change editor behavior.
-    Multiline bool
-    // Snippet is the YAML inserted when the field is toggled on in the tree
-    // panel. Replaces the old Config.FieldSnippets source. Falls back to
-    // "<fieldName>: \n" when empty.
-    Snippet string
-    // PreChecked marks the field as checked when a new (empty) block is opened.
-    // Replaces the old Config.PreCheckedFields source.
-    PreChecked bool
-}
+type FieldMeta = spec.FieldMeta
 ```
 
 <a name="Format"></a>
-## type [Format](<https://github.com/lucasassuncao/yedit/blob/main/editor/format.go#L15-L18>)
+## type [Format](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L24>)
 
-Format describes the expected string format for a field. Use built\-in vars \(FormatURL, FormatUUID, ...\) or FormatCustom for app\-specific formats.
+These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
 
 ```go
-type Format struct {
-    // contains filtered or unexported fields
-}
+type Format = spec.Format
 ```
 
 <a name="FormatCustom"></a>
-### func [FormatCustom](<https://github.com/lucasassuncao/yedit/blob/main/editor/format.go#L26>)
+### func [FormatCustom](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L41>)
 
 ```go
 func FormatCustom(name string, validate func(string) bool) Format
 ```
 
-FormatCustom creates an app\-specific format with a display name and validator.
-
-```
-var FormatLeanIXID = editor.FormatCustom("leanix-id", func(v string) bool {
-    ok, _ := regexp.MatchString(`^(TEAM|CMP|APP)-[A-Z0-9]+$`, v)
-    return ok
-})
-```
-
-<a name="Format.IsZero"></a>
-### func \(Format\) [IsZero](<https://github.com/lucasassuncao/yedit/blob/main/editor/format.go#L31>)
-
-```go
-func (f Format) IsZero() bool
-```
-
-IsZero reports whether f is the zero value \(not a real format\).
-
-<a name="Format.Label"></a>
-### func \(Format\) [Label](<https://github.com/lucasassuncao/yedit/blob/main/editor/format.go#L34>)
-
-```go
-func (f Format) Label() string
-```
-
-Label returns the display name used in the hint panel and docgenerator.
+FormatCustom builds an app\-specific format. See spec.FormatCustom.
 
 <a name="MetadataFunc"></a>
-## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L90>)
+## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L23>)
 
-MetadataFunc adapts a plain function to the MetadataSource interface:
-
-```
-editor.Run(editor.Config{
-    Metadata: editor.MetadataFunc(func(block, fieldPath string) editor.FieldMeta {
-        // return metadata for (block, fieldPath) ...
-        return editor.FieldMeta{}
-    }),
-})
-```
+These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
 
 ```go
-type MetadataFunc func(blockKey, fieldPath string) FieldMeta
+type MetadataFunc = spec.MetadataFunc
 ```
-
-<a name="MetadataFunc.FieldMeta"></a>
-### func \(MetadataFunc\) [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L93>)
-
-```go
-func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta
-```
-
-FieldMeta calls f.
 
 <a name="MetadataSource"></a>
-## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L78-L80>)
+## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L22>)
 
-MetadataSource provides per\-field metadata for the Hint/Example panel and the FromMetadata validator family. It is called with the top\-level block key and the field's dot\-joined path from the block root \(e.g. "source", "source.path"\). For top\-level block entries in the root list, fieldPath is empty \(""\). Returning a zero FieldMeta means "no override".
+These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
 
 ```go
-type MetadataSource interface {
-    FieldMeta(blockKey, fieldPath string) FieldMeta
-}
+type MetadataSource = spec.MetadataSource
 ```
 
 <a name="ModelAction"></a>
@@ -686,7 +477,7 @@ type ToggleHints struct{}
 ```
 
 <a name="Trace"></a>
-## type [Trace](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L162-L168>)
+## type [Trace](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L79-L85>)
 
 Trace bundles the editor's session\-observability hooks: the OnAction/ OnModelAction/OnMsg callbacks and the built\-in Dump\-to\-JSONL recorder built on top of them. See docs/SESSION\-TRACING.md for the full picture.
 
@@ -710,658 +501,69 @@ type Undo struct{}
 ```
 
 <a name="ValidationInput"></a>
-## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L126-L130>)
+## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L26>)
 
-ValidationInput carries the document state inspected by validators. RunAll builds it once per run and shares it across all validators, so the document is parsed a single time instead of once per validator. Build one with NewValidationInput when invoking a validator directly.
+These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
 
 ```go
-type ValidationInput struct {
-    Raw    []byte           // document bytes, CRLF-normalised
-    Root   *yaml.Node       // parsed document root; an empty document yields an empty mapping, invalid YAML yields nil
-    Blocks []document.Block // top-level blocks
-}
+type ValidationInput = spec.ValidationInput
 ```
 
 <a name="NewValidationInput"></a>
-### func [NewValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L41>)
+### func [NewValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L70>)
 
 ```go
 func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
 ```
 
-NewValidationInput parses raw once and bundles it with blocks for a validation run. Root is nil when raw is not valid YAML; an empty document yields an empty mapping so unconditional checks still run.
+NewValidationInput parses raw once and bundles it with blocks for a validation run. See spec.NewValidationInput.
 
 <a name="Validator"></a>
-## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L135-L137>)
+## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L27>)
 
-Validator is a pluggable rule executed at validate/save time. It returns one Violation per problem it finds. Returning an empty slice \(or nil\) means "all good".
-
-```go
-type Validator interface {
-    Validate(in ValidationInput) []Violation
-}
-```
-
-<a name="AllOrNone"></a>
-### func [AllOrNone](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L610>)
+These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
 
 ```go
-func AllOrNone(keys ...string) Validator
+type Validator = spec.Validator
 ```
-
-AllOrNone reports a violation when only some of the listed keys are present: they must appear together or not at all \(e.g. a TLS cert/key pair\).
-
-Like MutuallyExclusive it supports two forms: plain keys are checked against the document's top\-level blocks, and dotted paths \- all sharing the same parent prefix \- are checked inside every mapping reached by that parent, with sequences and dict\-style mappings expanded automatically:
-
-```
-editor.AllOrNone("tls-cert", "tls-key")
-editor.AllOrNone("server.tls-cert", "server.tls-key")
-```
-
-Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
-
-<a name="AllOrNoneNested"></a>
-### func [AllOrNoneNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L760>)
-
-```go
-func AllOrNoneNested(scopedPath string, keys ...string) Validator
-```
-
-AllOrNoneNested walks the YAML tree and fires at every mapping whose direct parent key is the last segment of scopedPath, checking that either all or none of keys are present \- the nested counterpart of AllOrNone.
-
-```
-editor.AllOrNoneNested("servers.tls", "cert", "key")
-```
-
-<a name="AtLeastOneOf"></a>
-### func [AtLeastOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L375>)
-
-```go
-func AtLeastOneOf(keys ...string) Validator
-```
-
-AtLeastOneOf reports a violation when none of the listed keys is present.
-
-Like MutuallyExclusive it supports two forms: plain keys are checked against the document's top\-level blocks, and dotted paths \- all sharing the same parent prefix \- are checked inside every mapping reached by that parent, with sequences and dict\-style mappings expanded automatically. The rule only fires where the parent mapping exists:
-
-```
-editor.AtLeastOneOf("image", "build")
-editor.AtLeastOneOf("auth.token", "auth.password")
-```
-
-Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
-
-<a name="AtLeastOneOfNested"></a>
-### func [AtLeastOneOfNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L700>)
-
-```go
-func AtLeastOneOfNested(scopedPath string, keys ...string) Validator
-```
-
-AtLeastOneOfNested walks the YAML tree and fires at every mapping whose direct parent key is the last segment of scopedPath, checking that at least one of keys is present \- the nested counterpart of AtLeastOneOf.
-
-```
-editor.AtLeastOneOfNested("categories.source.auth", "token", "password")
-```
-
-<a name="CountFromMetadata"></a>
-### func [CountFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_metadata.go#L249>)
-
-```go
-func CountFromMetadata() Validator
-```
-
-CountFromMetadata enforces FieldMeta.MinCount/MaxCount from the MetadataSource \(CountRange semantics\): sequences count items, mappings count keys. Both zero declares nothing; MinCount \> 0 with MaxCount == 0 means "at least MinCount, no upper bound". Absent fields report nothing \- combine with Required when the collection is mandatory.
-
-<a name="CountRange"></a>
-### func [CountRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_values.go#L204>)
-
-```go
-func CountRange(path string, minCount, maxCount int) Validator
-```
-
-CountRange reports a violation when the collection at path has fewer than minCount or more than maxCount entries. maxCount \< 0 means no upper bound. Sequences count items; mappings count keys. An absent path reports nothing \- combine with Required when the collection itself is mandatory.
-
-```
-editor.CountRange("workers", 1, 10)
-editor.CountRange("categories", 1, -1) // at least one, no upper bound
-```
-
-<a name="CrossFieldOrdered"></a>
-### func [CrossFieldOrdered](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L513>)
-
-```go
-func CrossFieldOrdered(smallerPath, largerPath string) Validator
-```
-
-CrossFieldOrdered reports a violation when both paths are present but the value at smallerPath is not strictly less than the value at largerPath. Values are compared as plain numbers \("1", "0.5"\), time.Duration strings \(e.g. "24h"\), or size strings; both sides must be of the same kind. Size suffixes follow their standard meaning: KB/MB/GB/TB are decimal \(powers of 1000\) and KiB/MiB/GiB/TiB are binary \(powers of 1024\).
-
-When the two paths share the same parent prefix, the pair is compared inside every mapping reached by that parent \- sequences and dict\-style mappings are expanded automatically, so each entry's own min/max pair is checked. Paths with unrelated parents are both resolved from the document root.
-
-<a name="CrossFieldOrderedNested"></a>
-### func [CrossFieldOrderedNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L304>)
-
-```go
-func CrossFieldOrderedNested(scopedPath, smallerLeaf, largerLeaf string) Validator
-```
-
-CrossFieldOrderedNested walks the YAML tree recursively — same traversal as MutuallyExclusiveNested — and fires at every mapping whose direct parent key is the last segment of scopedPath, reporting a violation when both smallerLeaf and largerLeaf are present but their values are not strictly ordered \(smaller \< larger\). Values are compared as plain numbers, time.Duration strings, or size strings \(same semantics as CrossFieldOrdered\).
-
-Use this to enforce min/max ordering at any nesting depth without listing every possible path explicitly:
-
-```
-// catches age.min >= age.max at filter, filter.any[i], filter.any[i].all[j], …
-editor.CrossFieldOrderedNested("categories.source.filter.age", "min", "max")
-```
-
-<a name="Deprecated"></a>
-### func [Deprecated](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_values.go#L267>)
-
-```go
-func Deprecated(path, message string) Validator
-```
-
-Deprecated reports a violation whenever path is present, carrying a migration hint for the user. Combine with Config.NoValidateOnSave to make it a non\-blocking warning instead of a save blocker.
-
-```
-editor.Deprecated("dockerFile", "use build.dockerfile instead")
-```
-
-<a name="DeprecatedFromMetadata"></a>
-### func [DeprecatedFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_metadata.go#L286>)
-
-```go
-func DeprecatedFromMetadata() Validator
-```
-
-DeprecatedFromMetadata enforces FieldMeta.Deprecated from the MetadataSource \(Deprecated semantics\): every present occurrence of the field is reported, carrying the hint's migration message. Combine with Config.NoValidateOnSave to make it a non\-blocking warning.
-
-<a name="ExactlyOneOf"></a>
-### func [ExactlyOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L412>)
-
-```go
-func ExactlyOneOf(keys ...string) Validator
-```
-
-ExactlyOneOf reports a violation when none or more than one of the listed keys is present.
-
-Like MutuallyExclusive it supports two forms: plain keys are checked against the document's top\-level blocks, and dotted paths \- all sharing the same parent prefix \- are checked inside every mapping reached by that parent, with sequences and dict\-style mappings expanded automatically. The rule only fires where the parent mapping exists:
-
-```
-editor.ExactlyOneOf("image", "build", "dockerComposeFile")
-editor.ExactlyOneOf("source.git", "source.local")
-```
-
-Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
-
-<a name="ExactlyOneOfNested"></a>
-### func [ExactlyOneOfNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L730>)
-
-```go
-func ExactlyOneOfNested(scopedPath string, keys ...string) Validator
-```
-
-ExactlyOneOfNested walks the YAML tree and fires at every mapping whose direct parent key is the last segment of scopedPath, checking that exactly one of keys is present \- the nested counterpart of ExactlyOneOf.
-
-```
-editor.ExactlyOneOfNested("categories.source", "git", "local")
-```
-
-<a name="ForbiddenIf"></a>
-### func [ForbiddenIf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L655>)
-
-```go
-func ForbiddenIf(key, condPath, condValue string) Validator
-```
-
-ForbiddenIf reports a violation when key is present and condPath equals condValue \- the inverse of RequiredIf.
-
-When key and condPath share the same parent prefix, the rule is evaluated inside every mapping reached by that parent \- sequences and dict\-style mappings are expanded automatically, so each entry is checked against its own condition value:
-
-```
-// read-only mode must not carry a write-token field
-editor.ForbiddenIf("server.write-token", "server.mode", "readonly")
-```
-
-Paths with unrelated parents are both resolved from the document root.
-
-<a name="FormatFromMetadata"></a>
-### func [FormatFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_metadata.go#L298>)
-
-```go
-func FormatFromMetadata() Validator
-```
-
-FormatFromMetadata enforces FieldMeta.Formats from the MetadataSource. A present, non\-empty scalar value is valid if it matches any of the declared formats \(OR semantics\). Skips fields where Formats is empty or value is empty.
-
-<a name="LengthFromMetadata"></a>
-### func [LengthFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_metadata.go#L327>)
-
-```go
-func LengthFromMetadata() Validator
-```
-
-LengthFromMetadata enforces FieldMeta.MinLength/MaxLength from the MetadataSource. Length is measured in Unicode code points. A zero value for either bound means no rule for that bound.
-
-<a name="MutuallyExclusive"></a>
-### func [MutuallyExclusive](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L44>)
-
-```go
-func MutuallyExclusive(keys ...string) Validator
-```
-
-MutuallyExclusive reports a violation when more than one of the listed keys is present at the same time.
-
-Two forms are supported:
-
-Top\-level keys \(no dots\) \- checks the document's root\-level blocks:
-
-```
-editor.MutuallyExclusive("image", "build", "dockerComposeFile")
-```
-
-Dotted paths \- all paths must share the same parent prefix. The validator navigates to that parent in the YAML tree, automatically expanding sequences \(all items are checked\) and dict\-style mappings \(all values are checked\). Use this for constraints that live at a specific location in the document:
-
-```
-editor.MutuallyExclusive(
-    "categories.installers.source.filter.any",
-    "categories.installers.source.filter.all",
-)
-```
-
-Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
-
-For constraints that must hold at every occurrence of a key regardless of depth \(e.g. recursive schemas\), use MutuallyExclusiveNested instead.
-
-<a name="MutuallyExclusiveGroupsNested"></a>
-### func [MutuallyExclusiveGroupsNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L245>)
-
-```go
-func MutuallyExclusiveGroupsNested(scopedPath string, groups ...[]string) Validator
-```
-
-MutuallyExclusiveGroupsNested walks the YAML tree recursively — same traversal as MutuallyExclusiveNested — and fires at every mapping whose direct parent key is the last segment of scopedPath, reporting a violation for every pair of groups that both have at least one key present simultaneously.
-
-Use this when N sets of fields are mutually exclusive as groups: any mapping that contains at least one key from two different groups is a violation.
-
-```
-editor.MutuallyExclusiveGroupsNested(
-    "categories.source.filter",
-    []string{"any", "all"},
-    []string{"match", "age", "size", "not"},
-)
-```
-
-<a name="MutuallyExclusiveNested"></a>
-### func [MutuallyExclusiveNested](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L209>)
-
-```go
-func MutuallyExclusiveNested(scopedPath string, keys ...string) Validator
-```
-
-MutuallyExclusiveNested walks the YAML tree and fires at every mapping whose direct parent key is the last segment of scopedPath, checking that at most one of keys is present.
-
-Two forms:
-
-Single key \- searches the entire document \(backward\-compatible\):
-
-```
-editor.MutuallyExclusiveNested("filter", "any", "all")
-```
-
-Dotted path \- navigates to the scoped root first, then recurses only within that subtree. The last segment is the key name used for recursive matching. Sequences and dict\-style mappings along the path are expanded automatically:
-
-```
-editor.MutuallyExclusiveNested("categories.installers.source.filter", "any", "all")
-```
-
-The scoped form is preferred when the constraint applies to a specific filter type and not to every mapping named "filter" in the document.
-
-<a name="NoDuplicates"></a>
-### func [NoDuplicates](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_values.go#L46>)
-
-```go
-func NoDuplicates(seqPath, field string) Validator
-```
-
-NoDuplicates reports a violation when two or more items in the sequence at seqPath share the same value for field. Sequences and dict\-style mappings along seqPath are expanded automatically, and uniqueness is checked per reached list \- entries in different lists may repeat. field may be a dotted path inside each item.
-
-```
-editor.NoDuplicates("servers", "name")
-editor.NoDuplicates("categories.installers", "meta.name")
-```
-
-<a name="NotOneOfFromMetadata"></a>
-### func [NotOneOfFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_metadata.go#L360>)
-
-```go
-func NotOneOfFromMetadata() Validator
-```
-
-NotOneOfFromMetadata enforces FieldMeta.NotOneOf from the MetadataSource. A present, non\-empty scalar whose value is in the denylist is a violation. Matching is case\-sensitive. Skips fields where NotOneOf is empty or value is empty.
-
-<a name="OneOfFromMetadata"></a>
-### func [OneOfFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_metadata.go#L116>)
-
-```go
-func OneOfFromMetadata() Validator
-```
-
-OneOfFromMetadata enforces FieldMeta.OneOf from the MetadataSource: a present, non\-empty scalar must be one of the declared values \(ValueOneOf semantics\). Fields without OneOf declare nothing. Wired by the editor like RequiredFromMetadata.
-
-<a name="PatternFromMetadata"></a>
-### func [PatternFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_metadata.go#L201>)
-
-```go
-func PatternFromMetadata() Validator
-```
-
-PatternFromMetadata enforces FieldMeta.Pattern from the MetadataSource \(ValueMatches semantics\). Compiled patterns are cached per validator instance; an invalid pattern is reported as a misconfiguration violation wherever the hint declares it.
-
-<a name="RangeFromMetadata"></a>
-### func [RangeFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_metadata.go#L134>)
-
-```go
-func RangeFromMetadata() Validator
-```
-
-RangeFromMetadata enforces FieldMeta.Min/Max from the MetadataSource \(ValueInRange semantics\): bounds and value may be plain numbers, durations, or sizes, and must be of the same kind. One\-sided bounds are allowed \- only Min means "at least Min", only Max means "at most Max". Malformed or mixed\-kind bounds in a hint are reported as a misconfiguration violation on every run.
-
-<a name="Required"></a>
-### func [Required](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L573>)
-
-```go
-func Required(paths ...string) Validator
-```
-
-Required reports a violation when any of the given paths is absent or holds an empty/null scalar. A non\-scalar value \(mapping or sequence\) counts as present.
-
-A path with no dots is required unconditionally at the document root. A dotted path is conditional: the validator navigates to the leaf's parent \- expanding sequences and dict\-style mappings like MutuallyExclusive \- and only requires the leaf where that parent exists, so a required field inside an optional block is not reported while the block is absent.
-
-```
-editor.Required("version")          // top-level, unconditional
-editor.Required("categories.name")  // every category entry needs "name"
-```
-
-To enforce the MetadataSource's Required markers without listing paths by hand, use RequiredFromMetadata.
-
-<a name="RequiredFromMetadata"></a>
-### func [RequiredFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_metadata.go#L33>)
-
-```go
-func RequiredFromMetadata() Validator
-```
-
-RequiredFromMetadata enforces the MetadataSource's required markers \(FieldMeta.Required\) at validate/save time, for applications that declare required\-ness in their hints. Without it the marker is display\-only: the "Required: yes" hint line does not block saving.
-
-The walk is guided by the discovered schema: for every schema path the validator asks the MetadataSource for that field's FieldMeta \- using the same query convention as the hint panel, FieldMeta\(block, ""\) for a top\-level block and FieldMeta\(block, "source.path"\) for nested fields \- and, when Required is set, checks presence. A required field is only enforced where its parent exists; top\-level required blocks are always enforced. Sequence and dictionary entries are checked individually.
-
-The editor wires the discovered schema and the configured MetadataSource into this validator when the session starts; outside editor.Run, or when no MetadataSource is configured, it reports nothing.
-
-<a name="RequiredIf"></a>
-### func [RequiredIf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L460>)
-
-```go
-func RequiredIf(key, condPath, condValue string) Validator
-```
-
-RequiredIf reports a violation when key is absent but condPath equals condValue.
-
-When key and condPath share the same parent prefix, the rule is evaluated inside every mapping reached by that parent \- sequences and dict\-style mappings are expanded automatically, so each entry is checked against its own condition value:
-
-```
-// every servers[n] with protocol https needs its own tls-cert
-editor.RequiredIf("servers.tls-cert", "servers.protocol", "https")
-```
-
-Paths with unrelated parents are both resolved from the document root.
-
-<a name="RequiredWith"></a>
-### func [RequiredWith](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_keys.go#L142>)
-
-```go
-func RequiredWith(key, parent string) Validator
-```
-
-RequiredWith reports a violation when key is present but parent is not.
-
-Like MutuallyExclusive it supports two forms: plain keys are checked against the document's top\-level blocks, and dotted paths \- both sharing the same parent prefix \- are checked inside every mapping reached by that parent, with sequences and dict\-style mappings expanded automatically:
-
-```
-editor.RequiredWith("service", "dockerComposeFile")
-editor.RequiredWith("server.tls-key", "server.tls-cert")
-```
-
-Dotted paths that do not share the same parent prefix \(or have different depths\) are a configuration error, reported as a violation on every validate so the mistake cannot go unnoticed.
-
-<a name="UniqueFromMetadata"></a>
-### func [UniqueFromMetadata](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_metadata.go#L273>)
-
-```go
-func UniqueFromMetadata() Validator
-```
-
-UniqueFromMetadata enforces FieldMeta.Unique from the MetadataSource \(UniqueValues semantics\): scalar items in the sequence must not repeat. Non\-sequence fields and non\-scalar items are skipped.
-
-<a name="UniqueValues"></a>
-### func [UniqueValues](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_values.go#L241>)
-
-```go
-func UniqueValues(seqPath string) Validator
-```
-
-UniqueValues reports a violation when two or more scalar items in the sequence at seqPath share the same value. Non\-scalar items are skipped \- use NoDuplicates to deduplicate struct entries by one of their fields.
-
-```
-editor.UniqueValues("tags")
-```
-
-<a name="ValueHasLength"></a>
-### func [ValueHasLength](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_values.go#L323>)
-
-```go
-func ValueHasLength(path string, min, max int) Validator
-```
-
-ValueHasLength reports a violation when the scalar at path is present but its Unicode code point count falls outside \[min, max\]. A zero bound means no rule for that side. An absent or empty value reports nothing \- combine with Required when the field is mandatory. Sequences and dict\-style mappings along the path are expanded automatically.
-
-```
-editor.ValueHasLength("name", 3, 64)
-editor.ValueHasLength("description", 0, 500) // max only
-```
-
-<a name="ValueHasPrefix"></a>
-### func [ValueHasPrefix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_values.go#L157>)
-
-```go
-func ValueHasPrefix(path, prefix string) Validator
-```
-
-ValueHasPrefix reports a violation when the scalar at path is present but does not start with prefix \- a simpler alternative to ValueMatches when the rule is a fixed prefix and no regex is needed. An absent or empty value reports nothing \- combine with Required when the field is mandatory. Sequences and dict\-style mappings along the path are expanded automatically.
-
-```
-editor.ValueHasPrefix("image", "registry.example.com/")
-```
-
-<a name="ValueHasSuffix"></a>
-### func [ValueHasSuffix](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_values.go#L165>)
-
-```go
-func ValueHasSuffix(path, suffix string) Validator
-```
-
-ValueHasSuffix reports a violation when the scalar at path is present but does not end with suffix. Same semantics as ValueHasPrefix.
-
-```
-editor.ValueHasSuffix("output", ".yaml")
-```
-
-<a name="ValueInRange"></a>
-### func [ValueInRange](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_values.go#L81>)
-
-```go
-func ValueInRange(path, minVal, maxVal string) Validator
-```
-
-ValueInRange reports a violation when the scalar at path is present but outside the inclusive \[min, max\] range. Bounds and value may be plain numbers \("1", "0.5"\), time.Duration strings \("24h"\), or size strings \("10MB", "256MiB" \- KB/MB/GB/TB decimal, KiB/MiB/GiB/TiB binary\); all three must be of the same kind. An absent or empty value reports nothing \- combine with Required when the field is mandatory.
-
-```
-editor.ValueInRange("server.port", "1", "65535")
-editor.ValueInRange("filter.max-age", "1h", "8760h")
-```
-
-<a name="ValueMatches"></a>
-### func [ValueMatches](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_values.go#L127>)
-
-```go
-func ValueMatches(path, pattern string) Validator
-```
-
-ValueMatches reports a violation when the scalar at path is present but does not match the regular expression pattern. An absent or empty value reports nothing \- combine with Required when the field is mandatory. An invalid pattern is itself reported as a violation so the misconfiguration surfaces on the first validate.
-
-```
-editor.ValueMatches("version", `^\d+\.\d+\.\d+$`)
-```
-
-<a name="ValueMatchesFormat"></a>
-### func [ValueMatchesFormat](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_values.go#L354>)
-
-```go
-func ValueMatchesFormat(path string, formats ...Format) Validator
-```
-
-ValueMatchesFormat reports a violation when the scalar at path is present but does not match any of the given formats \(OR semantics: valid if any one matches\). An absent or empty value reports nothing. Sequences and dict\-style mappings along the path are expanded automatically.
-
-```
-editor.ValueMatchesFormat("endpoint", editor.FormatURL, editor.FormatHost)
-```
-
-<a name="ValueNotOneOf"></a>
-### func [ValueNotOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_values.go#L290>)
-
-```go
-func ValueNotOneOf(path string, denied ...string) Validator
-```
-
-ValueNotOneOf reports a violation when the scalar at path is present and its value is in the denied list. Case\-sensitive. An absent or empty value reports nothing \- the inverse of ValueOneOf.
-
-```
-editor.ValueNotOneOf("protocol", "ftp", "telnet")
-```
-
-<a name="ValueOneOf"></a>
-### func [ValueOneOf](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_values.go#L21>)
-
-```go
-func ValueOneOf(path string, allowed ...string) Validator
-```
-
-ValueOneOf reports a violation when the field at path exists but its value is not in allowed. Sequences and dict\-style mappings along the path are expanded automatically, so every entry in a list or every value in a map is checked.
 
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L150>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L28>)
 
-ValidatorFunc adapts a plain function to the Validator interface, letting callers register inline validators without defining a named type:
-
-```
-editor.Run(editor.Config{
-    Validators: []editor.Validator{
-        editor.ValidatorFunc(func(in editor.ValidationInput) []editor.Violation {
-            // custom rule ...
-            return nil
-        }),
-    },
-})
-```
+These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
 
 ```go
-type ValidatorFunc func(in ValidationInput) []Violation
+type ValidatorFunc = spec.ValidatorFunc
 ```
-
-<a name="ValidatorFunc.Validate"></a>
-### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L153>)
-
-```go
-func (f ValidatorFunc) Validate(in ValidationInput) []Violation
-```
-
-Validate calls f.
 
 <a name="Violation"></a>
-## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L108-L112>)
+## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L25>)
 
-Violation is a single rule violation reported by a Validator.
-
-```go
-type Violation struct {
-    Path    string // dot-separated YAML path to the offending node; empty for document-wide rules
-    Message string // human-readable description, without the path prefix
-    Group   group  // when non-empty, violations with the same Group are merged under one bullet in the error display
-}
-```
-
-<a name="RunAll"></a>
-### func [RunAll](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L50>)
+These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
 
 ```go
-func RunAll(w WiredValidators, raw []byte, blocks []document.Block) []Violation
+type Violation = spec.Violation
 ```
-
-RunAll executes all validators against raw/blocks and collects violations. The document is parsed once and shared across validators. w must be produced by Wire; passing a zero WiredValidators is valid and always returns nil.
-
-<a name="Violation.String"></a>
-### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L115>)
-
-```go
-func (v Violation) String() string
-```
-
-String renders "\<path\>: \<message\>", or just the message when Path is empty.
 
 <a name="WiredValidators"></a>
-## type [WiredValidators](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L36>)
+## type [WiredValidators](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_alias.go#L16>)
 
-WiredValidators is an opaque handle produced by Wire. RunAll only accepts this type, which guarantees that FromMetadata validators have been wired before any validation run. The zero value is valid and produces no violations.
+WiredValidators is an opaque handle produced by Wire. See validate.WiredValidators.
 
 ```go
-type WiredValidators struct {
-    // contains filtered or unexported fields
-}
+type WiredValidators = validate.WiredValidators
 ```
 
 <a name="Wire"></a>
-### func [Wire](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L87>)
+### func [Wire](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators_alias.go#L26>)
 
 ```go
-func Wire(validators []Validator, cfg Config) WiredValidators
+func Wire(validators []spec.Validator, cfg Config) WiredValidators
 ```
 
-Wire prepares a validator slice for use with RunAll. It returns a WiredValidators where every FromMetadata validator \(\*metadataRuleValidator\) is replaced by a shallow copy with the schema tree and MetadataSource injected. Explicit validators \(MutuallyExclusive, Required, ValidatorFunc, etc.\) are included as\-is.
+Wire prepares a validator slice for use with RunAll, discovering the schema tree from cfg so that FromMetadata validators can fire. It returns a handle where every FromMetadata validator carries the schema and MetadataSource; explicit validators are included as\-is. The original slice is never modified.
 
-The original slice is never modified, so the same global validator slice can be passed safely from multiple call sites or goroutines without interference. Wire is cheap to call repeatedly — schema discovery only runs when cfg.Schema is non\-nil.
-
-Typical usage:
-
-```
-wired := editor.Wire(MyValidators, editor.Config{
-    Schema:   &MySchema{},
-    Metadata: hints,
-})
-violations := editor.RunAll(wired, raw, blocks)
-```
-
-cfg.Schema must be non\-nil for FromMetadata validators to fire; cfg.Metadata may be nil \(FromMetadata validators will report nothing without a source\).
-
-Callers that already hold the discovered schema tree \(like the editor, which needs the same tree for its UI\) should use WireWithSchema instead, so both sides are guaranteed to see the same schema.
-
-<a name="WireWithSchema"></a>
-### func [WireWithSchema](<https://github.com/lucasassuncao/yedit/blob/main/editor/validators.go#L101>)
-
-```go
-func WireWithSchema(validators []Validator, tree []schema.FieldDef, metadata MetadataSource) WiredValidators
-```
-
-WireWithSchema is Wire for callers that already discovered the schema tree: it injects tree and metadata into every FromMetadata validator without re\-running discovery. The editor uses it with the exact tree that drives the UI, making a divergence between what the screen shows and what the validators check impossible by construction.
+cfg.Schema must be non\-nil for FromMetadata validators to report anything; cfg.Metadata may be nil. Callers that already hold the discovered tree should use validate.WireWithSchema directly, so both sides see the same schema.
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)
 

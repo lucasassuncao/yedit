@@ -8,14 +8,17 @@ How the yamltui packages fit together and why they are split the way they are.
 
 ```
 yamltui/
-├── editor/             - public API: Config, Run, FieldMeta, MetadataSource, Validator, …
-├── metadata/           - NewFromTree: validates a Node tree; New: auto-composes from MetadataProvider structs
+├── spec/               - shared vocabulary: FieldMeta, MetadataSource, Validator, Violation, Format
+├── validate/           - the validation rules (Required, ValueOneOf, …FromMetadata, RunAll)
+├── editor/             - public API: Config, Run, Wire; the bubbletea TUI
+├── metadata/           - NewFromTree: validates a Node tree; New: auto-composes from Provider structs
 ├── schema/             - schema.Discover: reflects a Go struct into a []FieldDef tree
 ├── document/           - raw YAML bytes, block list, undo/redo history
 ├── presets/            - ForField, Combine, Func: struct-backed and ad-hoc preset sources
 ├── docgenerator/       - generates Markdown reference tables
 ├── theme/              - color palette, layout helpers
-├── viewer/             - reusable list+viewport model (used by docgenerator TUI)
+├── viewer/             - read-only preset browser TUI
+├── themebrowser/       - inline table of the built-in themes
 ├── alert/              - modal alert overlay (bubbletea component)
 ├── yamlnode/           - *yaml.Node helpers shared by editor sub-packages
 └── docs/               - reference documentation
@@ -27,22 +30,40 @@ yamltui/
 
 ```
 your app
-  └── editor          ← Config, Run, MetadataSource, Validator, …
+  └── editor          ← Config, Run, Wire; the TUI
+        ├── validate  ← the rules
+        ├── spec      ← the vocabulary
         ├── schema    ← Discover (schema struct → []FieldDef tree)
         ├── document  ← raw YAML mutations + undo stack
         └── (internal packages)
 
-  └── metadata        ← NewFromTree / New (→ MetadataSource)
-        └── editor    ← FieldMeta, MetadataSource
+  └── metadata        ← NewFromTree / New (→ spec.MetadataSource)
+        ├── spec      ← FieldMeta, MetadataSource
+        └── schema    ← Discover
 
   └── docgenerator    ← SchemaGenerator, Generate, GenerateIndex
-        ├── editor    ← MetadataSource
+        ├── spec      ← MetadataSource
+        ├── metadata  ← New
         └── schema    ← Discover
 
   └── presets         ← ForField, Combine, Func (struct-backed and ad-hoc preset sources)
 ```
 
-`docgenerator` imports `editor` (for `MetadataSource`) but `editor` does not import `docgenerator` - the dependency is one-way, so wiring doc commands does not add weight to the editor itself.
+`spec` is the reason the arrows point the way they do. It holds only the types
+that describe a field, and imports nothing but `document`, `schema`, and
+`yamlnode` - all leaves. That is what lets `metadata`, `docgenerator`,
+`validate`, and third-party rules name a `FieldMeta` or implement a `Validator`
+without compiling the TUI: each of those four pulls in **zero** bubbletea,
+glamour, or Markdown packages. Before the split they imported `editor` for those
+types and dragged in 35.
+
+`spec` must never import `validate` or `editor`.
+
+The one seam that could not move is `editor.Wire`: it discovers the schema from
+an `editor.Config`, so it stays in `editor` and delegates to
+`validate.WireWithSchema`. Everything else in the old `editor` validator API is
+re-exported from `editor/validators_alias.go`, so existing code compiles
+unchanged.
 
 ---
 

@@ -33,7 +33,7 @@ var (
 //
 // To customise discovery for union types (a value that can be a scalar OR a
 // struct OR a map), make the wrapper type implement Provider - its
-// YeditSchema() return value is used in place of reflective traversal.
+// Schema() return value is used in place of reflective traversal.
 //
 // The optional recursionLimit controls how many extra times each individual
 // type may re-enter the traversal beyond its first visit. Omitted, it defaults
@@ -183,20 +183,20 @@ func providerChildren(t reflect.Type) []FieldDef {
 		t = t.Elem()
 	}
 	providerType := reflect.TypeOf((*Provider)(nil)).Elem()
-	// An interface type has no concrete value to call YeditSchema on - such
+	// An interface type has no concrete value to call Schema on - such
 	// fields classify as KindAny instead.
 	if t.Kind() == reflect.Interface {
 		return nil
 	}
 	// Instantiate via reflect.New so the receiver is never a typed nil
-	// pointer, which would panic when YeditSchema has a value receiver.
+	// pointer, which would panic when Schema has a value receiver.
 	switch {
 	case t.Implements(providerType):
 		zero := reflect.New(t).Elem().Interface().(Provider)
-		return zero.YeditSchema()
+		return zero.Schema()
 	case reflect.PointerTo(t).Implements(providerType):
 		zero := reflect.New(t).Interface().(Provider)
-		return zero.YeditSchema()
+		return zero.Schema()
 	}
 	return nil
 }

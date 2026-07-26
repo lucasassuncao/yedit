@@ -129,7 +129,6 @@ func appTheme(name string) theme.Theme {
 
 func main() {
 	root := buildEditCmd()
-	root.AddCommand(buildShowDocsCmd())
 	root.AddCommand(buildGenerateDocsCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
