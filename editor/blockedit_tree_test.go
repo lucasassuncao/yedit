@@ -34,9 +34,8 @@ func catDefs() []schema.FieldDef {
 	}
 }
 
-// TestAudit_DeepNestToggleUnderEmptyAncestors toggles a depth-3 leaf
-// (source.filter.regex) into an item that has only an empty "source:". Both
-// source and filter must be created/coerced.
+// Toggling a depth-3 leaf into an item holding only an empty "source:" must
+// create or coerce both source and filter.
 func TestAudit_DeepNestToggleUnderEmptyAncestors(t *testing.T) {
 	is := assert.New(t)
 	be := newBlockEdit(Config{}, blockSpec{
@@ -50,8 +49,8 @@ func TestAudit_DeepNestToggleUnderEmptyAncestors(t *testing.T) {
 	is.Contains(be.yamlEditor.Value(), "regex:", "deep nested toggle failed")
 }
 
-// TestAudit_ToggleOffPrunesEmptyAncestors toggles the only leaf off; the now-empty
-// source mapping should be pruned so we don't leave a dangling "source:".
+// Toggling the only leaf off must prune the now-empty source mapping instead of
+// leaving a dangling "source:".
 func TestAudit_ToggleOffPrunesEmptyAncestors(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -73,7 +72,7 @@ func TestAudit_ToggleOffPrunesEmptyAncestors(t *testing.T) {
 	is.NotContains(be.yamlEditor.Value(), "source:", "empty source should be pruned")
 }
 
-// TestAudit_ToggleRoundTrip ON then OFF should leave no phantom keys.
+// Toggle on then off must leave no phantom keys.
 func TestAudit_ToggleRoundTrip(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -100,8 +99,8 @@ func TestAudit_ToggleRoundTrip(t *testing.T) {
 	is.Contains(be.yamlEditor.Value(), "name:", "name lost after round-trip")
 }
 
-// TestAudit_MapEntryDeepNestSymmetry mirrors the deep-nest test for the map
-// navigator: a map entry with an empty nested struct must accept a deep child.
+// Map navigator counterpart: a map entry with an empty nested struct must accept
+// a deep child.
 func TestAudit_MapEntryDeepNestSymmetry(t *testing.T) {
 	is := assert.New(t)
 	be := newBlockEdit(Config{}, blockSpec{
@@ -115,8 +114,7 @@ func TestAudit_MapEntryDeepNestSymmetry(t *testing.T) {
 	is.Contains(be.yamlEditor.Value(), "regex:", "map entry deep nested toggle failed")
 }
 
-// TestAudit_ToggleSecondSiblingKeepsFirst adds path then extensions; both must
-// survive (no clobber of the freshly-created parent).
+// Adding path then extensions must keep both: the fresh parent is not clobbered.
 func TestAudit_ToggleSecondSiblingKeepsFirst(t *testing.T) {
 	is := assert.New(t)
 	be := newBlockEdit(Config{}, blockSpec{
@@ -133,9 +131,8 @@ func TestAudit_ToggleSecondSiblingKeepsFirst(t *testing.T) {
 	is.Contains(be.yamlEditor.Value(), "extensions:", "second sibling not added")
 }
 
-// TestAudit_ToggleParentStructOnThenChild toggles a deeply-nested leaf
-// (hooks.before.shell) into an item with no hooks and verifies all ancestors
-// are created.
+// Toggling hooks.before.shell into an item with no hooks must create every
+// ancestor.
 func TestAudit_ToggleParentStructOnThenChild(t *testing.T) {
 	is := assert.New(t)
 	be := newBlockEdit(Config{}, blockSpec{
@@ -168,8 +165,8 @@ func expandAll(be blockEditState) blockEditState {
 	return be
 }
 
-// TestAudit_EnterThenCtrlDOnInlineParent probes the Enter/ctrl+d symmetry on an
-// inline struct parent. Whatever Enter creates, ctrl+d must be able to remove.
+// Enter/ctrl+d symmetry on an inline struct parent: whatever Enter creates,
+// ctrl+d must remove.
 func TestAudit_EnterThenCtrlDOnInlineParent(t *testing.T) {
 	is := assert.New(t)
 	content := `categories:
@@ -188,9 +185,8 @@ func TestAudit_EnterThenCtrlDOnInlineParent(t *testing.T) {
 	}
 }
 
-// TestAudit_UndoAfterTwoTogglesKeepsFirst: two toggles on the same entry, then one
-// ctrl+u must undo only the second, keeping the first. If coll.entries is stale and
-// restoreUndo reloads from it, both edits are lost.
+// After two toggles on one entry, ctrl+u must undo only the second. Restoring
+// from a stale entry list would lose both edits.
 func TestAudit_UndoAfterTwoTogglesKeepsFirst(t *testing.T) {
 	is := assert.New(t)
 	content := `categories:
@@ -214,9 +210,8 @@ func TestAudit_UndoAfterTwoTogglesKeepsFirst(t *testing.T) {
 	is.NotContains(got, "extensions:", "undo did not remove only the second toggle (extensions)")
 }
 
-// TestAudit_HasCheckedDescendantCountsOpenable: an inline parent whose only
-// content is a checked openable child (e.g. filter holding only "any") must count
-// as having content - for both coloring and ctrl+d removal.
+// An inline parent whose only content is a checked openable child must count as
+// having content, for both colouring and ctrl+d removal.
 func TestAudit_HasCheckedDescendantCountsOpenable(t *testing.T) {
 	nodes := []treeNode{
 		{kind: treeNodeField, label: "filter", depth: 1, isLeaf: false},
@@ -227,9 +222,8 @@ func TestAudit_HasCheckedDescendantCountsOpenable(t *testing.T) {
 	}
 }
 
-// TestAudit_OpenableListHasNoInlineChildren guards the cleanup: an openable
-// list-of-struct field (filter.any) must not spawn phantom inline child nodes -
-// it is drilled into, not expanded inline (matching openable maps).
+// An openable list-of-struct field is drilled into, not expanded inline, so it
+// must not spawn phantom child nodes.
 func TestAudit_OpenableListHasNoInlineChildren(t *testing.T) {
 	defs := []schema.FieldDef{
 		{YAMLName: "filter", Kind: schema.KindObject, Children: []schema.FieldDef{
@@ -254,9 +248,8 @@ func TestAudit_OpenableListHasNoInlineChildren(t *testing.T) {
 	}
 }
 
-// TestAudit_EntryDeleteConfirms: ctrl+d on a collection entry must confirm before
-// deleting (the most destructive tree action), and skip the confirm when
-// NoDeleteConfirm is set.
+// ctrl+d on a collection entry, the most destructive tree action, must confirm
+// unless NoDeleteConfirm is set.
 func TestAudit_EntryDeleteConfirms(t *testing.T) {
 	spec := blockSpec{key: "categories", defs: catDefs(), kind: schema.KindList,
 		content: `categories:
@@ -317,9 +310,8 @@ func confirmsOnCtrlD(content, label string) bool {
 	return be.mode == modeConfirming
 }
 
-// TestAudit_RemovalConfirmIsDepthConsistent: a filled leaf confirms before
-// removal and an empty leaf removes directly - identically at top level and when
-// nested deep under hooks.before. ("Its content will be lost" → empty has none.)
+// A filled leaf confirms before removal and an empty one goes straight through,
+// identically at top level and nested deep under hooks.before.
 func TestAudit_RemovalConfirmIsDepthConsistent(t *testing.T) {
 	cases := []struct {
 		name, content, label string
@@ -349,9 +341,8 @@ func TestAudit_RemovalConfirmIsDepthConsistent(t *testing.T) {
 	}
 }
 
-// TestAudit_RemoveParentResetsDescendantChecks: removing an inline parent must
-// clear the checked state of ALL its descendants (the sync used to leave stale
-// checkmarks when an ancestor vanished), while siblings keep theirs.
+// Removing an inline parent must clear every descendant's checked state, while
+// siblings keep theirs.
 func TestAudit_RemoveParentResetsDescendantChecks(t *testing.T) {
 	full := `categories:
   - name: "a"

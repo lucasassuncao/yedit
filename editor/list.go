@@ -16,11 +16,10 @@ import (
 type listItem struct {
 	Key      string
 	Existing bool
-	Unknown  bool // key present in YAML but not in schema; not openable, excluded from AddedCount
-	// Passthrough marks a key declared in Config.PassthroughKeys: display-only.
-	// It is intentionally preserved, not a problem, so it is styled distinctly
-	// from Unknown even though it shares the same "not openable" behavior
-	// (Passthrough items also set Unknown, since there is no schema to open).
+	Unknown  bool // present in YAML but not in schema; not openable, excluded from AddedCount
+	// Passthrough marks a key from Config.PassthroughKeys. It is deliberately
+	// preserved rather than a problem, so it is styled apart from Unknown even
+	// though it also sets Unknown: there is no schema to open either way.
 	Passthrough bool
 	Separator   bool // visual divider row, not selectable
 }
@@ -49,9 +48,9 @@ type listModel struct {
 // IsFiltering reports whether the list is in text-filter mode (/ was pressed).
 func (lm listModel) IsFiltering() bool { return lm.filtering }
 
-// buildListItems merges the canonical key order with the blocks present in the
-// current document, keeping existing keys (in file order) above available keys
-// (alphabetised). Hidden keys are stripped beforehand by the caller.
+// buildListItems merges the canonical key order with the document's blocks,
+// keeping existing keys in file order above the available ones. The caller
+// strips hidden keys beforehand.
 func buildListItems(knownKeys []string, existing []document.Block, passthrough map[string]bool) []listItem {
 	knownSet := make(map[string]bool, len(knownKeys))
 	for _, k := range knownKeys {
@@ -78,8 +77,8 @@ func buildListItems(knownKeys []string, existing []document.Block, passthrough m
 		items = append(items, existingItems...)
 	}
 
-	// AVAILABLE keys keep the schema's canonical order (knownKeys), matching the
-	// order in which Insert places new blocks.
+	// AVAILABLE keeps the schema's canonical order, matching where Insert places
+	// new blocks.
 	available := make([]string, 0)
 	for _, k := range knownKeys {
 		if !existingSet[k] {
@@ -95,8 +94,7 @@ func buildListItems(knownKeys []string, existing []document.Block, passthrough m
 		}
 	}
 
-	// UNKNOWN: blocks present in the file but absent from the schema and not
-	// declared as passthrough keys (which are silently preserved).
+	// UNKNOWN: in the file, absent from the schema, and not declared passthrough.
 	var unknownItems []listItem
 	for _, b := range existing {
 		if !knownSet[b.Key] && !passthrough[b.Key] {
@@ -109,10 +107,9 @@ func buildListItems(knownKeys []string, existing []document.Block, passthrough m
 		items = append(items, unknownItems...)
 	}
 
-	// PASSTHROUGH: keys declared as passthrough that exist in the file AND are
-	// not already shown under ADDED (i.e. not in the schema). Keys that appear
-	// in both the schema and the passthrough list are handled by ADDED/AVAILABLE
-	// and must not be duplicated here.
+	// PASSTHROUGH: declared passthrough, in the file, and not in the schema. Keys
+	// in both the schema and the passthrough list belong to ADDED/AVAILABLE and
+	// must not be duplicated here.
 	var passthroughItems []listItem
 	for _, b := range existing {
 		if passthrough[b.Key] && !knownSet[b.Key] {
@@ -146,8 +143,8 @@ func newListModel(knownKeys []string, existing []document.Block, passthrough map
 	return listModel{knownKeys: knownKeys, passthrough: passthrough, items: items, cursor: cursor, height: height}
 }
 
-// clampFCursorToFiltered ensures fCursor is within [0, len(filteredItems)-1]
-// after a rebuild that changes the filtered item count. No-op when not filtering.
+// clampFCursorToFiltered keeps fCursor in range after a rebuild changes the
+// filtered item count. No-op when not filtering.
 func (lm listModel) clampFCursorToFiltered() listModel {
 	if !lm.filtering {
 		return lm
@@ -161,8 +158,8 @@ func (lm listModel) clampFCursorToFiltered() listModel {
 	} else {
 		lm.fCursor = len(filtered) - 1
 	}
-	// Re-scroll the clamped cursor into view: resetting the offset alone can
-	// leave the selection row rendered off-screen until the next arrow key.
+	// Re-scroll the clamped cursor into view; resetting the offset alone leaves
+	// the selection off-screen until the next arrow key.
 	lm.fOffset = 0
 	return lm.clampFScroll()
 }
@@ -217,9 +214,8 @@ func (lm listModel) filteredItems() []listItem {
 	return out
 }
 
-// SelectedItem returns the item under the cursor, or nil when the cursor sits
-// on a separator or when the list is empty. In filter mode it returns the item
-// under the filter cursor instead of the main cursor.
+// SelectedItem returns the item under the cursor, or nil on a separator or an
+// empty list. In filter mode it follows the filter cursor instead.
 func (lm listModel) SelectedItem() *listItem {
 	if lm.filtering {
 		items := lm.filteredItems()
@@ -239,9 +235,9 @@ func (lm listModel) SelectedItem() *listItem {
 	return &it
 }
 
-// ItemByKey returns the listItem for the given key, or a zero listItem when
-// the key is not in the list. Separator rows are skipped so a block that
-// happens to be named like a section label (e.g. "ADDED") cannot match one.
+// ItemByKey returns the listItem for key, or a zero listItem when absent.
+// Separators are skipped so a block named like a section label ("ADDED") cannot
+// match one.
 func (lm listModel) ItemByKey(key string) listItem {
 	for _, it := range lm.items {
 		if !it.Separator && it.Key == key {
@@ -303,9 +299,8 @@ func (lm listModel) updateFilter(km tea.KeyMsg) (listModel, tea.Cmd) {
 					break
 				}
 			}
-			// Emit openItemMsg for the selected item, mirroring normal-mode Enter.
-			// Guard against separators: filteredItems() skips them, but be
-			// defensive in case the list is rebuilt concurrently with a keypress.
+			// Mirror normal-mode Enter. filteredItems() skips separators, but guard
+			// anyway in case the list is rebuilt alongside a keypress.
 			item := items[lm.fCursor]
 			if !item.Separator && !item.Unknown {
 				selCmd = func() tea.Msg { return openItemMsg{Item: item} }
@@ -313,19 +308,17 @@ func (lm listModel) updateFilter(km tea.KeyMsg) (listModel, tea.Cmd) {
 		}
 		lm.filtering = false
 		return lm, selCmd
-	// Text-editing keys (character input below, backspace and its ctrl+h
-	// alias here) are not menu actions, so they stay literal by design.
+	// Text-editing keys are not menu actions, so they stay literal.
 	case km.String() == "backspace" || km.String() == "ctrl+h":
 		if len(lm.filter) > 0 {
-			// Drop the last rune, not the last byte - a multibyte character
-			// ("ç", "ã") would otherwise leave invalid UTF-8 in the filter.
+			// Drop the last rune, not the last byte: a multibyte character would
+			// otherwise leave invalid UTF-8 in the filter.
 			_, size := utf8.DecodeLastRuneInString(lm.filter)
 			lm.filter = lm.filter[:len(lm.filter)-size]
 			lm.fCursor = 0
 			lm.fOffset = 0
 		}
-	// Only the arrow keys navigate while filtering - "j"/"k" must remain
-	// typeable so filters like "unknown" or "worker" can be entered.
+	// Only arrows navigate while filtering, so "j"/"k" stay typeable.
 	case key.Matches(km, kbUp):
 		lm = lm.moveFCursor(-1)
 	case key.Matches(km, kbDown):
@@ -364,8 +357,8 @@ func (lm listModel) clampFScroll() listModel {
 }
 
 func (lm listModel) moveCursor(delta int) listModel {
-	// Clamp at the list bounds (no wrap-around), skipping separator rows -
-	// matching the tree and viewer panels.
+	// Clamp at the list bounds without wrapping, skipping separators, matching
+	// the tree and viewer panels.
 	for i := lm.cursor + delta; i >= 0 && i < len(lm.items); i += delta {
 		if !lm.items[i].Separator {
 			lm.cursor = i
@@ -380,9 +373,8 @@ func (lm listModel) clampScroll() listModel {
 		return lm
 	}
 	lm.offset = theme.ClampScroll(lm.cursor, lm.offset, lm.height)
-	// The last visible row is replaced by the "↓ N more" indicator when items
-	// overflow below the view. If the cursor lands on that row, advance offset
-	// by one so the cursor remains visible.
+	// The last row becomes the "↓ N more" indicator when items overflow below, so
+	// a cursor landing there needs one more line of offset to stay visible.
 	if lm.offset+lm.height < len(lm.items) && lm.cursor >= lm.offset+lm.height-1 {
 		lm.offset = lm.cursor - lm.height + 2
 	}

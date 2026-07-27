@@ -6,10 +6,9 @@ import (
 	"strings"
 )
 
-// BlockContent returns the raw lines for a given block key. The content
-// always ends with a single trailing newline, whatever the block's position:
-// a block is a complete run of lines, and a literal scalar parsed without its
-// final line break would silently lose it.
+// BlockContent returns the raw lines for a given block key. The content always
+// ends with a single trailing newline: a literal scalar parsed without its final
+// line break would silently lose it.
 func BlockContent(raw []byte, blocks []Block, key string) (string, error) {
 	lines := strings.Split(string(raw), "\n")
 	return blockContentFromLines(lines, blocks, key)
@@ -28,8 +27,7 @@ func blockContentFromLines(lines []string, blocks []Block, key string) (string, 
 }
 
 // ReplaceBlock substitutes the lines belonging to key with snippet, in place.
-// Unlike RemoveBlock+InsertBlock, the block's position and any surrounding
-// blank lines or comments are left untouched - only its own line range changes.
+// Unlike RemoveBlock+InsertBlock, only the block's own line range changes.
 func ReplaceBlock(raw []byte, blocks []Block, key, snippet string) ([]byte, error) {
 	var target *Block
 	for i := range blocks {
@@ -79,11 +77,10 @@ func RemoveBlock(raw []byte, blocks []Block, key string) ([]byte, error) {
 	return []byte(strings.Join(lines, "\n")), nil
 }
 
-// leadingCommentStart walks back from keyIdx over the contiguous run of comment
-// lines that document the block, and returns the index the removal should start
-// at. It mirrors ParseBlocks' convention exactly: a comment directly above a key
-// documents that key, and only lines starting with '#' at column 0 qualify (an
-// indented comment-looking line may be content inside a literal scalar).
+// leadingCommentStart walks back from keyIdx over the comment lines documenting
+// the block and returns the index removal should start at. Mirrors ParseBlocks'
+// convention: only '#' at column 0 qualifies, since an indented comment-looking
+// line may be content inside a literal scalar.
 //
 // A blank line ends the run, so a section header separated from the key by an
 // empty line survives the removal:
@@ -103,10 +100,8 @@ func leadingCommentStart(lines []string, keyIdx int) int {
 	return start
 }
 
-// clampRange bounds a [start, end) line range to [0, n], guarding against blocks
-// whose recorded line numbers are stale relative to the current line slice (or
-// inverted, as a flow-style root mapping can produce). It guarantees
-// 0 <= start <= end <= n so slicing never panics.
+// clampRange guarantees 0 <= start <= end <= n so slicing never panics on blocks
+// whose recorded line numbers are stale or inverted.
 func clampRange(start, end, n int) (int, int) {
 	if start < 0 {
 		start = 0
@@ -120,10 +115,9 @@ func clampRange(start, end, n int) (int, int) {
 	return start, end
 }
 
-// InsertBlock inserts a YAML snippet into raw, respecting the canonical key
-// order in knownOrder. The snippet is placed before the first existing block
-// whose key follows the new key in knownOrder. If the new key is unknown to
-// knownOrder, or no later block exists, the snippet is appended at the end.
+// InsertBlock places snippet before the first existing block whose key follows
+// the new key in knownOrder. A key unknown to knownOrder, or the absence of a
+// later block, appends at the end.
 func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error) {
 	// Collapse trailing blank lines to a single newline so neither the append nor
 	// the ordered path wedges a blank line between blocks.
@@ -135,8 +129,8 @@ func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error
 	}
 	blocks, blocksErr := ParseBlocks(raw)
 	if blocksErr == nil {
-		// Inserting a key that already exists would produce a duplicate-key
-		// document (or a misleading round-trip failure); reject it up front.
+		// A duplicate key would produce an invalid document or a misleading
+		// round-trip failure, so reject it up front.
 		for _, sb := range snippetBlocks {
 			for _, b := range blocks {
 				if b.Key == sb.Key {
@@ -177,9 +171,8 @@ func InsertBlock(raw []byte, snippet string, knownOrder []string) ([]byte, error
 
 	lines := strings.Split(string(raw), "\n")
 	idx := insertBeforeLine - 1
-	// Land above the following block's leading comments (a contiguous run of
-	// comment lines immediately above its key), not between them and the key they
-	// document. A blank line separates comment groups and stops the walk.
+	// Land above the following block's leading comments, not between them and the
+	// key they document. A blank line separates comment groups and stops the walk.
 	for idx > 0 {
 		if strings.HasPrefix(strings.TrimSpace(lines[idx-1]), "#") {
 			idx--

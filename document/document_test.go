@@ -346,13 +346,9 @@ func TestExternallyChanged(t *testing.T) {
 	is.False(doc.ExternallyChanged(), "baseline not reset after our own Save")
 }
 
-// TestReplace_preservesSurroundingComments: editing one block must not drop
-// comments and blank lines that live outside the replaced block.
-// TestReplace_preservesPositionAndBlankLines reproduces a real-world bug: a
-// document whose on-disk top-level order doesn't match knownOrder (here,
-// "extra" sits between "name" and "image" but has no rank in knownOrder, like
-// a PassthroughKey). Editing "name" must not relocate it to its canonical
-// position, and the blank lines separating blocks must survive untouched.
+// On-disk order need not match knownOrder ("extra" has no rank, like a
+// PassthroughKey). Replacing "name" must not relocate it to its canonical
+// position, and the blank-line separators must survive.
 func TestReplace_preservesPositionAndBlankLines(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
@@ -365,6 +361,7 @@ func TestReplace_preservesPositionAndBlankLines(t *testing.T) {
 	is.Equal(want, string(doc.Raw()), "Replace must not reorder blocks or drop blank-line separators")
 }
 
+// Editing one block must not drop comments or blank lines outside it.
 func TestReplace_preservesSurroundingComments(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
@@ -381,9 +378,7 @@ func TestReplace_preservesSurroundingComments(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// YAML edge cases: anchors, multi-document, tab indentation
-// ---------------------------------------------------------------------------
+// YAML edge cases: anchors, multi-document, tab indentation.
 
 func TestParseBlocks_withAnchors(t *testing.T) {
 	must := require.New(t)
@@ -399,18 +394,16 @@ func TestParseBlocks_withAnchors(t *testing.T) {
 
 func TestParseBlocks_multiDocument(t *testing.T) {
 	is := assert.New(t)
-	// Block line ranges span the whole file but only the first document is
-	// decoded, so mutations would silently destroy every document after the
-	// first. Multi-document input must be rejected with a clear error.
+	// Block ranges span the whole file but only the first document is decoded, so
+	// mutations would destroy the rest. Must be rejected with a clear error.
 	raw := "key1: val1\n---\nkey2: val2\n"
 	_, err := ParseBlocks([]byte(raw))
 	is.ErrorContains(err, "multi-document", "ParseBlocks must reject multi-document YAML")
 }
 
-// TestParseBlocks_indentedCommentInLiteralScalar guards the block trimming
-// rules: a comment-looking line indented inside a literal scalar is content
-// and must stay with its block; trimming it silently truncated the scalar and
-// made Replace of the block fail its round-trip check with a bogus error.
+// A comment-looking line indented inside a literal scalar is content and must
+// stay with its block; trimming it truncated the scalar and made Replace fail
+// its round-trip check with a bogus error.
 func TestParseBlocks_indentedCommentInLiteralScalar(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
@@ -513,9 +506,8 @@ func TestDocument_InsertRoundTrip(t *testing.T) {
 	is.Contains(string(doc.Raw()), "ubuntu:22.04", "inserted content not found in document")
 }
 
-// TestLoad_utf8BOM verifies that files starting with a UTF-8 BOM load correctly:
-// the BOM must not appear in any block key, editing must work, and a save+reload
-// cycle must not corrupt the file.
+// A UTF-8 BOM must not appear in any block key, and a save+reload cycle must
+// not corrupt the file.
 func TestLoad_utf8BOM(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
@@ -545,9 +537,8 @@ func TestLoad_utf8BOM(t *testing.T) {
 	is.Equal(want2, string(doc2.Raw()), "Raw after BOM round-trip")
 }
 
-// TestLoad_utf8BOM_strip verifies that the raw bytes returned by a BOM-prefixed
-// file do not start with the BOM sequence - stripping it prevents it from
-// leaking into block content or being re-inserted on partial edits.
+// Raw bytes must not keep the BOM: it would leak into block content or be
+// re-inserted on partial edits.
 func TestLoad_utf8BOM_strip(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
@@ -644,12 +635,9 @@ func TestDocument_Reload_noPath(t *testing.T) {
 	is.Error(err, "Reload without a path should return an error")
 }
 
-// TestBlockSemanticEqual_roundtripComparison guards the round-trip verification
-// in Insert/Replace. The check used to compare snippet against
-// key+":\n"+recovered, but recovered (from BlockContent) already includes the
-// key line - so the prefix produced a duplicate-key YAML that fails to parse,
-// and blockSemanticEqual fail-opens to true. A real divergence was therefore
-// never caught. The fix compares snippet against recovered directly.
+// Guards the round-trip verification in Insert/Replace: comparing snippet
+// against key+":\n"+recovered produced duplicate-key YAML that fails to parse,
+// so blockSemanticEqual fail-opened and real divergences went unnoticed.
 func TestBlockSemanticEqual_roundtripComparison(t *testing.T) {
 	is := assert.New(t)
 	snippet := "image: ubuntu:22.04\n"
@@ -660,14 +648,11 @@ func TestBlockSemanticEqual_roundtripComparison(t *testing.T) {
 	diverged := "image: SOMETHING-ELSE\n"
 	is.False(blockSemanticEqual(snippet, diverged), "divergent blocks must compare NOT equal")
 
-	// When b is a malformed duplicate-key document (e.g. the old code produced
-	// key+":\n"+recovered, creating two "image" keys), it fails to parse and
-	// blockSemanticEqual must return false so the round-trip check triggers a
-	// rollback rather than silently accepting corrupted content.
+	// A malformed duplicate-key b must return false so the round-trip check
+	// rolls back instead of accepting corrupted content.
 	is.False(blockSemanticEqual(snippet, "image:\n"+diverged), "malformed b must fail-closed (false) so corruption triggers rollback")
 
-	// When a (the original snippet) fails to parse, the function must also
-	// fail-closed - it must not silently accept an unverifiable round-trip.
+	// An unparseable a must fail closed too.
 	is.False(blockSemanticEqual("image:\n"+snippet, snippet), "malformed a must fail-closed (false) - symmetric with malformed b")
 }
 
@@ -684,8 +669,8 @@ func TestSnapshot_clearsFuture(t *testing.T) {
 	is.Nil(d.future, "snapshot clears the redo stack")
 }
 
-// TestRollback_doesNotRestoreFuture shows that rollback() alone leaves the redo
-// stack empty -- which is why Insert/Replace must explicitly restore savedFuture.
+// rollback() alone leaves the redo stack empty, which is why Insert/Replace must
+// restore savedFuture explicitly.
 func TestRollback_doesNotRestoreFuture(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -719,31 +704,27 @@ func TestRollback_savedFutureRestoresRedoStack(t *testing.T) {
 	is.Equal("a: 1\n", string(d.raw), "rollback restores raw")
 }
 
-// TestRollback_restoresConsistencyAfterRawMutation verifies that rollback()
-// restores both raw and blocks when called after d.raw was set to invalid content.
+// rollback() must restore both raw and blocks after d.raw was set to invalid
+// content.
 func TestRollback_restoresConsistencyAfterRawMutation(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
 	d, err := New([]byte("a: 1\n"), nil)
 	must.NoError(err)
 
-	// Simulate what Insert does: snapshot, then set raw to content that would
-	// make ParseBlocks fail, then rollback to restore consistency.
+	// What Insert does: snapshot, break raw, rollback.
 	d = d.snapshot()
 	d.raw = []byte("invalid: [\n") // unclosed flow sequence - ParseBlocks would fail on this
 
-	// Pre-fix: caller received d with d.raw=invalid, d.blocks=stale (inconsistent)
-	// Post-fix: rollback is called, restoring both raw and blocks.
 	d = d.rollback()
 	is.Equal("a: 1\n", string(d.raw), "rollback restored raw to pre-mutation state")
 	must.Len(d.blocks, 1, "rollback restored blocks via re-parse")
 	is.Equal("a", d.blocks[0].Key, "restored block key matches original content")
 }
 
-// TestUndo_independentCopies guards the copy-on-write undo stacks: Document is
-// copied by value, so sibling copies share the history's backing array and an
-// in-place pop by one copy used to corrupt the other (its Undo returned
-// ok=true with raw == "").
+// Guards the copy-on-write undo stacks: Document is copied by value, so an
+// in-place pop by one copy used to corrupt its sibling (Undo returned ok=true
+// with raw == "").
 func TestUndo_independentCopies(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
@@ -762,9 +743,8 @@ func TestUndo_independentCopies(t *testing.T) {
 	is.Equal("name: mydev\n", string(undone2.Raw()), "sibling copy's Undo corrupted by shared history backing array")
 }
 
-// TestUndo_unparseableSnapshotFailsExplicitly guards finding: Undo must not
-// silently keep stale blocks when the snapshot fails to re-parse; it returns
-// ok=false and leaves the current consistent state untouched.
+// Undo must not keep stale blocks when the snapshot fails to re-parse: it
+// returns ok=false and leaves the current state untouched.
 func TestUndo_unparseableSnapshotFailsExplicitly(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
@@ -790,9 +770,8 @@ func TestInsert_duplicateKeyRejected(t *testing.T) {
 	is.ErrorContains(err, "already exists", "Insert of an existing key must be rejected")
 }
 
-// TestInsert_multiKeySnippet guards the round-trip verification: a valid
-// multi-key snippet lands as one block per key and must not be falsely
-// rejected by comparing the whole snippet against only its first block.
+// A multi-key snippet lands as one block per key and must not be rejected by
+// comparing the whole snippet against only its first block.
 func TestInsert_multiKeySnippet(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
@@ -803,8 +782,7 @@ func TestInsert_multiKeySnippet(t *testing.T) {
 	is.Equal("name: web\nimage: alpine\nremoteUser: vscode\n", string(doc.Raw()))
 }
 
-// TestInsertReplace_normalizeCRLFSnippets guards snippet CRLF normalization:
-// on a usedCRLF document Save rewrites every LF to CRLF, so an embedded CRLF
+// On a usedCRLF document Save rewrites every LF to CRLF, so an embedded CRLF
 // left in a snippet would become CRCRLF on disk.
 func TestInsertReplace_normalizeCRLFSnippets(t *testing.T) {
 	must := require.New(t)
@@ -826,9 +804,8 @@ func TestInsertReplace_normalizeCRLFSnippets(t *testing.T) {
 	is.NotContains(string(data), "\r\r", "CRLF snippet must not become CRCRLF on save")
 }
 
-// TestSetPath_reloadReadsSourcePath guards the SavePath flow: Reload must
-// re-read the file the document was loaded from, not the save destination
-// (which may not even exist yet), and the destination must survive the reload.
+// Reload must re-read the load path, not the save destination (which may not
+// exist yet), and the destination must survive the reload.
 func TestSetPath_reloadReadsSourcePath(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
@@ -847,9 +824,8 @@ func TestSetPath_reloadReadsSourcePath(t *testing.T) {
 	is.Equal(dst, reloaded.Path(), "save destination must survive a reload")
 }
 
-// TestSetPath_externallyChangedNoFalsePositive guards that SetPath records the
-// destination's on-disk state: an untouched, pre-existing destination must not
-// read as externally changed on the first save.
+// SetPath records the destination's on-disk state, so an untouched pre-existing
+// destination must not read as externally changed on the first save.
 func TestSetPath_externallyChangedNoFalsePositive(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)
@@ -866,9 +842,8 @@ func TestSetPath_externallyChangedNoFalsePositive(t *testing.T) {
 	is.False(doc.ExternallyChanged(), "untouched destination must not read as externally changed")
 }
 
-// TestMarkSaved_preservesNewerEdits guards the async-save flow: applying a
-// completed save's outcome onto a document that gained edits meanwhile must
-// keep those edits (and the dirty flag), updating only the persistence state.
+// Applying a completed save onto a document that gained edits meanwhile must
+// keep those edits and the dirty flag, updating only the persistence state.
 func TestMarkSaved_preservesNewerEdits(t *testing.T) {
 	must := require.New(t)
 	is := assert.New(t)

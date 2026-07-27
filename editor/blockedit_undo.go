@@ -8,16 +8,15 @@ import (
 	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
-// blockEditUndoSnap captures the state of a blockEditState before a
-// mutating operation so it can be restored by ctrl+u (and re-applied by
-// ctrl+y after an undo).
+// blockEditUndoSnap captures a blockEditState before a mutating operation, for
+// ctrl+u and ctrl+y.
 type blockEditUndoSnap struct {
 	node            yaml.Node // deep copy of the canonical node at snapshot time
 	currentEntryIdx int
 	yamlValue       string
 	preset          string
-	// tree state for collection blocks - preserved so restoring keeps
-	// the expanded/collapsed view and cursor position intact.
+	// tree state for collection blocks, so restoring keeps the expanded view and
+	// cursor position intact.
 	treeNodes  []treeNode
 	treeCursor int
 	treeOffset int
@@ -25,8 +24,7 @@ type blockEditUndoSnap struct {
 
 const maxUndoDepth = 50
 
-// captureSnap records the current editor state as a snapshot for the
-// undo/redo stacks.
+// captureSnap records the current editor state for the undo/redo stacks.
 func (be blockEditState) captureSnap() blockEditUndoSnap {
 	treeNodes := make([]treeNode, len(be.tree.nodes))
 	copy(treeNodes, be.tree.nodes)
@@ -51,21 +49,20 @@ func appendSnapCapped(stack []blockEditUndoSnap, snap blockEditUndoSnap) []block
 	return stack
 }
 
-// snapEqual reports whether two snapshots capture the same editor state.
-// Snapshots are deep copies built the same way by captureSnap, so a structural
-// comparison is exact; reflect.DeepEqual also handles anchor/alias cycles.
+// snapEqual compares two snapshots structurally. captureSnap builds them as deep
+// copies the same way, so the comparison is exact, and reflect.DeepEqual also
+// handles anchor/alias cycles.
 func snapEqual(a, b blockEditUndoSnap) bool {
 	return reflect.DeepEqual(a, b)
 }
 
-// saveUndo pushes the current state onto the undo stack. Any redo entries are
-// discarded - a new mutation forks away from the undone states.
+// saveUndo pushes the current state onto the undo stack and discards the redo
+// entries, since a new mutation forks away from the undone states.
 //
-// An exact duplicate of the stack top is skipped: speculative checkpoints
-// (e.g. Tab into the YAML panel with no edit afterwards) would otherwise pile
-// up identical snapshots that make ctrl+u appear to do nothing. When the state
-// is unchanged since the last push there is no fork to discard either, so the
-// redo stack is left alone.
+// An exact duplicate of the stack top is skipped: speculative checkpoints (Tab
+// into the YAML panel with no edit) would otherwise pile up identical snapshots
+// that make ctrl+u appear to do nothing. Unchanged state is also no fork, so the
+// redo stack survives.
 func (be blockEditState) saveUndo() blockEditState {
 	snap := be.captureSnap()
 	if n := len(be.undoStack); n > 0 && snapEqual(be.undoStack[n-1], snap) {
@@ -76,11 +73,10 @@ func (be blockEditState) saveUndo() blockEditState {
 	return be
 }
 
-// restoreUndo restores the most recent undo snapshot that differs from the
-// live state and pushes the undone state onto the redo stack. Snapshots equal
-// to the live state (left by speculative checkpoints) are dropped first, so a
-// single ctrl+u always lands on a visible change. Sets the matching status
-// message; no-op apart from it when there is nothing to restore.
+// restoreUndo restores the most recent snapshot that differs from the live state
+// and pushes the undone state onto the redo stack. Live-equal snapshots left by
+// speculative checkpoints are dropped first, so one ctrl+u always lands on a
+// visible change. Sets the status message either way.
 func (be blockEditState) restoreUndo() blockEditState {
 	live := be.captureSnap()
 	for len(be.undoStack) > 0 && snapEqual(be.undoStack[len(be.undoStack)-1], live) {
@@ -98,10 +94,9 @@ func (be blockEditState) restoreUndo() blockEditState {
 	return be
 }
 
-// restoreRedo re-applies the most recently undone change and pushes the
-// current state onto the undo stack so the redo itself can be undone. Mirrors
-// restoreUndo: live-equal snapshots are dropped and the status message is set
-// here; no-op apart from it when there is nothing to restore.
+// restoreRedo re-applies the most recently undone change, pushing the current
+// state onto the undo stack so the redo itself can be undone. Mirrors
+// restoreUndo.
 func (be blockEditState) restoreRedo() blockEditState {
 	live := be.captureSnap()
 	for len(be.redoStack) > 0 && snapEqual(be.redoStack[len(be.redoStack)-1], live) {
@@ -126,9 +121,8 @@ func popSnap(stack []blockEditUndoSnap) (blockEditUndoSnap, []blockEditUndoSnap)
 	return snap, stack[:last]
 }
 
-// applySnap loads snap into the live editor state. The dirty flag is not part
-// of the snapshot: dispatch recomputes it from the restored content, so it
-// cannot disagree with what was actually restored.
+// applySnap loads snap into the live editor state. dirty is not snapshotted:
+// dispatch recomputes it from the restored content, so it cannot disagree.
 func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 	be.currentPreset = snap.preset
 	be.editorErr = editorError{}
@@ -136,8 +130,8 @@ func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 	be.node = *yamlnode.CloneNode(&snap.node)
 
 	if be.isCollectionNav() {
-		// Clamp the restored entry index against the actual entry count in the
-		// restored node to prevent loadEntry from receiving an out-of-range index.
+		// Clamp against the restored node's entry count so loadEntry never receives
+		// an out-of-range index.
 		restoredCount := entryCount(&be.node, be.coll.isMap)
 		idx := snap.currentEntryIdx
 		switch {
@@ -161,8 +155,8 @@ func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 			be.tree.offset = 0
 		}
 		be = be.loadEntry(be.coll.current)
-		// The node is authoritative; snap.yamlValue restores any in-progress (even
-		// unparseable) text the user had typed into the entry at snapshot time.
+		// The node is authoritative; snap.yamlValue restores whatever in-progress,
+		// possibly unparseable, text the entry held at snapshot time.
 		be.yamlEditor.SetValue(snap.yamlValue)
 		be.tree = be.resyncTreeFromYAML()
 		be.tree = be.tree.clampCursor()
@@ -170,10 +164,9 @@ func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 	}
 	be.yamlEditor.SetValue(snap.yamlValue)
 	be.tree = syncTreeCheckedFromNode(be.tree, &be.node)
-	// If syncTreeCheckedFromNode left the cursor out of bounds (e.g. the pre-
-	// undo cursor was on an AVAILABLE/separator row that no longer exists in
-	// the restored tree), advance to the first selectable field so the user is
-	// not silently stranded with no operable row.
+	// The cursor may now be out of bounds (it sat on a separator row that the
+	// restored tree no longer has), so advance to the first selectable field
+	// rather than stranding the user with no operable row.
 	vis := be.tree.visibleNodes()
 	if be.tree.cursor < 0 || be.tree.cursor >= len(vis) {
 		be.tree.cursor = 0

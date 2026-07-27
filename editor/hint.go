@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// selectedHint renders the Hint/Example panel body for the currently selected
-// list item. All display data comes from MetadataSource.
+// selectedHint renders the Hint/Example panel body for the selected list item.
+// All display data comes from MetadataSource.
 func (m model) selectedHint() string {
 	if m.cfg.Metadata == nil {
 		return m.theme.hintDim.Render("  Config.Metadata is not set - no metadata source configured")
@@ -33,11 +33,9 @@ func (m model) selectedHint() string {
 	return m.theme.hintDim.Render("  no metadata declared for this field")
 }
 
-// renderFieldHint formats a FieldMeta into the Hint/Example panel body.
-// Order: description, type, format, required, default, allowed values, range,
-// length, denied values, pattern, entries, unique, deprecated, example.
-// example is passed separately because the caller may substitute a generated
-// fallback when meta.Example is empty.
+// renderFieldHint formats a FieldMeta into the Hint/Example panel body. example
+// is passed separately because the caller may substitute a generated fallback
+// when meta.Example is empty.
 func renderFieldHint(th resolvedTheme, meta FieldMeta, example string) string {
 	var sb strings.Builder
 	label := func(s string) string { return th.hintKey.Render(s) }

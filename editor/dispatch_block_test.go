@@ -162,10 +162,8 @@ func TestDispatchNoEmptySequenceItem(t *testing.T) {
 	}
 }
 
-// TestNavigateBlocked_CursorSnapsBack guards the cursor/loaded-entry
-// reconciliation: when navigation is refused because the current entry does
-// not parse, the tree cursor must return to the loaded entry instead of
-// staying on the entry the user could not reach.
+// When navigation is refused because the current entry does not parse, the tree
+// cursor must return to the loaded entry rather than the unreachable one.
 func TestNavigateBlocked_CursorSnapsBack(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)

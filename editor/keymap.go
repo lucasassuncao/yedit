@@ -5,11 +5,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// listKeymap translates a KeyMsg into a ModelAction for the list view.
-// Returns (action, true) for keys with semantic meaning; (nil, false) otherwise.
-// Only called when the list is not in filtering mode.
-// Keys that need a confirm check before acting (ctrl+r) are not handled here;
-// handleListKey calls them directly.
+// listKeymap translates a KeyMsg into a ModelAction for the list view, and is
+// only called outside filtering mode. Keys needing a confirm check before acting
+// (ctrl+r) are handled directly by handleListKey instead.
 func listKeymap(m model, msg tea.KeyMsg) (ModelAction, bool) {
 	switch {
 	case key.Matches(msg, kbCtrlUUndo):

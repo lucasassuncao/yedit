@@ -21,9 +21,8 @@ func (m model) topBE() *blockEditState {
 	return &be
 }
 
-// withTopBE returns a new model with be replacing the active block editor.
-// It allocates a new slice so the caller's model and any prior copies do not
-// share the same backing array.
+// withTopBE replaces the active block editor, allocating a new slice so prior
+// model copies do not share the backing array.
 func (m model) withTopBE(be blockEditState) model {
 	if len(m.blockEdits) == 0 {
 		return m
@@ -35,11 +34,10 @@ func (m model) withTopBE(be blockEditState) model {
 	return m
 }
 
-// withTopBEError sets a sticky error on the active block editor's feedback
-// line - the channel actually rendered while a block editor is open (the root
-// status line is not drawn in paneBlockEdit, so m.statusMsg would be invisible
-// there and could resurface stale once back at the list). Falls back to the
-// root sticky status when no editor is open.
+// withTopBEError sets a sticky error on the active block editor's feedback line,
+// the only one rendered in paneBlockEdit: m.statusMsg would be invisible there
+// and could resurface stale back at the list. Falls back to the root sticky
+// status when no editor is open.
 func (m model) withTopBEError(kind errKind, msg string) model {
 	top := m.topBE()
 	if top == nil {
@@ -50,21 +48,19 @@ func (m model) withTopBEError(kind errKind, msg string) model {
 	return m.withTopBE(be)
 }
 
-// --- Screen transitions ---
-//
-// The enter* helpers (root.go) are the only functions that assign m.mode. Each
+// The enter* helpers in root.go are the only functions that assign m.mode. Each
 // sets the active pane together with the data that pane owns, so the invariants
 //
 //	alertVisible          ⟹  mode == paneAlert
 //	mode == paneBlockEdit ⟹  len(blockEdits) > 0
 //
-// cannot be violated by a caller that forgets to clear a sibling field. The
-// arrows are one-way on purpose: enterAlert preserves blockEdits so that
-// dismissing a root-level alert can return to the block editor underneath.
+// survive a caller that forgets to clear a sibling field. The arrows are one-way
+// on purpose: enterAlert preserves blockEdits so dismissing a root-level alert
+// can return to the block editor underneath.
 
-// handleBlockEditDiscarded pops the active block editor after the user closed
-// it with Esc, returning to the parent editor or - from the top level - to the
-// list, with explicit feedback only when changes were actually thrown away.
+// handleBlockEditDiscarded pops the active block editor, returning to the parent
+// editor or, from the top level, to the list. Explicit feedback appears only
+// when changes were actually thrown away.
 func (m model) handleBlockEditDiscarded(msg blockEditDiscardedMsg) (tea.Model, tea.Cmd) {
 	if len(m.blockEdits) > 0 {
 		m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
@@ -72,49 +68,42 @@ func (m model) handleBlockEditDiscarded(msg blockEditDiscardedMsg) (tea.Model, t
 	if len(m.blockEdits) == 0 {
 		m = m.enterList()
 		if msg.discarded {
-			// User threw away uncommitted changes - show explicit feedback.
 			return m.withStatus("Cancelled.")
 		}
-		// else: clean Esc after a commit - preserve the existing status message
-		// (e.g. "Block updated (not saved yet)").
+		// A clean Esc after a commit keeps the existing status message.
 	}
-	// Intermediate pops (returning to a parent editor) intentionally preserve
-	// any status message the child may have set so the user can read it.
+	// Intermediate pops preserve any status message the child set, so the user
+	// can still read it.
 	return m, nil
 }
 
-// handleDrillOut navigates up one level while keeping edits. The current (child)
-// editor is flushed into editRoot, popped, and the parent editor is refreshed
-// from editRoot so it reflects what the child changed. Editing a child and
-// returning to fix a parent field is therefore non-destructive - nothing is
-// committed to the document until Ctrl+S. Only fired for nested editors.
+// handleDrillOut navigates up one level while keeping edits: the child editor is
+// flushed into editRoot, popped, and the parent refreshed from editRoot. Nothing
+// reaches the document until Ctrl+S. Nested editors only.
 func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 	if len(m.blockEdits) <= 1 {
 		return m, nil
 	}
 	childWasDirty := m.topBE().dirty
-	// Capture child focus before the stack is popped so we can scope pruning.
+	// Capture child focus before the stack is popped so pruning stays scoped.
 	childFocus := append([]pathSeg(nil), m.topBE().focus...)
-	// The cascade below must never remove the parent editor's own focus node:
-	// when the parent's mapping contained nothing but the drilled-into child,
-	// pruning all the way up would delete it and refreshTopFromRoot would land
-	// on a lost focus path. Everything at or above the parent's focus is the
-	// parent's to prune on its own drill-out.
+	// Pruning must never reach the parent editor's own focus node: when the
+	// parent held nothing but the drilled-into child, going all the way up would
+	// delete it and refreshTopFromRoot would land on a lost path. Everything at
+	// or above the parent's focus is the parent's to prune on its own drill-out.
 	parentFocusLen := len(m.blockEdits[len(m.blockEdits)-2].focus)
 
 	var ok bool
 	if m, ok = m.flushTopToRoot(); !ok {
-		// Invalid YAML in the child - cannot write it into the canonical tree.
-		// The error is already shown; stay so the user can fix it.
+		// Invalid YAML cannot be written into the canonical tree. The error is
+		// already shown, so stay put and let the user fix it.
 		return m, nil
 	}
-	// Narrow prune: target the child's own node first so we don't accidentally
-	// remove empty placeholders the user left in sibling fields, then remove any
-	// mapping pairs along the child's path that the flush left empty (e.g. the
-	// phantom "<key>:" of a drilled-into field the user never filled). The prune
-	// must stay on this path and must never remove sequence items: editors still
-	// on the stack address entries by index (segIdx), so removing an empty entry
-	// elsewhere in a collection would silently re-point them at a different entry.
+	// Prune the child's own node first, so empty placeholders in sibling fields
+	// survive, then drop mapping pairs along the child's path that the flush left
+	// empty. The prune stays on this path and never removes sequence items:
+	// editors still on the stack address entries by index, so removing one
+	// elsewhere would re-point them at a different entry.
 	if childNode := nodeAt(m.editRoot, childFocus); childNode != nil {
 		pruneEmptyMappings(childNode)
 	}
@@ -122,8 +111,8 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 
 	m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
 
-	// Refresh the parent FIRST, then snapshot the refreshed state so Ctrl+U
-	// restores the post-drill-out content (not the stale pre-refresh snapshot).
+	// Refresh the parent first, then snapshot, so Ctrl+U restores the
+	// post-drill-out content rather than the stale pre-refresh state.
 	m = m.refreshTopFromRoot()
 	if childWasDirty {
 		if top := m.topBE(); top != nil {
@@ -134,9 +123,9 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// refreshCollectionFromNode updates a collection-nav editor in-place from node,
-// rebuilding the tree when the entry count changes and re-anchoring the cursor
-// on the previously viewed entry so it stays in view after removals.
+// refreshCollectionFromNode updates a collection-nav editor from node, rebuilding
+// the tree when the entry count changes and re-anchoring the cursor on the
+// previously viewed entry so it survives removals.
 func (be blockEditState) refreshCollectionFromNode(node *yaml.Node) blockEditState {
 	isMap := be.isMapNav()
 	old := be.node
@@ -145,8 +134,8 @@ func (be blockEditState) refreshCollectionFromNode(node *yaml.Node) blockEditSta
 	newCount := entryCount(&be.node, isMap)
 	if newCount != oldCount {
 		be.tree.nodes = be.collectionTreeNodes()
-		// The rebuilt tree may be shorter than the cursor position (e.g. entries
-		// pruned during drill-out); clamp so the cursor stays on a real row.
+		// The rebuilt tree may be shorter than the cursor position, so clamp it
+		// back onto a real row.
 		be.tree = be.tree.clampCursor()
 		be.coll.current = reanchorCollCursor(&old, &be.node, isMap, be.coll.current)
 	}
@@ -154,13 +143,10 @@ func (be blockEditState) refreshCollectionFromNode(node *yaml.Node) blockEditSta
 	return be
 }
 
-// reanchorCollCursor locates the entry the user was viewing (index cur in
-// oldNode) inside the refreshed newNode: map entries are matched by key,
-// sequence entries by structural equality. Entries can be removed anywhere in
-// the collection (e.g. pruning of empty mappings), so a positional shift would
-// guess wrong; identity matching finds the entry wherever it landed. When it
-// cannot be found (removed, or its content was edited), cur is clamped to the
-// new bounds.
+// reanchorCollCursor locates the entry at index cur of oldNode inside the
+// refreshed newNode. Entries can be removed anywhere in the collection, so a
+// positional shift would guess wrong; identity matching finds the entry wherever
+// it landed. An entry that cannot be found leaves cur clamped to the new bounds.
 func reanchorCollCursor(oldNode, newNode *yaml.Node, isMap bool, cur int) int {
 	if i := findEntryIndex(oldNode, newNode, isMap, cur); i >= 0 {
 		return i
@@ -171,9 +157,8 @@ func reanchorCollCursor(oldNode, newNode *yaml.Node, isMap bool, cur int) int {
 	return cur
 }
 
-// findEntryIndex returns the index in newNode of the entry at index cur in
-// oldNode - matched by key for maps, by structural equality for sequences -
-// or -1 when the entry cannot be located.
+// findEntryIndex locates oldNode's entry cur inside newNode, by key for maps and
+// by structural equality for sequences, or -1 when it is gone.
 func findEntryIndex(oldNode, newNode *yaml.Node, isMap bool, cur int) int {
 	if cur < 0 || cur >= entryCount(oldNode, isMap) {
 		return -1
@@ -192,9 +177,8 @@ func findEntryIndex(oldNode, newNode *yaml.Node, isMap bool, cur int) int {
 	if val == nil {
 		return -1
 	}
-	// Prefer the same position: with structurally identical duplicate entries
-	// (e.g. right after duplicating one) a first-match scan would re-anchor the
-	// cursor onto a different entry than the one the user was viewing.
+	// Prefer the same position: among structurally identical entries a first-match
+	// scan would re-anchor onto a different one than the user was viewing.
 	if cur < newCount && reflect.DeepEqual(entryValueNode(newNode, false, cur), val) {
 		return cur
 	}
@@ -206,11 +190,10 @@ func findEntryIndex(oldNode, newNode *yaml.Node, isMap bool, cur int) int {
 	return -1
 }
 
-// refreshTopFromRoot rebuilds the active editor's content from the node at its
-// focus path in editRoot, preserving tree cursor/expansion and the current
-// collection entry. The dirty flag is recomputed from the refreshed content,
-// so uncommitted child edits reach the top-level "Discard changes?" guard
-// without explicit plumbing.
+// refreshTopFromRoot rebuilds the active editor from the node at its focus path
+// in editRoot, preserving tree cursor, expansion, and current entry. dirty is
+// recomputed from the refreshed content, so uncommitted child edits reach the
+// top-level "Discard changes?" guard without explicit plumbing.
 func (m model) refreshTopFromRoot() model {
 	top := m.topBE()
 	if top == nil {
@@ -238,9 +221,8 @@ func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.enterList()
 		return m, nil
 	}
-	// One router: the block editor's own Update handles every message (mode
-	// switch, keys, resize) and emits model-level concerns (commit, drill,
-	// discard) as messages that the root Update routes.
+	// One router: the block editor's Update handles every message and emits
+	// model-level concerns as messages the root Update routes.
 	be, cmd := top.Update(msg)
 	return m.withTopBE(be), cmd
 }
@@ -262,7 +244,7 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 
 	children := applyPresentation(m.childrenOf[it.Key], m.cfg.Metadata, it.Key, nil)
 	kind := fieldKind(m.schemaTree, it.Key)
-	// Unknown items have no schema, so skip unknown-key validation inside the overlay.
+	// Unknown items have no schema, so skip unknown-key validation.
 	knownByPath := m.knownByPath
 	if it.Unknown {
 		knownByPath = nil
@@ -272,17 +254,16 @@ func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
 	be.focus = nil // top-level editor edits the whole block
 	m.blockEdits = []blockEditState{be}
 	m.editBlockKey = it.Key
-	// Canonical tree, refreshed from the top editor on every flush (drill-in /
-	// commit). A non-nil placeholder is enough; the first flush populates it.
+	// Canonical tree, refreshed from the top editor on every flush. A non-nil
+	// placeholder is enough; the first flush populates it.
 	m.editRoot = &yaml.Node{Kind: yaml.MappingNode}
 	m = m.enterBlockEdit()
 	return m, be.Init()
 }
 
 // flushTopToRoot commits the active editor and writes its value node into
-// editRoot at the editor's focus path. Returns (updatedModel, true) on success;
-// on a validation error it sets the editor's error and returns false so the
-// caller aborts the navigation/commit.
+// editRoot at the editor's focus path. A validation error sets the editor's
+// error and returns false, so the caller aborts the navigation or commit.
 func (m model) flushTopToRoot() (model, bool) {
 	top := m.topBE()
 	if top == nil {
@@ -291,8 +272,8 @@ func (m model) flushTopToRoot() (model, bool) {
 	committed, val, ok := top.commit()
 	m = m.withTopBE(committed)
 	if !ok {
-		// committed.editorErr carries the detail and the editor's own feedback
-		// line renders it - the root status line is not visible in this mode.
+		// committed.editorErr carries the detail and the editor's feedback line
+		// renders it; the root status line is not visible in this mode.
 		return m, false
 	}
 	rootSnap := yamlnode.CloneNode(m.editRoot)
@@ -303,13 +284,13 @@ func (m model) flushTopToRoot() (model, bool) {
 	return m, true
 }
 
-// handleOpenChild drills into a nested field. It flushes the parent editor into
-// the canonical editRoot, then builds the child editor from the node living at
-// the child's focus path within that same tree - no substring copy. Unknown-key
-// validation is left to the parent, so the child uses a nil knownByPath (its
-// root key is the field name, which would otherwise read as an unknown key).
+// handleOpenChild drills into a nested field: it flushes the parent into
+// editRoot, then builds the child editor from the node at the child's focus path
+// in that same tree, copying no substring. Unknown-key validation stays with the
+// parent, so the child passes a nil knownByPath - its root key is the field
+// name, which would otherwise read as an unknown key.
 func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
-	// Guard against stale openChildMsg arriving with an empty blockEdits stack.
+	// Guard against a stale openChildMsg arriving with an empty stack.
 	top := m.topBE()
 	if top == nil {
 		return m, nil
@@ -333,9 +314,8 @@ func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
 	if node := nodeAt(m.editRoot, childFocus); node != nil {
 		content = nodeToContent(msg.key, node)
 	}
-	// focusToStringPath drops index segments and runtime map-entry keys (marked
-	// by segMapKey at emit time), so the prefix holds only schema field names -
-	// including entry keys of map-nav ancestors further up the focus path.
+	// focusToStringPath drops index segments and runtime map-entry keys, so the
+	// prefix holds only schema field names.
 	metaPrefix := focusToStringPath(childFocus)
 	defs := applyPresentation(msg.defs, m.cfg.Metadata, m.editBlockKey, metaPrefix)
 	be := newBlockEdit(m.cfg, blockSpec{key: msg.key, defs: defs, kind: msg.kind, content: content, knownByPath: nil}, m.width, m.height)
@@ -347,12 +327,11 @@ func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
 	return m, be.Init()
 }
 
-// docWithEditorContent returns a copy of m.doc with the open editor stack's
-// current content applied - the document that WOULD result from committing
-// now. Used by validation so ctrl+l inside an editor reflects the on-screen
-// content. The caller must have flushed the top editor into editRoot first
-// (flushTopToRoot); editRoot is cloned here so the pruning never mutates the
-// live edit session. Mirrors commitAll's serialization, minus the effects.
+// docWithEditorContent returns the document that committing now would produce,
+// so ctrl+l inside an editor validates the on-screen content. The caller must
+// have run flushTopToRoot first; editRoot is cloned here so pruning never
+// mutates the live session. Mirrors commitAll's serialization without the
+// effects.
 func (m model) docWithEditorContent() (document.Document, error) {
 	if len(m.blockEdits) == 0 {
 		return m.doc, nil
@@ -374,10 +353,9 @@ func (m model) docWithEditorContent() (document.Document, error) {
 	}
 }
 
-// saveAll is the Ctrl+S handler. When block editors are open it commits all
-// stacked editors into m.doc and returns to the list - file save is a separate
-// action triggered by Ctrl+S from the list view. When no editors are open it
-// saves the file directly.
+// saveAll is the Ctrl+S handler: it commits the open editor stack into m.doc, or
+// saves the file when no editor is open. Writing the file is a separate action,
+// triggered by Ctrl+S from the list view.
 func (m model) saveAll() (tea.Model, tea.Cmd) {
 	if len(m.blockEdits) > 0 {
 		return m.commitAll()
@@ -386,9 +364,9 @@ func (m model) saveAll() (tea.Model, tea.Cmd) {
 }
 
 // commitAll commits the open editor stack into m.doc and returns to the list
-// without writing the file. Because every drill-in already flushed its parent
-// into editRoot, only the active (top) editor is still live: flush it, then
-// serialize the whole canonical tree once. No per-level string splicing.
+// without writing the file. Every drill-in already flushed its parent into
+// editRoot, so only the top editor is still live: flush it, then serialize the
+// canonical tree once, with no per-level string splicing.
 func (m model) commitAll() (tea.Model, tea.Cmd) {
 	if len(m.blockEdits) == 0 {
 		return m, nil
@@ -409,7 +387,7 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 	case blockIsEmpty && isEdit:
 		m.doc, err = m.doc.Remove(m.editBlockKey)
 	case blockIsEmpty && !isEdit:
-		// Nothing was added — return to list without dirtying the document.
+		// Nothing was added, so return to the list without dirtying the document.
 		m = m.syncView()
 		m = m.enterList()
 		return m.withStatus("Nothing added.")
@@ -418,8 +396,8 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 		if isEdit {
 			current, readErr := m.doc.BlockContent(m.editBlockKey)
 			if readErr != nil {
-				// A failed read must not be treated as "content changed" - the
-				// Replace below would run against unknown document state.
+				// A failed read must not read as "content changed": Replace would
+				// then run against unknown document state.
 				return m.withTopBEError(errCommit, fmt.Sprintf("Apply error: %v", readErr)), nil
 			}
 			if normalizeBlockContent(m.editBlockKey, current) != final {

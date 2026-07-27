@@ -10,17 +10,16 @@ import (
 	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
-// fieldHasContent reports whether the field at node.yamlPath has non-empty
-// content in the canonical node (be.node). Using the node rather than parsing
-// the text buffer means the check is correct even when the buffer is mid-edit
-// or temporarily invalid.
+// fieldHasContent reports whether the field at node.yamlPath has content in
+// be.node. Reading the node rather than the text buffer keeps the check correct
+// while the buffer is mid-edit or invalid.
 func (be blockEditState) fieldHasContent(node treeNode) bool {
 	path := node.yamlPath
 	if len(path) == 0 {
 		return false
 	}
-	// For collection editors the entry value mapping is the search root;
-	// skip the first path segment (entry label).
+	// Collection editors search from the entry value mapping, so the first path
+	// segment (the entry label) is skipped.
 	cur := &be.node
 	start := 0
 	if be.isCollectionNav() {
@@ -62,8 +61,8 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 	case treeDeleted:
 		be = be.handleTreeDeleteDispatch()
 	default:
-		// Collection entries are shown one at a time; moving to a different entry
-		// requires flushing the current buffer and loading the new entry.
+		// Collection entries are shown one at a time, so moving between them flushes
+		// the current buffer and loads the new entry.
 		if be.isCollectionNav() {
 			newSeqIdx := be.tree.NearestSeqItem()
 			if newSeqIdx != prevSeqIdx {
@@ -72,17 +71,16 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 		}
 	}
 
-	// Follow the selection: the cursor landed on a different node, or a toggle
-	// changed which line the current node lives on. Expand/collapse keeps the
-	// node and the buffer unchanged, so it triggers no jump.
+	// Follow the selection when the cursor moved or a toggle changed the current
+	// node's line. Expand/collapse leaves both unchanged, so it never jumps.
 	if be.tree.currentNodeIdx() != prevNodeIdx || action == treeToggled {
 		be = be.followTreeSelection()
 	}
 	return be, nil
 }
 
-// handleTreeToggleDispatch either shows a confirmation dialog or dispatches
-// ToggleField immediately (when NoDeleteConfirm or the field has no content).
+// handleTreeToggleDispatch confirms first, or dispatches ToggleField at once
+// when NoDeleteConfirm is set or the field has no content.
 func (be blockEditState) handleTreeToggleDispatch() blockEditState {
 	idx := be.tree.currentNodeIdx()
 	if idx < 0 {
@@ -98,16 +96,13 @@ func (be blockEditState) handleTreeToggleDispatch() blockEditState {
 			fmt.Sprintf("Remove %q? Its content will be lost.", node.label),
 			func() tea.Msg { return pendingRemoveMsg{nodeIdx: capturedIdx} },
 		)
-		be.confirmAlert = al
-		be.confirmAlertVisible = true
-		be.mode = modeConfirming
-		return be
+		return be.enterConfirmAlert(al)
 	}
 	return be.dispatch(ToggleField{NodeIdx: idx, Checked: node.checked})
 }
 
-// handleTreeDeleteDispatch either shows a confirmation dialog or dispatches
-// DeleteEntry immediately (when NoDeleteConfirm).
+// handleTreeDeleteDispatch confirms first, or dispatches DeleteEntry at once
+// when NoDeleteConfirm is set.
 func (be blockEditState) handleTreeDeleteDispatch() blockEditState {
 	idx := be.tree.currentNodeIdx()
 	if idx < 0 || be.tree.nodes[idx].kind != treeNodeSeqItem {
@@ -123,16 +118,12 @@ func (be blockEditState) handleTreeDeleteDispatch() blockEditState {
 		fmt.Sprintf("Remove %q? Its content will be lost.", label),
 		func() tea.Msg { return pendingEntryDeleteMsg{seqIdx: seqIdx} },
 	)
-	be.confirmAlert = al
-	be.confirmAlertVisible = true
-	be.mode = modeConfirming
-	return be
+	return be.enterConfirmAlert(al)
 }
 
-// handleTreeOpenChild drills into the openable field under the cursor by
-// emitting an openChildMsg carrying the focus-path suffix from this editor to
-// the drilled-into node. The model resolves the actual content from the
-// canonical editRoot, so no substring is copied here.
+// handleTreeOpenChild drills into the field under the cursor, emitting an
+// openChildMsg with the focus-path suffix to it. The model resolves the content
+// from the canonical editRoot, so no substring is copied here.
 func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
 	idx := be.tree.currentNodeIdx()
 	if idx < 0 {
@@ -143,8 +134,8 @@ func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
 	// relSegs addresses the field relative to this editor's focus.
 	var relSegs []pathSeg
 	if be.isCollectionNav() {
-		// node.yamlPath[0] is the current item's label (not a real key); the live
-		// item is be.coll.current. node.yamlPath[1:] are the field keys below it.
+		// yamlPath[0] is the item's label, not a real key; the live item is
+		// be.coll.current, and yamlPath[1:] are the field keys below it.
 		if be.coll.isMap {
 			relSegs = append(relSegs, segMapKey(entryLabel(&be.node, true, be.coll.current)))
 		} else {
@@ -171,16 +162,14 @@ func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
 }
 
 // applyToggle adds or removes the field at node within the canonical node, then
-// re-renders the editor from it. For collections it targets the current entry's
-// value mapping; for struct blocks the block's own mapping. Either way the tree
-// (derived from the same node) stays in agreement.
+// re-renders the editor from it. Collections target the current entry's value
+// mapping, struct blocks the block's own; the tree is derived from the same node
+// either way, so it cannot disagree.
 func (be blockEditState) applyToggle(ctx toggleCtx, node treeNode, checked bool) blockEditState {
 	if be.isCollectionNav() {
 		be = be.toggleEntryField(ctx, node, checked)
-		// Only rebuild the YAML editor from the canonical node when the toggle
-		// succeeded (no parse error). If there IS a parse error the buffer
-		// already contains invalid text; overwriting it with the canonical
-		// content would mask the error and confuse the user.
+		// Only rebuild the buffer when the toggle succeeded: on a parse error the
+		// buffer holds the invalid text, and overwriting it would mask the error.
 		if be.editorErr.kind == errNone {
 			be.yamlEditor.SetValue(entryViewYAML(&be.node, be.key, be.coll.isMap, be.coll.current))
 		}
@@ -191,9 +180,9 @@ func (be blockEditState) applyToggle(ctx toggleCtx, node treeNode, checked bool)
 	return be
 }
 
-// toggleEntryField mutates the current collection entry's value mapping. It
-// mirrors applyToggleToEntry but operates on the live node instead of re-parsed
-// text: yamlPath[0] is the entry label (skipped), the field path starts at [1].
+// toggleEntryField mutates the current collection entry's value mapping on the
+// live node rather than re-parsed text. yamlPath[0] is the entry label, so the
+// field path starts at [1].
 func (be blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked bool) blockEditState {
 	if len(node.yamlPath) < 2 {
 		return be
@@ -202,8 +191,8 @@ func (be blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked 
 	if entryNode == nil {
 		return be
 	}
-	// Clone before any mutation so a failed applyToggleAt mid-path does not
-	// leave the entry in a partially-modified state (mirrors toggleNodeField).
+	// Clone first so a mid-path applyToggleAt failure cannot leave the entry
+	// partially modified, mirroring toggleNodeField.
 	cloned := yamlnode.CloneNode(entryNode)
 	fieldPath := node.yamlPath[1:]
 	if !applyToggleAt(cloned, fieldPath[:len(fieldPath)-1], fieldPath[len(fieldPath)-1], checked, ctx) {
@@ -211,8 +200,7 @@ func (be blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked 
 	}
 	pruneEmptyMappings(cloned)
 	reorderNestedMappingKeys(cloned, ctx.childDefs)
-	// Write the cloned node back into be.node at the entry's position, keeping
-	// the existing key node for maps.
+	// Write back at the entry's position, keeping the existing key node for maps.
 	var keyNode *yaml.Node
 	if be.coll.isMap && 2*be.coll.current < len(be.node.Content) {
 		keyNode = be.node.Content[2*be.coll.current]
@@ -226,10 +214,9 @@ func (be blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked 
 func (be blockEditState) handleTreeAddNew() blockEditState {
 	be = be.saveUndo()
 	be = be.flushCurrentEntry()
-	be.editorErr = editorError{} // adding overrides an in-progress invalid entry; don't block on it
+	be.editorErr = editorError{} // adding overrides an in-progress invalid entry
 	label := be.newEntryLabel()
 	be.tree = be.tree.WithNewSeqItem(be.childDefs, label)
-	// Build the new entry node from the schema template and append it.
 	kn, vn, ok := parseEntryFromView(be.key+":\n"+be.initialEntryContent(label), be.coll.isMap)
 	if !ok {
 		vn = &yaml.Node{Kind: yaml.MappingNode}

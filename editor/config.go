@@ -3,6 +3,8 @@
 package editor
 
 import (
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/lucasassuncao/yedit/document"
@@ -11,12 +13,9 @@ import (
 	"github.com/lucasassuncao/yedit/theme"
 )
 
-// ─── Shared vocabulary ───────────────────────────────────────────────────────
-
-// These names moved to yedit/spec so that metadata, docgenerator, validate, and
+// These names live in yedit/spec so metadata, docgenerator, validate, and
 // third-party rules can describe a field without importing the TUI. They are
-// aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type,
-// so existing consumer code keeps compiling.
+// aliases, not new types, so consumer code keeps compiling.
 type (
 	FieldMeta       = spec.FieldMeta
 	MetadataSource  = spec.MetadataSource
@@ -71,56 +70,45 @@ func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput {
 	return spec.NewValidationInput(raw, blocks)
 }
 
-// ─── Session tracing ─────────────────────────────────────────────────────────
-
-// Trace bundles the editor's session-observability hooks: the OnAction/
-// OnModelAction/OnMsg callbacks and the built-in Dump-to-JSONL recorder built
-// on top of them. See docs/SESSION-TRACING.md for the full picture.
+// Trace bundles the editor's session-observability hooks and the built-in
+// Dump-to-JSONL recorder built on them. See docs/SESSION-TRACING.md.
 type Trace struct {
-	OnAction      func(blockKey string, a BlockAction) // optional; called synchronously after every BlockAction is dispatched, with the key of the block editor it was applied to (e.g. for session tracing)
-	OnModelAction func(ModelAction)                    // optional; called synchronously after every ModelAction is dispatched (e.g. for session tracing)
-	OnMsg         func(where string, msg tea.Msg)      // optional; called synchronously for every raw tea.Msg the program receives (every keystroke, resize, etc.), before it is routed. where describes the active pane/block/panel at the time (e.g. "list", "block:categories:tree:editing")
-	Dump          bool                                 // when true, records every action and keystroke to a JSONL file; the path is reported in Result.DumpPath. Composes with OnAction/OnModelAction/OnMsg if those are also set.
-	DumpPath      string                               // optional explicit path for the Dump trace file; ignored when Dump is false. Empty falls back to a timestamped file in the OS temp dir.
+	OnAction      func(blockKey string, a BlockAction) // optional; called after every BlockAction, with the key of the block editor it applied to
+	OnModelAction func(ModelAction)                    // optional; called after every ModelAction
+	OnMsg         func(where string, msg tea.Msg)      // optional; called for every raw tea.Msg before it is routed. where describes the active pane/block/panel (e.g. "block:categories:tree:editing")
+	Dump          bool                                 // record every action and keystroke to a JSONL file, reported in Result.DumpPath; composes with the callbacks above
+	DumpPath      string                               // explicit path for the Dump file; empty falls back to a timestamped file in the OS temp dir
 }
-
-// ─── Config ──────────────────────────────────────────────────────────────────
 
 // Config bundles everything the editor needs from the embedding application.
 //
 // Schema must be a pointer to the Go type describing the YAML document's top
-// level (e.g. &MyConfig{}). The editor introspects it through yedit/schema.
+// level (e.g. &MyConfig{}), introspected through yedit/schema.
 //
-// Presets is optional - when nil the editor opens fresh blocks with a minimal
-// "<key>:\n" template and the preset picker is disabled.
+// Validators run before every save and on the explicit "validate" shortcut. Use
+// editor.MutuallyExclusive and editor.RequiredWith for the common cases.
 //
-// Validators run before every save and on the explicit "validate" shortcut.
-// Use editor.MutuallyExclusive and editor.RequiredWith for the common cases.
-//
-// Hints is optional - when set, each field's Hint/Example panel is populated
-// from the returned FieldMeta. All FieldMeta fields are used as-is; yedit
-// does not fall back to struct tag values. When Hints is nil, the panel shows
-// only a generated example.
-//
-// FieldMeta.PreChecked lists sub-fields that start checked when a new block
-// overlay opens. FieldMeta.Snippet provides the YAML inserted when a sub-field
-// is toggled on; falls back to "<fieldName>: \n" when empty.
+// Metadata populates each field's Hint/Example panel. FieldMeta values are used
+// as-is; yedit never falls back to struct tags. FieldMeta.PreChecked lists
+// sub-fields that start checked in a new block, and FieldMeta.Snippet is the YAML
+// inserted when a sub-field is toggled on, defaulting to "<fieldName>: \n".
 type Config struct {
 	Path                 string         // YAML file to load; also the default save target when SavePath is empty
-	Schema               any            // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
+	Schema               any            // non-nil struct pointer, typed as any because the editor uses reflection (e.g. &MyConfig{})
 	Title                string         // label shown in the TUI header
 	BlockPresets         presets.Source // optional; nil disables the preset picker inside block editors
 	DocPresets           presets.Source // optional; when set, p on the root list opens a whole-document template picker
-	EnableHints          bool           // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
-	Metadata             MetadataSource // field metadata displayed in the hint panel and enforced by the FromMetadata validators
+	EnableHints          bool           // show the Hint/Example panel; warns when Metadata is unset
+	Metadata             MetadataSource // field metadata shown in the hint panel and enforced by the FromMetadata validators
 	Validators           []Validator    // rules evaluated before every save and on the validate shortcut
 	Hidden               []string       // top-level keys to omit from the UI entirely
-	PassthroughKeys      []string       // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
+	PassthroughKeys      []string       // top-level keys preserved as-is: hidden from all sections and exempt from unknown-key validation
 	Theme                theme.Theme    // zero-value resolves to ThemePlain
-	NoDeleteConfirm      bool           // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
-	NoValidateOnSave     bool           // allow saving even when validators report errors; a warning alert is shown but does not block
-	NoSaveConfirm        bool           // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
-	SavePath             string         // write to this path instead of Path; Path is still used for loading
-	SchemaRecursionDepth int            // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
-	Trace                Trace          // session-observability hooks (OnAction/OnModelAction/OnMsg) and the built-in Dump recorder
+	NoDeleteConfirm      bool           // skip the "Remove block?" dialog; deletion is still undoable via ctrl+u
+	NoValidateOnSave     bool           // allow saving despite validator errors; a warning alert is shown but does not block
+	NoSaveConfirm        bool           // skip the "Save changes?" dialog; warning confirms are still shown
+	SavePath             string         // write here instead of Path, which is still used for loading
+	SchemaRecursionDepth int            // extra levels a self-referential type expands; 0 uses the default (1)
+	AnimationDuration    time.Duration  // when > 0, the Hint/Example panel eases open and closed over this duration; 0 keeps the toggle instant and emits no timer messages
+	Trace                Trace          // session-observability hooks and the built-in Dump recorder
 }

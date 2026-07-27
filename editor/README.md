@@ -153,7 +153,7 @@ var RunAll = validate.RunAll
 ```
 
 <a name="AddEntry"></a>
-## type [AddEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L31>)
+## type [AddEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L29>)
 
 AddEntry appends a new entry to a collection\-nav block.
 
@@ -162,7 +162,7 @@ type AddEntry struct{}
 ```
 
 <a name="AppendPreset"></a>
-## type [AppendPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L45>)
+## type [AppendPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L43>)
 
 AppendPreset appends preset entries to a collection\-nav block. Content is the already\-fetched YAML so dispatch stays pure.
 
@@ -171,7 +171,7 @@ type AppendPreset struct{ Name, Content string }
 ```
 
 <a name="ApplyDocPreset"></a>
-## type [ApplyDocPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L80>)
+## type [ApplyDocPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L76>)
 
 
 
@@ -180,7 +180,7 @@ type ApplyDocPreset struct{ Name, Content string }
 ```
 
 <a name="ApplyPreset"></a>
-## type [ApplyPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L41>)
+## type [ApplyPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L39>)
 
 ApplyPreset replaces the block content with the named preset. Content is the already\-fetched YAML so dispatch stays pure.
 
@@ -191,7 +191,7 @@ type ApplyPreset struct{ Name, Content string }
 <a name="BlockAction"></a>
 ## type [BlockAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L9>)
 
-BlockAction is a pure synchronous mutation of blockEditState. All block\-editor mutations pass through blockEditState.dispatch.
+BlockAction is a pure synchronous mutation of blockEditState. Every block\-editor mutation passes through blockEditState.dispatch.
 
 ```go
 type BlockAction interface {
@@ -200,7 +200,7 @@ type BlockAction interface {
 ```
 
 <a name="CommitBlock"></a>
-## type [CommitBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L66>)
+## type [CommitBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L62>)
 
 
 
@@ -209,44 +209,41 @@ type CommitBlock struct{}
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L108-L126>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L95-L114>)
 
 Config bundles everything the editor needs from the embedding application.
 
-Schema must be a pointer to the Go type describing the YAML document's top level \(e.g. &MyConfig\{\}\). The editor introspects it through yedit/schema.
-
-Presets is optional \- when nil the editor opens fresh blocks with a minimal "\<key\>:\\n" template and the preset picker is disabled.
+Schema must be a pointer to the Go type describing the YAML document's top level \(e.g. &MyConfig\{\}\), introspected through yedit/schema.
 
 Validators run before every save and on the explicit "validate" shortcut. Use editor.MutuallyExclusive and editor.RequiredWith for the common cases.
 
-Hints is optional \- when set, each field's Hint/Example panel is populated from the returned FieldMeta. All FieldMeta fields are used as\-is; yedit does not fall back to struct tag values. When Hints is nil, the panel shows only a generated example.
-
-FieldMeta.PreChecked lists sub\-fields that start checked when a new block overlay opens. FieldMeta.Snippet provides the YAML inserted when a sub\-field is toggled on; falls back to "\<fieldName\>: \\n" when empty.
+Metadata populates each field's Hint/Example panel. FieldMeta values are used as\-is; yedit never falls back to struct tags. FieldMeta.PreChecked lists sub\-fields that start checked in a new block, and FieldMeta.Snippet is the YAML inserted when a sub\-field is toggled on, defaulting to "\<fieldName\>: \\n".
 
 ```go
 type Config struct {
     Path                 string         // YAML file to load; also the default save target when SavePath is empty
-    Schema               any            // non-nil struct pointer; typed as any because the editor uses reflection (e.g. &MyConfig{})
+    Schema               any            // non-nil struct pointer, typed as any because the editor uses reflection (e.g. &MyConfig{})
     Title                string         // label shown in the TUI header
     BlockPresets         presets.Source // optional; nil disables the preset picker inside block editors
     DocPresets           presets.Source // optional; when set, p on the root list opens a whole-document template picker
-    EnableHints          bool           // show the Hint/Example panel; requires Metadata to be set (a warning is shown if it is not)
-    Metadata             MetadataSource // field metadata displayed in the hint panel and enforced by the FromMetadata validators
+    EnableHints          bool           // show the Hint/Example panel; warns when Metadata is unset
+    Metadata             MetadataSource // field metadata shown in the hint panel and enforced by the FromMetadata validators
     Validators           []Validator    // rules evaluated before every save and on the validate shortcut
     Hidden               []string       // top-level keys to omit from the UI entirely
-    PassthroughKeys      []string       // top-level keys preserved as-is; hidden from all sections and excluded from unknown-key validation
+    PassthroughKeys      []string       // top-level keys preserved as-is: hidden from all sections and exempt from unknown-key validation
     Theme                theme.Theme    // zero-value resolves to ThemePlain
-    NoDeleteConfirm      bool           // skip the "Remove block?" confirmation dialog; deletion is still undoable via ctrl+u
-    NoValidateOnSave     bool           // allow saving even when validators report errors; a warning alert is shown but does not block
-    NoSaveConfirm        bool           // skip the "Save changes?" confirmation dialog; warning confirms (NoValidateOnSave) are still shown
-    SavePath             string         // write to this path instead of Path; Path is still used for loading
-    SchemaRecursionDepth int            // extra levels a self-referential type expands (e.g. CategoryFilter.Any []CategoryFilter); 0 uses the default (1)
-    Trace                Trace          // session-observability hooks (OnAction/OnModelAction/OnMsg) and the built-in Dump recorder
+    NoDeleteConfirm      bool           // skip the "Remove block?" dialog; deletion is still undoable via ctrl+u
+    NoValidateOnSave     bool           // allow saving despite validator errors; a warning alert is shown but does not block
+    NoSaveConfirm        bool           // skip the "Save changes?" dialog; warning confirms are still shown
+    SavePath             string         // write here instead of Path, which is still used for loading
+    SchemaRecursionDepth int            // extra levels a self-referential type expands; 0 uses the default (1)
+    AnimationDuration    time.Duration  // when > 0, the Hint/Example panel eases open and closed over this duration; 0 keeps the toggle instant and emits no timer messages
+    Trace                Trace          // session-observability hooks and the built-in Dump recorder
 }
 ```
 
 <a name="DeleteBlock"></a>
-## type [DeleteBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L67>)
+## type [DeleteBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L63>)
 
 
 
@@ -255,7 +252,7 @@ type DeleteBlock struct{ Key string }
 ```
 
 <a name="DeleteEntry"></a>
-## type [DeleteEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L34>)
+## type [DeleteEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L32>)
 
 DeleteEntry removes the collection entry at SeqIdx.
 
@@ -264,7 +261,7 @@ type DeleteEntry struct{ SeqIdx int }
 ```
 
 <a name="DocRedo"></a>
-## type [DocRedo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L76>)
+## type [DocRedo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L72>)
 
 
 
@@ -273,7 +270,7 @@ type DocRedo struct{}
 ```
 
 <a name="DocUndo"></a>
-## type [DocUndo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L75>)
+## type [DocUndo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L71>)
 
 
 
@@ -282,7 +279,7 @@ type DocUndo struct{}
 ```
 
 <a name="DrillIn"></a>
-## type [DrillIn](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L68-L73>)
+## type [DrillIn](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L64-L69>)
 
 
 
@@ -296,7 +293,7 @@ type DrillIn struct {
 ```
 
 <a name="DrillOut"></a>
-## type [DrillOut](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L74>)
+## type [DrillOut](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L70>)
 
 
 
@@ -305,25 +302,25 @@ type DrillOut struct{}
 ```
 
 <a name="FieldMeta"></a>
-## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L21>)
+## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L20>)
 
-These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
+These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type FieldMeta = spec.FieldMeta
 ```
 
 <a name="Format"></a>
-## type [Format](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L24>)
+## type [Format](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L23>)
 
-These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
+These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type Format = spec.Format
 ```
 
 <a name="FormatCustom"></a>
-### func [FormatCustom](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L41>)
+### func [FormatCustom](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L40>)
 
 ```go
 func FormatCustom(name string, validate func(string) bool) Format
@@ -332,18 +329,18 @@ func FormatCustom(name string, validate func(string) bool) Format
 FormatCustom builds an app\-specific format. See spec.FormatCustom.
 
 <a name="MetadataFunc"></a>
-## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L23>)
+## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L22>)
 
-These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
+These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type MetadataFunc = spec.MetadataFunc
 ```
 
 <a name="MetadataSource"></a>
-## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L22>)
+## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L21>)
 
-These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
+These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type MetadataSource = spec.MetadataSource
@@ -352,7 +349,7 @@ type MetadataSource = spec.MetadataSource
 <a name="ModelAction"></a>
 ## type [ModelAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L13>)
 
-ModelAction is handled by model.dispatch. May produce tea.Cmd only for tea.Quit.
+ModelAction is handled by model.dispatch and may produce a tea.Cmd only for tea.Quit.
 
 ```go
 type ModelAction interface {
@@ -361,7 +358,7 @@ type ModelAction interface {
 ```
 
 <a name="NavigateEntry"></a>
-## type [NavigateEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L37>)
+## type [NavigateEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L35>)
 
 NavigateEntry moves the collection cursor to Idx \(flush \+ load\).
 
@@ -370,7 +367,7 @@ type NavigateEntry struct{ Idx int }
 ```
 
 <a name="OpenBlock"></a>
-## type [OpenBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L65>)
+## type [OpenBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L61>)
 
 
 
@@ -379,7 +376,7 @@ type OpenBlock struct{ Key string }
 ```
 
 <a name="Redo"></a>
-## type [Redo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L51>)
+## type [Redo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L49>)
 
 Redo re\-applies the most recently undone block snapshot.
 
@@ -388,7 +385,7 @@ type Redo struct{}
 ```
 
 <a name="Reload"></a>
-## type [Reload](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L78>)
+## type [Reload](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L74>)
 
 
 
@@ -435,7 +432,7 @@ func RunContext(ctx context.Context, cfg Config) (res Result, err error)
 RunContext is Run with a context: cancelling ctx shuts the editor down and makes RunContext return the context's error. Unsaved changes are discarded on cancellation, but Result.Saved still reports any save that completed before it.
 
 <a name="Save"></a>
-## type [Save](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L77>)
+## type [Save](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L73>)
 
 
 
@@ -444,9 +441,9 @@ type Save struct{}
 ```
 
 <a name="SyncYAML"></a>
-## type [SyncYAML](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L25-L28>)
+## type [SyncYAML](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L23-L26>)
 
-SyncYAML advances be.node from new YAML content \(parse\-gated\). Checkpoint: true saves an undo snapshot first \(use for paste\); false skips it \(use for individual keystrokes\).
+SyncYAML advances be.node from new YAML content \(parse\-gated\). Checkpoint saves an undo snapshot first: set it for pastes, not for single keystrokes.
 
 ```go
 type SyncYAML struct {
@@ -456,7 +453,7 @@ type SyncYAML struct {
 ```
 
 <a name="ToggleField"></a>
-## type [ToggleField](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L18-L21>)
+## type [ToggleField](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L16-L19>)
 
 ToggleField checks or unchecks the field at NodeIdx in the tree.
 
@@ -468,7 +465,7 @@ type ToggleField struct {
 ```
 
 <a name="ToggleHints"></a>
-## type [ToggleHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L79>)
+## type [ToggleHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L75>)
 
 
 
@@ -477,22 +474,22 @@ type ToggleHints struct{}
 ```
 
 <a name="Trace"></a>
-## type [Trace](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L79-L85>)
+## type [Trace](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L75-L81>)
 
-Trace bundles the editor's session\-observability hooks: the OnAction/ OnModelAction/OnMsg callbacks and the built\-in Dump\-to\-JSONL recorder built on top of them. See docs/SESSION\-TRACING.md for the full picture.
+Trace bundles the editor's session\-observability hooks and the built\-in Dump\-to\-JSONL recorder built on them. See docs/SESSION\-TRACING.md.
 
 ```go
 type Trace struct {
-    OnAction      func(blockKey string, a BlockAction) // optional; called synchronously after every BlockAction is dispatched, with the key of the block editor it was applied to (e.g. for session tracing)
-    OnModelAction func(ModelAction)                    // optional; called synchronously after every ModelAction is dispatched (e.g. for session tracing)
-    OnMsg         func(where string, msg tea.Msg)      // optional; called synchronously for every raw tea.Msg the program receives (every keystroke, resize, etc.), before it is routed. where describes the active pane/block/panel at the time (e.g. "list", "block:categories:tree:editing")
-    Dump          bool                                 // when true, records every action and keystroke to a JSONL file; the path is reported in Result.DumpPath. Composes with OnAction/OnModelAction/OnMsg if those are also set.
-    DumpPath      string                               // optional explicit path for the Dump trace file; ignored when Dump is false. Empty falls back to a timestamped file in the OS temp dir.
+    OnAction      func(blockKey string, a BlockAction) // optional; called after every BlockAction, with the key of the block editor it applied to
+    OnModelAction func(ModelAction)                    // optional; called after every ModelAction
+    OnMsg         func(where string, msg tea.Msg)      // optional; called for every raw tea.Msg before it is routed. where describes the active pane/block/panel (e.g. "block:categories:tree:editing")
+    Dump          bool                                 // record every action and keystroke to a JSONL file, reported in Result.DumpPath; composes with the callbacks above
+    DumpPath      string                               // explicit path for the Dump file; empty falls back to a timestamped file in the OS temp dir
 }
 ```
 
 <a name="Undo"></a>
-## type [Undo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L48>)
+## type [Undo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L46>)
 
 Undo restores the previous block snapshot.
 
@@ -501,16 +498,16 @@ type Undo struct{}
 ```
 
 <a name="ValidationInput"></a>
-## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L26>)
+## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L25>)
 
-These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
+These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type ValidationInput = spec.ValidationInput
 ```
 
 <a name="NewValidationInput"></a>
-### func [NewValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L70>)
+### func [NewValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L69>)
 
 ```go
 func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
@@ -519,27 +516,27 @@ func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
 NewValidationInput parses raw once and bundles it with blocks for a validation run. See spec.NewValidationInput.
 
 <a name="Validator"></a>
-## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L27>)
+## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L26>)
 
-These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
+These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type Validator = spec.Validator
 ```
 
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L28>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L27>)
 
-These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
+These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type ValidatorFunc = spec.ValidatorFunc
 ```
 
 <a name="Violation"></a>
-## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L25>)
+## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L24>)
 
-These names moved to yedit/spec so that metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types: editor.FieldMeta and spec.FieldMeta are the same type, so existing consumer code keeps compiling.
+These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type Violation = spec.Violation

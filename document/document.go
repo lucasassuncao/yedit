@@ -16,11 +16,11 @@ import (
 // HistoryLimit caps the undo stack.
 const HistoryLimit = 50
 
-// Document owns the YAML editing state. All mutations are atomic and snapshot
-// for undo automatically. Single-threaded - no concurrent use.
+// Document owns the YAML editing state. Mutations are atomic and snapshot for
+// undo automatically. Single-threaded - no concurrent use.
 //
-// knownOrder defines the canonical key order used by Insert/Replace to place
-// blocks. Pass nil for unordered append behaviour.
+// knownOrder is the canonical key order Insert/Replace place blocks by; nil
+// means append.
 type Document struct {
 	path       string
 	loadPath   string // file the content was loaded from; Reload re-reads this even after SetPath
@@ -39,10 +39,8 @@ type Document struct {
 	diskSize    int64
 }
 
-// Load reads a YAML file from path. A non-existent file is not an error - the
-// returned Document is empty, dirty=false, and Save writes to path.
-//
-// knownOrder is the canonical key order for ordered Insert/Replace.
+// Load reads a YAML file from path. A non-existent file is not an error: the
+// returned Document is empty and clean, and Save creates the file.
 func Load(path string, knownOrder []string) (Document, error) {
 	raw, err := os.ReadFile(path) // #nosec G304 -- path is supplied by the embedding application
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -64,8 +62,8 @@ func Load(path string, knownOrder []string) (Document, error) {
 	return d, nil
 }
 
-// New builds a Document from raw bytes. Intended for tests and in-memory use;
-// the resulting document has no file path.
+// New builds a Document from raw bytes, with no file path. For tests and
+// in-memory use.
 func New(raw []byte, knownOrder []string) (Document, error) {
 	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}) // strip UTF-8 BOM
 	usedCRLF := bytes.Contains(raw, []byte("\r\n"))
@@ -89,17 +87,14 @@ func (d Document) Path() string    { return d.path }
 func (d Document) CanUndo() bool   { return len(d.history) > 0 }
 func (d Document) CanRedo() bool   { return len(d.future) > 0 }
 
-// Dirty reports whether the content differs from what was last loaded or
-// saved. It is computed rather than stored, so reverting an edit back to the
-// on-disk content reads as clean and no mutation path can forget to keep a
-// flag in sync.
+// Dirty reports whether the content differs from what was last loaded or saved.
+// Computed, not stored: reverting an edit reads as clean and no mutation path
+// can forget to update a flag.
 func (d Document) Dirty() bool { return !bytes.Equal(d.raw, d.loaded) }
 
-// SetPath overrides the path used by Save. Call after Load when the save
-// destination differs from the source (e.g. writing a template to a new file).
-// Reload keeps re-reading the original load path. The on-disk state of the new
-// path is recorded so ExternallyChanged compares against the save destination
-// instead of reporting a false positive on the first save.
+// SetPath overrides the path used by Save; Reload keeps re-reading the original
+// load path. The new path's on-disk state is recorded so ExternallyChanged
+// compares against the save destination instead of reporting a false positive.
 func (d Document) SetPath(path string) Document {
 	d.path = path
 	return d.recordDiskState()
@@ -110,19 +105,17 @@ func (d Document) BlockContent(key string) (string, error) {
 	return BlockContent(d.raw, d.blocks, key)
 }
 
-// snapshot pushes the current raw onto the history stack, capping at
-// HistoryLimit. Any redo entries are discarded - a new mutation forks away
-// from the undone states.
+// snapshot pushes the current raw onto the history stack and discards the redo
+// entries: a new mutation forks away from the undone states.
 func (d Document) snapshot() Document {
 	d.history = appendCapped(d.history, copyBytes(d.raw))
 	d.future = nil
 	return d
 }
 
-// appendCapped returns a new stack with snap appended, dropping the oldest
-// entries beyond HistoryLimit. The result never shares a backing array with
-// stack: Document is copied by value, so an in-place append or eviction would
-// corrupt sibling copies sharing the array.
+// appendCapped appends snap, dropping the oldest entries beyond HistoryLimit.
+// The result never shares a backing array with stack: Document is copied by
+// value, so an in-place append would corrupt sibling copies.
 func appendCapped(stack [][]byte, snap []byte) [][]byte {
 	start := 0
 	if len(stack)+1 > HistoryLimit {
@@ -134,8 +127,8 @@ func appendCapped(stack [][]byte, snap []byte) [][]byte {
 	return out
 }
 
-// cloneStack returns a copy of stack's slice header contents so a pop never
-// mutates a backing array shared with another Document copy (copy-on-write).
+// cloneStack copies the stack so a pop never mutates a backing array shared
+// with another Document copy.
 func cloneStack(stack [][]byte) [][]byte {
 	if len(stack) == 0 {
 		return nil
@@ -145,10 +138,9 @@ func cloneStack(stack [][]byte) [][]byte {
 	return out
 }
 
-// Insert adds snippet to the document, positioned by the canonical key order.
-// Snapshots history on success. Returns an error (and rolls back) if a
-// post-write round-trip check detects that the stored block diverges from the
-// submitted snippet.
+// Insert adds snippet, positioned by the canonical key order, and snapshots
+// history. Rolls back with an error when the round-trip check finds the stored
+// block diverging from the snippet.
 func (d Document) Insert(snippet string) (Document, error) {
 	snippet = strings.ReplaceAll(snippet, "\r\n", "\n")
 	newRaw, err := InsertBlock(d.raw, snippet, d.knownOrder)
@@ -166,9 +158,8 @@ func (d Document) Insert(snippet string) (Document, error) {
 	}
 	d.blocks = blocks
 
-	// Verify every key the snippet carries - a multi-key snippet lands as one
-	// block per key, so comparing the whole snippet against a single block
-	// would falsely reject it.
+	// Verify per key: a multi-key snippet lands as one block per key, so
+	// comparing the whole snippet against a single block would falsely reject it.
 	if sBlocks, err2 := ParseBlocks([]byte(snippet)); err2 == nil {
 		for _, sb := range sBlocks {
 			part, errPart := BlockContent([]byte(snippet), sBlocks, sb.Key)
@@ -203,11 +194,10 @@ func (d Document) Remove(key string) (Document, error) {
 	return d, nil
 }
 
-// Replace substitutes the content of the existing block at key with snippet,
-// in place - the block's position and any surrounding blank lines or comments
-// are left untouched. Records a single history snapshot for the operation.
-// Returns an error (and rolls back) if a post-write round-trip check detects
-// that the stored block diverges from the submitted snippet.
+// Replace substitutes the block at key in place, leaving its position and the
+// surrounding blank lines and comments untouched, and records one history
+// snapshot. Rolls back with an error when the round-trip check finds the stored
+// block diverging from the snippet.
 func (d Document) Replace(key, snippet string) (Document, error) {
 	snippet = strings.ReplaceAll(snippet, "\r\n", "\n")
 	replaced, err := ReplaceBlock(d.raw, d.blocks, key, snippet)
@@ -235,11 +225,10 @@ func (d Document) Replace(key, snippet string) (Document, error) {
 	return d, nil
 }
 
-// blockSemanticEqual reports whether two YAML strings are semantically equivalent -
-// same structure and values regardless of formatting, key order, or quoting style.
-// Fails closed: any parse error returns false, so an unverifiable round-trip
-// triggers a rollback instead of silently accepting possibly corrupted content
-// (see TestBlockSemanticEqual_roundtripComparison for the bug this prevents).
+// blockSemanticEqual compares structure and values, ignoring formatting, key
+// order, and quoting. Fails closed: a parse error returns false, so an
+// unverifiable round-trip rolls back instead of accepting possibly corrupted
+// content (see TestBlockSemanticEqual_roundtripComparison).
 func blockSemanticEqual(a, b string) bool {
 	var va, vb any
 	if err := yaml.Unmarshal([]byte(a), &va); err != nil {
@@ -259,10 +248,9 @@ func blockSemanticEqual(a, b string) bool {
 	return bytes.Equal(ra, rb)
 }
 
-// ReplaceRaw replaces the document content with raw, normalising CRLF.
-// If raw fails to parse, the document is left untouched and the error is returned.
-// Does NOT snapshot - direct YAML editing is not tracked in the undo history;
-// only committed block operations (Insert, Replace, Remove) are undoable.
+// ReplaceRaw swaps the whole document content, normalising CRLF, and leaves it
+// untouched when raw fails to parse. Does not snapshot: only committed block
+// operations (Insert, Replace, Remove) are undoable.
 func (d Document) ReplaceRaw(raw []byte) (Document, error) {
 	raw = bytes.ReplaceAll(raw, []byte("\r\n"), []byte("\n"))
 	blocks, err := ParseBlocks(raw)
@@ -274,11 +262,10 @@ func (d Document) ReplaceRaw(raw []byte) (Document, error) {
 	return d, nil
 }
 
-// Undo restores the previous raw from history and pushes the undone state onto
-// the redo stack. Returns false if history is empty or the snapshot no longer
-// parses - the current consistent state is kept rather than diverging silently.
-// The pop is copy-on-write: sibling Document copies share the stack's backing
-// array and must not observe the mutation.
+// Undo restores the previous raw and pushes the undone state onto the redo
+// stack. Returns false when history is empty or the snapshot no longer parses,
+// keeping the current consistent state. The pop is copy-on-write: sibling
+// Document copies share the stack's backing array.
 func (d Document) Undo() (Document, bool) {
 	if len(d.history) == 0 {
 		return d, false
@@ -295,11 +282,10 @@ func (d Document) Undo() (Document, bool) {
 	return d, true
 }
 
-// Redo re-applies the most recently undone change. Returns false if there is
-// nothing to redo or the snapshot no longer parses - the current consistent
-// state is kept rather than diverging silently. The current state is pushed
-// onto the undo history so the redo itself can be undone; the pop is
-// copy-on-write, mirroring Undo.
+// Redo re-applies the most recently undone change, pushing the current state
+// onto the undo history so the redo itself can be undone. Returns false when
+// there is nothing to redo or the snapshot no longer parses. Copy-on-write,
+// mirroring Undo.
 func (d Document) Redo() (Document, bool) {
 	if len(d.future) == 0 {
 		return d, false
@@ -316,11 +302,10 @@ func (d Document) Redo() (Document, bool) {
 	return d, true
 }
 
-// rollback undoes the last snapshot without recording a redo entry. Used when
-// a mutation fails its round-trip check: the rejected state must not be
-// reachable via Redo. If the snapshot no longer parses (it was parseable when
-// taken, so this should not happen), the current state is kept rather than
-// leaving raw and blocks divergent. The pop is copy-on-write, mirroring Undo.
+// rollback undoes the last snapshot without recording a redo entry: a state
+// rejected by the round-trip check must not be reachable via Redo. An
+// unparseable snapshot keeps the current state rather than leaving raw and
+// blocks divergent. Copy-on-write, mirroring Undo.
 func (d Document) rollback() Document {
 	if len(d.history) == 0 {
 		return d
@@ -336,11 +321,9 @@ func (d Document) rollback() Document {
 	return d
 }
 
-// Save writes the current content to disk at d.path and clears dirty. The write
-// is atomic (temp file + rename) so a crash mid-write never truncates the
-// original. The file's existing mode is preserved (new files are created 0600),
-// and CRLF line endings are restored when the loaded file used them. Returns an
-// error if d.path is empty.
+// Save atomically writes the current content to d.path and clears dirty. The
+// file's existing mode is preserved (new files get 0600) and CRLF line endings
+// are restored when the loaded file used them. Errors when d.path is empty.
 func (d Document) Save() (Document, error) {
 	if d.path == "" {
 		return d, fmt.Errorf("document has no path; Load requires a path")
@@ -357,13 +340,11 @@ func (d Document) Save() (Document, error) {
 	return d, nil
 }
 
-// Reload re-reads the source file from disk, replacing the in-memory state
-// entirely: raw, blocks, dirty, and the undo/redo history are reset as if the
-// document had just been loaded. The source is the path the document was
-// loaded from, even when SetPath pointed Save at a different destination; the
-// save destination is preserved on the reloaded document. A missing file
-// reloads as an empty document, mirroring Load. On error (no path, unreadable
-// or unparseable file) the in-memory state is left untouched.
+// Reload re-reads the source file, resetting raw, blocks, dirty, and the
+// undo/redo history as if the document had just been loaded. The source is the
+// load path even when SetPath pointed Save elsewhere; the save destination
+// survives. A missing file reloads as empty, mirroring Load. On error the
+// in-memory state is left untouched.
 func (d Document) Reload() (Document, error) {
 	src := d.loadPath
 	if src == "" {
@@ -382,12 +363,10 @@ func (d Document) Reload() (Document, error) {
 	return nd, nil
 }
 
-// MarkSaved applies the outcome of a completed Save onto d. Save runs on a
-// snapshot of the document (e.g. in a background command), so by the time its
-// result arrives d may already carry newer edits; replacing d with the saved
-// snapshot would silently drop them. MarkSaved instead copies only the
-// persistence state - what is on disk (loaded, mtime/size) - and Dirty()
-// follows from the current content.
+// MarkSaved applies a completed Save onto d. Save runs on a snapshot, so by the
+// time its result arrives d may carry newer edits; replacing d wholesale would
+// drop them. Only the persistence state (loaded, mtime/size) is copied, and
+// Dirty() follows from the current content.
 func (d Document) MarkSaved(saved Document) Document {
 	d.loaded = copyBytes(saved.loaded)
 	d.diskModTime = saved.diskModTime
@@ -396,10 +375,9 @@ func (d Document) MarkSaved(saved Document) Document {
 }
 
 // ExternallyChanged reports whether the file on disk was modified since this
-// Document last loaded or saved it - e.g. another process or a git operation
-// edited it. Returns false when there is no path or the file is absent (a save
-// would create it, clobbering nothing). Callers should confirm with the user
-// before overwriting when this returns true.
+// Document last loaded or saved it. False when there is no path or the file is
+// absent: a save would create it, clobbering nothing. Callers should confirm
+// with the user before overwriting.
 func (d Document) ExternallyChanged() bool {
 	if d.path == "" {
 		return false
@@ -411,8 +389,8 @@ func (d Document) ExternallyChanged() bool {
 	return info.ModTime() != d.diskModTime || info.Size() != d.diskSize
 }
 
-// recordDiskState captures the on-disk mtime/size so a later Save can detect an
-// external modification. A missing file records the zero state.
+// recordDiskState captures the on-disk mtime/size for ExternallyChanged. A
+// missing file records the zero state.
 func (d Document) recordDiskState() Document {
 	if d.path == "" {
 		return d
@@ -427,11 +405,10 @@ func (d Document) recordDiskState() Document {
 	return d
 }
 
-// atomicWrite durably writes data to path: it writes a temp file in the same
-// directory, fsyncs it, then renames over path (atomic on the same filesystem,
-// and REPLACE_EXISTING on Windows). The destination's existing mode is preserved;
-// new files are created 0600. On any failure before the rename the temp file is
-// removed and path is left untouched.
+// atomicWrite writes a temp file in the same directory, fsyncs it, then renames
+// over path, so a crash mid-write never truncates the original. The
+// destination's mode is preserved; new files get 0600. Any failure before the
+// rename removes the temp file and leaves path untouched.
 func atomicWrite(path string, data []byte) error {
 	mode := os.FileMode(0o600)
 	if info, err := os.Stat(path); err == nil {

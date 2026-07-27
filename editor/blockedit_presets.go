@@ -11,10 +11,9 @@ import (
 	"github.com/lucasassuncao/yedit/presets"
 )
 
-// presetBrowser is the preset-picker overlay shown inside a block editor: a
-// list of preset names on the left and a scrollable YAML preview on the right.
-// It owns only browsing state (cursor, focus, scroll); applying or appending
-// the chosen preset stays in blockEditState.
+// presetBrowser is the preset-picker overlay: a list of preset names on the left
+// and a scrollable YAML preview on the right. It owns only browsing state;
+// applying or appending the choice stays in blockEditState.
 type presetBrowser struct {
 	source presets.Source
 	field  string
@@ -26,8 +25,8 @@ type presetBrowser struct {
 }
 
 // newPresetBrowser builds the overlay for field, pre-selecting current when it
-// is one of the available presets. Returns nil when source is nil or the field
-// has no presets - the picker simply does not open.
+// is one of the presets. Reports false when source is nil or the field has no
+// presets, and the picker simply does not open.
 func newPresetBrowser(source presets.Source, field, current string) (presetBrowser, bool) {
 	if source == nil {
 		return presetBrowser{}, false
@@ -46,9 +45,9 @@ func newPresetBrowser(source presets.Source, field, current string) (presetBrows
 	return pb, true
 }
 
-// selectedName returns the preset name under the cursor, or "" when the cursor
-// is out of range. The browser only opens with a non-empty names slice and the
-// cursor is clamped in Update, so "" is a defensive fallback, not an expected value.
+// selectedName returns the preset name under the cursor. The browser only opens
+// with a non-empty names slice and Update clamps the cursor, so "" is a
+// defensive fallback rather than an expected value.
 func (pb presetBrowser) selectedName() string {
 	if pb.cursor < 0 || pb.cursor >= len(pb.names) {
 		return ""
@@ -66,9 +65,9 @@ const (
 	presetAppended               // append the selection's entries (collections only)
 )
 
-// Update handles one key press and returns the updated browser. allowAppend
-// enables the "a" append action (collection-nav blocks only). name carries the
-// selected preset for presetApplied/presetAppended.
+// Update handles one key press. allowAppend enables the "a" append action, for
+// collection-nav blocks only, and the returned name carries the selected preset
+// for presetApplied/presetAppended.
 func (pb presetBrowser) Update(msg tea.KeyMsg, allowAppend bool) (presetBrowser, presetAction, string) {
 	switch {
 	case key.Matches(msg, kbEsc):
@@ -123,8 +122,8 @@ func (pb presetBrowser) listView(th resolvedTheme) string {
 	return sb.String()
 }
 
-// previewView renders the selected preset's YAML clipped to height lines,
-// honouring the current scroll offset.
+// previewView renders the selected preset's YAML clipped to height lines at the
+// current scroll offset.
 func (pb presetBrowser) previewView(height int) string {
 	full := pb.previewYAML()
 	if full == "" {
@@ -159,8 +158,8 @@ func (pb presetBrowser) previewYAML() string {
 	return y
 }
 
-// openPresetPicker enters preset-browser mode if there are any presets for
-// this block. It's a no-op when Presets is nil or the field has none.
+// openPresetPicker enters preset-browser mode, a no-op when this block has no
+// presets.
 func (be blockEditState) openPresetPicker() blockEditState {
 	pb, ok := newPresetBrowser(be.cfg.BlockPresets, be.key, be.currentPreset)
 	if !ok {
@@ -177,8 +176,8 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 	be.editorErr = editorError{}
 
 	if be.isCollectionNav() {
-		// Non-empty preset YAML that does not parse would be coerced to an empty
-		// collection by collValueNode; tell the user instead of silently clearing.
+		// collValueNode coerces unparseable YAML to an empty collection, so tell
+		// the user instead of clearing the block without explanation.
 		if strings.TrimSpace(y) != "" && valueNodeOfSnippet(y) == nil {
 			be.editorErr = editorError{kind: errPreset, message: "Preset YAML is invalid; block reset to empty."}
 		}
@@ -193,8 +192,8 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 	if v := blockValueNodeOrNil(y); v != nil {
 		be.node = *v
 	} else {
-		// The preset YAML is unparseable; reset to an empty mapping and tell
-		// the user so the block is not silently cleared without explanation.
+		// Reset to an empty mapping and say so, rather than clearing the block
+		// without explanation.
 		be.node = yaml.Node{Kind: yaml.MappingNode}
 		be.editorErr = editorError{kind: errPreset, message: "Preset YAML is invalid - block reset to empty."}
 	}
@@ -213,9 +212,9 @@ func (be blockEditState) appendPreset(name, y string) blockEditState {
 
 	be = be.flushCurrentEntry()
 	be.editorErr = editorError{} // appending overrides an in-progress invalid entry; don't block
-	// Appending a preset whose entry key already exists in the map would splice a
-	// duplicate mapping key into the node - the same corruption flushCurrentEntry
-	// guards against on rename - so reject the whole append instead.
+	// A preset entry key that already exists would splice a duplicate mapping key
+	// into the node, the same corruption flushCurrentEntry guards on rename, so
+	// reject the whole append.
 	if be.isMapNav() {
 		existing := make(map[string]bool, len(be.node.Content)/2)
 		for i := 0; i+1 < len(be.node.Content); i += 2 {
@@ -230,7 +229,7 @@ func (be blockEditState) appendPreset(name, y string) blockEditState {
 			existing[k] = true
 		}
 	}
-	// Indentation is irrelevant now: the entries are spliced as nodes and re-encoded.
+	// Indentation is irrelevant: entries are spliced as nodes and re-encoded.
 	be.node.Content = append(be.node.Content, presetNode.Content...)
 
 	be.tree.nodes = be.collectionTreeNodes()

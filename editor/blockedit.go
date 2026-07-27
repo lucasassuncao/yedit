@@ -38,8 +38,8 @@ const (
 )
 
 // blockEditMode is the top-level state of the block-edit screen. Exactly one
-// mode is active at a time; helper data fields (confirmAlert, presetNames…)
-// are only meaningful in their corresponding mode.
+// mode is active at a time, and the helper fields (confirmAlert, preset…) are
+// only meaningful in their own mode.
 type blockEditMode int
 
 const (
@@ -48,7 +48,7 @@ const (
 	modeConfirming                         // confirm alert overlay
 )
 
-// errKind classifies the origin of an editor error so blocking logic can be precise.
+// errKind classifies an editor error so blocking logic can be precise.
 type errKind int
 
 const (
@@ -76,11 +76,10 @@ type blockEditState struct {
 	coll        collectionBuffer // non-zero only for collection-nav editors
 	knownByPath map[string]map[string]bool
 
-	// node is the block's canonical value node - the single source of truth from
-	// which the tree (checkmarks, labels) is projected. For non-collection blocks
-	// it mirrors what the YAML editor renders; tree-driven toggles mutate it
-	// structurally and the editor is re-rendered from it. Collection blocks still
-	// carry their entry list in coll for now.
+	// node is the block's canonical value node, the single source of truth the
+	// tree is projected from. Tree-driven toggles mutate it structurally and the
+	// YAML editor is re-rendered from it. Collection blocks still carry their
+	// entry list in coll for now.
 	node yaml.Node
 
 	yamlEditor      textarea.Model
@@ -88,6 +87,7 @@ type blockEditState struct {
 	active          blockEditPanel
 	prevActive      blockEditPanel // panel to return to when leaving hint focus
 	showHint        bool           // split the right column to show the Hint/Example panel
+	hintAnim        tween          // in-flight show/hide transition for the hint panel; inactive unless Config.AnimationDuration is set
 	hintScroll      int            // scroll offset in hint panel when active == blockEditPanelHint
 	previewScroll   int            // 1-based YAML line the Preview keeps visible; 0 = top
 
@@ -95,10 +95,9 @@ type blockEditState struct {
 	dirty         bool   // uncommitted changes since last ctrl+s
 	committedYAML string // normalized YAML at last ctrl+s (or open); used to reset dirty when content reverts
 
-	// focus is this editor's address within the model's canonical editRoot tree.
-	// nil for the top-level editor (whole block); deeper editors carry the indexed
-	// path to the drilled-into node. The editor flushes its content back into
-	// editRoot at this path on navigation/commit.
+	// focus is this editor's address within the model's canonical editRoot tree:
+	// nil for the top-level editor, otherwise the indexed path to the drilled-into
+	// node. Content is flushed back into editRoot here on navigation/commit.
 	focus []pathSeg
 
 	width, height int
@@ -121,9 +120,9 @@ type blockEditState struct {
 	legendLines int // lines consumed by the legend bar; updated on resize and init
 }
 
-// blockOwnDef returns the block's own field definition. When the caller did not
-// supply metadata (nested editors, unknown keys, or tests), it synthesizes a
-// minimal def from the spec so YAMLName and Kind are always set.
+// blockOwnDef returns the block's own field definition, synthesizing a minimal
+// one from the spec when the caller supplied no metadata (nested editors,
+// unknown keys, tests) so YAMLName and Kind are always set.
 func blockOwnDef(spec blockSpec) schema.FieldDef {
 	if spec.def.YAMLName != "" {
 		return spec.def
@@ -173,10 +172,9 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 
 	be.yamlEditor = be.newYAMLEditor(content)
 
-	// Non-collection blocks carry their canonical node from the start; the tree
-	// is projected from it and tree edits mutate it. (Collections set be.node
-	// above, from the full entry list.) Derive the tree once here so it reflects
-	// be.node even when content came from a preset rather than spec.content.
+	// Non-collection blocks carry their canonical node from the start. Derive the
+	// tree once here so it reflects be.node even when content came from a preset
+	// rather than spec.content.
 	if !structured {
 		if v := blockValueNodeOrNil(content); v != nil {
 			be.node = *v
@@ -205,10 +203,9 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 		be.yamlEditor.Focus()
 	}
 
-	// Baseline for dirty-tracking: the normalized open state, for every block
-	// kind. computeDirty compares against it, so dirty is derived rather than
-	// maintained flag-by-flag. Non-collection blocks normalize the buffer (an
-	// unparseable block on disk must still read as clean until edited).
+	// Baseline for dirty-tracking: the normalized open state. Non-collection
+	// blocks normalize the buffer, so an unparseable block on disk still reads as
+	// clean until edited.
 	if structured {
 		be.committedYAML = nodeToContent(be.key, &be.node)
 	} else {
@@ -218,11 +215,9 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	return be
 }
 
-// computeDirty reports whether the editor's state differs from the committed
-// baseline (committedYAML). It is derived at the dispatch boundary instead of
-// being maintained by every mutation: content that returns to the baseline -
-// a toggle undone by hand, an edit typed and then reverted - reads as clean
-// again, for collections too.
+// computeDirty reports whether the editor differs from committedYAML. Derived at
+// the dispatch boundary rather than maintained per mutation, so content that
+// returns to the baseline reads as clean again.
 func (be blockEditState) computeDirty() bool {
 	if be.isCollectionNav() {
 		if nodeToContent(be.key, &be.node) != be.committedYAML {
@@ -237,18 +232,15 @@ func (be blockEditState) computeDirty() bool {
 func (be blockEditState) newYAMLEditor(content string) textarea.Model {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
-	// A custom prompt takes the place of the built-in line-number gutter so
-	// it matches the Preview panel's "%4d │ " gutter (numberPreviewLines)
-	// exactly instead of the library's own plain-number style.
+	// A custom prompt replaces the built-in line-number gutter so it matches the
+	// Preview panel's "%4d │ " gutter (numberPreviewLines) exactly.
 	rt := be.theme
 	ta.SetPromptFunc(previewGutterWidth, func(info textarea.PromptInfo) string {
 		return rt.hintDim.Render(fmt.Sprintf("%4d │ ", info.LineNumber+1))
 	})
-	// The library defaults MaxHeight to 99: past that it silently caps both
-	// the visible viewport height (so hiding the hint panel could not grow
-	// the editor further) and, worse, the number of logical lines the buffer
-	// accepts at all - truncating any YAML block longer than 99 lines. We
-	// manage height ourselves via SetHeight below, so disable the cap.
+	// The library's MaxHeight default of 99 silently caps both the viewport and
+	// the number of logical lines the buffer accepts, truncating YAML blocks
+	// longer than 99 lines. We manage height via SetHeight, so disable the cap.
 	ta.MaxHeight = 0
 	ta.SetWidth(be.rightW - 2)
 	ta.SetHeight(be.editorH() - 1)
@@ -278,13 +270,14 @@ func (be blockEditState) innerH() int {
 	return h
 }
 
-// hintH returns the content height of the hint panel (bottom-right).
-// Returns 0 when EnableHints is false or the panel is toggled hidden.
-// Otherwise the hint takes ~1/3 of the right column, floored at 5 lines.
-func (be blockEditState) hintH() int {
-	if !be.cfg.EnableHints || !be.showHint {
-		return 0
-	}
+// hintVisible reports whether the hint panel is drawn. It stays true
+// mid-animation but goes false the moment the eased height reaches zero - see
+// model.hintVisible for why a zero-height panel must not be rendered.
+func (be blockEditState) hintVisible() bool { return be.hintH() > 0 }
+
+// hintTargetH is the height the hint panel settles at once shown: ~1/3 of the
+// right column, floored at 5 lines and never squeezing the editor below 5.
+func (be blockEditState) hintTargetH() int {
 	total := be.innerH() - 2 // subtract 2 for the extra border row from stacking
 	h := total / 3
 	if h < 5 {
@@ -299,9 +292,27 @@ func (be blockEditState) hintH() int {
 	return h
 }
 
+// hintH is the hint panel's content height as drawn right now: the interpolated
+// height while a tween is in flight, hintTargetH once settled, 0 when hidden.
+//
+// hintTargetH's floors describe the resting size only; reapplying them every
+// frame would make the panel jump straight to 5 lines instead of growing from 0.
+func (be blockEditState) hintH() int {
+	if !be.cfg.EnableHints {
+		return 0
+	}
+	if be.hintAnim.active() {
+		return be.hintAnim.cur
+	}
+	if !be.showHint {
+		return 0
+	}
+	return be.hintTargetH()
+}
+
 // editorH returns the content height of the top-right panel (editor/preview).
 func (be blockEditState) editorH() int {
-	if !be.cfg.EnableHints || !be.showHint {
+	if !be.hintVisible() {
 		return be.innerH()
 	}
 	h := be.innerH() - 2 - be.hintH()
@@ -311,7 +322,31 @@ func (be blockEditState) editorH() int {
 	return h
 }
 
+// startHintAnim eases the hint panel from its current drawn height towards the
+// height implied by the new be.showHint, reporting whether a tick loop must
+// start. from must be sampled before be.showHint is flipped.
+func (be blockEditState) startHintAnim(from int) (blockEditState, bool) {
+	running := be.hintAnim.active()
+	target := 0
+	if be.showHint {
+		target = be.hintTargetH()
+	}
+	be.hintAnim = startTween(from, target, be.cfg.AnimationDuration)
+	// A rapid double toggle retargets the existing tween instead of stacking a
+	// second ticker.
+	return be, be.hintAnim.active() && !running
+}
+
 func (be blockEditState) Init() tea.Cmd { return textarea.Blink }
+
+// enterConfirmAlert is the single entry point for the confirm modal, so every
+// dialog opens the same way.
+func (be blockEditState) enterConfirmAlert(al alert.Model) blockEditState {
+	be.confirmAlert = al
+	be.confirmAlertVisible = true
+	be.mode = modeConfirming
+	return be
+}
 
 // Update is the blockEditState message router used by unit tests. At runtime
 // the model routes all messages through handlePaneBlockEdit/handleBlockEditKey
@@ -329,6 +364,13 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.mode = modeEditing
 		be.confirmAlertVisible = false
 		return be.dispatch(DeleteEntry{SeqIdx: m.seqIdx}), nil
+	}
+
+	// Animation frames advance regardless of mode, so they precede the mode
+	// switch. At runtime handleHintAnimTick routes them here; this case keeps
+	// be.Update self-contained for tests that drive it directly.
+	if _, ok := msg.(hintAnimTickMsg); ok {
+		return be.advanceHintAnim()
 	}
 
 	if m, ok := msg.(tea.WindowSizeMsg); ok {
@@ -360,8 +402,8 @@ func (be blockEditState) updateConfirming(msg tea.Msg) (blockEditState, tea.Cmd)
 		return be, nil
 	}
 	if km, ok := msg.(tea.KeyMsg); ok {
-		// Allow global shortcuts even while the confirm overlay is active so
-		// the user is not surprised that Ctrl+S / Ctrl+L are unavailable.
+		// Global shortcuts stay live under the overlay so Ctrl+S / Ctrl+L never
+		// appear to be unavailable.
 		switch {
 		case key.Matches(km, kbCtrlSSaveCh):
 			return be, func() tea.Msg { return commitRequestedMsg{} }
@@ -420,13 +462,11 @@ func (be blockEditState) updateEditing(msg tea.Msg) (blockEditState, tea.Cmd) {
 	return be.updateKey(key)
 }
 
-// updateNonKeyBuffer applies a non-key message (e.g. a paste delivered by the
-// textarea's clipboard command) to the YAML editor. When the buffer changed,
-// the undo checkpoint must pair the pre-change buffer with the pre-change
-// node; capturing after the textarea update would pair the post-paste buffer
-// with the pre-paste node, so undo would restore the node but leave the pasted
-// text in place. The node is untouched by the textarea update, so capture
-// after it and rewind only the buffer before pushing.
+// updateNonKeyBuffer applies a non-key message (e.g. a clipboard paste) to the
+// YAML editor. The undo checkpoint must pair the pre-change buffer with the
+// pre-change node, or undo would restore the node and leave the pasted text in
+// place. The textarea update leaves the node untouched, so capture after it and
+// rewind only the buffer before pushing.
 func (be blockEditState) updateNonKeyBuffer(msg tea.Msg) (blockEditState, tea.Cmd) {
 	prev := be.yamlEditor.Value()
 	var cmd tea.Cmd
@@ -465,8 +505,8 @@ func (be blockEditState) handleHintKey(msg tea.KeyMsg) (blockEditState, bool) {
 			be.hintScroll--
 		}
 	case key.Matches(msg, kbDown):
-		// Scroll bound is the content height, not the panel height - otherwise
-		// the tail of a hint longer than two panel-fulls stays unreachable.
+		// Bound by content height, not panel height: otherwise the tail of a hint
+		// longer than two panel-fulls stays unreachable.
 		lines := strings.Count(strings.TrimSuffix(be.hintContent(), "\n"), "\n") + 1
 		maxScroll := lines - be.hintH()
 		if maxScroll < 0 {
@@ -483,9 +523,9 @@ func (be blockEditState) handleHintKey(msg tea.KeyMsg) (blockEditState, bool) {
 
 func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	if key.Matches(msg, kbEsc) {
-		// Nested editor: Esc navigates up one level, keeping edits (they are
-		// flushed into the canonical tree by the model). Nothing is lost, so no
-		// discard prompt - that only guards leaving the block edit entirely.
+		// Nested editor: Esc goes up one level and the model flushes the edits into
+		// the canonical tree. Nothing is lost, so no discard prompt - that only
+		// guards leaving the block edit entirely.
 		if len(be.focus) > 0 {
 			return be, func() tea.Msg { return drillOutMsg{} }
 		}
@@ -496,10 +536,7 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 				"Uncommitted changes will be lost.",
 				func() tea.Msg { return blockEditDiscardedMsg{discarded: true} },
 			)
-			be.confirmAlert = al
-			be.confirmAlertVisible = true
-			be.mode = modeConfirming
-			return be, nil
+			return be.enterConfirmAlert(al), nil
 		}
 		return be, func() tea.Msg { return blockEditDiscardedMsg{discarded: false} }
 	}
@@ -530,18 +567,24 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 		return be.dispatch(Redo{}), nil
 	}
 
-	// H toggles whether the hint panel is shown at all, mirroring the root
-	// list view. Checked before handleHintKey, which otherwise captures every
-	// key while the hint panel has focus. Guarded off the YAML panel so
-	// typing "h" there still inserts the character.
+	// H toggles the hint panel, mirroring the root list view. Checked before
+	// handleHintKey, which otherwise captures every key while the hint panel has
+	// focus, and skipped on the YAML panel so typing "h" still inserts it.
 	if key.Matches(msg, kbHint) && be.cfg.EnableHints && be.active != blockEditPanelYAML {
+		// Sample the on-screen height before flipping the flag: mid-flight it is
+		// neither 0 nor the settled target.
+		from := be.hintH()
 		be.showHint = !be.showHint
 		if !be.showHint && be.active == blockEditPanelHint {
 			be.active = be.prevActive
 		}
-		// editorH() changed with showHint; the YAML editor's own height was
-		// set once at creation/resize and won't pick that up on its own.
+		be, tick := be.startHintAnim(from)
+		// editorH() changed with showHint, and the textarea's own height is only
+		// set at creation/resize.
 		be.yamlEditor.SetHeight(be.editorH() - 1)
+		if tick {
+			return be, hintAnimTick(true)
+		}
 		return be, nil
 	}
 
@@ -561,21 +604,16 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 		return be.updateTreePanel(msg)
 	}
 
-	// YAML panel active. The buffer may be transiently invalid while the user
-	// types - we never block keystrokes or discard what they wrote. The canonical
-	// node is parse-gated below: it (and the tree derived from it) advances only
-	// when the buffer parses; while it is invalid the tree freezes at the last good
-	// state, so tree and node never disagree. The model's editRoot is touched only
-	// at flush (navigation/commit).
+	// YAML panel active. The buffer may be transiently invalid while typing, and
+	// keystrokes are never blocked. The canonical node is parse-gated below, so
+	// the tree freezes at the last good state instead of disagreeing with it.
+	// editRoot is touched only at flush (navigation/commit).
 	prevValue := be.yamlEditor.Value()
-	// Tree-less blocks open with the YAML panel already focused, so the
-	// switchPanel checkpoint that normally guards manual editing never fires.
-	// Capture the pre-edit state whenever there is nothing to fall back to -
-	// including after an undo emptied the stack - and push it below if the
-	// keystroke actually mutates the buffer, so ctrl+u can always return to the
-	// content before this keystroke. The snapshot must be taken before Update:
-	// the textarea shares its buffer internals, so a plain struct copy would
-	// alias the post-keystroke content.
+	// Tree-less blocks open with the YAML panel focused, so the switchPanel
+	// checkpoint never fires. Capture the pre-edit state whenever there is nothing
+	// to fall back to, so ctrl+u can always return to the content before this
+	// keystroke. It must be taken before Update: the textarea shares its buffer
+	// internals, so a struct copy would alias the post-keystroke content.
 	var preSnap *blockEditUndoSnap
 	if len(be.undoStack) == 0 {
 		snap := be.captureSnap()
@@ -583,25 +621,22 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	be.yamlEditor, cmd = be.yamlEditor.Update(msg)
-	// Only re-project when the content actually changed. Cursor moves, selection,
-	// and other non-mutating keys leave the tree unchanged, so there is nothing to
-	// resync - and no reason to re-parse the buffer.
+	// Only re-project on a real content change: cursor moves and selection leave
+	// the tree unchanged, so there is no reason to re-parse the buffer.
 	if be.yamlEditor.Value() != prevValue {
 		if preSnap != nil {
 			be.undoStack = appendSnapCapped(nil, *preSnap)
 		}
-		// Any real edit forks away from the undone states, so pending redo
-		// entries are discarded.
+		// A real edit forks away from the undone states.
 		be.redoStack = nil
 		be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value(), Checkpoint: false})
 	}
 	return be, cmd
 }
 
-// syncParsedNode is the parse gate called after every YAML editor keystroke. It
-// advances the canonical node (and thus the tree) only when content parses
-// successfully; an invalid buffer leaves the last good state in place.
-// Returns false when the content did not parse and no state was changed.
+// syncParsedNode is the parse gate run after every YAML keystroke: it advances
+// the canonical node only when content parses, leaving the last good state in
+// place otherwise. Returns false when nothing changed.
 func (be blockEditState) syncParsedNode(content string) (blockEditState, bool) {
 	if be.isCollectionNav() {
 		kn, vn, ok := parseEntryFromView(content, be.coll.isMap)
@@ -617,17 +652,14 @@ func (be blockEditState) syncParsedNode(content string) (blockEditState, bool) {
 	return be, false
 }
 
-// applyParsedEntry writes kn/vn into be.node at the current cursor position.
-// When the cursor is valid it updates the existing entry; when the collection
-// is empty it appends the first entry so the user's direct YAML edit is
-// persisted rather than silently discarded.
+// applyParsedEntry writes kn/vn into be.node at the cursor, appending the first
+// entry when the collection is empty so a direct YAML edit is not discarded.
 func (be blockEditState) applyParsedEntry(kn, vn *yaml.Node) blockEditState {
 	cur := be.coll.current
 	count := entryCount(&be.node, be.coll.isMap)
-	// A map key renamed to one that already exists elsewhere would splice a
-	// second identical key into the canonical mapping. flushCurrentEntry guards
-	// navigation/commit, but this per-keystroke path writes into the node too,
-	// so it needs the same gate: keep the last good node and surface the error.
+	// A map key renamed onto an existing one would splice a duplicate into the
+	// canonical mapping. flushCurrentEntry guards navigation/commit; this
+	// per-keystroke path writes into the node too, so it needs the same gate.
 	if be.coll.isMap && kn != nil && duplicateMapKey(&be.node, cur, kn.Value) {
 		be.editorErr = editorError{kind: errParse, message: fmt.Sprintf("Duplicate map key %q - rename it to a unique key first.", kn.Value)}
 		return be
@@ -646,8 +678,7 @@ func (be blockEditState) applyParsedEntry(kn, vn *yaml.Node) blockEditState {
 	default:
 		return be
 	}
-	// The write succeeded; a stale duplicate-key error from a previous
-	// keystroke no longer applies.
+	// The write succeeded, so a stale duplicate-key error no longer applies.
 	if be.editorErr.kind == errParse {
 		be.editorErr = editorError{}
 	}
@@ -655,10 +686,7 @@ func (be blockEditState) applyParsedEntry(kn, vn *yaml.Node) blockEditState {
 }
 
 // resyncTreeFromYAML re-derives the tree's checked states from the canonical
-// node - for struct blocks via syncTreeCheckedFromNode (with ADDED/AVAILABLE
-// sectioning), for collections via collectionDeriveTree (per-entry labels and
-// checks). The node is the source of truth, so the tree can never disagree with
-// it even while the text buffer is mid-edit.
+// node, so the tree can never disagree with it even mid-edit.
 func (be blockEditState) resyncTreeFromYAML() treeModel {
 	if be.isCollectionNav() {
 		return be.collectionDeriveTree()
@@ -666,9 +694,8 @@ func (be blockEditState) resyncTreeFromYAML() treeModel {
 	return syncTreeCheckedFromNode(be.tree, &be.node)
 }
 
-// snippetsFn returns a lookup function for snippets scoped to be.key.
-// Reads FieldMeta.Snippet from the MetadataSource when configured.
-// Returns nil when no MetadataSource is configured.
+// snippetsFn looks up FieldMeta.Snippet scoped to be.key, or nil when no
+// MetadataSource is configured.
 func (be blockEditState) snippetsFn() func(string) string {
 	if be.cfg.Metadata == nil {
 		return nil
@@ -678,9 +705,9 @@ func (be blockEditState) snippetsFn() func(string) string {
 	}
 }
 
-// withPreCheckedFields toggles ON fields where FieldMeta.PreChecked is true,
-// inserting their snippets into the YAML editor. Only called for new (not yet
-// existing) struct blocks so opening an existing block never modifies content.
+// withPreCheckedFields toggles on the fields marked FieldMeta.PreChecked and
+// inserts their snippets. Only for new struct blocks, so opening an existing
+// block never modifies content.
 func (be blockEditState) withPreCheckedFields() blockEditState {
 	if be.cfg.Metadata == nil {
 		return be
@@ -706,13 +733,11 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 }
 
 // resyncAfterCommit reloads the editor from the freshly committed block so a
-// repeated Ctrl+S is idempotent. For collection blocks it re-derives the entry
-// list (and tree, when the entry count changed); otherwise it reloads the raw
-// YAML. The committed baseline is reset either way, so dirty reads clean.
+// repeated Ctrl+S is idempotent; the committed baseline is reset, so dirty reads
+// clean.
 //
-// Currently unused at runtime: commitAll returns to the list and discards the
-// editor stack instead of keeping the editor open. Kept (with its test) for a
-// future commit-in-place flow.
+// Unused at runtime: commitAll returns to the list and discards the editor
+// stack. Kept with its test for a future commit-in-place flow.
 func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 	if !be.isCollectionNav() {
 		if v := blockValueNodeOrNil(fresh); v != nil {
@@ -729,8 +754,8 @@ func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 	oldCount := entryCount(&be.node, isMap)
 	be.node = *collValueNode(fresh, isMap)
 	if entryCount(&be.node, isMap) != oldCount {
-		// Entry count changed: rebuild the tree from scratch (expansion is lost,
-		// but the structure must match the new node).
+		// Entry count changed: rebuild the tree, losing expansion state, since the
+		// structure must match the new node.
 		be.tree.nodes = be.collectionTreeNodes()
 		if be.coll.current >= entryCount(&be.node, isMap) {
 			be.coll.current = entryCount(&be.node, isMap) - 1
@@ -745,7 +770,7 @@ func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 
 func (be blockEditState) switchPanel() blockEditState {
 	if be.active == blockEditPanelTree {
-		// Checkpoint before YAML editing so manual changes are undoable with ctrl+u.
+		// Checkpoint before YAML editing so manual changes are undoable.
 		be = be.saveUndo()
 		be.active = blockEditPanelYAML
 		be.yamlEditor.Focus()
@@ -756,14 +781,12 @@ func (be blockEditState) switchPanel() blockEditState {
 	return be
 }
 
-// commit validates the editor's current content and returns its canonical
-// value node. It returns (newState, node, true) on success; on a validation
-// error it returns (newState, nil, false) with the detail in be.editorErr. The
-// node is detached data - the caller decides what to do with it (write it into
-// the canonical tree, serialize it for the document), so commit performs no
-// effect itself. Returning the node instead of a serialized snippet spares the
-// caller a lossy parse-back: parseBlockText already rejected stray or renamed
-// top-level keys with a user-facing message.
+// commit validates the editor's content and returns its canonical value node,
+// or (nil, false) with the detail in be.editorErr. The node is detached data and
+// commit performs no effect itself, leaving the caller to write it into the
+// canonical tree or serialize it. Returning the node rather than a snippet
+// spares the caller a lossy parse-back: parseBlockText already rejected stray or
+// renamed top-level keys with a user-facing message.
 func (be blockEditState) commit() (blockEditState, *yaml.Node, bool) {
 	var val *yaml.Node
 	if be.isCollectionNav() {
@@ -783,8 +806,8 @@ func (be blockEditState) commit() (blockEditState, *yaml.Node, bool) {
 	}
 
 	// Final gate against duplicate mapping keys: schema.UnknownKeys cannot see
-	// them (yaml.v3 keeps the last value when decoding), so a duplicate that
-	// slipped past the flush guards would otherwise be persisted verbatim.
+	// them (yaml.v3 keeps the last value), so one that slipped past the flush
+	// guards would be persisted verbatim.
 	if path, dup := findDuplicateMappingKey(val); dup {
 		be.editorErr = editorError{kind: errCommit, message: fmt.Sprintf("Duplicate key %q - remove or rename it first.", path)}
 		return be, nil, false
@@ -801,12 +824,10 @@ func (be blockEditState) commit() (blockEditState, *yaml.Node, bool) {
 			return be, nil, false
 		}
 	}
-	// NOTE: dirty is intentionally NOT cleared here. commit() is called by
-	// flushTopToRoot during drill-in/out, where the edits have only reached
-	// editRoot — not the document. Clearing dirty here would bypass the
-	// "Discard changes?" guard if the user later Escs from the parent editor.
-	// A successful document commit (commitAll) returns to the list and discards
-	// the editor stack, so the flag dies with it.
+	// dirty is deliberately not cleared: flushTopToRoot calls commit() during
+	// drill-in/out, where edits reached editRoot but not the document, and
+	// clearing it would bypass the "Discard changes?" guard on a later Esc.
+	// commitAll discards the whole editor stack, so the flag dies with it.
 
 	return be, val, true
 }
@@ -831,8 +852,8 @@ func (be blockEditState) View(parentSegs []string) string {
 	var topTitle, topContent string
 	if !yamlActive {
 		topTitle = "Preview"
-		// The preview window follows the tree selection: scrollLinesTo keeps
-		// previewScroll visible (rendered preview lines map ~1:1 to YAML lines).
+		// The preview follows the tree selection; rendered preview lines map ~1:1
+		// to YAML lines.
 		preview := numberPreviewLines(renderPreviewYAML(be.yamlEditor.Value(), be.previewRenderer), be.theme)
 		topContent = scrollLinesTo(preview, be.editorH(), be.previewScroll)
 	} else {
@@ -842,7 +863,7 @@ func (be blockEditState) View(parentSegs []string) string {
 	topPanel := theme.RenderTitledPanelWith(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, topContent, be.theme.colors)
 
 	rightPanel := topPanel
-	if be.cfg.EnableHints && be.showHint {
+	if be.hintVisible() {
 		hintActive := be.active == blockEditPanelHint
 		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, hintActive, be.scrolledHintContent(), be.theme.colors)
 		rightPanel = lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)

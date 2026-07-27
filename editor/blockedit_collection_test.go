@@ -85,8 +85,7 @@ func fieldNodeChecked(be blockEditState, entryLabel, field string) (checked, fou
 	return false, false
 }
 
-// TestMapBlockAddEntrySeedsCheckedField guards issue 1: a newly added entry's
-// seeded field must show checked in the tree.
+// A newly added entry's seeded field must show checked in the tree.
 func TestMapBlockAddEntrySeedsCheckedField(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	be, _ = be.Update(tea.KeyPressMsg{Code: tea.KeyDown})
@@ -101,8 +100,7 @@ func TestMapBlockAddEntrySeedsCheckedField(t *testing.T) {
 	}
 }
 
-// TestMapBlockRenameUpdatesTreeLabel guards issue 2: renaming an entry's key in
-// the YAML pane updates its label in the left panel.
+// Renaming an entry's key in the YAML pane updates its left-panel label.
 func TestMapBlockRenameUpdatesTreeLabel(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	be.yamlEditor.SetValue(`portsAttributes:
@@ -120,8 +118,7 @@ func TestMapBlockRenameUpdatesTreeLabel(t *testing.T) {
 	}
 }
 
-// TestMapBlockNoCrossEntryContamination guards that re-syncing the current entry
-// does not corrupt a sibling entry's checkmarks.
+// Re-syncing the current entry must not corrupt a sibling's checkmarks.
 func TestMapBlockNoCrossEntryContamination(t *testing.T) {
 	// 3000 has label+onAutoForward; 8080 has only label.
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
@@ -149,8 +146,7 @@ func TestMapBlockCommitReassembles(t *testing.T) {
 	is.Contains(snippet, "\"8080\":", "committed snippet dropped entries")
 }
 
-// TestSeqBlockStillNavigates guards the existing sequence navigator against
-// regression from the map generalization.
+// The sequence navigator must survive the map generalization.
 func TestSeqBlockStillNavigates(t *testing.T) {
 	spec := blockSpec{
 		key: "workers",
@@ -177,8 +173,7 @@ func TestSeqBlockStillNavigates(t *testing.T) {
 	}
 }
 
-// TestSeqBlockResyncNoContamination guards that the shared syncCurrentEntry path
-// does not corrupt a sibling sequence item's checkmarks.
+// The shared resync path must not corrupt a sibling sequence item's checkmarks.
 func TestSeqBlockResyncNoContamination(t *testing.T) {
 	spec := blockSpec{
 		key: "workers",
@@ -203,9 +198,8 @@ func TestSeqBlockResyncNoContamination(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// flushCurrentEntry - missing key header sets editorErr, does not update entries
-// ---------------------------------------------------------------------------
+// flushCurrentEntry: a missing key header sets editorErr and leaves the entries
+// untouched.
 
 func TestFlushCurrentEntry_missingHeader_setsErrMsg(t *testing.T) {
 	spec := seqSpec(`categories:
@@ -244,10 +238,8 @@ func TestFlushCurrentEntry_validContent_clearsErrMsg(t *testing.T) {
 	is.Contains(result.entryYAML(0), "alpha_edited", "entry not updated")
 }
 
-// ---------------------------------------------------------------------------
-// collectionDeriveTree - labels and checks of every entry are derived from the
-// canonical node, so editing one entry never contaminates another.
-// ---------------------------------------------------------------------------
+// collectionDeriveTree: every entry's labels and checks come from the canonical
+// node, so editing one entry never contaminates another.
 
 func TestCollectionDerive_perEntryLabels(t *testing.T) {
 	spec := seqSpec(`categories:
@@ -280,15 +272,11 @@ func TestCollectionDerive_perEntryLabels(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Duplicate map keys: neither the per-keystroke sync path nor any error-
-// clearing escape path (add-new, delete, preset) may persist a mapping with
-// two identical keys.
-// ---------------------------------------------------------------------------
+// Duplicate map keys: neither the per-keystroke sync path nor any error-clearing
+// escape path (add-new, delete, preset) may persist two identical keys.
 
-// TestMapSyncRejectsDuplicateKey guards the per-keystroke sync path: renaming
-// the current entry's key to one that already exists must keep the last good
-// node and surface an error instead of splicing a second identical key.
+// Renaming the current entry's key onto an existing one must keep the last good
+// node and surface an error.
 func TestMapSyncRejectsDuplicateKey(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	// Current entry is "3000"; rename it to the existing "8080" via the
@@ -312,8 +300,8 @@ func TestMapSyncRejectsDuplicateKey(t *testing.T) {
 	}
 }
 
-// TestCommitRejectsDuplicateMappingKey guards the commit backstop: a duplicate
-// that reached the canonical node through any path must not be committed.
+// Commit backstop: a duplicate that reached the canonical node through any path
+// must not be committed.
 func TestCommitRejectsDuplicateMappingKey(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	kn := &yaml.Node{Kind: yaml.ScalarNode, Value: "8080"}
@@ -330,13 +318,10 @@ func TestCommitRejectsDuplicateMappingKey(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // flushCurrentEntry data-loss holes.
-// ---------------------------------------------------------------------------
 
-// TestFlushEmptyCollectionRejectsUnparsedText: with an empty collection, text
-// that never parsed into a first entry must block the commit instead of being
-// silently dropped.
+// With an empty collection, text that never parsed into a first entry must block
+// the commit instead of being dropped.
 func TestFlushEmptyCollectionRejectsUnparsedText(t *testing.T) {
 	spec := mapSpec()
 	spec.content = ""
@@ -354,8 +339,7 @@ func TestFlushEmptyCollectionRejectsUnparsedText(t *testing.T) {
 	}
 }
 
-// TestFlushEmptyCollectionPlaceholderIsClean: the untouched placeholder of an
-// empty collection is a clean no-op at commit time.
+// The untouched placeholder of an empty collection is a clean no-op at commit.
 func TestFlushEmptyCollectionPlaceholderIsClean(t *testing.T) {
 	spec := mapSpec()
 	spec.content = ""
@@ -365,8 +349,8 @@ func TestFlushEmptyCollectionPlaceholderIsClean(t *testing.T) {
 	}
 }
 
-// TestFlushEmptiedBufferBlocks: emptying the buffer of an existing entry must
-// surface an error instead of silently resurrecting the old content.
+// Emptying an existing entry's buffer must surface an error instead of
+// resurrecting the old content.
 func TestFlushEmptiedBufferBlocks(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	be.yamlEditor.SetValue("")
@@ -376,9 +360,8 @@ func TestFlushEmptiedBufferBlocks(t *testing.T) {
 	}
 }
 
-// TestDeleteOtherEntryBlockedByInvalidCurrent: deleting a different entry
-// while the current one holds invalid unsaved edits must refuse instead of
-// silently reverting those edits. Deleting the current entry itself proceeds.
+// Deleting a different entry while the current one holds invalid unsaved edits
+// must refuse rather than revert them. Deleting the current entry proceeds.
 func TestDeleteOtherEntryBlockedByInvalidCurrent(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	be.yamlEditor.SetValue("portsAttributes:\n  \"3000\": [broken\n")
@@ -398,9 +381,8 @@ func TestDeleteOtherEntryBlockedByInvalidCurrent(t *testing.T) {
 	}
 }
 
-// TestEmptyMapKeyRefreshesTreeRow: a map entry whose key becomes the empty
-// string must refresh its tree row (visible placeholder), not keep the stale
-// previous label.
+// A map entry whose key becomes the empty string must refresh its tree row to
+// the visible placeholder, not keep the stale label.
 func TestEmptyMapKeyRefreshesTreeRow(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	be.yamlEditor.SetValue("portsAttributes:\n  \"\":\n    label: web\n")

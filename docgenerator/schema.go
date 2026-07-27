@@ -23,10 +23,10 @@ func WithMetadata(src spec.MetadataSource) Option {
 	return func(g *SchemaGenerator) { g.metadata = src }
 }
 
-// WithExamples configures the generator to emit an "Examples" section linking
-// to a preset example page for any page whose lowercased name is present in
-// pages. relDir is the path to the examples directory relative to the docs
-// directory (e.g. "../examples"). Used together with GenerateExampleDocs.
+// WithExamples emits an "Examples" section linking to a preset example page for
+// any page whose lowercased name is in pages. relDir points at the examples
+// directory relative to the docs directory (e.g. "../examples"). Used together
+// with GenerateExampleDocs.
 func WithExamples(relDir string, pages map[string]bool) Option {
 	return func(g *SchemaGenerator) {
 		g.examplesRelDir = relDir
@@ -42,8 +42,7 @@ type SchemaGenerator struct {
 	examplePages   map[string]bool
 }
 
-// NewSchemaGenerator creates a SchemaGenerator. All configuration is passed
-// via options.
+// NewSchemaGenerator creates a SchemaGenerator configured by opts.
 func NewSchemaGenerator(opts ...Option) *SchemaGenerator {
 	g := &SchemaGenerator{}
 	for _, opt := range opts {
@@ -52,14 +51,14 @@ func NewSchemaGenerator(opts ...Option) *SchemaGenerator {
 	return g
 }
 
-// Entry pairs a struct with the directory where its documentation should be written.
-// When SplitStructs is true, each field with children gets its own file instead of
-// being inlined. Scalar fields are not split. Default is false.
+// Entry pairs a struct with the directory where its documentation is written.
 //
-// RecursionLimit controls how many extra levels a self-referential type expands
-// beyond the first visit during schema discovery. nil uses the schema.Discover
-// default (1). Set to 0 to stop expansion on the second visit, which prevents
-// recursive structs from generating repeated sub-sections in the output.
+// SplitStructs gives every field with children its own file instead of inlining
+// it; scalar fields are never split.
+//
+// RecursionLimit is how many extra levels a self-referential type expands beyond
+// the first visit. nil uses the schema.Discover default (1); 0 stops expansion
+// on the second visit, avoiding repeated sub-sections in the output.
 type Entry struct {
 	Config         any
 	DocsDir        string
@@ -80,11 +79,9 @@ type GeneratedFile struct {
 	DocsDir string
 }
 
-// GenerateDocsForEach generates markdown documentation for each entry.
-// When Entry.SplitStructs is false (default), one file is written per entry containing
-// all fields and nested sub-sections inline. When true, each field with children gets
-// its own file; scalar fields are not split. Metadata is resolved using the field's
-// yaml name as the block key.
+// GenerateDocsForEach generates markdown documentation for each entry, one file
+// per entry plus one per split child. Metadata is resolved using the field's
+// yaml name as the block key. See Entry.SplitStructs.
 func (g *SchemaGenerator) GenerateDocsForEach(entries []Entry) ([]GeneratedFile, error) {
 	var files []GeneratedFile
 	written := map[string]bool{}
@@ -131,9 +128,9 @@ func (g *SchemaGenerator) generateSplitChildren(written map[string]bool, docsDir
 	return files, nil
 }
 
-// writeRawOnce writes the page via writeRaw and errors when the same output
-// file was already written in this run (two entries sharing a DocsDir with a
-// same-named page would otherwise silently overwrite each other).
+// writeRawOnce errors when the same output file was already written in this
+// run: two entries sharing a DocsDir with a same-named page would otherwise
+// silently overwrite each other.
 func (g *SchemaGenerator) writeRawOnce(written map[string]bool, docsDir, name, md string) error {
 	out := filepath.Join(filepath.Clean(docsDir), strings.ToLower(name)+".md")
 	if written[out] {
@@ -143,10 +140,9 @@ func (g *SchemaGenerator) writeRawOnce(written map[string]bool, docsDir, name, m
 	return g.writeRaw(docsDir, name, md)
 }
 
-// Generate builds the MetadataSource for each entry, generates documentation,
-// and writes a README.md index to indexPath. Each Entry.Config must implement
-// metadata.MetadataProvider. Extra opts (e.g. WithExamples) are applied to the
-// per-entry generator in addition to the metadata source.
+// Generate documents each entry and writes a README.md index to indexPath. Each
+// Entry.Config must implement metadata.MetadataProvider. opts are applied on top
+// of the per-entry metadata source.
 func Generate(indexPath string, entries []Entry, opts ...Option) error {
 	var allFiles []GeneratedFile
 	for _, e := range entries {
@@ -165,8 +161,7 @@ func Generate(indexPath string, entries []Entry, opts ...Option) error {
 }
 
 // GenerateIndex writes a README.md to baseDir linking to all generated files.
-// Links are computed as paths relative to baseDir so the index works correctly
-// when entries were written to different subdirectories.
+// Links are relative to baseDir so the index works across subdirectories.
 func GenerateIndex(baseDir string, files []GeneratedFile) error {
 	if err := os.MkdirAll(baseDir, 0750); err != nil {
 		return fmt.Errorf("create index dir: %w", err)
@@ -191,8 +186,8 @@ func GenerateIndex(baseDir string, files []GeneratedFile) error {
 	return os.WriteFile(valid, []byte(sb.String()), 0600)
 }
 
-// fieldMeta translates the (sectionPath, fieldName) docgenerator coordinates to
-// the (blockKey, fieldPath) MetadataSource coordinates:
+// fieldMeta translates (sectionPath, fieldName) to MetadataSource's
+// (blockKey, fieldPath) coordinates:
 //
 //   - sectionPath empty → blockKey = fieldName, fieldPath = ""
 //   - sectionPath ["build"] → blockKey = "build", fieldPath = fieldName

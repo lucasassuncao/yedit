@@ -20,10 +20,10 @@ type Block struct {
 	EndLine int // last line occupied by this block (exclusive of next key)
 }
 
-// ParseBlocks parses raw YAML bytes and returns top-level blocks.
-// Multi-document input and flow-style root mappings are rejected: their line
-// ranges cannot be edited block-wise without corrupting the file. An explicit
-// empty document ("---") is treated like an empty file.
+// ParseBlocks returns the top-level blocks of raw. Multi-document input and
+// flow-style root mappings are rejected: their line ranges cannot be edited
+// block-wise without corrupting the file. An explicit empty document ("---")
+// is treated like an empty file.
 func ParseBlocks(raw []byte) ([]Block, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	var doc yaml.Node
@@ -68,16 +68,12 @@ func ParseBlocks(raw []byte) ([]Block, error) {
 		if i+1 < len(blocks) {
 			end = blocks[i+1].Line - 1
 		}
-		// Stop this block's range before the trailing blank lines and root-level
-		// comments - by convention those belong to the next block (a comment
-		// directly above a key documents that key) or, after the last block, to
-		// the file tail (trailing newline and trailing comments survive edits).
-		// Only lines that are empty or start with '#' at column 0 are reassigned:
-		// an indented comment-looking line may be content inside a literal/folded
-		// scalar and stays with its block. Limitation: the significant trailing
-		// blank lines of a '|+' (keep-chomping) scalar are still attributed to
-		// the tail; they are preserved in place by Replace/Remove but omitted
-		// from BlockContent.
+		// Trailing blank lines and column-0 comments belong to the next block (a
+		// comment above a key documents that key) or, after the last block, to the
+		// file tail. Indented comment-looking lines stay with their block: they may
+		// be content inside a literal/folded scalar. Limitation: the significant
+		// trailing blanks of a '|+' scalar are attributed to the tail, so
+		// Replace/Remove preserve them in place but BlockContent omits them.
 		for end > blocks[i].Line {
 			line := lines[end-1] // end is 1-based
 			if line == "" || strings.HasPrefix(line, "#") {

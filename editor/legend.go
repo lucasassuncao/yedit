@@ -2,12 +2,11 @@ package editor
 
 import "charm.land/bubbles/v2/key"
 
-// msgUncommittedChanges is shown in the feedback line when there are uncommitted changes.
 const msgUncommittedChanges = "Uncommitted changes - ctrl+s to commit"
 
-// Physical keys - each key name is declared exactly once. The bindings below
-// derive from these and the handlers match against the bindings (key.Matches),
-// so rebinding a key here changes the behavior and the legend together.
+// Physical keys, each declared exactly once. The bindings below derive from them
+// and the handlers match against those bindings, so rebinding a key here changes
+// the behavior and the legend together.
 const (
 	keyUp    = "up"
 	keyDown  = "down"
@@ -30,10 +29,9 @@ const (
 	keyCtrlC = "ctrl+c"
 )
 
-// Matcher-only bindings, for keys whose display wording varies by mode (the
-// kbEnter*/kbEsc*/directional variants below) or that carry no legend entry
-// (quit, hint focus). Handlers match against these; the display variants share
-// the same key constants, so behavior and legend cannot drift apart.
+// Matcher-only bindings, for keys whose wording varies by mode or that carry no
+// legend entry at all. The display variants share the same key constants, so
+// behavior and legend cannot drift apart.
 var (
 	kbUp        = key.NewBinding(key.WithKeys(keyUp))
 	kbDown      = key.NewBinding(key.WithKeys(keyDown))
@@ -88,19 +86,18 @@ var (
 	kbTemplates = key.NewBinding(key.WithKeys(keyP), key.WithHelp("p", "templates"))
 )
 
-// KeyMap types implement help.KeyMap (short mode only — FullHelp is unused).
+// KeyMap types implement help.KeyMap in short mode only; FullHelp is unused.
 
-// dynamicKeyMap is used for modes whose binding list varies at runtime.
+// dynamicKeyMap serves modes whose binding list varies at runtime.
 type dynamicKeyMap []key.Binding
 
 func (d dynamicKeyMap) ShortHelp() []key.Binding  { return []key.Binding(d) }
 func (d dynamicKeyMap) FullHelp() [][]key.Binding { return nil }
 
-// dynamicRows is the row-grouped counterpart of dynamicKeyMap: used when a
-// rowKeyMap's binding list varies at runtime (the root list legend inserts
-// kbTemplates only when Config.DocPresets is set). ShortHelp flattens the
-// rows for callers that only need the full binding list (width calculations,
-// tests); Rows preserves the grouping for legend rendering.
+// dynamicRows is the row-grouped counterpart of dynamicKeyMap, for when a
+// rowKeyMap's bindings vary at runtime (the root list inserts kbTemplates only
+// when Config.DocPresets is set). ShortHelp flattens the rows for callers that
+// just need the binding list; Rows keeps the grouping for legend rendering.
 type dynamicRows [][]key.Binding
 
 func (d dynamicRows) ShortHelp() []key.Binding {
@@ -120,9 +117,8 @@ func (saveTailMap) ShortHelp() []key.Binding {
 }
 func (saveTailMap) FullHelp() [][]key.Binding { return nil }
 
-// Rows: see listExistingMap.Rows for the split rationale (navigation vs.
-// document actions). tab/esc only move focus; undo/redo/save all mutate or
-// persist the block.
+// Rows: see listExistingMap.Rows. tab/esc only move focus; undo/redo/save mutate
+// or persist the block.
 func (saveTailMap) Rows() [][]key.Binding {
 	return [][]key.Binding{
 		{kbTab, kbEscBack},
@@ -151,9 +147,7 @@ func (k listUnknownMap) ShortHelp() []key.Binding {
 }
 func (k listUnknownMap) FullHelp() [][]key.Binding { return nil }
 
-// Rows groups the legend into two lines: navigation/inspection (never
-// mutates the document) and document actions (mutation/persistence/
-// validation). See listExistingMap.Rows for the rationale.
+// Rows: see listExistingMap.Rows.
 func (k listUnknownMap) Rows() [][]key.Binding {
 	return [][]key.Binding{
 		{kbNav, kbFilter, k.hint},
@@ -168,11 +162,10 @@ func (k listExistingMap) ShortHelp() []key.Binding {
 }
 func (k listExistingMap) FullHelp() [][]key.Binding { return nil }
 
-// Rows groups the root list legend into two lines, split by whether the key
-// can change the document: row 0 is pure navigation/inspection, row 1 is
-// mutation/persistence/validation. Forcing this split (instead of wrapping
-// the flat ShortHelp list by width) keeps the two categories on stable,
-// predictable lines regardless of terminal width.
+// Rows splits the legend by whether a key can change the document: row 0 is
+// navigation and inspection, row 1 mutation, persistence, and validation.
+// Forcing the split instead of wrapping ShortHelp by width keeps the two
+// categories on stable lines at any terminal width.
 func (k listExistingMap) Rows() [][]key.Binding {
 	return [][]key.Binding{
 		{kbNav, kbEnterOpen, kbFilter, k.hint},

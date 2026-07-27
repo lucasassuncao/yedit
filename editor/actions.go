@@ -4,15 +4,13 @@ import (
 	"github.com/lucasassuncao/yedit/schema"
 )
 
-// BlockAction is a pure synchronous mutation of blockEditState.
-// All block-editor mutations pass through blockEditState.dispatch.
+// BlockAction is a pure synchronous mutation of blockEditState. Every
+// block-editor mutation passes through blockEditState.dispatch.
 type BlockAction interface{ blockAction() }
 
-// ModelAction is handled by model.dispatch.
-// May produce tea.Cmd only for tea.Quit.
+// ModelAction is handled by model.dispatch and may produce a tea.Cmd only for
+// tea.Quit.
 type ModelAction interface{ modelAction() }
-
-// ── BlockAction types ────────────────────────────────────────────────────────
 
 // ToggleField checks or unchecks the field at NodeIdx in the tree.
 type ToggleField struct {
@@ -20,8 +18,8 @@ type ToggleField struct {
 	Checked bool
 }
 
-// SyncYAML advances be.node from new YAML content (parse-gated).
-// Checkpoint: true saves an undo snapshot first (use for paste); false skips it (use for individual keystrokes).
+// SyncYAML advances be.node from new YAML content (parse-gated). Checkpoint
+// saves an undo snapshot first: set it for pastes, not for single keystrokes.
 type SyncYAML struct {
 	Content    string
 	Checkpoint bool
@@ -36,12 +34,12 @@ type DeleteEntry struct{ SeqIdx int }
 // NavigateEntry moves the collection cursor to Idx (flush + load).
 type NavigateEntry struct{ Idx int }
 
-// ApplyPreset replaces the block content with the named preset.
-// Content is the already-fetched YAML so dispatch stays pure.
+// ApplyPreset replaces the block content with the named preset. Content is the
+// already-fetched YAML so dispatch stays pure.
 type ApplyPreset struct{ Name, Content string }
 
-// AppendPreset appends preset entries to a collection-nav block.
-// Content is the already-fetched YAML so dispatch stays pure.
+// AppendPreset appends preset entries to a collection-nav block. Content is the
+// already-fetched YAML so dispatch stays pure.
 type AppendPreset struct{ Name, Content string }
 
 // Undo restores the previous block snapshot.
@@ -59,8 +57,6 @@ func (ApplyPreset) blockAction()   {}
 func (AppendPreset) blockAction()  {}
 func (Undo) blockAction()          {}
 func (Redo) blockAction()          {}
-
-// ── ModelAction types ────────────────────────────────────────────────────────
 
 type OpenBlock struct{ Key string }
 type CommitBlock struct{}

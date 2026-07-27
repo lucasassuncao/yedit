@@ -8,9 +8,8 @@ import (
 	"github.com/lucasassuncao/yedit/spec"
 )
 
-// generateRootMarkdown generates a summary page for a root type that links to
-// per-field files instead of inlining nested sections. Used by GenerateDocsForEach
-// when splitStructs is true.
+// generateRootMarkdown builds the summary page for a split root type: it links
+// to per-field files instead of inlining nested sections.
 func (g *SchemaGenerator) generateRootMarkdown(title string, fields []schema.FieldDef) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "# %s\n\n", title)
@@ -80,11 +79,9 @@ func (g *SchemaGenerator) generateMarkdown(typeName string, fields []schema.Fiel
 	return sb.String()
 }
 
-// writeExamplesLink emits an "Examples" section linking to the preset example
-// page for title when the generator was configured with WithExamples and an
-// example page exists for it. The lookup is by lowercased title so both the
-// root page (e.g. "yedit") and split-child pages (e.g. "categories")
-// resolve to "<title>.md" in the examples directory.
+// writeExamplesLink emits an "Examples" section when WithExamples was set and an
+// example page exists for title. The lookup is by lowercased title so root and
+// split-child pages alike resolve to "<title>.md" in the examples directory.
 func (g *SchemaGenerator) writeExamplesLink(sb *strings.Builder, title string) {
 	if g.examplesRelDir == "" {
 		return
@@ -157,7 +154,8 @@ func (g *SchemaGenerator) writeNestedSections(sb *strings.Builder, fields []sche
 	}
 }
 
-// anyHasFormat reports whether any field in fields has a non-empty Formats slice.
+// anyHasFormat reports whether any field carries formats, which decides if the
+// table gets a Format column.
 func (g *SchemaGenerator) anyHasFormat(fields []schema.FieldDef, sectionPath []string) bool {
 	for _, f := range fields {
 		name := f.YAMLName
@@ -172,9 +170,8 @@ func (g *SchemaGenerator) anyHasFormat(fields []schema.FieldDef, sectionPath []s
 	return false
 }
 
-// formatLabels returns the joined format labels for a field, or "-" when none.
-// Labels are joined with ", " and pipe-escaped so they cannot split the
-// markdown table row into extra columns.
+// formatLabels joins the field's format labels, or "-" when none. Labels are
+// pipe-escaped so they cannot split the table row into extra columns.
 func formatLabels(meta spec.FieldMeta) string {
 	var labels []string
 	for _, f := range meta.Formats {
@@ -188,8 +185,8 @@ func formatLabels(meta spec.FieldMeta) string {
 	return strings.Join(labels, ", ")
 }
 
-// docTypeLabel returns the type label for the markdown table, honouring
-// FieldMeta.Multiline and FieldMeta.Type overrides.
+// docTypeLabel returns the table type label, honouring the FieldMeta.Multiline
+// and FieldMeta.Type overrides.
 func docTypeLabel(f schema.FieldDef, meta spec.FieldMeta) string {
 	if meta.Multiline && meta.Type == "" {
 		return "multiline string"

@@ -2,17 +2,15 @@ package editor
 
 import "strings"
 
-// fieldItemView renders the left panel for a tree-less block (primitive, enum,
-// or free-form collection): a single non-toggleable row naming the field being
-// edited. There are no sub-fields to navigate, so the row is just an anchor -
-// the field's metadata lives in the Hint/Example panel.
+// fieldItemView renders the left panel of a tree-less block as a single
+// non-toggleable row naming the field. There is nothing to navigate, so the row
+// is just an anchor; the metadata lives in the Hint/Example panel.
 func (be blockEditState) fieldItemView() string {
 	return be.theme.existingItem.Render(" ▸ " + be.key)
 }
 
-// hintContent returns the rendered string for the bottom-right hint panel.
-// scrolledHintContent returns the hint content clipped to hintH() lines,
-// starting at hintScroll. Used when hint panel has focus for scrolling.
+// scrolledHintContent clips the hint content to hintH() lines starting at
+// hintScroll, for when the hint panel has focus.
 func (be blockEditState) scrolledHintContent() string {
 	content := be.hintContent()
 	if content == "" {
@@ -36,11 +34,9 @@ func (be blockEditState) scrolledHintContent() string {
 }
 
 func (be blockEditState) hintContent() string {
-	// Tree-less blocks (primitive/enum/free-form collection) have no field nodes;
-	// show the block's own metadata instead of the "select a field" placeholder.
-	// fieldPath is "" here - a block-level lookup, same as the root list's hint
-	// panel (hint.go) - not be.def.YAMLName, which FieldMeta would misread as a
-	// child path under the block and never resolve.
+	// Tree-less blocks have no field nodes, so show the block's own metadata. The
+	// empty fieldPath makes this a block-level lookup, like the root list's hint
+	// panel; be.def.YAMLName would be misread as a child path and never resolve.
 	if be.tree.isEmpty() {
 		return be.fieldHintFor("")
 	}
@@ -66,8 +62,8 @@ func (be blockEditState) hintContent() string {
 	return be.fieldHintFor(fieldPath)
 }
 
-// fieldHintFor builds the hint text for a single field definition.
-// fieldPath is the dot-joined path from the block root (e.g. "source.path").
+// fieldHintFor builds the hint text for the field at fieldPath, a dot-joined
+// path from the block root (e.g. "source.path").
 func (be blockEditState) fieldHintFor(fieldPath string) string {
 	if be.cfg.Metadata == nil {
 		return be.theme.hintDim.Render("  Config.Metadata is not set - no metadata source configured")
@@ -75,8 +71,8 @@ func (be blockEditState) fieldHintFor(fieldPath string) string {
 	meta := be.cfg.Metadata.FieldMeta(be.key, fieldPath)
 	ex := meta.Example
 	if ex == "" && meta.Multiline {
-		// fieldPath is "" for a tree-less block's own metadata (see hintContent) -
-		// fall back to the block's key so the generated example is still named.
+		// An empty fieldPath means the block's own metadata, so fall back to the
+		// block key to keep the generated example named.
 		fieldName := fieldPath
 		switch {
 		case fieldName == "":

@@ -34,11 +34,9 @@ func mappingKeyLine(m *yaml.Node, path []string) int {
 	return -1
 }
 
-// followTargetLine returns the 1-based buffer line of the field selected in
-// the tree, or -1 when it has no line: node without a path, field not present
-// in the YAML, or a buffer that does not parse. A fresh parse is used because
-// be.node's line info goes stale after tree toggles (the buffer is regenerated
-// via nodeToContent).
+// followTargetLine returns the 1-based buffer line of the field selected in the
+// tree, or -1 when it has none. It re-parses the buffer because be.node's line
+// info goes stale once a tree toggle regenerates it via nodeToContent.
 func (be blockEditState) followTargetLine() int {
 	idx := be.tree.currentNodeIdx()
 	if idx < 0 {
@@ -58,10 +56,10 @@ func (be blockEditState) followTargetLine() int {
 	return be.collectionTargetLine(v, node)
 }
 
-// collectionTargetLine resolves the follow line inside a collection buffer.
-// The buffer shows a single entry (entryViewYAML): a one-item sequence or
-// one-pair mapping under the block key. yamlPath[0] is the entry label, so
-// the walk starts inside the entry's value mapping.
+// collectionTargetLine resolves the follow line inside a collection buffer,
+// which holds a single entry: a one-item sequence or one-pair mapping under the
+// block key. yamlPath[0] is the entry label, so the walk starts inside the
+// entry's value mapping.
 func (be blockEditState) collectionTargetLine(v *yaml.Node, node treeNode) int {
 	wantKind, entryIdx := yaml.SequenceNode, 0
 	if be.coll.isMap {
@@ -76,10 +74,9 @@ func (be blockEditState) collectionTargetLine(v *yaml.Node, node treeNode) int {
 	return mappingKeyLine(v.Content[entryIdx], node.yamlPath[1:])
 }
 
-// followTreeSelection moves the YAML editor cursor (and the Preview window)
-// to the line of the tree node under the cursor. No-op when the node has no
-// line in the current buffer, so the editor keeps its position on unchecked
-// fields and invalid buffers.
+// followTreeSelection moves the YAML editor cursor and the Preview window to the
+// selected tree node's line. A node with no line in the current buffer leaves
+// the editor where it is, so unchecked fields and invalid buffers do not jump.
 func (be blockEditState) followTreeSelection() blockEditState {
 	line := be.followTargetLine()
 	if line < 1 {
@@ -112,11 +109,9 @@ func (be blockEditState) withEditorCursorAt(line int) blockEditState {
 	}
 	be.yamlEditor.SetCursorColumn(0)
 	if !be.yamlEditor.Focused() {
-		// The textarea repositions its viewport only inside a focused Update;
-		// direct cursor moves on a blurred editor leave the visible window
-		// stale. Render once so the viewport (a shared pointer inside the
-		// textarea) holds current content, then run one no-op Update under a
-		// temporary focus so the viewport catches up with the cursor.
+		// The textarea repositions its viewport only inside a focused Update, so
+		// cursor moves on a blurred editor leave the window stale. Render once to
+		// fill the viewport, then run a no-op Update under temporary focus.
 		_ = be.yamlEditor.View()
 		be.yamlEditor.Focus()
 		be.yamlEditor, _ = be.yamlEditor.Update(viewportSyncMsg{})
@@ -150,9 +145,8 @@ func scrollLinesTo(s string, height, targetLine int) string {
 	return strings.Join(lines[offset:offset+height], "\n")
 }
 
-// numberPreviewLines prefixes each line of s with a fixed-width line-number
-// gutter, matching the root preview's viewport-based gutter (previewGutter).
-// Must run before scrollLinesTo so line numbers stay absolute once windowed.
+// numberPreviewLines prefixes each line with a fixed-width gutter matching the
+// root preview's. Must run before scrollLinesTo so numbers stay absolute.
 func numberPreviewLines(s string, rt resolvedTheme) string {
 	lines := strings.Split(s, "\n")
 	for i, line := range lines {

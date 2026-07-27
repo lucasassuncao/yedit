@@ -29,33 +29,29 @@ const (
 	paneDocPreset
 )
 
-// model is the root bubbletea model.
-//
-// The active pane is explicit via the mode field. The alert/blockEdits fields
-// hold per-mode data: alert is non-nil iff mode == paneAlert, blockEdits is
-// non-empty iff mode == paneBlockEdit (its last element is the visible editor).
+// model is the root bubbletea model. The mode field names the active pane, and
+// alert/blockEdits hold that pane's data: alert is set iff mode == paneAlert,
+// blockEdits non-empty iff mode == paneBlockEdit.
 type model struct {
 	cfg             Config
 	doc             document.Document
 	schemaTree      []schema.FieldDef
 	knownByPath     map[string]map[string]bool
 	childrenOf      map[string][]schema.FieldDef
-	wiredValidators WiredValidators // produced once in newModel; reused on every save/validate
+	wiredValidators WiredValidators // built once in newModel, reused on every save/validate
 
 	list            listModel
 	preview         viewport.Model
 	previewRenderer *glamour.TermRenderer
-	// blockEdits is a stack of block editors. Index 0 is the top-level block
-	// opened from the list; deeper entries are nested drill-ins. The last element
-	// is the visible/active editor. The stack carries only UI state (cursor,
-	// expansion) and each editor's focus path - the canonical data lives in
+	// blockEdits stacks the block editors: index 0 is the block opened from the
+	// list, deeper entries are drill-ins, and the last is the active editor. It
+	// carries only UI state and each editor's focus path; the data lives in
 	// editRoot.
 	blockEdits []blockEditState
-	// editRoot is the single canonical *yaml.Node for the block currently being
-	// edited: the parsed value of the top-level block. Drilling in moves a focus
-	// path within this one tree (be.focus) rather than copying substrings between
-	// stacked editors, and committing serializes it once. Non-focused parts stay
-	// as live nodes, so nested edits can never corrupt them via string splicing.
+	// editRoot is the canonical *yaml.Node for the block being edited. Drilling in
+	// moves a focus path within this one tree rather than copying substrings
+	// between stacked editors, and committing serializes it once. Non-focused
+	// parts stay live nodes, so nested edits cannot corrupt them by splicing.
 	editRoot     *yaml.Node
 	editBlockKey string // top-level YAML key of editRoot
 	alert        alert.Model
@@ -65,15 +61,16 @@ type model struct {
 	help         help.Model
 
 	mode                         pane
-	showHint                     bool // root view: split the right column to show the Hint/Example panel
-	saved                        bool // at least one save succeeded this session; reported via Result
+	showHint                     bool  // split the right column to show the Hint/Example panel
+	hintAnim                     tween // in-flight hint transition; inactive unless Config.AnimationDuration is set
+	saved                        bool  // at least one save succeeded this session; reported via Result
 	statusMsg                    string
-	statusSeq                    uint // incremented with each new status; used to cancel stale clear ticks
+	statusSeq                    uint // incremented per status, to cancel stale clear ticks
 	width, height, listW, innerH int
 }
 
-// newModel constructs the root model from a Config. The path may be a file
-// that does not yet exist; in that case the editor starts with an empty doc.
+// newModel constructs the root model from a Config. A path that does not exist
+// yet starts the editor with an empty doc.
 func newModel(cfg Config) (model, error) {
 	if cfg.Schema == nil {
 		return model{}, fmt.Errorf("editor: Config.Schema is required")
@@ -120,11 +117,11 @@ func newModel(cfg Config) (model, error) {
 	}, nil
 }
 
-// model-level alert (validation, save confirm, etc.) can be shown over the list
-// OR over an active block editor. enterAlert preserves blockEdits so dismissal
-// can return to the block editor via enterBlockEdit instead of discarding the
-// stack via enterList. The block editor's own confirmAlert uses mode=paneBlockEdit
-// and is handled separately in handleDismissedAlert.
+// A model-level alert can appear over the list or over an active block editor,
+// so enterAlert preserves blockEdits and dismissal returns through
+// enterBlockEdit instead of discarding the stack via enterList. The block
+// editor's own confirmAlert stays in paneBlockEdit and is handled separately in
+// handleDismissedAlert.
 func (m model) enterList() model {
 	m.mode = paneList
 	m.alertVisible = false
@@ -141,8 +138,8 @@ func (m model) enterPreview() model {
 	return m
 }
 
-// enterBlockEdit makes the block-editor stack the active screen. The caller is
-// responsible for having pushed onto m.blockEdits first.
+// enterBlockEdit makes the block-editor stack the active screen. The caller must
+// have pushed onto m.blockEdits first.
 func (m model) enterBlockEdit() model {
 	m.mode = paneBlockEdit
 	m.alertVisible = false
@@ -379,6 +376,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMsg = ""
 		}
 		return m, nil
+	case hintAnimTickMsg:
+		return m.handleHintAnimTick(msg)
 	}
 
 	return m.handleModeUpdate(msg)
@@ -575,7 +574,7 @@ func (m model) viewContent() string {
 
 	_, rightW := theme.TwoColumnWidths(m.width)
 	var rightPanel string
-	if m.showHint {
+	if m.hintVisible() {
 		previewPanel := theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.previewPanelH() + 2}, previewFocused, m.preview.View(), m.theme.colors)
 		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: rightW, H: m.hintPanelH() + 2}, false, clampLines(m.selectedHint(), m.hintPanelH()), m.theme.colors)
 		rightPanel = lipgloss.JoinVertical(lipgloss.Left, previewPanel, hintPanel)

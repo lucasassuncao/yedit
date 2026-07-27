@@ -188,6 +188,43 @@ A Go map literal cannot reference itself during construction, so this two-phase 
 
 yamltui displays the `Type` label as-is; any string meaningful to your users is valid.
 
+## Animating the panel
+
+By default, pressing `h` shows or hides the Hint/Example panel instantly. Set
+`Config.AnimationDuration` to make the panel ease open and closed instead,
+growing and shrinking within the right column while the preview (or the YAML
+editor, inside a block) takes up the slack:
+
+```go
+editor.Config{
+    EnableHints:       true,
+    Metadata:          meta,
+    AnimationDuration: 180 * time.Millisecond,
+}
+```
+
+The motion follows a quadratic ease-in-out curve, so it accelerates away from
+the start and settles into the end rather than sliding at a constant rate. The
+curve is deliberately gentle: terminal output is quantised to whole cells, so a
+sharper curve (a cubic, say) reads as stutter rather than as speed, freezing the
+value for several frames at each end and then jumping many cells at once through
+the middle.
+
+Around `150ms`-`200ms` reads as responsive; much longer starts to feel sluggish,
+since the panel is only ~10 terminal rows tall and the animation has that many
+distinct steps to work with. Raising the frame rate does not help for the same
+reason: extra frames would only redraw heights already on screen.
+
+The setting governs the Hint/Example panel only. Modal dialogs (alerts,
+validation errors, confirmation prompts) always appear and dismiss instantly.
+
+The default of `0` is deliberate. yedit is a library, and animation means the
+editor emits timer messages into the host application's bubbletea loop. With
+`AnimationDuration` unset no tick is ever scheduled, so an embedding app that
+did not ask for animation pays nothing for it. The tick loop is also
+self-cancelling: it runs only while a transition is in flight, never while the
+editor sits idle.
+
 ## Full example
 
 See `examples/test/main.go` for a complete, runnable example that exercises presets, metadata, and validators together.

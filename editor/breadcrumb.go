@@ -20,8 +20,8 @@ func (tm treeModel) BreadcrumbSegments() []string {
 	case treeNodeSeqItem:
 		return []string{n.label}
 	default:
-		// yamlPath already has the full path; for seq-item children path[0] is
-		// the item label, which serves as a breadcrumb segment too.
+		// yamlPath is already the full path, and for seq-item children path[0] is
+		// the item label, which reads as a breadcrumb segment too.
 		return n.yamlPath
 	}
 }
@@ -36,9 +36,8 @@ func (m model) blockBreadcrumbPrefix() []string {
 	var segs []string
 	for _, be := range m.blockEdits[:n-1] {
 		segs = append(segs, be.key)
-		// BreadcrumbSegments returns the path to the field the user drilled into.
-		// Its last element equals the child editor's be.key and would duplicate it,
-		// so only the leading segments (e.g. "[0]" for collection entries) are kept.
+		// The last segment equals the child editor's be.key and would duplicate it,
+		// so keep only the leading ones (e.g. "[0]" for collection entries).
 		sub := be.tree.BreadcrumbSegments()
 		if len(sub) > 1 {
 			segs = append(segs, sub[:len(sub)-1]...)
@@ -57,8 +56,8 @@ func renderHeader(title, file string, dirty bool, width int, th resolvedTheme) s
 	return theme.RenderHeaderWith(title, info, "", width, th.colors)
 }
 
-// breadcrumbHeader builds a block editor's header line: parentSegs (from
-// model.blockBreadcrumbPrefix) plus this editor's own key and tree position.
+// breadcrumbHeader builds a block editor's header line from parentSegs plus this
+// editor's own key and tree position.
 func (be blockEditState) breadcrumbHeader(parentSegs []string) string {
 	segs := append(append([]string(nil), parentSegs...), be.key)
 	segs = append(segs, be.tree.BreadcrumbSegments()...)

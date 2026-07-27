@@ -10,15 +10,13 @@ import (
 	"github.com/lucasassuncao/yedit/schema"
 )
 
-// This file holds the node-based collection navigator: the structural
-// counterpart of the seqEntry/collectionBuffer text layer. The collection's
-// value node (be.node - a SequenceNode for []Struct, a MappingNode for
-// map[string]Struct) is the single source of truth; entry labels, the entry
-// list, and per-entry checkmarks are all derived from it.
+// The node-based collection navigator. be.node - a SequenceNode for []Struct, a
+// MappingNode for map[string]Struct - is the single source of truth; entry
+// labels, the entry list, and per-entry checkmarks are all derived from it.
 
 // collValueNode parses raw ("key:\n  ...") into the collection's value node,
-// coercing to an empty sequence (or mapping) when absent, empty, or the wrong
-// kind so a fresh collection always has a writable node of the right shape.
+// coercing anything absent or of the wrong kind to an empty node of the right
+// shape, so a fresh collection is always writable.
 func collValueNode(raw string, isMap bool) *yaml.Node {
 	want := yaml.SequenceNode
 	if isMap {
@@ -77,8 +75,8 @@ func entryLabel(node *yaml.Node, isMap bool, i int) string {
 }
 
 // entryViewYAML renders the single-entry editor text for entry i: "key:\n  - …"
-// for sequences, "key:\n  <entryKey>:\n    …" for maps. The entry node is cloned
-// before encoding so rendering never mutates the canonical tree's style.
+// for sequences, "key:\n  <entryKey>:\n    …" for maps. The node is cloned first
+// so rendering never mutates the canonical tree's style.
 func entryViewYAML(node *yaml.Node, key string, isMap bool, i int) string {
 	if i < 0 || i >= entryCount(node, isMap) {
 		return key + ":\n"
@@ -93,10 +91,8 @@ func entryViewYAML(node *yaml.Node, key string, isMap bool, i int) string {
 	return nodeToContent(key, wrap)
 }
 
-// viewHasMultipleSeqItems reports whether the YAML text contains more than one
-// sequence item under the collection key. Used to catch the case where a user
-// manually adds a second "- …" block to the single-entry editor - that extra
-// entry would be silently dropped by parseEntryFromView, so we reject it early.
+// viewHasMultipleSeqItems catches a second "- …" block added by hand to the
+// single-entry editor: parseEntryFromView would drop it, so reject it early.
 func viewHasMultipleSeqItems(view string) bool {
 	blockVal := valueNodeOfSnippet(view)
 	return blockVal != nil && blockVal.Kind == yaml.SequenceNode && len(blockVal.Content) > 1
@@ -104,8 +100,7 @@ func viewHasMultipleSeqItems(view string) bool {
 
 // parseEntryFromView parses single-entry editor text back into the entry's key
 // node (maps only) and value mapping. ok is false on a parse error or a shape
-// that does not match the collection kind - the parse gate that keeps invalid
-// text from corrupting the canonical node.
+// mismatch: this is the gate that keeps invalid text out of the canonical node.
 func parseEntryFromView(view string, isMap bool) (keyNode, valNode *yaml.Node, ok bool) {
 	blockVal := valueNodeOfSnippet(view)
 	if blockVal == nil {
@@ -115,8 +110,7 @@ func parseEntryFromView(view string, isMap bool) (keyNode, valNode *yaml.Node, o
 		if blockVal.Kind != yaml.MappingNode || len(blockVal.Content) < 2 {
 			return nil, nil, false
 		}
-		// Reject views that contain more than one map entry — the extra pairs
-		// would be silently dropped by the two-node splice, corrupting data.
+		// More than one map entry: the two-node splice would drop the extra pairs.
 		if len(blockVal.Content) > 2 {
 			return nil, nil, false
 		}
@@ -159,9 +153,9 @@ func removeEntry(node *yaml.Node, isMap bool, i int) {
 	}
 }
 
-// buildCollectionNodesFromNode builds the tree nodes for a collection from its
-// value node: one seqItem per element (collapsed) with its child field nodes,
-// checked states derived structurally, then the "+ add new" row.
+// buildCollectionNodesFromNode builds a collection's tree nodes: one collapsed
+// seqItem per element with its child field nodes and derived checked states,
+// then the "+ add new" row.
 func buildCollectionNodesFromNode(childDefs []schema.FieldDef, node *yaml.Node, isMap bool) []treeNode {
 	var nodes []treeNode
 	n := entryCount(node, isMap)

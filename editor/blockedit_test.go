@@ -93,9 +93,8 @@ func cursorToFieldExpanded(be blockEditState, label string) blockEditState {
 	return be
 }
 
-// TestOpenableChildReflectsContent verifies that an openable field (any/all)
-// is "checked" (rendered active) only when it holds content, and muted when
-// empty - fixing the bug where openable fields always looked active.
+// An openable field renders active only when it holds content, and muted when
+// empty. Openable fields used to always look active.
 func TestOpenableChildReflectsContent(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -119,8 +118,8 @@ func TestOpenableChildReflectsContent(t *testing.T) {
 	is.False(n.checked, "empty 'any' should be unchecked/muted")
 }
 
-// TestCtrlDOnFilledOpenableAsksRemove verifies ctrl+d now acts on an openable
-// field with content (opens the remove confirm), instead of being a no-op.
+// ctrl+d on an openable field with content opens the remove confirm rather than
+// doing nothing.
 func TestCtrlDOnFilledOpenableAsksRemove(t *testing.T) {
 	is := assert.New(t)
 	be := newBlockEdit(Config{}, filterSpec(`filters:
@@ -135,8 +134,7 @@ func TestCtrlDOnFilledOpenableAsksRemove(t *testing.T) {
 	is.Equal(modeConfirming, be.mode, "ctrl+d on a filled openable should open the remove confirm")
 }
 
-// TestCtrlDOnEmptyOpenableNoop verifies ctrl+d on an empty openable does nothing
-// (there is no content to remove) and never opens a confirm.
+// ctrl+d on an empty openable has nothing to remove and never opens a confirm.
 func TestCtrlDOnEmptyOpenableNoop(t *testing.T) {
 	is := assert.New(t)
 	be := newBlockEdit(Config{}, filterSpec(`filters:
@@ -149,9 +147,8 @@ func TestCtrlDOnEmptyOpenableNoop(t *testing.T) {
 	is.Equal(modeEditing, be.mode, "ctrl+d on an empty openable should be a no-op")
 }
 
-// TestPresetBrowser_updateAndSelection exercises the preset-picker sub-model:
-// construction, cursor navigation, focus toggling, and the apply/append/dismiss
-// actions it reports back to the block editor.
+// Exercises the preset-picker sub-model: construction, navigation, focus
+// toggling, and the apply/append/dismiss actions it reports back.
 func TestPresetBrowser_updateAndSelection(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -217,8 +214,7 @@ func TestPresetBrowser_updateAndSelection(t *testing.T) {
 	is.Equal(presetDismissed, action, "second esc should dismiss")
 }
 
-// TestAppendPreset_addsEntriesToExisting verifies that appendPreset appends
-// all entries from the preset after the existing entries and positions the
+// appendPreset appends every preset entry after the existing ones and leaves the
 // cursor on the last entry.
 func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
 	is := assert.New(t)
@@ -248,8 +244,8 @@ func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
 	is.True(be.dirty, "dirty should be true after appendPreset")
 }
 
-// TestAppendPreset_indentMismatch verifies that append works correctly when the
-// existing seqBase and the preset YAML use different indentation levels.
+// Append must work when the existing entries and the preset YAML are indented
+// differently.
 func TestAppendPreset_indentMismatch(t *testing.T) {
 	is := assert.New(t)
 	// existing uses 4-space, preset uses 2-space
@@ -276,8 +272,7 @@ func TestAppendPreset_indentMismatch(t *testing.T) {
 	is.Contains(be.yamlEditor.Value(), "appended", "yamlEditor not showing appended entry")
 }
 
-// TestAppendPreset_multiEntryPreset verifies that a preset with multiple
-// entries adds all of them.
+// A preset with multiple entries adds all of them.
 func TestAppendPreset_multiEntryPreset(t *testing.T) {
 	is := assert.New(t)
 	stub := stubPresets{data: map[string]string{
@@ -299,9 +294,8 @@ func TestAppendPreset_multiEntryPreset(t *testing.T) {
 	is.Equal(2, be.tree.cursor, "cursor should be on last entry")
 }
 
-// TestAppendPreset_duplicateMapKeyRejected verifies that appending a preset
-// whose entry key already exists in a map-nav collection is rejected instead
-// of splicing a duplicate mapping key into the node.
+// Appending a preset whose entry key already exists must be rejected, not
+// spliced in as a duplicate mapping key.
 func TestAppendPreset_duplicateMapKeyRejected(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -360,8 +354,7 @@ func seqItemCount(be blockEditState) int {
 	return n
 }
 
-// TestUndo_structFieldRemove verifies that removing an empty-valued checked
-// field (no confirm dialog) saves an undo snap and restoreUndo brings it back.
+// Removing an empty-valued checked field saves an undo snap that restores it.
 func TestUndo_structFieldRemove(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -390,9 +383,8 @@ func TestUndo_structFieldRemove(t *testing.T) {
 	is.Equal(want, be.yamlEditor.Value(), "after undo YAML")
 }
 
-// TestUndo_structFieldRemoveWithContent verifies that removing a field that has
-// content (triggers confirm dialog) still saves an undo snap, and that
-// restoreUndo brings the field back with its original value.
+// Removing a field with content goes through the confirm dialog and still saves
+// an undo snap that restores its original value.
 func TestUndo_structFieldRemoveWithContent(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -423,8 +415,7 @@ func TestUndo_structFieldRemoveWithContent(t *testing.T) {
 	is.Equal(want, be.yamlEditor.Value(), "after undo YAML")
 }
 
-// TestUndo_structFieldAdd verifies that adding an unchecked field saves an undo
-// snap and that restoreUndo removes the field again.
+// Adding an unchecked field saves an undo snap that removes it again.
 func TestUndo_structFieldAdd(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -451,8 +442,7 @@ func TestUndo_structFieldAdd(t *testing.T) {
 	is.Equal(want, be.yamlEditor.Value(), "after undo YAML")
 }
 
-// TestUndo_seqItemDelete verifies that deleting a seq item saves an undo snap
-// and that restoreUndo restores the original entries.
+// Deleting a seq item saves an undo snap that restores the original entries.
 func TestUndo_seqItemDelete(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -473,8 +463,7 @@ func TestUndo_seqItemDelete(t *testing.T) {
 	is.Equal(2, seqItemCount(be), "after undo seq item count")
 }
 
-// TestUndo_seqItemAdd verifies that adding a seq item saves an undo snap and
-// that restoreUndo removes the added item.
+// Adding a seq item saves an undo snap that removes it again.
 func TestUndo_seqItemAdd(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -496,9 +485,8 @@ func TestUndo_seqItemAdd(t *testing.T) {
 }
 
 // TestCollectionNav_RawSetValueDoesNotMutateNode verifies that replacing the
-// editor text out-of-band (without a keystroke through updateKey, which is what
-// parse-gates edits into the node) leaves the canonical node untouched until a
-// real flush. Only navigation and commit reconcile the buffer into the node.
+// editor text out-of-band, bypassing the parse gate in updateKey, leaves the
+// canonical node untouched: only navigation and commit reconcile the buffer.
 func TestCollectionNav_RawSetValueDoesNotMutateNode(t *testing.T) {
 	must := require.New(t)
 	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
@@ -513,8 +501,7 @@ func TestCollectionNav_RawSetValueDoesNotMutateNode(t *testing.T) {
 	must.Equal(original, be.entryYAML(0), "canonical node was mutated by a raw SetValue")
 }
 
-// TestCollectionNav_CommitFlushesAndSerializesAll verifies that commit() flushes
-// the current buffer into entries and includes all entries in the snippet.
+// commit() flushes the current buffer and includes every entry in the snippet.
 func TestCollectionNav_CommitFlushesAndSerializesAll(t *testing.T) {
 	must := require.New(t)
 	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
@@ -559,9 +546,8 @@ func TestCollectionNav_DoubleCommitIdempotent(t *testing.T) {
 	is.Equal(1, strings.Count(snippet2, "name: beta"), "duplication detected")
 }
 
-// TestPrimitiveBlock_showsFieldItemAndHint verifies that a tree-less block shows
-// the field itself in the left panel and its metadata in the hint panel, instead
-// of the "(no fields)" / "select a field" placeholders.
+// A tree-less block shows the field itself on the left and its metadata in the
+// hint panel, not the "(no fields)" / "select a field" placeholders.
 func TestPrimitiveBlock_showsFieldItemAndHint(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -598,8 +584,7 @@ func TestPrimitiveBlock_showsFieldItemAndHint(t *testing.T) {
 	is.NotContains(be.View(nil), "(no fields)", "full view should no longer show the (no fields) placeholder")
 }
 
-// TestRenderFieldHint_typeAndRequiredBehavior verifies that Type is shown only
-// when set and Required is shown only when true.
+// Type shows only when set, Required only when true.
 func TestRenderFieldHint_typeAndRequiredBehavior(t *testing.T) {
 	th := resolveTheme(theme.Theme{})
 
@@ -630,8 +615,7 @@ func TestRenderFieldHint_typeAndRequiredBehavior(t *testing.T) {
 	})
 }
 
-// TestRenderFieldHint_constraints verifies that the constraint fields render
-// when set and stay absent on a zero FieldMeta.
+// Constraint fields render when set and stay absent on a zero FieldMeta.
 func TestRenderFieldHint_constraints(t *testing.T) {
 	is := assert.New(t)
 	th := resolveTheme(theme.Theme{})
@@ -659,8 +643,7 @@ func TestRenderFieldHint_constraints(t *testing.T) {
 	is.NotContains(empty, "Deprecated:", "zero FieldMeta must render no constraint lines")
 }
 
-// TestRestoreUndo_emptyStackIsNoOp guards restoreUndo against an empty stack:
-// the function must not panic and must return the state unchanged.
+// restoreUndo on an empty stack must not panic and must leave the state alone.
 func TestRestoreUndo_emptyStackIsNoOp(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -670,13 +653,10 @@ func TestRestoreUndo_emptyStackIsNoOp(t *testing.T) {
 	is.Empty(got.undoStack, "restoreUndo on an empty stack should leave it empty")
 }
 
-// ---------------------------------------------------------------------------
-// resyncTreeFromYAML - tolerant, non-authoritative visual projection
-// ---------------------------------------------------------------------------
+// resyncTreeFromYAML is a tolerant, non-authoritative visual projection.
 
-// TestResyncToleratesInvalidYAML_struct verifies that a transiently unparseable
-// buffer (mid-typing) neither panics nor wipes the tree's checked state: the
-// per-keystroke resync leaves the last good visual state in place.
+// A transiently unparseable buffer must neither panic nor wipe the tree's
+// checked state: the resync leaves the last good visual state in place.
 func TestResyncToleratesInvalidYAML_struct(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -707,9 +687,8 @@ func TestResyncToleratesInvalidYAML_struct(t *testing.T) {
 	}
 }
 
-// TestResyncToleratesInvalidYAML_collection verifies the same tolerance for a
-// collection navigator: an unparseable current entry preserves the entry's label
-// and never mutates the canonical entries slice.
+// Same tolerance in a collection navigator: an unparseable current entry keeps
+// its label and never mutates the canonical entries.
 func TestResyncToleratesInvalidYAML_collection(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -753,10 +732,9 @@ func TestEditorH_nonNegative(t *testing.T) {
 // ctrl+d on nested struct parent - must offer removal, not silently no-op
 // ---------------------------------------------------------------------------
 
-// TestCtrlDRemovesNestedParentBlock reproduces the movelooper bug: ctrl+d on a
-// nested struct parent (hooks.before) carries no checkbox of its own, so the old
-// handleRemove returned treeNoAction and nothing happened. ctrl+d must now offer
-// removal and delete the whole subtree, leaving sibling blocks (after) intact.
+// A nested struct parent carries no checkbox of its own, which used to make
+// ctrl+d a no-op. It must offer removal and delete the whole subtree, leaving
+// siblings intact.
 func TestCtrlDRemovesNestedParentBlock(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -808,9 +786,8 @@ func TestCtrlDRemovesNestedParentBlock(t *testing.T) {
 	is.Contains(got, "after:", "after block should remain")
 }
 
-// TestRedo_structFieldRemove verifies the undo→redo round-trip: removing a
-// field, undoing, then redoing lands back on the post-remove state, and the
-// redo itself can be undone again.
+// Undo/redo round-trip: remove, undo, redo lands back on the post-remove state,
+// and the redo itself can be undone.
 func TestRedo_structFieldRemove(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -846,8 +823,8 @@ func TestRedo_structFieldRemove(t *testing.T) {
 	is.Equal(original, be.yamlEditor.Value(), "after undoing the redo YAML")
 }
 
-// TestRedo_clearedByNewMutation verifies that a new mutation after an undo
-// discards the redo stack - the editor forks away from the undone state.
+// A new mutation after an undo discards the redo stack: the editor forks away
+// from the undone state.
 func TestRedo_clearedByNewMutation(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -874,10 +851,9 @@ func TestRedo_clearedByNewMutation(t *testing.T) {
 	is.Empty(be.redoStack, "redoStack must be cleared by a new mutation")
 }
 
-// TestUndo_treelessRetypeAfterUndo verifies that in a tree-less (YAML-only)
-// block a keystroke after an undo re-checkpoints the restored state, so a
-// second ctrl+u can undo the new edit instead of reporting "Nothing to undo."
-// It also verifies the new edit invalidates the pending redo entry.
+// In a YAML-only block, a keystroke after an undo re-checkpoints the restored
+// state, so a second ctrl+u undoes the new edit rather than reporting "Nothing
+// to undo." The new edit also invalidates the pending redo entry.
 func TestUndo_treelessRetypeAfterUndo(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -906,7 +882,7 @@ func TestUndo_treelessRetypeAfterUndo(t *testing.T) {
 	is.Equal(baseline, be.yamlEditor.Value(), "second undo must restore the pre-retype content")
 }
 
-// TestRestoreRedo_emptyStackIsNoOp guards restoreRedo against an empty stack.
+// restoreRedo on an empty stack is a no-op.
 func TestRestoreRedo_emptyStackIsNoOp(t *testing.T) {
 	is := assert.New(t)
 	be := newBlockEdit(Config{}, structSpec(), 100, 40)
@@ -914,8 +890,7 @@ func TestRestoreRedo_emptyStackIsNoOp(t *testing.T) {
 	is.Empty(got.redoStack, "restoreRedo on an empty stack should leave it empty")
 }
 
-// TestInnerH_AdjustsForLegendLines verifies that innerH() shrinks by one for
-// each extra legend line beyond the first.
+// innerH() shrinks by one per extra legend line beyond the first.
 func TestInnerH_AdjustsForLegendLines(t *testing.T) {
 	base := blockEditState{width: 80, height: 30}
 
@@ -935,7 +910,7 @@ func TestInnerH_AdjustsForLegendLines(t *testing.T) {
 	}
 }
 
-// TestInnerH_MinimumOne ensures innerH never returns less than 1.
+// innerH never returns less than 1.
 func TestInnerH_MinimumOne(t *testing.T) {
 	be := blockEditState{width: 80, height: 4, legendLines: 10}
 	if h := be.innerH(); h < 1 {
@@ -943,9 +918,8 @@ func TestInnerH_MinimumOne(t *testing.T) {
 	}
 }
 
-// TestSaveUndoDeduplicatesSpeculativeCheckpoints guards that repeated Tab
-// switches into the YAML panel (speculative checkpoints with no edit between
-// them) push a single snapshot instead of piling up identical ones.
+// Repeated Tab switches with no edit between them push a single snapshot instead
+// of piling up identical ones.
 func TestSaveUndoDeduplicatesSpeculativeCheckpoints(t *testing.T) {
 	must := require.New(t)
 	be := newBlockEdit(Config{}, structSpec(), 100, 40)
@@ -958,10 +932,8 @@ func TestSaveUndoDeduplicatesSpeculativeCheckpoints(t *testing.T) {
 	must.Len(be.undoStack, 1, "identical speculative checkpoints must be deduplicated")
 }
 
-// TestUndoAfterSpeculativeCheckpointRestoresInOnePress guards the restore-side
-// dedupe: after a real change followed by a Tab checkpoint (equal to the live
-// state), a single undo must land on the pre-change state instead of first
-// "restoring" the identical checkpoint.
+// Restore-side dedupe: after a real change followed by a Tab checkpoint equal to
+// the live state, one undo lands on the pre-change state.
 func TestUndoAfterSpeculativeCheckpointRestoresInOnePress(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -986,9 +958,8 @@ func TestUndoAfterSpeculativeCheckpointRestoresInOnePress(t *testing.T) {
 	is.Equal("Undone.", be.statusMsg)
 }
 
-// TestRestoreUndoWithOnlyNoopSnapshotsReportsNothing guards the honest status:
-// when the stack holds only snapshots identical to the live state, undo drops
-// them and reports "Nothing to undo." instead of a phantom "Undone.".
+// When the stack holds only snapshots identical to the live state, undo drops
+// them and reports "Nothing to undo." rather than a phantom "Undone.".
 func TestRestoreUndoWithOnlyNoopSnapshotsReportsNothing(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -1016,10 +987,8 @@ func commitShapeSpec() blockSpec {
 	}
 }
 
-// TestCommit_RejectsExtraTopLevelKeys guards against silent data loss: a
-// second top-level key typed into the editor used to be dropped without
-// warning (only the first key's value was committed). It must instead fail
-// the commit with an explicit error naming the stray key.
+// A second top-level key typed into the editor used to be dropped silently. It
+// must fail the commit with an error naming the stray key.
 func TestCommit_RejectsExtraTopLevelKeys(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -1034,9 +1003,8 @@ func TestCommit_RejectsExtraTopLevelKeys(t *testing.T) {
 	is.Contains(committed.editorErr.message, "logging", "the error must name the stray key")
 }
 
-// TestCommit_RejectsRenamedTopLevelKey guards the other silent-loss shape: a
-// renamed block header used to be ignored (content written back under the
-// original key). It must fail the commit with an explicit error.
+// A renamed block header used to be ignored, writing the content back under the
+// original key. It must fail the commit with an explicit error.
 func TestCommit_RejectsRenamedTopLevelKey(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -1051,9 +1019,8 @@ func TestCommit_RejectsRenamedTopLevelKey(t *testing.T) {
 	is.Contains(committed.editorErr.message, `"server"`, "the error must name the expected key")
 }
 
-// TestCommit_RejectsMissingHeader covers a buffer whose block header was
-// deleted or replaced by a bare scalar: the old path surfaced a misleading
-// "internal error"; it must now explain the missing header.
+// A buffer whose block header was deleted or replaced by a bare scalar must get
+// an error explaining the missing header, not a misleading "internal error".
 func TestCommit_RejectsMissingHeader(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -1085,10 +1052,8 @@ func TestCommit_AcceptsWellFormedBlock(t *testing.T) {
 	is.Equal("server:\n  host: example.org\n  port: 8080\n", nodeToContent("server", val))
 }
 
-// TestTreelessBlock_UndoRestoresInitialContent guards the undo baseline for
-// blocks that open with the YAML panel focused (primitives, free-form
-// collections): typing must be reversible back to the content the editor
-// opened with, even though no Tab checkpoint ever fired.
+// Blocks that open with the YAML panel focused never fire a Tab checkpoint, so
+// typing must still be reversible back to the content they opened with.
 func TestTreelessBlock_UndoRestoresInitialContent(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -1105,9 +1070,8 @@ func TestTreelessBlock_UndoRestoresInitialContent(t *testing.T) {
 	is.Equal("Undone.", be.statusMsg)
 }
 
-// TestHintScroll_ReachesEndOfLongContent guards the hint panel's scroll bound:
-// it must be derived from the content height, so the last panel-full of a
-// long hint is reachable (the old bound was the panel height itself).
+// The hint panel's scroll bound comes from the content height, so the last
+// panel-full of a long hint is reachable.
 func TestHintScroll_ReachesEndOfLongContent(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -1133,10 +1097,8 @@ func TestHintScroll_ReachesEndOfLongContent(t *testing.T) {
 	is.Equal(wantMax, be.hintScroll, "scroll must reach the last panel-full of the hint content")
 }
 
-// TestHintToggle_HKeyShowsAndHides guards the overlay's "h" hint-visibility
-// toggle: it must mirror the root list view (show/hide, restore focus off a
-// hidden panel) and must not fire while the YAML panel has focus, where "h"
-// is a character to type.
+// The "h" hint toggle mirrors the root list view, restoring focus off a hidden
+// panel, and must not fire while the YAML panel has focus.
 func TestHintToggle_HKeyShowsAndHides(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -1248,9 +1210,8 @@ func applyFuzzAction(be blockEditState, a byte) blockEditState {
 	return be
 }
 
-// TestComputedDirty_ToggleOnOffReadsClean guards the derived dirty flag for
-// struct blocks: toggling a field on and then off returns the node to its
-// baseline, so the editor must read clean again.
+// Toggling a struct field on and then off returns the node to its baseline, so
+// the editor must read clean again.
 func TestComputedDirty_ToggleOnOffReadsClean(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -1284,9 +1245,8 @@ func TestComputedDirty_ToggleOnOffReadsClean(t *testing.T) {
 	is.False(be.dirty, "removing the just-added field must read clean again")
 }
 
-// TestComputedDirty_CollectionRevertReadsClean guards the derived dirty flag
-// for collections, which previously stayed dirty forever once touched: an
-// entry edited and then reverted to its original content must read clean.
+// Collections used to stay dirty forever once touched: an entry edited and then
+// reverted must read clean.
 func TestComputedDirty_CollectionRevertReadsClean(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -1304,10 +1264,8 @@ func TestComputedDirty_CollectionRevertReadsClean(t *testing.T) {
 	is.False(be.dirty, "reverting the entry to its original content must read clean again")
 }
 
-// TestPasteUndoRestoresBufferAndNode guards the non-key (paste) buffer path:
-// the undo checkpoint must pair the pre-paste buffer with the pre-paste node.
-// Before the fix it captured the post-paste buffer, so ctrl+u restored the old
-// node but left the pasted text in the editor.
+// The paste path's undo checkpoint must pair the pre-paste buffer with the
+// pre-paste node; capturing the post-paste buffer left the pasted text behind.
 func TestPasteUndoRestoresBufferAndNode(t *testing.T) {
 	if err := clipboard.WriteAll("  extra: value\n"); err != nil {
 		t.Skipf("clipboard unavailable: %v", err)

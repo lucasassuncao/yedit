@@ -6,8 +6,6 @@ import (
 	"github.com/lucasassuncao/yedit/schema"
 )
 
-// ── BreadcrumbSegments ────────────────────────────────────────────────────────
-
 func TestBreadcrumbSegments_empty(t *testing.T) {
 	if got := (treeModel{}).BreadcrumbSegments(); got != nil {
 		t.Errorf("empty tree: want nil, got %v", got)
@@ -62,8 +60,6 @@ func TestBreadcrumbSegments_addNew(t *testing.T) {
 	}
 }
 
-// ── blockBreadcrumbPrefix ─────────────────────────────────────────────────────
-
 func TestBlockBreadcrumbPrefix_singleEditor(t *testing.T) {
 	be := newBlockEdit(Config{}, ceStructSpec(), 100, 40)
 	m := model{blockEdits: []blockEditState{be}}
@@ -72,9 +68,8 @@ func TestBlockBreadcrumbPrefix_singleEditor(t *testing.T) {
 	}
 }
 
-// TestBlockBreadcrumbPrefix_structChild verifies that drilling into a depth-0
-// openable field does not duplicate its name in the prefix: the last segment of
-// the parent's BreadcrumbSegments equals the child's key and must be dropped.
+// Drilling into a depth-0 openable field must not duplicate its name: the
+// parent's last BreadcrumbSegments entry equals the child's key.
 func TestBlockBreadcrumbPrefix_structChild(t *testing.T) {
 	parent := newBlockEdit(Config{}, ceStructSpec(), 100, 40)
 	parent = cursorToLabel(parent, "httproutes") // cursor on the field that was drilled into
@@ -94,9 +89,8 @@ func TestBlockBreadcrumbPrefix_structChild(t *testing.T) {
 	}
 }
 
-// TestBlockBreadcrumbPrefix_collectionChild verifies the collection case: the
-// parent cursor is on a sub-field of a seq entry (yamlPath = ["[0]", "extensions"]).
-// The prefix must keep the "[0]" segment but drop "extensions" (the child's key).
+// Collection case: with the parent cursor on ["[0]", "extensions"], the prefix
+// keeps "[0]" and drops "extensions", the child's key.
 func TestBlockBreadcrumbPrefix_collectionChild(t *testing.T) {
 	// Simulate a collection editor whose cursor sits on a depth-1 openable field.
 	parent := blockEditState{
@@ -119,11 +113,8 @@ func TestBlockBreadcrumbPrefix_collectionChild(t *testing.T) {
 	}
 }
 
-// ── full path assembly (no duplication) ──────────────────────────────────────
-
-// TestBreadcrumbFullPath_noDuplication assembles the complete segment list the
-// way breadcrumbHeader does and verifies that no key appears consecutively, which
-// is the symptom of the duplication bug.
+// Assembles the full segment list the way breadcrumbHeader does; no key may
+// appear consecutively, the symptom of the duplication bug.
 func TestBreadcrumbFullPath_noDuplication(t *testing.T) {
 	parent := newBlockEdit(Config{}, ceStructSpec(), 100, 40)
 	parent = cursorToLabel(parent, "httproutes")

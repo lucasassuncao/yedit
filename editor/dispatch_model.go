@@ -6,8 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// dispatch applies a ModelAction and returns the updated model and any Cmd.
-// All model-level mutations pass through here.
+// dispatch applies a ModelAction. Every model-level mutation passes through it.
 func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
 	if m.cfg.Trace.OnModelAction != nil {
 		m.cfg.Trace.OnModelAction(a)
@@ -46,13 +45,20 @@ func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
 		return m.execReload()
 
 	case ToggleHints:
+		// Sample the on-screen height before flipping the flag: mid-flight it is
+		// neither 0 nor the settled target.
+		from := m.hintPanelH()
 		m.showHint = !m.showHint
+		m, tick := m.startHintAnim(from)
 		m = m.relayout()
+		if tick {
+			return m, hintAnimTick(false)
+		}
 		return m, nil
 
 	case ApplyDocPreset:
-		// Show a confirmation dialog before replacing the entire document.
-		// The actual replace is performed when confirmedDocPresetMsg is received.
+		// Confirm before replacing the whole document; the replace happens on
+		// confirmedDocPresetMsg.
 		msg := fmt.Sprintf("Apply preset %q? This will replace the entire document - all unsaved changes will be lost.", act.Name)
 		return m.showConfirmAlert("Apply document preset?", msg,
 			func() tea.Msg { return confirmedDocPresetMsg(act) })

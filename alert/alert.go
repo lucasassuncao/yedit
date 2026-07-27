@@ -28,11 +28,8 @@ const (
 	KindConfirm             // accent border, Yes/No buttons
 )
 
-// Model is a centred modal that overlays a parent TUI.
-//
-// confirmYes is only meaningful when Kind == KindConfirm.
-// confirmCmd is the tea.Cmd dispatched when the user confirms (Yes / Enter
-// while Yes is highlighted / y).
+// Model is a centred modal that overlays a parent TUI. confirmYes and
+// confirmCmd are only meaningful when kind is KindConfirm.
 type Model struct {
 	title      string
 	lines      []string
@@ -75,8 +72,8 @@ func (a Model) accentColor() color.Color {
 	}
 }
 
-// Update processes a key event and returns the new model and any command.
-// Non-key messages are ignored (the parent decides what reaches the modal).
+// Update processes a key event. Non-key messages are ignored: the parent
+// decides what reaches the modal.
 func (a Model) Update(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if a.kind == KindConfirm {
 		switch msg.String() {
@@ -101,9 +98,8 @@ func (a Model) Update(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return a, nil
 }
 
-// confirm returns the command to run when the user picks Yes. A nil
-// confirmCmd falls back to dismissing the modal so the confirm key is never
-// silently eaten.
+// confirm falls back to dismissing the modal when confirmCmd is nil, so the
+// confirm key is never silently eaten.
 func (a Model) confirm() tea.Cmd {
 	if a.confirmCmd != nil {
 		return a.confirmCmd
@@ -111,8 +107,8 @@ func (a Model) confirm() tea.Cmd {
 	return func() tea.Msg { return DismissedMsg{} }
 }
 
-// Box renders the modal box without any positioning.
-// The caller is responsible for compositing it over the background view.
+// Box renders the modal box without positioning; the caller composites it over
+// the background view.
 func (a Model) Box() string {
 	color := a.accentColor()
 

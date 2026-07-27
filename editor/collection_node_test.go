@@ -7,9 +7,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestEntryLabel_negativeIndex guards against an index-out-of-range panic:
 // be.coll.current legitimately holds -1 for an empty collection, and the map
-// branch's bound check (2*i < len) would accept a negative index without it.
+// branch's 2*i < len check would accept a negative index on its own.
 func TestEntryLabel_negativeIndex(t *testing.T) {
 	node := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
 		{Kind: yaml.ScalarNode, Value: "web"},
@@ -24,8 +23,7 @@ func TestEntryLabel_negativeIndex(t *testing.T) {
 	}
 }
 
-// BenchmarkDeriveChecked measures re-deriving checked states for all field
-// nodes in a flat list - called once per user action on a collection.
+// Re-deriving checked states for every field node, once per user action.
 func BenchmarkDeriveChecked_10(b *testing.B)  { benchmarkDeriveChecked(b, 10) }
 func BenchmarkDeriveChecked_100(b *testing.B) { benchmarkDeriveChecked(b, 100) }
 func BenchmarkDeriveChecked_500(b *testing.B) { benchmarkDeriveChecked(b, 500) }
@@ -40,8 +38,8 @@ func benchmarkDeriveChecked(b *testing.B, n int) {
 	}
 }
 
-// BenchmarkBuildSeqNodes measures the full tree rebuild for a sequence
-// collection - includes flattenDefsAsTree + deriveChecked per entry.
+// Full tree rebuild for a sequence collection: flattenDefsAsTree plus
+// deriveChecked per entry.
 func BenchmarkBuildSeqNodes_10(b *testing.B)  { benchmarkBuildSeqNodes(b, 10) }
 func BenchmarkBuildSeqNodes_100(b *testing.B) { benchmarkBuildSeqNodes(b, 100) }
 func BenchmarkBuildSeqNodes_500(b *testing.B) { benchmarkBuildSeqNodes(b, 500) }
@@ -56,8 +54,8 @@ func benchmarkBuildSeqNodes(b *testing.B, n int) {
 	}
 }
 
-// makeBenchSeqNode returns a SequenceNode with n entries, each a MappingNode
-// carrying a "name" key - representative of a real category list.
+// makeBenchSeqNode returns n mapping entries with a "name" key, representative
+// of a real category list.
 func makeBenchSeqNode(n int) *yaml.Node {
 	seq := &yaml.Node{Kind: yaml.SequenceNode}
 	for i := 0; i < n; i++ {

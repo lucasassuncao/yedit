@@ -11,16 +11,16 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// dumpWriter records every BlockAction/ModelAction/keystroke dispatched
-// during a session to a JSONL file, so a bug report can be replayed later.
+// dumpWriter records every action and keystroke of a session to a JSONL file, so
+// a bug report can be replayed later.
 type dumpWriter struct {
 	f   *os.File
 	enc *json.Encoder
 	seq int
 }
 
-// newDumpWriter creates the dump file at path and returns a writer for it.
-// An empty path falls back to a timestamped file in the OS temp dir.
+// newDumpWriter creates the dump file at path, or a timestamped file in the OS
+// temp dir when path is empty.
 func newDumpWriter(path string) (*dumpWriter, error) {
 	if path == "" {
 		path = filepath.Join(os.TempDir(), fmt.Sprintf("yedit-dump-%d.jsonl", time.Now().UnixNano()))
@@ -32,8 +32,8 @@ func newDumpWriter(path string) (*dumpWriter, error) {
 	return &dumpWriter{f: f, enc: json.NewEncoder(f)}, nil
 }
 
-// dumpEvent is one line of the session dump. Field order matches the JSON
-// key order (structs preserve declaration order; a map would not).
+// dumpEvent is one line of the session dump. Declaration order is the JSON key
+// order, which a map would not preserve.
 type dumpEvent struct {
 	TS     time.Time `json:"ts"`
 	Seq    int       `json:"seq"`
@@ -44,8 +44,8 @@ type dumpEvent struct {
 	Action any       `json:"action,omitempty"`
 }
 
-// writeAction appends one BlockAction/ModelAction event. scope is "model"
-// or "block"; where is the block key, empty for scope "model".
+// writeAction appends one action event. scope is "model" or "block"; where is
+// the block key, empty for "model".
 func (d *dumpWriter) writeAction(scope, where string, action any) {
 	d.seq++
 	_ = d.enc.Encode(dumpEvent{
@@ -58,8 +58,8 @@ func (d *dumpWriter) writeAction(scope, where string, action any) {
 	})
 }
 
-// writeKey appends one keystroke event. where is the UI location; key is
-// the human-readable key name (e.g. "enter", "esc", "down", "ctrl+c").
+// writeKey appends one keystroke event, with key the human-readable name
+// (e.g. "enter", "ctrl+c").
 func (d *dumpWriter) writeKey(where, key string) {
 	d.seq++
 	_ = d.enc.Encode(dumpEvent{
@@ -71,15 +71,11 @@ func (d *dumpWriter) writeKey(where, key string) {
 	})
 }
 
-// writeMsg appends one raw tea.Msg event. tea.KeyMsg is special-cased to the
-// "key" scope (see writeKey); every other message type - including the
-// internal messages that drive commit/save, block open/close, delete and
-// reload confirmations, doc-preset application, and validation, none of
-// which dispatch a BlockAction/ModelAction - is recorded under "msg" so the
-// trace has no gaps between what the user did and what got recorded.
-// Messages with only unexported fields (e.g. saveResultMsg) still record
-// their type name even though Action serializes to "{}": the type alone is
-// enough to know the event happened.
+// writeMsg appends one raw tea.Msg event. tea.KeyMsg goes to the "key" scope;
+// everything else lands under "msg", including the internal messages driving
+// commit/save, confirmations, and validation, which dispatch no action of their
+// own - so the trace has no gaps. Messages with only unexported fields still
+// record their type name even though Action serializes to "{}".
 func (d *dumpWriter) writeMsg(where string, msg tea.Msg) {
 	if km, ok := msg.(tea.KeyMsg); ok {
 		d.writeKey(where, km.String())
@@ -96,16 +92,12 @@ func (d *dumpWriter) writeMsg(where string, msg tea.Msg) {
 	})
 }
 
-// isDumpNoise reports whether msg is a high-frequency internal message that
-// carries no information about what the user did, and would otherwise flood
-// the trace. cursor.BlinkMsg recurs continuously while any textarea has
-// focus; clearStatusMsg is yedit's own status-bar decay timer.
+// isDumpNoise reports whether msg is a high-frequency internal message that says
+// nothing about what the user did and would flood the trace: cursor blinks and
+// yedit's own status-bar decay timer.
 //
-// cursor's initialBlinkMsg (fires once per textarea focus) and blinkCanceled
-// (fires on every keystroke typed into a textarea - it cancels the pending
-// blink) are unexported types in charm.land/bubbles/v2/cursor, so they
-// cannot be named in a type switch from this package; they are matched by
-// their %T name instead.
+// cursor's initialBlinkMsg and blinkCanceled are unexported, so they cannot be
+// named in a type switch and are matched by their %T name instead.
 func isDumpNoise(msg tea.Msg) bool {
 	switch msg.(type) {
 	case cursor.BlinkMsg, clearStatusMsg:
@@ -119,13 +111,10 @@ func isDumpNoise(msg tea.Msg) bool {
 	}
 }
 
-// redactModelAction strips fields that are static schema metadata rather
-// than user-generated state before an action is dumped. DrillIn.Defs is the
-// worst offender: it is the fully expanded schema subtree for the field
-// being drilled into, and for self-referential types (a field whose Kind
-// recurses into itself, expanded SchemaRecursionDepth levels deep) that can
-// balloon to megabytes per event - useless for a trace, since it is
-// reconstructible from the schema and never varies with user input.
+// redactModelAction strips static schema metadata before an action is dumped.
+// DrillIn.Defs is the worst offender: the fully expanded schema subtree, which
+// for self-referential types balloons to megabytes per event while never varying
+// with user input.
 func redactModelAction(a ModelAction) ModelAction {
 	if di, ok := a.(DrillIn); ok {
 		return DrillIn{Key: di.Key, Kind: di.Kind, RelSegs: di.RelSegs}
@@ -136,9 +125,8 @@ func redactModelAction(a ModelAction) ModelAction {
 func (d *dumpWriter) path() string { return d.f.Name() }
 func (d *dumpWriter) close() error { return d.f.Close() }
 
-// wireDump composes cfg.Trace's OnAction/OnModelAction/OnMsg hooks with d,
-// preserving any hooks the caller already set so Config.Trace.Dump and manual
-// hooks can be used together.
+// wireDump composes cfg.Trace's hooks with d, preserving any the caller already
+// set so Config.Trace.Dump and manual hooks work together.
 func wireDump(cfg *Config, d *dumpWriter) {
 	prevAction := cfg.Trace.OnAction
 	cfg.Trace.OnAction = func(blockKey string, a BlockAction) {

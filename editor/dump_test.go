@@ -15,8 +15,8 @@ import (
 	"github.com/lucasassuncao/yedit/schema"
 )
 
-// readDumpEvents reads every JSONL line back into a generic map so tests can
-// assert on individual fields without depending on dumpEvent's internals.
+// readDumpEvents reads the JSONL back into generic maps so tests can assert on
+// fields without depending on dumpEvent's internals.
 func readDumpEvents(t *testing.T, path string) []map[string]any {
 	t.Helper()
 	f, err := os.Open(path)
