@@ -39,11 +39,23 @@ type FieldDef struct {
 	YAMLName     string
 	Kind         Kind
 	Presentation Presentation // how children are shown; set by editor.applyPresentation
-	Scalar       string       // concrete scalar type for primitives ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
+	// TypeName is the Go type name of a struct-shaped field: the struct itself
+	// for KindObject, the element type for a list of structs, the value type for
+	// a map of structs. Empty for primitives, anonymous structs, KindVariant and
+	// KindAny. It is set even when recursion limiting stops Children from being
+	// populated, which is what lets a consumer recognise a recursive type rather
+	// than a truncated one.
+	TypeName     string
+	Scalar       string // concrete scalar type for primitives ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
 	Children     []FieldDef
 	OmitEmpty    bool   // yaml:",omitempty" - zero value is not written to disk
 	Flow         bool   // yaml:",flow" - serialised inline rather than block style
 	MapKeyScalar string // KindDictionary only: scalar type of the map key ("int", "string", …); "" means string
+	// ElemScalar is the scalar type of a collection's element ("string", "int",
+	// …) for KindList and KindDictionary. Empty when the element is not a scalar
+	// (a struct, a nested collection, an interface). Scalar cannot carry this:
+	// it labels the field's own type, which for a collection is not a scalar.
+	ElemScalar string
 }
 
 // Provider is an opt-in interface for types that reflection cannot introspect

@@ -132,13 +132,17 @@ func buildFieldDef(f reflect.StructField, yamlName, yamlTag string) FieldDef {
 			info.Flow = true
 		}
 	}
-	if info.Kind == KindDictionary {
+	if info.Kind == KindDictionary || info.Kind == KindList {
 		ft := f.Type
 		for ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
-		if ft.Kind() == reflect.Map {
+		switch ft.Kind() {
+		case reflect.Map:
 			info.MapKeyScalar = ScalarLabel(ft.Key())
+			info.ElemScalar = ScalarLabel(ft.Elem())
+		case reflect.Slice, reflect.Array:
+			info.ElemScalar = ScalarLabel(ft.Elem())
 		}
 	}
 	return info
@@ -157,6 +161,9 @@ func fillFieldChildren(info *FieldDef, f reflect.StructField, depth int, seen ma
 	}
 	nested := unwrap(f.Type)
 	if nested.Kind() == reflect.Struct {
+		// TypeName is assigned before descending, so a field whose expansion is
+		// cut short by the recursion limit still reports its type.
+		info.TypeName = nested.Name()
 		info.Children = discoverFields(nested, depth+1, seen, limit)
 	}
 }

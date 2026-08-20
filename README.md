@@ -19,7 +19,7 @@ A TUI YAML editor library for Go applications, built on [bubbletea](https://gith
 - Validates the YAML on save with a declarative rule set.
 - Flags unknown keys that aren't part of your schema.
 - Supports presets, two-level undo/redo, nested drill-in editing, and theming.
-- Generates Markdown reference docs from your schema.
+- Generates Markdown reference docs and a JSON Schema from your schema, so the same file also gets IDE completion and validation.
 
 ## Install
 

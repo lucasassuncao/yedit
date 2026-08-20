@@ -41,7 +41,7 @@ your app
         ├── spec      ← FieldMeta, MetadataSource
         └── schema    ← Discover
 
-  └── docgenerator    ← SchemaGenerator, Generate, GenerateIndex
+  └── docgenerator    ← Generate + WithMarkdown / WithJSONSchema / WithExamples / WithIndex
         ├── spec      ← MetadataSource
         ├── metadata  ← New
         └── schema    ← Discover

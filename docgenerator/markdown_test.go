@@ -39,7 +39,7 @@ func TestFieldsTableEscapesMetadataCells(t *testing.T) {
 			Formats:     []spec.Format{spec.FormatURL},
 		}
 	})
-	g := NewSchemaGenerator(WithMetadata(src))
+	g := &mdRenderer{metadata: src}
 	page := g.generateMarkdown("pipeConfig", schema.Discover(pipeConfig{}), nil)
 	if !strings.Contains(page, "| a\\|b |") {
 		t.Errorf("default cell not pipe-escaped:\n%s", page)
@@ -58,7 +58,7 @@ type upperConfig struct {
 }
 
 func TestLinkedFieldsTableLowercasesLinkTarget(t *testing.T) {
-	root := NewSchemaGenerator().generateRootMarkdown("upperConfig", schema.Discover(upperConfig{}))
+	root := (&mdRenderer{}).generateRootMarkdown("upperConfig", schema.Discover(upperConfig{}))
 	if !strings.Contains(root, "[Settings](./settings.md)") {
 		t.Errorf("link target not lowercased:\n%s", root)
 	}

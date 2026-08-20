@@ -427,3 +427,70 @@ func TestDiscover_anyIsKindAny(t *testing.T) {
 	is.Equal(schema.KindAny, m["extras"].Kind)
 	is.Equal(schema.KindPrimitive, m["name"].Kind)
 }
+
+type tnLeaf struct {
+	Value string `yaml:"value"`
+}
+
+type tnNode struct {
+	Name     string            `yaml:"name"`
+	Children []tnNode          `yaml:"children"`
+	Lookup   map[string]tnLeaf `yaml:"lookup"`
+	Inline   struct {
+		Flag bool `yaml:"flag"`
+	} `yaml:"inline"`
+	Free any `yaml:"free"`
+}
+
+func fieldByName(t *testing.T, fields []schema.FieldDef, name string) schema.FieldDef {
+	t.Helper()
+	for _, f := range fields {
+		if f.YAMLName == name {
+			return f
+		}
+	}
+	t.Fatalf("field %q not found", name)
+	return schema.FieldDef{}
+}
+
+func TestDiscover_typeNameIdentifiesStructShapedFields(t *testing.T) {
+	is := assert.New(t)
+	fields := schema.Discover(tnNode{})
+
+	is.Equal("", fieldByName(t, fields, "name").TypeName, "primitive carries no type name")
+	is.Equal("tnNode", fieldByName(t, fields, "children").TypeName, "list element struct type")
+	is.Equal("tnLeaf", fieldByName(t, fields, "lookup").TypeName, "map value struct type")
+	is.Equal("", fieldByName(t, fields, "inline").TypeName, "anonymous struct has no name")
+	is.Equal("", fieldByName(t, fields, "free").TypeName, "KindAny carries no type name")
+}
+
+func TestDiscover_typeNameSurvivesRecursionLimit(t *testing.T) {
+	is := assert.New(t)
+	// With limit 0 the recursive occurrence has no children, but it must still
+	// be identifiable so the JSON Schema emitter can emit a $ref for it.
+	fields := schema.Discover(tnNode{}, 0)
+	children := fieldByName(t, fields, "children")
+	is.Equal("tnNode", children.TypeName)
+	is.Empty(children.Children, "limit 0 stops expansion")
+}
+
+type esConfig struct {
+	Tags   []string          `yaml:"tags"`
+	Ports  []int             `yaml:"ports"`
+	Labels map[string]string `yaml:"labels"`
+	Nodes  []tnLeaf          `yaml:"nodes"`
+	Nested [][]string        `yaml:"nested"`
+	Plain  string            `yaml:"plain"`
+}
+
+func TestDiscover_elemScalarCarriesCollectionElementType(t *testing.T) {
+	is := assert.New(t)
+	fields := schema.Discover(esConfig{})
+
+	is.Equal("string", fieldByName(t, fields, "tags").ElemScalar, "slice of string")
+	is.Equal("int", fieldByName(t, fields, "ports").ElemScalar, "slice of int")
+	is.Equal("string", fieldByName(t, fields, "labels").ElemScalar, "map value scalar")
+	is.Equal("", fieldByName(t, fields, "nodes").ElemScalar, "struct element is not a scalar")
+	is.Equal("", fieldByName(t, fields, "nested").ElemScalar, "nested collection is not a scalar")
+	is.Equal("", fieldByName(t, fields, "plain").ElemScalar, "non-collection carries no element scalar")
+}

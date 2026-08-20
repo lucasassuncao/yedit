@@ -193,17 +193,17 @@ func buildEditCmd() *cobra.Command {
 func buildGenerateDocsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "generate-docs",
-		Short:  "Write markdown documentation to docs/",
+		Short:  "Write markdown documentation and a JSON Schema to docs/",
 		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(testMetadata))
-			files, err := gen.GenerateDocsForEach([]docgenerator.Entry{
-				{Config: Config{}, DocsDir: "docs"},
-			})
+			_, err := docgenerator.Generate(
+				[]docgenerator.Entry{{Config: Config{}}},
+				docgenerator.WithMetadata(testMetadata),
+				docgenerator.WithMarkdown("docs"),
+				docgenerator.WithJSONSchema("docs"),
+				docgenerator.WithIndex("docs"),
+			)
 			if err != nil {
-				return err
-			}
-			if err := docgenerator.GenerateIndex("docs", files); err != nil {
 				return err
 			}
 			fmt.Println("documentation written to docs/")

@@ -35,7 +35,7 @@ KnownChildren collapses a FieldDef tree into a map of dotted paths to the set of
 A nil value at a path means "free\-form" \- children at that path are not validated \(e.g. customizations.vscode.settings has no fixed schema\).
 
 <a name="ScalarLabel"></a>
-## func [ScalarLabel](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L233>)
+## func [ScalarLabel](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L240>)
 
 ```go
 func ScalarLabel(t reflect.Type) string
@@ -44,7 +44,7 @@ func ScalarLabel(t reflect.Type) string
 ScalarLabel returns a human label for a scalar Go type \("string", "int", "bool", "float", "duration", "uint"\) or "" when t is not a scalar. Named types with their own meaning \(time.Duration\) take precedence over their underlying kind. It is the single vocabulary for scalar type labels: it enriches FieldDef.Scalar and the metadata package builds its hint\-panel labels on top of it, so the two can never name the same type differently.
 
 <a name="TopLevelOrder"></a>
-## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L270>)
+## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L277>)
 
 ```go
 func TopLevelOrder(fields []FieldDef) []string
@@ -62,7 +62,7 @@ func UnknownKeys(raw []byte, known map[string]map[string]bool) ([]string, error)
 UnknownKeys returns the dotted paths of any YAML keys not present in the schema described by known. Free\-form sub\-trees \(paths missing from known\) are not validated. Returns an error if raw does not parse as YAML.
 
 <a name="FieldDef"></a>
-## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L38-L47>)
+## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L38-L59>)
 
 FieldDef describes a single editable field discovered from a Go struct.
 
@@ -75,11 +75,23 @@ type FieldDef struct {
     YAMLName     string
     Kind         Kind
     Presentation Presentation // how children are shown; set by editor.applyPresentation
-    Scalar       string       // concrete scalar type for primitives ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
+    // TypeName is the Go type name of a struct-shaped field: the struct itself
+    // for KindObject, the element type for a list of structs, the value type for
+    // a map of structs. Empty for primitives, anonymous structs, KindVariant and
+    // KindAny. It is set even when recursion limiting stops Children from being
+    // populated, which is what lets a consumer recognise a recursive type rather
+    // than a truncated one.
+    TypeName     string
+    Scalar       string // concrete scalar type for primitives ("string", "int", "bool", "float", "duration", "uint"); empty for non-scalars
     Children     []FieldDef
     OmitEmpty    bool   // yaml:",omitempty" - zero value is not written to disk
     Flow         bool   // yaml:",flow" - serialised inline rather than block style
     MapKeyScalar string // KindDictionary only: scalar type of the map key ("int", "string", …); "" means string
+    // ElemScalar is the scalar type of a collection's element ("string", "int",
+    // …) for KindList and KindDictionary. Empty when the element is not a scalar
+    // (a struct, a nested collection, an interface). Scalar cannot carry this:
+    // it labels the field's own type, which for a collection is not a scalar.
+    ElemScalar string
 }
 ```
 
@@ -141,7 +153,7 @@ const (
 ```
 
 <a name="Provider"></a>
-## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L53-L55>)
+## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L65-L67>)
 
 Provider is an opt\-in interface for types that reflection cannot introspect correctly \- typically union types \(e.g. a value that can be a string OR a struct OR a map\). Implementations return the FieldDef tree they want the editor to see in place of the wrapper type's own fields.
 

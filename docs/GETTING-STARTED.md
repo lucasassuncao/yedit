@@ -234,22 +234,26 @@ Wire it in via `Config.Presets`. For presets shipped as embedded files, see [Pre
 
 ## 6. Add documentation commands (optional)
 
-`docgenerator` generates Markdown reference tables from your struct and metadata - the same information shown in the hint panel, as static files or a browsable TUI.
+`docgenerator` generates reference artifacts from your struct and metadata - the same information shown in the hint panel. Every output is opt-in: you get exactly what you ask for.
 
 ```go
 import "github.com/lucasassuncao/yedit/docgenerator"
 
-gen := docgenerator.NewSchemaGenerator(docgenerator.WithMetadata(src))
-
-// Write markdown files to disk:
-files, err := gen.GenerateDocsForEach([]docgenerator.Entry{{Config: Config{}, DocsDir: "docs/reference", SplitStructs: true}})
+files, err := docgenerator.Generate(
+    []docgenerator.Entry{{Config: Config{}, SplitStructs: true}},
+    docgenerator.WithMetadata(src),
+    docgenerator.WithMarkdown("docs/reference"),
+    docgenerator.WithJSONSchema("docs/schema"),
+    docgenerator.WithIndex("docs/reference"),
+)
 if err != nil {
     log.Fatal(err)
 }
-docgenerator.GenerateIndex("docs/reference", files)
 ```
 
-Wire this as a subcommand in your CLI so users can run `myapp generate-docs`. See [Doc Generation](DOC-GENERATION.md) for the full API (including the single-call `Generate` variant for structs that implement `MetadataProvider`) and `examples/test/main.go` for a complete cobra integration.
+`WithMetadata` is optional when your struct implements `MetadataProvider` - the source is composed automatically.
+
+Wire this as a subcommand in your CLI so users can run `myapp generate-docs`. See [Doc Generation](DOC-GENERATION.md) for the full API (including preset example pages and the JSON Schema details) and `examples/test/main.go` for a complete cobra integration.
 
 ---
 

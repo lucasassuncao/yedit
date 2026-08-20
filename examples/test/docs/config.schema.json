@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "app-name": {
+      "description": "Application display name.",
+      "type": "string"
+    },
+    "debug": {
+      "default": "false",
+      "description": "Enable debug logging.",
+      "type": "boolean"
+    },
+    "server": {
+      "description": "HTTP server configuration.",
+      "properties": {
+        "host": {
+          "default": "localhost",
+          "description": "Address to bind.",
+          "type": "string"
+        },
+        "pool": {
+          "properties": {
+            "max-size": {
+              "type": "integer"
+            },
+            "min-size": {
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "port": {
+          "default": "8080",
+          "description": "Port to listen on.",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "workers": {
+      "description": "Background worker pools.",
+      "items": {
+        "properties": {
+          "concurrency": {
+            "default": "1",
+            "description": "Number of concurrent jobs.",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Worker name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "app-name"
+  ],
+  "type": "object"
+}
