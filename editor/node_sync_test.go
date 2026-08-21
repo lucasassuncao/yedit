@@ -8,7 +8,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"gopkg.in/yaml.v3"
 
+	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/yamledit"
 	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
@@ -47,23 +49,23 @@ func assertTreeMatchesNode(t *testing.T, be blockEditState) {
 	if err := validateSnippetText(be.yamlEditor.Value()); err != nil {
 		t.Errorf("buffer is not valid YAML after a tree action: %v\n%s", err, be.yamlEditor.Value())
 	}
-	for _, n := range be.tree.nodes {
-		if n.kind != treeNodeField || !n.isLeaf {
+	for _, n := range be.tree.Nodes {
+		if n.Kind != fieldtree.KindField || !n.IsLeaf {
 			continue
 		}
-		want := keyExistsInNode(&be.node, n.yamlPath)
-		if n.checked != want {
+		want := keyExistsInNode(&be.node, n.YAMLPath)
+		if n.Checked != want {
 			t.Errorf("tree/node disagree for %v: tree.checked=%v node-has-key=%v",
-				n.yamlPath, n.checked, want)
+				n.YAMLPath, n.Checked, want)
 		}
 	}
 }
 
 // cursorToAddNew moves the tree cursor onto the "+ add new" row.
 func cursorToAddNew(be blockEditState) blockEditState {
-	for vi, ni := range be.tree.visibleNodes() {
-		if be.tree.nodes[ni].kind == treeNodeAddNew {
-			be.tree.cursor = vi
+	for vi, ni := range be.tree.VisibleNodes() {
+		if be.tree.Nodes[ni].Kind == fieldtree.KindAddNew {
+			be.tree.Cursor = vi
 			break
 		}
 	}
@@ -97,7 +99,7 @@ func TestSOT_ToggleWhileBufferInvalid(t *testing.T) {
 	be = cursorToLabel(be, "output")
 	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	if n, ok := nodeByLabel(be, "output"); !ok || !n.checked {
+	if n, ok := nodeByLabel(be, "output"); !ok || !n.Checked {
 		t.Error("output should be checked after toggling it on")
 	}
 	if !keyExistsInNode(&be.node, []string{"output"}) {
@@ -124,8 +126,8 @@ func TestSOT_ToggleSequenceConsistency(t *testing.T) {
 		be = cursorToLabel(be, label)
 		// ctrl+d on a filled leaf confirms; drive the pending removal directly.
 		idx := -1
-		for i, n := range be.tree.nodes {
-			if n.kind == treeNodeField && n.label == label {
+		for i, n := range be.tree.Nodes {
+			if n.Kind == fieldtree.KindField && n.Label == label {
 				idx = i
 				break
 			}
@@ -141,24 +143,24 @@ func TestSOT_ToggleSequenceConsistency(t *testing.T) {
 func assertCollTreeMatchesNode(t *testing.T, be blockEditState) {
 	t.Helper()
 	isMap := be.coll.isMap
-	nodes := be.tree.nodes
+	nodes := be.tree.Nodes
 	for i := 0; i < len(nodes); i++ {
-		if nodes[i].kind != treeNodeSeqItem {
+		if nodes[i].Kind != fieldtree.KindSeqItem {
 			continue
 		}
-		seqIdx := nodes[i].seqIdx
-		if want := entryLabel(&be.node, isMap, seqIdx); nodes[i].label != want {
-			t.Errorf("entry %d label %q != node label %q", seqIdx, nodes[i].label, want)
+		seqIdx := nodes[i].SeqIdx
+		if want := yamledit.EntryLabel(&be.node, isMap, seqIdx); nodes[i].Label != want {
+			t.Errorf("entry %d label %q != node label %q", seqIdx, nodes[i].Label, want)
 		}
-		entry := entryValueNode(&be.node, isMap, seqIdx)
-		for j := i + 1; j < len(nodes) && nodes[j].depth > 0; j++ {
+		entry := yamledit.EntryValueNode(&be.node, isMap, seqIdx)
+		for j := i + 1; j < len(nodes) && nodes[j].Depth > 0; j++ {
 			c := nodes[j]
-			if c.kind != treeNodeField || !c.isLeaf || len(c.yamlPath) < 2 {
+			if c.Kind != fieldtree.KindField || !c.IsLeaf || len(c.YAMLPath) < 2 {
 				continue
 			}
-			want := keyExistsInNode(entry, c.yamlPath[1:])
-			if c.checked != want {
-				t.Errorf("entry %d child %v checked=%v want %v", seqIdx, c.yamlPath, c.checked, want)
+			want := keyExistsInNode(entry, c.YAMLPath[1:])
+			if c.Checked != want {
+				t.Errorf("entry %d child %v checked=%v want %v", seqIdx, c.YAMLPath, c.Checked, want)
 			}
 		}
 	}
@@ -186,7 +188,7 @@ func TestSOT_CollectionToggleWhileBufferInvalid(t *testing.T) {
 	be = cursorToLabel(be, "path")
 	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	entry := entryValueNode(&be.node, false, 0)
+	entry := yamledit.EntryValueNode(&be.node, false, 0)
 	if !keyExistsInNode(entry, []string{"source", "path"}) {
 		t.Errorf("source.path not added to entry 0:\n%s", be.yamlEditor.Value())
 	}
@@ -207,7 +209,7 @@ func TestSOT_CollectionAddDeleteConsistency(t *testing.T) {
 `,
 	}, 120, 40)
 
-	if got := entryCount(&be.node, false); got != 2 {
+	if got := yamledit.EntryCount(&be.node, false); got != 2 {
 		t.Fatalf("initial entry count = %d, want 2", got)
 	}
 	assertCollTreeMatchesNode(t, be)
@@ -215,17 +217,17 @@ func TestSOT_CollectionAddDeleteConsistency(t *testing.T) {
 	// Add an entry via the [+ add new] row.
 	be = cursorToAddNew(be)
 	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if got := entryCount(&be.node, false); got != 3 {
+	if got := yamledit.EntryCount(&be.node, false); got != 3 {
 		t.Fatalf("after add, entry count = %d, want 3", got)
 	}
 	assertCollTreeMatchesNode(t, be)
 
 	// Delete the first entry.
 	be = be.dispatch(DeleteEntry{SeqIdx: 0})
-	if got := entryCount(&be.node, false); got != 2 {
+	if got := yamledit.EntryCount(&be.node, false); got != 2 {
 		t.Fatalf("after delete, entry count = %d, want 2", got)
 	}
-	if l := entryLabel(&be.node, false, 0); l != "b" {
+	if l := yamledit.EntryLabel(&be.node, false, 0); l != "b" {
 		t.Errorf("after deleting entry 0, first label = %q, want b", l)
 	}
 	assertCollTreeMatchesNode(t, be)
@@ -251,8 +253,8 @@ func TestSOT_CommitPreservesLeadingComments(t *testing.T) {
 	be = expandAll(be)
 	be = cursorToLabel(be, "output")
 	idx := -1
-	for i, n := range be.tree.nodes {
-		if n.kind == treeNodeField && n.label == "output" {
+	for i, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && n.Label == "output" {
 			idx = i
 			break
 		}
@@ -278,8 +280,8 @@ func TestSOT_ToggleRoundTripNode(t *testing.T) {
 	}
 
 	idx := -1
-	for i, n := range be.tree.nodes {
-		if n.kind == treeNodeField && n.label == "regex" {
+	for i, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && n.Label == "regex" {
 			idx = i
 			break
 		}
@@ -309,12 +311,12 @@ func nestedUnknownSpec(content string) blockSpec {
 	}
 }
 
-// unknownRows collects the (yamlPath, depth) of every treeNodeUnknown row.
+// unknownRows collects the (yamlPath, depth) of every fieldtree.KindUnknown row.
 func unknownRows(be blockEditState) (paths [][]string, depths []int) {
-	for _, n := range be.tree.nodes {
-		if n.kind == treeNodeUnknown {
-			paths = append(paths, n.yamlPath)
-			depths = append(depths, n.depth)
+	for _, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindUnknown {
+			paths = append(paths, n.YAMLPath)
+			depths = append(depths, n.Depth)
 		}
 	}
 	return paths, depths

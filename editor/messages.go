@@ -3,6 +3,7 @@ package editor
 import (
 	"github.com/lucasassuncao/yedit/document"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/yamledit"
 )
 
 // saveResultMsg carries the outcome of an async Save.
@@ -18,14 +19,14 @@ type reloadResultMsg struct {
 }
 
 // openChildMsg pushes a new block editor scoped to a nested field. relSegs is
-// the focus-path suffix from the parent editor to that node (e.g. [segIdx(2),
-// segKey("any")]); the model resolves the content from editRoot at the resulting
+// the focus-path suffix from the parent editor to that node (e.g. [yamledit.SegIdx(2),
+// yamledit.SegKey("any")]); the model resolves the content from editRoot at the resulting
 // focus path.
 type openChildMsg struct {
 	key     string
 	defs    []schema.FieldDef
 	kind    schema.Kind
-	relSegs []pathSeg
+	relSegs []yamledit.PathSeg
 }
 
 // commitRequestedMsg asks the model to commit the editor stack into the
@@ -44,7 +45,7 @@ type drillOutMsg struct{}
 type blockEditDiscardedMsg struct{ discarded bool }
 
 // pendingRemoveMsg is dispatched by the "Remove field?" confirm alert when the
-// user chooses Yes. nodeIdx is the index into blockEditState.tree.nodes.
+// user chooses Yes. nodeIdx is the index into blockEditState.tree.Nodes.
 type pendingRemoveMsg struct{ nodeIdx int }
 
 // pendingEntryDeleteMsg is dispatched by the "Remove entry?" confirm alert when

@@ -5,6 +5,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/lucasassuncao/yedit/fieldtree"
+	"github.com/lucasassuncao/yedit/yamledit"
 	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
@@ -17,7 +19,7 @@ type blockEditUndoSnap struct {
 	preset          string
 	// tree state for collection blocks, so restoring keeps the expanded view and
 	// cursor position intact.
-	treeNodes  []treeNode
+	treeNodes  []fieldtree.Node
 	treeCursor int
 	treeOffset int
 }
@@ -26,16 +28,16 @@ const maxUndoDepth = 50
 
 // captureSnap records the current editor state for the undo/redo stacks.
 func (be blockEditState) captureSnap() blockEditUndoSnap {
-	treeNodes := make([]treeNode, len(be.tree.nodes))
-	copy(treeNodes, be.tree.nodes)
+	treeNodes := make([]fieldtree.Node, len(be.tree.Nodes))
+	copy(treeNodes, be.tree.Nodes)
 	return blockEditUndoSnap{
 		node:            *yamlnode.CloneNode(&be.node),
 		currentEntryIdx: be.coll.current,
 		yamlValue:       be.yamlEditor.Value(),
 		preset:          be.currentPreset,
 		treeNodes:       treeNodes,
-		treeCursor:      be.tree.cursor,
-		treeOffset:      be.tree.offset,
+		treeCursor:      be.tree.Cursor,
+		treeOffset:      be.tree.Offset,
 	}
 }
 
@@ -132,7 +134,7 @@ func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 	if be.isCollectionNav() {
 		// Clamp against the restored node's entry count so loadEntry never receives
 		// an out-of-range index.
-		restoredCount := entryCount(&be.node, be.coll.isMap)
+		restoredCount := yamledit.EntryCount(&be.node, be.coll.isMap)
 		idx := snap.currentEntryIdx
 		switch {
 		case restoredCount == 0:
@@ -144,34 +146,34 @@ func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 		}
 		be.coll.current = idx
 		if len(snap.treeNodes) > 0 {
-			treeNodes := make([]treeNode, len(snap.treeNodes))
+			treeNodes := make([]fieldtree.Node, len(snap.treeNodes))
 			copy(treeNodes, snap.treeNodes)
-			be.tree.nodes = treeNodes
-			be.tree.cursor = snap.treeCursor
-			be.tree.offset = snap.treeOffset
+			be.tree.Nodes = treeNodes
+			be.tree.Cursor = snap.treeCursor
+			be.tree.Offset = snap.treeOffset
 		} else {
-			be.tree.nodes = be.collectionTreeNodes()
-			be.tree.cursor = 0
-			be.tree.offset = 0
+			be.tree.Nodes = be.collectionTreeNodes()
+			be.tree.Cursor = 0
+			be.tree.Offset = 0
 		}
 		be = be.loadEntry(be.coll.current)
 		// The node is authoritative; snap.yamlValue restores whatever in-progress,
 		// possibly unparseable, text the entry held at snapshot time.
 		be.yamlEditor.SetValue(snap.yamlValue)
 		be.tree = be.resyncTreeFromYAML()
-		be.tree = be.tree.clampCursor()
+		be.tree = be.tree.ClampCursor()
 		return be
 	}
 	be.yamlEditor.SetValue(snap.yamlValue)
-	be.tree = syncTreeCheckedFromNode(be.tree, &be.node)
+	be.tree = fieldtree.SyncCheckedFromNode(be.tree, &be.node)
 	// The cursor may now be out of bounds (it sat on a separator row that the
 	// restored tree no longer has), so advance to the first selectable field
 	// rather than stranding the user with no operable row.
-	vis := be.tree.visibleNodes()
-	if be.tree.cursor < 0 || be.tree.cursor >= len(vis) {
-		be.tree.cursor = 0
-		for be.tree.cursor < len(vis) && be.tree.nodes[vis[be.tree.cursor]].kind == treeNodeSeparator {
-			be.tree.cursor++
+	vis := be.tree.VisibleNodes()
+	if be.tree.Cursor < 0 || be.tree.Cursor >= len(vis) {
+		be.tree.Cursor = 0
+		for be.tree.Cursor < len(vis) && be.tree.Nodes[vis[be.tree.Cursor]].Kind == fieldtree.KindSeparator {
+			be.tree.Cursor++
 		}
 	}
 	return be

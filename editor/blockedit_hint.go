@@ -1,12 +1,17 @@
 package editor
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/lucasassuncao/yedit/fieldtree"
+	"github.com/lucasassuncao/yedit/hint"
+)
 
 // fieldItemView renders the left panel of a tree-less block as a single
 // non-toggleable row naming the field. There is nothing to navigate, so the row
 // is just an anchor; the metadata lives in the Hint/Example panel.
 func (be blockEditState) fieldItemView() string {
-	return be.theme.existingItem.Render(" ▸ " + be.key)
+	return be.theme.ExistingItem.Render(" ▸ " + be.key)
 }
 
 // scrolledHintContent clips the hint content to hintH() lines starting at
@@ -37,27 +42,27 @@ func (be blockEditState) hintContent() string {
 	// Tree-less blocks have no field nodes, so show the block's own metadata. The
 	// empty fieldPath makes this a block-level lookup, like the root list's hint
 	// panel; be.def.YAMLName would be misread as a child path and never resolve.
-	if be.tree.isEmpty() {
+	if be.tree.IsEmpty() {
 		return be.fieldHintFor("")
 	}
-	idx := be.tree.currentNodeIdx()
+	idx := be.tree.CurrentNodeIdx()
 	if idx < 0 {
-		return be.theme.hintDim.Render("  select a field to see hints")
+		return be.theme.HintDim.Render("  select a field to see hints")
 	}
-	node := be.tree.nodes[idx]
+	node := be.tree.Nodes[idx]
 
-	switch node.kind {
-	case treeNodeUnknown:
-		return be.theme.unknownItem.Render("⚠ unknown key - not declared in the schema\n remove it before saving")
-	case treeNodeField:
+	switch node.Kind {
+	case fieldtree.KindUnknown:
+		return be.theme.UnknownItem.Render("⚠ unknown key - not declared in the schema\n remove it before saving")
+	case fieldtree.KindField:
 		// handled below
 	default:
-		return be.theme.hintDim.Render("  select a field to see hints")
+		return be.theme.HintDim.Render("  select a field to see hints")
 	}
 
-	fieldPath := strings.Join(node.yamlPath, ".")
-	if be.isCollectionNav() && len(node.yamlPath) > 0 {
-		fieldPath = strings.Join(node.yamlPath[1:], ".")
+	fieldPath := strings.Join(node.YAMLPath, ".")
+	if be.isCollectionNav() && len(node.YAMLPath) > 0 {
+		fieldPath = strings.Join(node.YAMLPath[1:], ".")
 	}
 	return be.fieldHintFor(fieldPath)
 }
@@ -66,7 +71,7 @@ func (be blockEditState) hintContent() string {
 // path from the block root (e.g. "source.path").
 func (be blockEditState) fieldHintFor(fieldPath string) string {
 	if be.cfg.Metadata == nil {
-		return be.theme.hintDim.Render("  Config.Metadata is not set - no metadata source configured")
+		return be.theme.HintDim.Render("  Config.Metadata is not set - no metadata source configured")
 	}
 	meta := be.cfg.Metadata.FieldMeta(be.key, fieldPath)
 	ex := meta.Example
@@ -82,8 +87,8 @@ func (be blockEditState) fieldHintFor(fieldPath string) string {
 		}
 		ex = fieldName + ": |\n  line 1\n  line 2\n"
 	}
-	if out := renderFieldHint(be.theme, meta, ex); out != "" {
+	if out := hint.Render(be.theme, meta, ex); out != "" {
 		return out
 	}
-	return be.theme.hintDim.Render("  no metadata declared for this field")
+	return be.theme.HintDim.Render("  no metadata declared for this field")
 }

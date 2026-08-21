@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -14,8 +15,8 @@ func dispatchTestBE(t *testing.T) (blockEditState, int) {
 	t.Helper()
 	be := newBlockEdit(Config{NoDeleteConfirm: true}, structSpec(), 120, 40)
 	idx := -1
-	for i, n := range be.tree.nodes {
-		if n.kind == treeNodeField && n.isLeaf {
+	for i, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && n.IsLeaf {
 			idx = i
 			break
 		}
@@ -28,9 +29,9 @@ func dispatchTestBE(t *testing.T) (blockEditState, int) {
 
 // checkedFor returns the checked state of the tree node with the given label.
 func checkedFor(be blockEditState, label string) (bool, bool) {
-	for _, n := range be.tree.nodes {
-		if n.label == label {
-			return n.checked, true
+	for _, n := range be.tree.Nodes {
+		if n.Label == label {
+			return n.Checked, true
 		}
 	}
 	return false, false
@@ -52,7 +53,7 @@ func TestDispatchUndoRedo(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
 	be, idx := dispatchTestBE(t)
-	fieldLabel := be.tree.nodes[idx].label
+	fieldLabel := be.tree.Nodes[idx].Label
 	checkedBefore, _ := checkedFor(be, fieldLabel)
 
 	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: !checkedBefore})
@@ -91,13 +92,13 @@ func TestReplayBlock(t *testing.T) {
 	must := require.New(t)
 	be, idx := dispatchTestBE(t)
 	initial := be
-	fieldLabel := be.tree.nodes[idx].label
+	fieldLabel := be.tree.Nodes[idx].Label
 	checkedBefore, _ := checkedFor(be, fieldLabel)
 
 	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: !checkedBefore})
 	// find the node again (position may shift after toggle)
-	for i, n := range be.tree.nodes {
-		if n.label == fieldLabel {
+	for i, n := range be.tree.Nodes {
+		if n.Label == fieldLabel {
 			idx = i
 			break
 		}

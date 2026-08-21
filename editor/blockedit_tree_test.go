@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
 )
 
@@ -60,8 +61,8 @@ func TestAudit_ToggleOffPrunesEmptyAncestors(t *testing.T) {
 	}, 120, 40)
 	be = expandAll(be)
 	idx := -1
-	for i, n := range be.tree.nodes {
-		if n.kind == treeNodeField && n.label == "path" {
+	for i, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && n.Label == "path" {
 			idx = i
 			break
 		}
@@ -85,8 +86,8 @@ func TestAudit_ToggleRoundTrip(t *testing.T) {
 	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	be = expandAll(be)
 	idx := -1
-	for i, n := range be.tree.nodes {
-		if n.kind == treeNodeField && n.label == "regex" {
+	for i, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && n.Label == "regex" {
 			idx = i
 			break
 		}
@@ -150,17 +151,17 @@ func TestAudit_ToggleParentStructOnThenChild(t *testing.T) {
 // --- interaction-layer probes (tree <-> blockEditState) ---
 
 func expandSeqItems(be blockEditState) blockEditState {
-	for i := range be.tree.nodes {
-		if be.tree.nodes[i].kind == treeNodeSeqItem {
-			be.tree.nodes[i].expanded = true
+	for i := range be.tree.Nodes {
+		if be.tree.Nodes[i].Kind == fieldtree.KindSeqItem {
+			be.tree.Nodes[i].Expanded = true
 		}
 	}
 	return be
 }
 
 func expandAll(be blockEditState) blockEditState {
-	for i := range be.tree.nodes {
-		be.tree.nodes[i].expanded = true
+	for i := range be.tree.Nodes {
+		be.tree.Nodes[i].Expanded = true
 	}
 	return be
 }
@@ -181,7 +182,7 @@ func TestAudit_EnterThenCtrlDOnInlineParent(t *testing.T) {
 	is.NotContains(be.yamlEditor.Value(), "source:", "Enter on inline parent created stray empty key")
 	// And it must not leave a phantom checked state on the parent node.
 	if n, ok := nodeByLabel(be, "source"); ok {
-		is.False(n.checked, "inline parent left with phantom checked=true after Enter")
+		is.False(n.Checked, "inline parent left with phantom checked=true after Enter")
 	}
 }
 
@@ -208,44 +209,6 @@ func TestAudit_UndoAfterTwoTogglesKeepsFirst(t *testing.T) {
 	t.Logf("after one undo:\n%s", got)
 	is.Contains(got, "path:", "undo lost the first toggle (path)")
 	is.NotContains(got, "extensions:", "undo did not remove only the second toggle (extensions)")
-}
-
-// An inline parent whose only content is a checked openable child must count as
-// having content, for both colouring and ctrl+d removal.
-func TestAudit_HasCheckedDescendantCountsOpenable(t *testing.T) {
-	nodes := []treeNode{
-		{kind: treeNodeField, label: "filter", depth: 1, isLeaf: false},
-		{kind: treeNodeField, label: "any", depth: 2, isLeaf: false, openable: true, checked: true},
-	}
-	if !hasCheckedDescendant(nodes, 0) {
-		t.Error("filter with a checked openable child should count as having content")
-	}
-}
-
-// An openable list-of-struct field is drilled into, not expanded inline, so it
-// must not spawn phantom child nodes.
-func TestAudit_OpenableListHasNoInlineChildren(t *testing.T) {
-	defs := []schema.FieldDef{
-		{YAMLName: "filter", Kind: schema.KindObject, Children: []schema.FieldDef{
-			{YAMLName: "any", Kind: schema.KindList, Children: []schema.FieldDef{
-				{YAMLName: "regex", Kind: schema.KindPrimitive},
-			}},
-		}},
-	}
-	nodes := flattenDefsAsTree(defs, nil, 0)
-	for _, n := range nodes {
-		if n.label == "regex" {
-			t.Errorf("openable list spawned a phantom inline child %q", n.label)
-		}
-		if n.label == "any" {
-			if !n.openable {
-				t.Error("any should be openable")
-			}
-			if !n.isLeaf {
-				t.Error("openable list should be leaf-like in the tree (no inline children)")
-			}
-		}
-	}
 }
 
 // ctrl+d on a collection entry, the most destructive tree action, must confirm
@@ -283,14 +246,14 @@ func TestAudit_EntryDeleteConfirms(t *testing.T) {
 }
 
 // nodeByPathSuffix finds a field node whose yamlPath ends with the given segments.
-func nodeByPathSuffix(be blockEditState, suffix ...string) (treeNode, bool) {
-	for _, n := range be.tree.nodes {
-		if n.kind != treeNodeField || len(n.yamlPath) < len(suffix) {
+func nodeByPathSuffix(be blockEditState, suffix ...string) (fieldtree.Node, bool) {
+	for _, n := range be.tree.Nodes {
+		if n.Kind != fieldtree.KindField || len(n.YAMLPath) < len(suffix) {
 			continue
 		}
 		ok := true
 		for i := range suffix {
-			if n.yamlPath[len(n.yamlPath)-len(suffix)+i] != suffix[i] {
+			if n.YAMLPath[len(n.YAMLPath)-len(suffix)+i] != suffix[i] {
 				ok = false
 				break
 			}
@@ -299,7 +262,7 @@ func nodeByPathSuffix(be blockEditState, suffix ...string) (treeNode, bool) {
 			return n, true
 		}
 	}
-	return treeNode{}, false
+	return fieldtree.Node{}, false
 }
 
 func confirmsOnCtrlD(content, label string) bool {
@@ -363,8 +326,8 @@ func TestAudit_RemoveParentResetsDescendantChecks(t *testing.T) {
 		be = cursorToLabel(be, parent)
 		be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 		idx := -1
-		for i, n := range be.tree.nodes {
-			if n.kind == treeNodeField && n.label == parent {
+		for i, n := range be.tree.Nodes {
+			if n.Kind == fieldtree.KindField && n.Label == parent {
 				idx = i
 				break
 			}
@@ -374,7 +337,7 @@ func TestAudit_RemoveParentResetsDescendantChecks(t *testing.T) {
 	}
 	checked := func(be blockEditState, sfx ...string) bool {
 		n, _ := nodeByPathSuffix(be, sfx...)
-		return n.checked
+		return n.Checked
 	}
 
 	is := assert.New(t)
@@ -397,4 +360,71 @@ func TestAudit_RemoveParentResetsDescendantChecks(t *testing.T) {
 	be = remove("before")
 	is.False(checked(be, "before", "shell"), "before.shell should clear after removing before")
 	is.True(checked(be, "after", "shell"), "after.shell should stay after removing before")
+}
+
+// TestToggleChildUnderEmptyParent reproduces the movelooper bug: a sequence item
+// has an existing-but-empty nested struct key ("source:" with a null value).
+// Toggling a child of that empty parent (source.path) must add it to the YAML.
+func TestToggleChildUnderEmptyParent(t *testing.T) {
+	is := assert.New(t)
+	defs := []schema.FieldDef{
+		{YAMLName: "name", Kind: schema.KindPrimitive},
+		{YAMLName: "source", Kind: schema.KindObject, Children: []schema.FieldDef{
+			{YAMLName: "path", Kind: schema.KindPrimitive},
+		}},
+	}
+	be := newBlockEdit(Config{}, blockSpec{
+		key: "categories", defs: defs, kind: schema.KindList,
+		content: "categories:\n  - name: \"lucas\"\n    source:\n",
+	}, 120, 40)
+	be = expandAll(be)
+	be = cursorToLabel(be, "path")
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
+	is.Contains(be.yamlEditor.Value(), "path:", "toggling source.path did not add the field")
+}
+
+// TestMatrix_ToggleConsequenceAcrossContexts crosses the most common mutating
+// action (toggle a leaf on, then off) with the three block contexts that have a
+// tree: struct (KindObject), seq-of-struct (KindList), map-of-struct
+// (KindDictionary). The downstream apply path differs per context, so each is
+// driven through the real blockEditState and asserted.
+func TestMatrix_ToggleConsequenceAcrossContexts(t *testing.T) {
+	structDefs := []schema.FieldDef{
+		{YAMLName: "name", Kind: schema.KindPrimitive},
+		{YAMLName: "path", Kind: schema.KindPrimitive},
+	}
+	cases := []struct {
+		name string
+		spec blockSpec
+		leaf string
+	}{
+		{"struct", blockSpec{key: "cfg", defs: structDefs, kind: schema.KindObject, content: "cfg:\n  name: x\n"}, "path"},
+		{"seq", blockSpec{key: "categories", defs: catDefs(), kind: schema.KindList, content: `categories:
+  - name: "a"
+`}, "path"},
+		{"map", blockSpec{key: "items", defs: catDefs(), kind: schema.KindDictionary, content: `items:
+  k1:
+    name: "a"
+`}, "path"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			is := assert.New(t)
+			must := require.New(t)
+			be := newBlockEdit(Config{}, tc.spec, 120, 40)
+			be = expandAll(be)
+			be = cursorToLabel(be, tc.leaf)
+
+			// Enter toggles the leaf ON - it must appear in the editor YAML.
+			be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
+			must.Contains(be.yamlEditor.Value(), tc.leaf+":", "[%s] toggle ON did not add %q", tc.name, tc.leaf)
+
+			// ctrl+d on the now-empty leaf removes it directly (empty value → no confirm).
+			be = expandAll(be)
+			be = cursorToLabel(be, tc.leaf)
+			be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+			must.NotEqual(modeConfirming, be.mode, "[%s] empty leaf removal should not confirm", tc.name)
+			is.NotContains(be.yamlEditor.Value(), tc.leaf+":", "[%s] toggle OFF did not remove %q", tc.name, tc.leaf)
+		})
+	}
 }

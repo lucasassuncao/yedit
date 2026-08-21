@@ -1,4 +1,16 @@
-package editor
+// Package yamledit performs schema-aware surgery on a *yaml.Node: toggling
+// fields on and off, setting values at a path, pruning what became empty, and
+// reordering keys back into schema order.
+//
+// It is the write half of the vocabulary yamlnode reads. yamlnode stays a leaf
+// with no schema dependency; yamledit builds on both it and schema, and knows
+// nothing about the terminal. That is why it lives outside editor: none of it
+// needs a model, a message, or a frame.
+//
+// The exported surface is wide because it grew from the block editor's needs
+// rather than from a designed contract. Treat it accordingly: the helpers are
+// stable in behaviour, but the set of them will keep changing.
+package yamledit
 
 import (
 	"fmt"
@@ -12,18 +24,17 @@ import (
 	"github.com/lucasassuncao/yedit/schema"
 )
 
-// toggleCtx bundles the immutable context shared by all YAML toggle helpers.
-type toggleCtx struct {
-	key       string
-	snippets  func(string) string
-	childDefs []schema.FieldDef
+// ToggleCtx bundles the immutable context shared by all YAML toggle helpers.
+type ToggleCtx struct {
+	Snippets  func(string) string
+	ChildDefs []schema.FieldDef
 }
 
-// applyToggleAt navigates start through navPath (creating mappings as needed),
+// ApplyToggleAt navigates start through navPath (creating mappings as needed),
 // then adds or removes leafName at that location. When toggling on, the
 // field's snippet resolves to its value (see snippetValue); an empty or
 // unresolvable snippet falls back to an empty scalar.
-func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked bool, ctx toggleCtx) bool {
+func ApplyToggleAt(start *yaml.Node, navPath []string, leafName string, checked bool, ctx ToggleCtx) bool {
 	cur := start
 	for _, k := range navPath {
 		cur = findOrCreateMappingChild(cur, k)
@@ -32,8 +43,8 @@ func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked 
 		}
 	}
 	var snippet string
-	if ctx.snippets != nil {
-		snippet = ctx.snippets(leafName)
+	if ctx.Snippets != nil {
+		snippet = ctx.Snippets(leafName)
 	}
 	switch {
 	case !checked:
@@ -48,30 +59,30 @@ func applyToggleAt(start *yaml.Node, navPath []string, leafName string, checked 
 	return true
 }
 
-// pathSeg is one step in a focus path through a YAML node tree: either a mapping
+// PathSeg is one step in a focus path through a YAML node tree: either a mapping
 // key (isIndex == false) or a sequence index (isIndex == true). A focus path is
 // the canonical, unambiguous address of a node. Rooted at the filters sequence,
-// filters[0].any[1] is [segIdx(0), segKey("any"), segIdx(1)].
+// filters[0].any[1] is [SegIdx(0), SegKey("any"), SegIdx(1)].
 //
 // isMapEntry marks a key that is a runtime map-entry key (user data, e.g. the
 // "web" in httproutes.web) rather than a schema field name. Both navigate the
 // node tree the same way; the distinction matters only for schema/metadata
 // lookups, which must see field names exclusively.
-type pathSeg struct {
+type PathSeg struct {
 	key        string
 	idx        int
 	isIndex    bool
 	isMapEntry bool
 }
 
-func segKey(k string) pathSeg    { return pathSeg{key: k} }
-func segMapKey(k string) pathSeg { return pathSeg{key: k, isMapEntry: true} }
-func segIdx(i int) pathSeg       { return pathSeg{idx: i, isIndex: true} }
+func SegKey(k string) PathSeg    { return PathSeg{key: k} }
+func SegMapKey(k string) PathSeg { return PathSeg{key: k, isMapEntry: true} }
+func SegIdx(i int) PathSeg       { return PathSeg{idx: i, isIndex: true} }
 
-// focusToStringPath converts a focus path to a slice of key strings, dropping
+// FocusToStringPath converts a focus path to a slice of key strings, dropping
 // index segments and runtime map-entry keys - neither is a schema field name,
 // at any nesting depth. Used to build metadata lookup prefixes for nested editors.
-func focusToStringPath(focus []pathSeg) []string {
+func FocusToStringPath(focus []PathSeg) []string {
 	out := make([]string, 0, len(focus))
 	for _, s := range focus {
 		if !s.isIndex && !s.isMapEntry {
@@ -81,10 +92,10 @@ func focusToStringPath(focus []pathSeg) []string {
 	return out
 }
 
-// nodeToContent serializes a value node as a standalone "<key>:\n  ..." block,
+// NodeToContent serializes a value node as a standalone "<key>:\n  ..." block,
 // forcing block style so the result renders one field per line. Returns
-// "<key>:\n" when encoding fails. This is the inverse of valueNodeOfSnippet.
-func nodeToContent(key string, value *yaml.Node) string {
+// "<key>:\n" when encoding fails. This is the inverse of ValueNodeOfSnippet.
+func NodeToContent(key string, value *yaml.Node) string {
 	wrapper := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
 		{Kind: yaml.ScalarNode, Value: key},
 		value,
@@ -99,25 +110,25 @@ func nodeToContent(key string, value *yaml.Node) string {
 	return strings.TrimRight(buf.String(), "\n") + "\n"
 }
 
-// normalizeBlockContent parses a raw block snippet and re-serializes it through
-// nodeToContent so the result can be compared against another nodeToContent
+// NormalizeBlockContent parses a raw block snippet and re-serializes it through
+// NodeToContent so the result can be compared against another NodeToContent
 // output without false mismatches from formatting differences. Returns raw
 // unchanged if the snippet cannot be parsed.
-func normalizeBlockContent(key, raw string) string {
-	val := valueNodeOfSnippet(raw)
+func NormalizeBlockContent(key, raw string) string {
+	val := ValueNodeOfSnippet(raw)
 	if val == nil {
 		return raw
 	}
-	return nodeToContent(key, val)
+	return NodeToContent(key, val)
 }
 
-// parseBlockText parses the block editor's buffer, which must contain exactly
+// ParseBlockText parses the block editor's buffer, which must contain exactly
 // one top-level key equal to key, and returns that key's value node. The
 // returned message is empty on success and user-facing on failure. Unlike
-// valueNodeOfSnippet - which silently returns the first key's value - this is
+// ValueNodeOfSnippet - which silently returns the first key's value - this is
 // the strict variant for commit paths, where a stray second key or a renamed
 // key would otherwise be dropped without warning.
-func parseBlockText(key, text string) (*yaml.Node, string) {
+func ParseBlockText(key, text string) (*yaml.Node, string) {
 	var root yaml.Node
 	if err := yaml.Unmarshal([]byte(text), &root); err != nil {
 		return nil, fmt.Sprintf("Invalid YAML: %v", err)
@@ -139,11 +150,11 @@ func parseBlockText(key, text string) (*yaml.Node, string) {
 	return doc.Content[1], ""
 }
 
-// valueNodeOfSnippet parses a standalone "<key>:\n  ..." block and returns the
-// value node mapped to that key (the inverse of nodeToContent), or nil on a
+// ValueNodeOfSnippet parses a standalone "<key>:\n  ..." block and returns the
+// value node mapped to that key (the inverse of NodeToContent), or nil on a
 // parse error or unexpected shape. The returned node is detached and safe to
-// splice into another tree via setNodeAt.
-func valueNodeOfSnippet(snippet string) *yaml.Node {
+// splice into another tree via SetNodeAt.
+func ValueNodeOfSnippet(snippet string) *yaml.Node {
 	var root yaml.Node
 	if err := yaml.Unmarshal([]byte(snippet), &root); err != nil || len(root.Content) == 0 {
 		return nil
@@ -155,11 +166,11 @@ func valueNodeOfSnippet(snippet string) *yaml.Node {
 	return doc.Content[1]
 }
 
-// nodeAt returns the node reached by following segs from node, or nil when any
+// NodeAt returns the node reached by following segs from node, or nil when any
 // step fails to resolve (wrong kind, missing key, index out of range). It never
 // descends implicitly - every step is explicit, so it can address a sequence
 // node itself as well as an element inside it.
-func nodeAt(node *yaml.Node, segs []pathSeg) *yaml.Node {
+func NodeAt(node *yaml.Node, segs []PathSeg) *yaml.Node {
 	for _, s := range segs {
 		if node == nil {
 			return nil
@@ -198,7 +209,7 @@ func coerceToMapping(n *yaml.Node) bool {
 
 // advanceSeg advances parent by one path segment, creating intermediate mapping
 // keys as needed. Returns a non-nil error when the segment cannot be traversed.
-func advanceSeg(parent *yaml.Node, s pathSeg) (*yaml.Node, error) {
+func advanceSeg(parent *yaml.Node, s PathSeg) (*yaml.Node, error) {
 	if s.isIndex {
 		if parent.Kind != yaml.SequenceNode || s.idx < 0 || s.idx >= len(parent.Content) {
 			return nil, fmt.Errorf("sequence index %d out of range (kind=%v, len=%d)", s.idx, parent.Kind, len(parent.Content))
@@ -223,12 +234,12 @@ func advanceSeg(parent *yaml.Node, s pathSeg) (*yaml.Node, error) {
 	return child, nil
 }
 
-// setNodeAt replaces the node addressed by segs within root with newVal,
+// SetNodeAt replaces the node addressed by segs within root with newVal,
 // creating intermediate mapping keys as needed. Returns an error when a sequence
 // index is out of range or an intermediate node has a conflicting kind. This is
 // structurally safe: it operates on live nodes, so it can never turn a sequence
 // into a mapping the way string splicing could.
-func setNodeAt(root *yaml.Node, segs []pathSeg, newVal *yaml.Node) error {
+func SetNodeAt(root *yaml.Node, segs []PathSeg, newVal *yaml.Node) error {
 	if len(segs) == 0 {
 		*root = *yamlnode.CloneNode(newVal)
 		return nil
@@ -319,7 +330,7 @@ func findOrCreateMappingChild(mapping *yaml.Node, key string) *yaml.Node {
 				child.Value = ""
 				child.Content = nil
 			}
-			// Non-empty scalars are returned unchanged; applyToggleAt returns false
+			// Non-empty scalars are returned unchanged; ApplyToggleAt returns false
 			// when it tries to navigate further into them, which is the correct behavior.
 			return child
 		}
@@ -344,7 +355,7 @@ func removeMappingKey(mapping *yaml.Node, key string) {
 	}
 }
 
-// pruneEmptyMappings removes key-value pairs whose value is an empty mapping
+// PruneEmptyMappings removes key-value pairs whose value is an empty mapping
 // ({}), empty sequence ([]), or null scalar (key with no value, Tag=="!!null"),
 // and removes empty mapping items from sequences, recursing into nested nodes
 // first so the cleanup propagates upward.
@@ -355,20 +366,20 @@ func removeMappingKey(mapping *yaml.Node, key string) {
 // parent's YAML with a phantom "<key>:" line even though no content was added.
 // Toggle operations use Tag=="" for freshly-added empty values, so they are
 // not affected by this check.
-func pruneEmptyMappings(node *yaml.Node) {
+func PruneEmptyMappings(node *yaml.Node) {
 	pruneEmpty(node,
 		func(v *yaml.Node) bool { return emptyCollection(v) || v.Kind == yaml.ScalarNode && v.Tag == "!!null" },
 		func(v *yaml.Node) bool { return v.Kind == yaml.MappingNode && len(v.Content) == 0 },
 	)
 }
 
-// pruneEmptyContent is like pruneEmptyMappings but also removes mapping values
+// PruneEmptyContent is like PruneEmptyMappings but also removes mapping values
 // and sequence items that are null or empty scalars. Called on commit so that
 // scaffold fields the user never filled in (e.g. hooks.before.shell: "") are
 // stripped before the block is written to the document. Not used after
 // individual toggles, where "" is the legitimate placeholder for a just-added
 // field.
-func pruneEmptyContent(node *yaml.Node) {
+func PruneEmptyContent(node *yaml.Node) {
 	emptyVal := func(v *yaml.Node) bool {
 		return emptyCollection(v) || v.Kind == yaml.ScalarNode && (v.Tag == "!!null" || v.Value == "")
 	}
@@ -380,16 +391,16 @@ func emptyCollection(v *yaml.Node) bool {
 	return (v.Kind == yaml.MappingNode || v.Kind == yaml.SequenceNode) && len(v.Content) == 0
 }
 
-// pruneEmptyAlongFocus walks focus bottom-up and removes each traversed mapping
+// PruneEmptyAlongFocus walks focus bottom-up and removes each traversed mapping
 // pair whose value is empty (empty mapping/sequence or null scalar), so a pair
 // emptied at one level can cascade into removing its parent's pair too. The
 // cascade stops after focus[keep]: the first keep segments belong to editors
 // still on the stack, whose own focus nodes must survive the prune. Index
 // segments are skipped: sequence items are intentionally never removed here,
-// because stacked editors address collection entries by index (segIdx) and
+// because stacked editors address collection entries by index (SegIdx) and
 // removing an item would shift every entry behind it out from under those
 // focus paths. Used by handleDrillOut in place of a whole-tree prune.
-func pruneEmptyAlongFocus(root *yaml.Node, focus []pathSeg, keep int) {
+func PruneEmptyAlongFocus(root *yaml.Node, focus []PathSeg, keep int) {
 	if keep < 0 {
 		keep = 0
 	}
@@ -398,7 +409,7 @@ func pruneEmptyAlongFocus(root *yaml.Node, focus []pathSeg, keep int) {
 		if seg.isIndex {
 			continue
 		}
-		parent := nodeAt(root, focus[:i-1])
+		parent := NodeAt(root, focus[:i-1])
 		if parent == nil || parent.Kind != yaml.MappingNode {
 			continue
 		}
@@ -409,8 +420,8 @@ func pruneEmptyAlongFocus(root *yaml.Node, focus []pathSeg, keep int) {
 	}
 }
 
-// pruneEmpty is the shared depth-first traversal behind pruneEmptyMappings and
-// pruneEmptyContent: it recurses into nested nodes first (so the cleanup
+// pruneEmpty is the shared depth-first traversal behind PruneEmptyMappings and
+// PruneEmptyContent: it recurses into nested nodes first (so the cleanup
 // propagates upward), then removes mapping pairs whose value emptyPair reports
 // as empty and sequence items emptyItem reports as empty.
 func pruneEmpty(node *yaml.Node, emptyPair, emptyItem func(*yaml.Node) bool) {
@@ -492,9 +503,9 @@ func reorderMappingKeys(mapping *yaml.Node, defs []schema.FieldDef) {
 	}
 }
 
-// reorderNestedMappingKeys recursively sorts a MappingNode's keys to match
+// ReorderNestedMappingKeys recursively sorts a MappingNode's keys to match
 // schema order, descending into nested struct mappings using def.Children.
-func reorderNestedMappingKeys(mapping *yaml.Node, defs []schema.FieldDef) {
+func ReorderNestedMappingKeys(mapping *yaml.Node, defs []schema.FieldDef) {
 	if mapping == nil || mapping.Kind != yaml.MappingNode {
 		return
 	}
@@ -511,7 +522,7 @@ func reorderNestedMappingKeys(mapping *yaml.Node, defs []schema.FieldDef) {
 		val := mapping.Content[i+1]
 		if val.Kind == yaml.MappingNode {
 			if children, ok := childrenOf[key]; ok {
-				reorderNestedMappingKeys(val, children)
+				ReorderNestedMappingKeys(val, children)
 			}
 		}
 	}
@@ -605,3 +616,15 @@ func snippetValue(key, snippet string) *yaml.Node {
 	}
 	return nil
 }
+
+// Key returns the mapping key a segment addresses. It is empty for index
+// segments.
+func (s PathSeg) Key() string { return s.key }
+
+// IsIndex reports whether the segment addresses a sequence element rather than
+// a mapping key.
+func (s PathSeg) IsIndex() bool { return s.isIndex }
+
+// IsMapEntry reports whether the segment addresses a map entry, whose key is
+// data rather than a schema field name.
+func (s PathSeg) IsMapEntry() bool { return s.isMapEntry }

@@ -27,6 +27,8 @@ Package theme provides the palette, base lipgloss styles, and shared layout prim
   - [func Categories\(\) \[\]Category](<#Categories>)
 - [type Colors](<#Colors>)
   - [func ResolveColors\(t Theme\) Colors](<#ResolveColors>)
+- [type Resolved](<#Resolved>)
+  - [func Resolve\(t Theme\) Resolved](<#Resolve>)
 - [type Size](<#Size>)
 - [type Styles](<#Styles>)
 - [type Theme](<#Theme>)
@@ -456,6 +458,49 @@ func ResolveColors(t Theme) Colors
 ```
 
 ResolveColors merges t into a concrete Colors value, starting from ThemePlain as the default base. Use this when building a TUI that needs concrete color values without importing the editor package.
+
+<a name="Resolved"></a>
+## type [Resolved](<https://github.com/lucasassuncao/yedit/blob/main/theme/resolved.go#L10-L27>)
+
+Resolved is a Theme after the whole cascade has been applied: ready\-to\-use lipgloss styles plus the colors they were derived from. A consumer builds one per instance and only reads it afterwards.
+
+```go
+type Resolved struct {
+    Colors Colors
+
+    // Derived styles, computed from Colors rather than configured directly.
+    // Theme.Styles can still override some of them; see Resolve.
+    ExistingItem    lipgloss.Style
+    AvailableItem   lipgloss.Style
+    UnknownItem     lipgloss.Style
+    PassthroughItem lipgloss.Style
+    DraftItem       lipgloss.Style // checked-but-empty tree fields: will be pruned at save unless filled
+    SelectedItem    lipgloss.Style
+    SectionLabel    lipgloss.Style
+    Status          lipgloss.Style
+    FilterPrompt    lipgloss.Style
+    HintKey         lipgloss.Style
+    HintDim         lipgloss.Style
+    ErrorText       lipgloss.Style
+}
+```
+
+<a name="Resolve"></a>
+### func [Resolve](<https://github.com/lucasassuncao/yedit/blob/main/theme/resolved.go#L37>)
+
+```go
+func Resolve(t Theme) Resolved
+```
+
+Resolve merges t into a concrete Resolved. Merge order:
+
+1. ThemePlain defaults
+2. t.Base.Colors \(if non\-nil\)
+3. t.Colors \(non\-"" fields win\)
+4. Build derived styles from resolved Colors
+5. t.Styles overrides \(non\-zero lipgloss.Style wins\)
+
+Steps 1\-3 are ResolveColors \- the single owner of the color cascade.
 
 <a name="Size"></a>
 ## type [Size](<https://github.com/lucasassuncao/yedit/blob/main/theme/layout.go#L13>)

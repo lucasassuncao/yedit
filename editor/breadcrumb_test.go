@@ -3,14 +3,9 @@ package editor
 import (
 	"testing"
 
+	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
 )
-
-func TestBreadcrumbSegments_empty(t *testing.T) {
-	if got := (treeModel{}).BreadcrumbSegments(); got != nil {
-		t.Errorf("empty tree: want nil, got %v", got)
-	}
-}
 
 func TestBreadcrumbSegments_field(t *testing.T) {
 	be := newBlockEdit(Config{}, ceStructSpec(), 100, 40)
@@ -18,45 +13,6 @@ func TestBreadcrumbSegments_field(t *testing.T) {
 	got := be.tree.BreadcrumbSegments()
 	if len(got) != 1 || got[0] != "httproutes" {
 		t.Errorf("got %v, want [httproutes]", got)
-	}
-}
-
-func TestBreadcrumbSegments_nestedField(t *testing.T) {
-	// Depth-1 field under an expanded depth-0 parent; yamlPath carries the full
-	// path so BreadcrumbSegments returns both segments.
-	tm := treeModel{
-		nodes: []treeNode{
-			{kind: treeNodeField, label: "deploy", yamlPath: []string{"deploy"}, depth: 0, expanded: true},
-			{kind: treeNodeField, label: "strategy", yamlPath: []string{"deploy", "strategy"}, depth: 1, isLeaf: true},
-		},
-		cursor: 1,
-	}
-	got := tm.BreadcrumbSegments()
-	want := []string{"deploy", "strategy"}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Errorf("got %v, want %v", got, want)
-	}
-}
-
-func TestBreadcrumbSegments_seqItem(t *testing.T) {
-	tm := treeModel{
-		nodes:  []treeNode{{kind: treeNodeSeqItem, label: "[2]", yamlPath: []string{"[2]"}, depth: 0}},
-		cursor: 0,
-	}
-	got := tm.BreadcrumbSegments()
-	if len(got) != 1 || got[0] != "[2]" {
-		t.Errorf("got %v, want [[2]]", got)
-	}
-}
-
-func TestBreadcrumbSegments_addNew(t *testing.T) {
-	tm := treeModel{
-		nodes:  []treeNode{{kind: treeNodeAddNew, label: "+ add new", depth: 0, isLeaf: true}},
-		cursor: 0,
-	}
-	got := tm.BreadcrumbSegments()
-	if len(got) != 1 || got[0] != "+ add new" {
-		t.Errorf("got %v, want [+ add new]", got)
 	}
 }
 
@@ -95,12 +51,12 @@ func TestBlockBreadcrumbPrefix_collectionChild(t *testing.T) {
 	// Simulate a collection editor whose cursor sits on a depth-1 openable field.
 	parent := blockEditState{
 		key: "workers",
-		tree: treeModel{
-			nodes: []treeNode{
-				{kind: treeNodeSeqItem, label: "[0]", yamlPath: []string{"[0]"}, depth: 0, expanded: true},
-				{kind: treeNodeField, label: "extensions", yamlPath: []string{"[0]", "extensions"}, depth: 1, isLeaf: true, openable: true},
+		tree: fieldtree.Model{
+			Nodes: []fieldtree.Node{
+				{Kind: fieldtree.KindSeqItem, Label: "[0]", YAMLPath: []string{"[0]"}, Depth: 0, Expanded: true},
+				{Kind: fieldtree.KindField, Label: "extensions", YAMLPath: []string{"[0]", "extensions"}, Depth: 1, IsLeaf: true, Openable: true},
 			},
-			cursor: 1, // visible index of "extensions"
+			Cursor: 1, // visible index of "extensions"
 		},
 	}
 	child := blockEditState{key: "extensions"}

@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lucasassuncao/yedit/fieldtree"
+	"github.com/lucasassuncao/yedit/yamledit"
 	"gopkg.in/yaml.v3"
+
+	"github.com/lucasassuncao/yedit/theme"
 )
 
 // mappingKeyLine walks m (a MappingNode) along path and returns the 1-based
@@ -36,22 +40,22 @@ func mappingKeyLine(m *yaml.Node, path []string) int {
 
 // followTargetLine returns the 1-based buffer line of the field selected in the
 // tree, or -1 when it has none. It re-parses the buffer because be.node's line
-// info goes stale once a tree toggle regenerates it via nodeToContent.
+// info goes stale once a tree toggle regenerates it via yamledit.NodeToContent.
 func (be blockEditState) followTargetLine() int {
-	idx := be.tree.currentNodeIdx()
+	idx := be.tree.CurrentNodeIdx()
 	if idx < 0 {
 		return -1
 	}
-	node := be.tree.nodes[idx]
-	if len(node.yamlPath) == 0 {
+	node := be.tree.Nodes[idx]
+	if len(node.YAMLPath) == 0 {
 		return -1
 	}
-	v := valueNodeOfSnippet(be.yamlEditor.Value())
+	v := yamledit.ValueNodeOfSnippet(be.yamlEditor.Value())
 	if v == nil {
 		return -1
 	}
 	if !be.isCollectionNav() {
-		return mappingKeyLine(v, node.yamlPath)
+		return mappingKeyLine(v, node.YAMLPath)
 	}
 	return be.collectionTargetLine(v, node)
 }
@@ -60,7 +64,7 @@ func (be blockEditState) followTargetLine() int {
 // which holds a single entry: a one-item sequence or one-pair mapping under the
 // block key. yamlPath[0] is the entry label, so the walk starts inside the
 // entry's value mapping.
-func (be blockEditState) collectionTargetLine(v *yaml.Node, node treeNode) int {
+func (be blockEditState) collectionTargetLine(v *yaml.Node, node fieldtree.Node) int {
 	wantKind, entryIdx := yaml.SequenceNode, 0
 	if be.coll.isMap {
 		wantKind, entryIdx = yaml.MappingNode, 1
@@ -68,10 +72,10 @@ func (be blockEditState) collectionTargetLine(v *yaml.Node, node treeNode) int {
 	if v.Kind != wantKind || len(v.Content) <= entryIdx {
 		return -1
 	}
-	if node.kind == treeNodeSeqItem {
+	if node.Kind == fieldtree.KindSeqItem {
 		return v.Content[0].Line
 	}
-	return mappingKeyLine(v.Content[entryIdx], node.yamlPath[1:])
+	return mappingKeyLine(v.Content[entryIdx], node.YAMLPath[1:])
 }
 
 // followTreeSelection moves the YAML editor cursor and the Preview window to the
@@ -126,7 +130,7 @@ type viewportSyncMsg struct{}
 
 // scrollLinesTo returns a window of at most height lines from s that keeps
 // targetLine (1-based) visible, roughly centered. targetLine < 1 yields the
-// top window, matching clampLines.
+// top window, matching render.ClampLines.
 func scrollLinesTo(s string, height, targetLine int) string {
 	if height <= 0 {
 		return ""
@@ -147,10 +151,10 @@ func scrollLinesTo(s string, height, targetLine int) string {
 
 // numberPreviewLines prefixes each line with a fixed-width gutter matching the
 // root preview's. Must run before scrollLinesTo so numbers stay absolute.
-func numberPreviewLines(s string, rt resolvedTheme) string {
+func numberPreviewLines(s string, rt theme.Resolved) string {
 	lines := strings.Split(s, "\n")
 	for i, line := range lines {
-		lines[i] = rt.hintDim.Render(fmt.Sprintf("%4d │ ", i+1)) + line
+		lines[i] = rt.HintDim.Render(fmt.Sprintf("%4d │ ", i+1)) + line
 	}
 	return strings.Join(lines, "\n")
 }

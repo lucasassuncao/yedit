@@ -6,26 +6,6 @@ import (
 	"github.com/lucasassuncao/yedit/theme"
 )
 
-// BreadcrumbSegments returns the path components from the block root to the
-// current cursor position, suitable for joining with " › ".
-func (tm treeModel) BreadcrumbSegments() []string {
-	idx := tm.currentNodeIdx()
-	if idx < 0 {
-		return nil
-	}
-	n := tm.nodes[idx]
-	switch n.kind {
-	case treeNodeAddNew:
-		return []string{"+ add new"}
-	case treeNodeSeqItem:
-		return []string{n.label}
-	default:
-		// yamlPath is already the full path, and for seq-item children path[0] is
-		// the item label, which reads as a breadcrumb segment too.
-		return n.yamlPath
-	}
-}
-
 // blockBreadcrumbPrefix returns the breadcrumb segments for all editors in the
 // stack except the top one. The top editor appends its own key and tree segments.
 func (m model) blockBreadcrumbPrefix() []string {
@@ -48,12 +28,12 @@ func (m model) blockBreadcrumbPrefix() []string {
 
 // renderHeader builds the root screen's header line from the config title and
 // the document's path/dirty state.
-func renderHeader(title, file string, dirty bool, width int, th resolvedTheme) string {
+func renderHeader(title, file string, dirty bool, width int, th theme.Resolved) string {
 	info := file
 	if dirty {
 		info = file + " ● modified"
 	}
-	return theme.RenderHeaderWith(title, info, "", width, th.colors)
+	return theme.RenderHeaderWith(title, info, "", width, th.Colors)
 }
 
 // breadcrumbHeader builds a block editor's header line from parentSegs plus this
@@ -61,5 +41,5 @@ func renderHeader(title, file string, dirty bool, width int, th resolvedTheme) s
 func (be blockEditState) breadcrumbHeader(parentSegs []string) string {
 	segs := append(append([]string(nil), parentSegs...), be.key)
 	segs = append(segs, be.tree.BreadcrumbSegments()...)
-	return theme.RenderHeaderWith(be.cfg.Title, strings.Join(segs, " › "), "", be.width, be.theme.colors)
+	return theme.RenderHeaderWith(be.cfg.Title, strings.Join(segs, " › "), "", be.width, be.theme.Colors)
 }

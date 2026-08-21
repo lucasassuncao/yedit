@@ -7,14 +7,16 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/alert"
+	"github.com/lucasassuncao/yedit/fieldtree"
+	"github.com/lucasassuncao/yedit/yamledit"
 	"github.com/lucasassuncao/yedit/yamlnode"
 )
 
-// fieldHasContent reports whether the field at node.yamlPath has content in
+// fieldHasContent reports whether the field at node.YAMLPath has content in
 // be.node. Reading the node rather than the text buffer keeps the check correct
 // while the buffer is mid-edit or invalid.
-func (be blockEditState) fieldHasContent(node treeNode) bool {
-	path := node.yamlPath
+func (be blockEditState) fieldHasContent(node fieldtree.Node) bool {
+	path := node.YAMLPath
 	if len(path) == 0 {
 		return false
 	}
@@ -23,7 +25,7 @@ func (be blockEditState) fieldHasContent(node treeNode) bool {
 	cur := &be.node
 	start := 0
 	if be.isCollectionNav() {
-		entryVal := entryValueNode(&be.node, be.coll.isMap, be.coll.current)
+		entryVal := yamledit.EntryValueNode(&be.node, be.coll.isMap, be.coll.current)
 		if entryVal == nil {
 			return false
 		}
@@ -37,28 +39,28 @@ func (be blockEditState) fieldHasContent(node treeNode) bool {
 		}
 	}
 	child := yamlnode.ChildByKey(cur, path[len(path)-1])
-	return child != nil && nodeHasContent(child)
+	return child != nil && yamledit.NodeHasContent(child)
 }
 
 func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	prevSeqIdx := be.tree.NearestSeqItem()
-	prevNodeIdx := be.tree.currentNodeIdx()
+	prevNodeIdx := be.tree.CurrentNodeIdx()
 
 	tree, action := be.tree.Update(msg)
 	be.tree = tree
-	if be.tree.currentNodeIdx() != prevNodeIdx {
+	if be.tree.CurrentNodeIdx() != prevNodeIdx {
 		// The hint panel now describes a different field; show it from the top.
 		be.hintScroll = 0
 	}
 
 	switch action {
-	case treeOpenChild:
+	case fieldtree.ActionOpenChild:
 		return be.handleTreeOpenChild()
-	case treeToggled:
+	case fieldtree.ActionToggled:
 		be = be.handleTreeToggleDispatch()
-	case treeAddNew:
+	case fieldtree.ActionAddNew:
 		be = be.dispatch(AddEntry{})
-	case treeDeleted:
+	case fieldtree.ActionDeleted:
 		be = be.handleTreeDeleteDispatch()
 	default:
 		// Collection entries are shown one at a time, so moving between them flushes
@@ -73,7 +75,7 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 
 	// Follow the selection when the cursor moved or a toggle changed the current
 	// node's line. Expand/collapse leaves both unchanged, so it never jumps.
-	if be.tree.currentNodeIdx() != prevNodeIdx || action == treeToggled {
+	if be.tree.CurrentNodeIdx() != prevNodeIdx || action == fieldtree.ActionToggled {
 		be = be.followTreeSelection()
 	}
 	return be, nil
@@ -82,37 +84,37 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 // handleTreeToggleDispatch confirms first, or dispatches ToggleField at once
 // when NoDeleteConfirm is set or the field has no content.
 func (be blockEditState) handleTreeToggleDispatch() blockEditState {
-	idx := be.tree.currentNodeIdx()
+	idx := be.tree.CurrentNodeIdx()
 	if idx < 0 {
 		return be
 	}
-	node := be.tree.nodes[idx]
-	if !node.checked && be.fieldHasContent(node) && !be.cfg.NoDeleteConfirm {
+	node := be.tree.Nodes[idx]
+	if !node.Checked && be.fieldHasContent(node) && !be.cfg.NoDeleteConfirm {
 		// Revert the visual toggle while waiting for the user to confirm.
-		be.tree = be.tree.withNodeMutated(idx, func(n *treeNode) { n.checked = true })
+		be.tree = be.tree.WithNodeMutated(idx, func(n *fieldtree.Node) { n.Checked = true })
 		capturedIdx := idx
 		al := alert.NewConfirm(
 			"Remove field?",
-			fmt.Sprintf("Remove %q? Its content will be lost.", node.label),
+			fmt.Sprintf("Remove %q? Its content will be lost.", node.Label),
 			func() tea.Msg { return pendingRemoveMsg{nodeIdx: capturedIdx} },
 		)
 		return be.enterConfirmAlert(al)
 	}
-	return be.dispatch(ToggleField{NodeIdx: idx, Checked: node.checked})
+	return be.dispatch(ToggleField{NodeIdx: idx, Checked: node.Checked})
 }
 
 // handleTreeDeleteDispatch confirms first, or dispatches DeleteEntry at once
 // when NoDeleteConfirm is set.
 func (be blockEditState) handleTreeDeleteDispatch() blockEditState {
-	idx := be.tree.currentNodeIdx()
-	if idx < 0 || be.tree.nodes[idx].kind != treeNodeSeqItem {
+	idx := be.tree.CurrentNodeIdx()
+	if idx < 0 || be.tree.Nodes[idx].Kind != fieldtree.KindSeqItem {
 		return be
 	}
-	seqIdx := be.tree.nodes[idx].seqIdx
+	seqIdx := be.tree.Nodes[idx].SeqIdx
 	if be.cfg.NoDeleteConfirm {
 		return be.dispatch(DeleteEntry{SeqIdx: seqIdx})
 	}
-	label := be.tree.nodes[idx].label
+	label := be.tree.Nodes[idx].Label
 	al := alert.NewConfirm(
 		"Remove entry?",
 		fmt.Sprintf("Remove %q? Its content will be lost.", label),
@@ -125,37 +127,37 @@ func (be blockEditState) handleTreeDeleteDispatch() blockEditState {
 // openChildMsg with the focus-path suffix to it. The model resolves the content
 // from the canonical editRoot, so no substring is copied here.
 func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
-	idx := be.tree.currentNodeIdx()
+	idx := be.tree.CurrentNodeIdx()
 	if idx < 0 {
 		return be, nil
 	}
-	node := be.tree.nodes[idx]
+	node := be.tree.Nodes[idx]
 
 	// relSegs addresses the field relative to this editor's focus.
-	var relSegs []pathSeg
+	var relSegs []yamledit.PathSeg
 	if be.isCollectionNav() {
 		// yamlPath[0] is the item's label, not a real key; the live item is
 		// be.coll.current, and yamlPath[1:] are the field keys below it.
 		if be.coll.isMap {
-			relSegs = append(relSegs, segMapKey(entryLabel(&be.node, true, be.coll.current)))
+			relSegs = append(relSegs, yamledit.SegMapKey(yamledit.EntryLabel(&be.node, true, be.coll.current)))
 		} else {
-			relSegs = append(relSegs, segIdx(be.coll.current))
+			relSegs = append(relSegs, yamledit.SegIdx(be.coll.current))
 		}
-		for _, k := range node.yamlPath[1:] {
-			relSegs = append(relSegs, segKey(k))
+		for _, k := range node.YAMLPath[1:] {
+			relSegs = append(relSegs, yamledit.SegKey(k))
 		}
 	} else {
-		// Struct block: node.yamlPath is the key path from this block's mapping.
-		for _, k := range node.yamlPath {
-			relSegs = append(relSegs, segKey(k))
+		// Struct block: node.YAMLPath is the key path from this block's mapping.
+		for _, k := range node.YAMLPath {
+			relSegs = append(relSegs, yamledit.SegKey(k))
 		}
 	}
 
 	return be, func() tea.Msg {
 		return openChildMsg{
-			key:     node.def.YAMLName,
-			defs:    node.def.Children,
-			kind:    node.def.Kind,
+			key:     node.Def.YAMLName,
+			defs:    node.Def.Children,
+			kind:    node.Def.Kind,
 			relSegs: relSegs,
 		}
 	}
@@ -165,47 +167,47 @@ func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
 // re-renders the editor from it. Collections target the current entry's value
 // mapping, struct blocks the block's own; the tree is derived from the same node
 // either way, so it cannot disagree.
-func (be blockEditState) applyToggle(ctx toggleCtx, node treeNode, checked bool) blockEditState {
+func (be blockEditState) applyToggle(ctx yamledit.ToggleCtx, node fieldtree.Node, checked bool) blockEditState {
 	if be.isCollectionNav() {
 		be = be.toggleEntryField(ctx, node, checked)
 		// Only rebuild the buffer when the toggle succeeded: on a parse error the
 		// buffer holds the invalid text, and overwriting it would mask the error.
 		if be.editorErr.kind == errNone {
-			be.yamlEditor.SetValue(entryViewYAML(&be.node, be.key, be.coll.isMap, be.coll.current))
+			be.yamlEditor.SetValue(yamledit.EntryViewYAML(&be.node, be.key, be.coll.isMap, be.coll.current))
 		}
 		return be
 	}
-	be.node = *toggleNodeField(&be.node, ctx, node, checked)
-	be.yamlEditor.SetValue(nodeToContent(be.key, &be.node))
+	be.node = *fieldtree.ToggleNodeField(&be.node, ctx, node, checked)
+	be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
 	return be
 }
 
 // toggleEntryField mutates the current collection entry's value mapping on the
 // live node rather than re-parsed text. yamlPath[0] is the entry label, so the
 // field path starts at [1].
-func (be blockEditState) toggleEntryField(ctx toggleCtx, node treeNode, checked bool) blockEditState {
-	if len(node.yamlPath) < 2 {
+func (be blockEditState) toggleEntryField(ctx yamledit.ToggleCtx, node fieldtree.Node, checked bool) blockEditState {
+	if len(node.YAMLPath) < 2 {
 		return be
 	}
-	entryNode := entryValueNode(&be.node, be.coll.isMap, be.coll.current)
+	entryNode := yamledit.EntryValueNode(&be.node, be.coll.isMap, be.coll.current)
 	if entryNode == nil {
 		return be
 	}
-	// Clone first so a mid-path applyToggleAt failure cannot leave the entry
-	// partially modified, mirroring toggleNodeField.
+	// Clone first so a mid-path yamledit.ApplyToggleAt failure cannot leave the entry
+	// partially modified, mirroring fieldtree.ToggleNodeField.
 	cloned := yamlnode.CloneNode(entryNode)
-	fieldPath := node.yamlPath[1:]
-	if !applyToggleAt(cloned, fieldPath[:len(fieldPath)-1], fieldPath[len(fieldPath)-1], checked, ctx) {
+	fieldPath := node.YAMLPath[1:]
+	if !yamledit.ApplyToggleAt(cloned, fieldPath[:len(fieldPath)-1], fieldPath[len(fieldPath)-1], checked, ctx) {
 		return be
 	}
-	pruneEmptyMappings(cloned)
-	reorderNestedMappingKeys(cloned, ctx.childDefs)
+	yamledit.PruneEmptyMappings(cloned)
+	yamledit.ReorderNestedMappingKeys(cloned, ctx.ChildDefs)
 	// Write back at the entry's position, keeping the existing key node for maps.
 	var keyNode *yaml.Node
 	if be.coll.isMap && 2*be.coll.current < len(be.node.Content) {
 		keyNode = be.node.Content[2*be.coll.current]
 	}
-	setEntry(&be.node, be.coll.isMap, be.coll.current, keyNode, cloned)
+	yamledit.SetEntry(&be.node, be.coll.isMap, be.coll.current, keyNode, cloned)
 	return be
 }
 
@@ -217,7 +219,7 @@ func (be blockEditState) handleTreeAddNew() blockEditState {
 	be.editorErr = editorError{} // adding overrides an in-progress invalid entry
 	label := be.newEntryLabel()
 	be.tree = be.tree.WithNewSeqItem(be.childDefs, label)
-	kn, vn, ok := parseEntryFromView(be.key+":\n"+be.initialEntryContent(label), be.coll.isMap)
+	kn, vn, ok := yamledit.ParseEntryFromView(be.key+":\n"+be.initialEntryContent(label), be.coll.isMap)
 	if !ok {
 		vn = &yaml.Node{Kind: yaml.MappingNode}
 		kn = &yaml.Node{Kind: yaml.ScalarNode, Value: label}

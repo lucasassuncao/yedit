@@ -25,9 +25,6 @@ type (
 	ValidationInput = spec.ValidationInput
 	Validator       = spec.Validator
 	ValidatorFunc   = spec.ValidatorFunc
-
-	// group keeps the old unexported spelling working inside this package.
-	group = spec.Group
 )
 
 const (

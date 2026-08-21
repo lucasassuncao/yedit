@@ -1,6 +1,11 @@
 package editor
 
-import "github.com/lucasassuncao/yedit/theme"
+import (
+	"github.com/lucasassuncao/yedit/animation"
+	"github.com/lucasassuncao/yedit/legend"
+	"github.com/lucasassuncao/yedit/render"
+	"github.com/lucasassuncao/yedit/theme"
+)
 
 const (
 	headerLines   = 1
@@ -12,7 +17,7 @@ func (m model) relayout() model {
 	m.listW, previewW = theme.TwoColumnWidths(m.width)
 
 	previewFocused := m.mode == panePreview
-	_, legendLines := renderLegend(m.help, listKeyMapFor(m, previewFocused), m.width-1)
+	_, legendLines := legend.Render(m.help, listKeyMapFor(m, previewFocused), m.width-1)
 	if legendLines < 1 {
 		legendLines = 1
 	}
@@ -24,11 +29,11 @@ func (m model) relayout() model {
 	m.list = m.list.SetHeight(m.innerH)
 	m.preview.SetWidth(previewW - 2)
 	m.preview.SetHeight(m.previewViewportH())
-	wrap := m.preview.Width() - previewGutterWidth
+	wrap := m.preview.Width() - render.PreviewGutterWidth
 	if wrap < 1 {
 		wrap = 1
 	}
-	m.previewRenderer = newPreviewRenderer(wrap)
+	m.previewRenderer = render.NewPreviewRenderer(wrap)
 	m = m.refreshPreview()
 	return m.clampPreviewScroll()
 }
@@ -109,8 +114,8 @@ func (m model) hintTargetH() int {
 // value. They describe the resting size; clamping every frame to them would
 // make the panel jump straight to 5 lines instead of growing out of nothing.
 func (m model) hintPanelH() int {
-	if m.hintAnim.active() {
-		return m.hintAnim.cur
+	if m.hintAnim.Active() {
+		return m.hintAnim.Cur
 	}
 	if !m.showHint {
 		return 0
@@ -124,15 +129,15 @@ func (m model) hintPanelH() int {
 // With Config.AnimationDuration unset the tween stays inactive and the panel
 // snaps, so an embedding app that did not ask for animation gets no timers.
 func (m model) startHintAnim(from int) (model, bool) {
-	running := m.hintAnim.active()
+	running := m.hintAnim.Active()
 	target := 0
 	if m.showHint {
 		target = m.hintTargetH()
 	}
-	m.hintAnim = startTween(from, target, m.cfg.AnimationDuration)
+	m.hintAnim = animation.New(from, target, m.cfg.AnimationDuration)
 	// Only spawn a loop when one is not already in flight; a rapid double
 	// toggle retargets the existing tween instead of stacking a second ticker.
-	return m, m.hintAnim.active() && !running
+	return m, m.hintAnim.Active() && !running
 }
 
 // previewPanelH is the content height of the preview when the hint panel shares

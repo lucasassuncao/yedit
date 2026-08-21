@@ -1,6 +1,10 @@
 package editor
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/lucasassuncao/yedit/yamledit"
+)
 
 const maxActionLog = 512
 
@@ -30,12 +34,12 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 func (be blockEditState) applyAction(a BlockAction) blockEditState {
 	switch act := a.(type) {
 	case ToggleField:
-		if act.NodeIdx < 0 || act.NodeIdx >= len(be.tree.nodes) {
+		if act.NodeIdx < 0 || act.NodeIdx >= len(be.tree.Nodes) {
 			return be
 		}
-		node := be.tree.nodes[act.NodeIdx]
+		node := be.tree.Nodes[act.NodeIdx]
 		be = be.saveUndo()
-		ctx := toggleCtx{key: be.key, snippets: be.snippetsFn(), childDefs: be.childDefs}
+		ctx := yamledit.ToggleCtx{Snippets: be.snippetsFn(), ChildDefs: be.childDefs}
 		be = be.applyToggle(ctx, node, act.Checked)
 
 	case SyncYAML:
@@ -90,7 +94,7 @@ func (be blockEditState) applyAction(a BlockAction) blockEditState {
 // loading for a NavigateEntry action.
 func (be blockEditState) handleNavigateEntry(idx int) blockEditState {
 	be.statusMsg = ""
-	count := entryCount(&be.node, be.coll.isMap)
+	count := yamledit.EntryCount(&be.node, be.coll.isMap)
 	if count == 0 || idx < 0 || idx >= count {
 		// Nothing to navigate to.
 		return be
@@ -107,7 +111,7 @@ func (be blockEditState) handleNavigateEntry(idx int) blockEditState {
 		be.statusMsg = be.editorErr.message
 		// Navigation was refused, so move the cursor back to the entry actually
 		// loaded rather than leaving the tree and buffer pointing at different ones.
-		be.tree = be.tree.cursorToSeqItem(be.coll.current)
+		be.tree = be.tree.CursorToSeqItem(be.coll.current)
 	}
 	return be
 }

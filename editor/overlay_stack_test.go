@@ -11,7 +11,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"gopkg.in/yaml.v3"
 
+	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/yamledit"
+
+	"github.com/lucasassuncao/yedit/blocklist"
 )
 
 // ceStructSpec is a struct block that contains a nested map-of-struct field
@@ -37,19 +41,19 @@ func ceStructSpec() blockSpec {
 	}
 }
 
-func nodeByLabel(be blockEditState, label string) (treeNode, bool) {
-	for _, n := range be.tree.nodes {
-		if n.kind == treeNodeField && n.label == label {
+func nodeByLabel(be blockEditState, label string) (fieldtree.Node, bool) {
+	for _, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && n.Label == label {
 			return n, true
 		}
 	}
-	return treeNode{}, false
+	return fieldtree.Node{}, false
 }
 
 func cursorToLabel(be blockEditState, label string) blockEditState {
-	for vi, ni := range be.tree.visibleNodes() {
-		if be.tree.nodes[ni].label == label {
-			be.tree.cursor = vi
+	for vi, ni := range be.tree.VisibleNodes() {
+		if be.tree.Nodes[ni].Label == label {
+			be.tree.Cursor = vi
 			break
 		}
 	}
@@ -64,7 +68,7 @@ func TestNestedMapFieldIsOpenable(t *testing.T) {
 	if !ok {
 		t.Fatal("httproutes node not found")
 	}
-	if !n.openable {
+	if !n.Openable {
 		t.Error("httproutes (map-of-struct) should be openable")
 	}
 	// deployment is a plain nested struct: expandable inline, not openable.
@@ -72,7 +76,7 @@ func TestNestedMapFieldIsOpenable(t *testing.T) {
 	if !ok {
 		t.Fatal("deployment node not found")
 	}
-	if d.openable {
+	if d.Openable {
 		t.Error("deployment (struct) should not be openable")
 	}
 }
@@ -95,8 +99,8 @@ func TestEnterOnNestedMapEmitsOpenChild(t *testing.T) {
 		t.Errorf("openChildMsg = {key:%q kind:%d}, want {httproutes map}", msg.key, msg.kind)
 	}
 	// A struct block addresses its child by a single mapping-key segment.
-	if len(msg.relSegs) != 1 || msg.relSegs[0].isIndex || msg.relSegs[0].key != "httproutes" {
-		t.Errorf("relSegs = %+v, want [segKey(httproutes)]", msg.relSegs)
+	if len(msg.relSegs) != 1 || msg.relSegs[0].IsIndex() || msg.relSegs[0].Key() != "httproutes" {
+		t.Errorf("relSegs = %+v, want [yamledit.SegKey(httproutes)]", msg.relSegs)
 	}
 }
 
@@ -127,7 +131,7 @@ func TestDrillInCommitsThroughCanonicalTree(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "yedit", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "yedit", Existing: true}})
 	m = updated.(model)
 	must.Len(m.blockEdits, 1, "after open: stack depth should be 1")
 
@@ -136,7 +140,7 @@ func TestDrillInCommitsThroughCanonicalTree(t *testing.T) {
 		key:     "httproutes",
 		defs:    []schema.FieldDef{{YAMLName: "host", Kind: schema.KindPrimitive}},
 		kind:    schema.KindDictionary,
-		relSegs: []pathSeg{segKey("httproutes")},
+		relSegs: []yamledit.PathSeg{yamledit.SegKey("httproutes")},
 	})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2, "after drill-in: stack depth should be 2")
@@ -187,7 +191,7 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 	must.NoError(err, "newModel")
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "yedit", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "yedit", Existing: true}})
 	m = updated.(model)
 
 	// Drill into httproutes.
@@ -195,7 +199,7 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 		key:     "httproutes",
 		defs:    []schema.FieldDef{{YAMLName: "host", Kind: schema.KindPrimitive}},
 		kind:    schema.KindDictionary,
-		relSegs: []pathSeg{segKey("httproutes")},
+		relSegs: []yamledit.PathSeg{yamledit.SegKey("httproutes")},
 	})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2, "after drill-in: stack depth should be 2")
@@ -260,7 +264,7 @@ func TestDrillOutFromSeqNavInsideMapNav(t *testing.T) {
 	m = updated.(model)
 
 	// Open "field2" from the list (top-level KindDictionary editor, focus = nil).
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "field2", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "field2", Existing: true}})
 	m = updated.(model)
 	must.Len(m.blockEdits, 1, "stack depth after opening field2")
 
@@ -271,12 +275,12 @@ func TestDrillOutFromSeqNavInsideMapNav(t *testing.T) {
 	}
 
 	// Drill into B via the same path handleTreeOpenChild would emit for a map nav
-	// entry: relSegs = [segMapKey("key1"), segKey("B")].
+	// entry: relSegs = [yamledit.SegMapKey("key1"), yamledit.SegKey("B")].
 	updated, _ = m.Update(openChildMsg{
 		key:     "B",
 		defs:    subField1Defs,
 		kind:    schema.KindList,
-		relSegs: []pathSeg{segMapKey("key1"), segKey("B")},
+		relSegs: []yamledit.PathSeg{yamledit.SegMapKey("key1"), yamledit.SegKey("B")},
 	})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2, "stack depth after drilling into B")
@@ -320,7 +324,7 @@ func TestEscKeyFromSeqNavInsideMapNav(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "field2", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "field2", Existing: true}})
 	m = updated.(model)
 	must.Len(m.blockEdits, 1, "stack depth after opening field2")
 
@@ -330,7 +334,7 @@ func TestEscKeyFromSeqNavInsideMapNav(t *testing.T) {
 		key:     "B",
 		defs:    subField1Defs,
 		kind:    schema.KindList,
-		relSegs: []pathSeg{segMapKey("key1"), segKey("B")},
+		relSegs: []yamledit.PathSeg{yamledit.SegMapKey("key1"), yamledit.SegKey("B")},
 	})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2, "stack depth after drilling into B")
@@ -356,7 +360,7 @@ func TestEscKeyFromSeqNavInsideMapNav(t *testing.T) {
 
 // TestDrillOutFromEmptyParent verifies that ESC from a child editor works even
 // when the parent editor had empty content ("key:\n"). That flush writes a null
-// scalar into editRoot; setNodeAt must coerce it to a mapping so the child's
+// scalar into editRoot; yamledit.SetNodeAt must coerce it to a mapping so the child's
 // drill-out write succeeds instead of silently aborting.
 func TestDrillOutFromEmptyParent(t *testing.T) {
 	must := require.New(t)
@@ -380,19 +384,19 @@ func TestDrillOutFromEmptyParent(t *testing.T) {
 	m = updated.(model)
 
 	// Open the "gateway" block (KindObject, empty content).
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "gateway", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "gateway", Existing: true}})
 	m = updated.(model)
 	must.Len(m.blockEdits, 1, "stack depth after opening gateway")
 
 	serversDefs := []schema.FieldDef{{YAMLName: "host", Kind: schema.KindPrimitive}}
 
 	// Drill into "servers" (a KindList child). The parent flush writes a null
-	// scalar into editRoot; setNodeAt must handle that for this to succeed.
+	// scalar into editRoot; yamledit.SetNodeAt must handle that for this to succeed.
 	updated, _ = m.Update(openChildMsg{
 		key:     "servers",
 		defs:    serversDefs,
 		kind:    schema.KindList,
-		relSegs: []pathSeg{segKey("servers")},
+		relSegs: []yamledit.PathSeg{yamledit.SegKey("servers")},
 	})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2, "stack depth after drilling into servers")
@@ -412,7 +416,7 @@ func TestDrillOutFromEmptyParent(t *testing.T) {
 }
 
 // TestFlushTopToRoot_rollbackOnSetNodeAtFailure verifies that editRoot is
-// atomically restored when setNodeAt fails mid-traversal. Without rollback, a
+// atomically restored when yamledit.SetNodeAt fails mid-traversal. Without rollback, a
 // failed flush can leave editRoot in a partial state where intermediate nodes
 // were already created before the failure.
 func TestFlushTopToRoot_rollbackOnSetNodeAtFailure(t *testing.T) {
@@ -432,7 +436,7 @@ func TestFlushTopToRoot_rollbackOnSetNodeAtFailure(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "gateway", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "gateway", Existing: true}})
 	m = updated.(model)
 	must.Len(m.blockEdits, 1)
 
@@ -440,13 +444,13 @@ func TestFlushTopToRoot_rollbackOnSetNodeAtFailure(t *testing.T) {
 	snapBefore, _ := yaml.Marshal(m.editRoot)
 
 	// Set an impossible focus: sequence index 999 on a mapping editRoot.
-	// setNodeAt will fail because editRoot.Kind != SequenceNode.
+	// yamledit.SetNodeAt will fail because editRoot.Kind != SequenceNode.
 	be := *m.topBE()
-	be.focus = []pathSeg{segIdx(999)}
+	be.focus = []yamledit.PathSeg{yamledit.SegIdx(999)}
 	m = m.withTopBE(be)
 
 	_, ok := m.flushTopToRoot()
-	must.False(ok, "flushTopToRoot must return false on setNodeAt failure")
+	must.False(ok, "flushTopToRoot must return false on yamledit.SetNodeAt failure")
 
 	snapAfter, _ := yaml.Marshal(m.editRoot)
 	must.Equal(string(snapBefore), string(snapAfter), "editRoot must be identical after a failed flush (rollback)")
@@ -475,7 +479,7 @@ func TestDrillOutFromEmptyList(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "gateway", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "gateway", Existing: true}})
 	m = updated.(model)
 
 	serversDefs := []schema.FieldDef{{YAMLName: "host", Kind: schema.KindPrimitive}}
@@ -485,7 +489,7 @@ func TestDrillOutFromEmptyList(t *testing.T) {
 		key:     "servers",
 		defs:    serversDefs,
 		kind:    schema.KindList,
-		relSegs: []pathSeg{segKey("servers")},
+		relSegs: []yamledit.PathSeg{yamledit.SegKey("servers")},
 	})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2)
@@ -505,7 +509,7 @@ func TestDrillOutFromEmptyList(t *testing.T) {
 
 // TestDrillOutPrunePreservesSequenceIndices guards against the drill-out prune
 // removing empty sequence entries elsewhere in the tree: editors still on the
-// stack address collection entries by index (segIdx), so removing the "- {}"
+// stack address collection entries by index (yamledit.SegIdx), so removing the "- {}"
 // entry would shift every entry behind it and silently re-point the middle
 // editor at a different entry's content (r9 instead of r1), corrupting the
 // entry it later flushes into.
@@ -543,18 +547,18 @@ func TestDrillOutPrunePreservesSequenceIndices(t *testing.T) {
 	m = updated.(model)
 
 	// A: open the "filters" collection block.
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "filters", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "filters", Existing: true}})
 	m = updated.(model)
 	must.Len(m.blockEdits, 1)
 
 	ruleDefs := []schema.FieldDef{{YAMLName: "target", Kind: schema.KindPrimitive}}
 
-	// B: drill into entry [2]'s "rules" (focus carries segIdx(2)).
+	// B: drill into entry [2]'s "rules" (focus carries yamledit.SegIdx(2)).
 	updated, _ = m.Update(openChildMsg{
 		key:     "rules",
 		defs:    ruleDefs,
 		kind:    schema.KindDictionary,
-		relSegs: []pathSeg{segIdx(2), segKey("rules")},
+		relSegs: []yamledit.PathSeg{yamledit.SegIdx(2), yamledit.SegKey("rules")},
 	})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2)
@@ -564,13 +568,13 @@ func TestDrillOutPrunePreservesSequenceIndices(t *testing.T) {
 		key:     "r1",
 		defs:    ruleDefs,
 		kind:    schema.KindObject,
-		relSegs: []pathSeg{segMapKey("r1")},
+		relSegs: []yamledit.PathSeg{yamledit.SegMapKey("r1")},
 	})
 	m = updated.(model)
 	must.Len(m.blockEdits, 3)
 
 	// Esc from C: the drill-out prune must not remove the "- {}" entry, or B's
-	// segIdx(2) focus would resolve to entry d instead of entry c.
+	// yamledit.SegIdx(2) focus would resolve to entry d instead of entry c.
 	updated, _ = m.Update(drillOutMsg{})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2)
@@ -581,7 +585,7 @@ func TestDrillOutPrunePreservesSequenceIndices(t *testing.T) {
 	is.Contains(b.yamlEditor.Value(), "r1", "B must still show entry c's rules")
 	is.NotContains(b.yamlEditor.Value(), "r9", "B must not show entry d's rules")
 
-	snap := nodeToContent("filters", m.editRoot)
+	snap := yamledit.NodeToContent("filters", m.editRoot)
 	is.Contains(snap, "- {}", "the empty entry must survive the drill-out prune")
 }
 
@@ -617,17 +621,17 @@ func TestMapNavDrillEmitsMapEntrySeg(t *testing.T) {
 	must.True(be.isMapNav(), "spec should build a map navigator")
 
 	// Expand the k1 entry so its "inner" child becomes visible, then drill in.
-	be.tree = be.tree.withNodeMutated(0, func(n *treeNode) { n.expanded = true })
+	be.tree = be.tree.WithNodeMutated(0, func(n *fieldtree.Node) { n.Expanded = true })
 	be = cursorToLabel(be, "inner")
 	_, cmd := be.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	must.NotNil(cmd, "Enter on an openable field must emit a command")
 	msg, ok := cmd().(openChildMsg)
 	must.True(ok, "expected openChildMsg, got %T", cmd())
 	must.Len(msg.relSegs, 2)
-	must.True(msg.relSegs[0].isMapEntry, "entry key segment must be marked isMapEntry")
-	must.Equal("k1", msg.relSegs[0].key)
-	must.False(msg.relSegs[1].isMapEntry, "schema field segment must not be marked isMapEntry")
-	must.Equal("inner", msg.relSegs[1].key)
+	must.True(msg.relSegs[0].IsMapEntry(), "entry key segment must be marked isMapEntry")
+	must.Equal("k1", msg.relSegs[0].Key())
+	must.False(msg.relSegs[1].IsMapEntry(), "schema field segment must not be marked isMapEntry")
+	must.Equal("inner", msg.relSegs[1].Key())
 }
 
 // TestNestedMapNavMetadataPrefixSkipsRuntimeKeys is the regression test for
@@ -670,7 +674,7 @@ func TestNestedMapNavMetadataPrefixSkipsRuntimeKeys(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "top", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "top", Existing: true}})
 	m = updated.(model)
 	must.Len(m.blockEdits, 1)
 
@@ -682,7 +686,7 @@ func TestNestedMapNavMetadataPrefixSkipsRuntimeKeys(t *testing.T) {
 		key:     "inner",
 		defs:    innerDefs,
 		kind:    schema.KindDictionary,
-		relSegs: []pathSeg{segMapKey("k1"), segKey("inner")},
+		relSegs: []yamledit.PathSeg{yamledit.SegMapKey("k1"), yamledit.SegKey("inner")},
 	})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2)
@@ -694,7 +698,7 @@ func TestNestedMapNavMetadataPrefixSkipsRuntimeKeys(t *testing.T) {
 		key:     "deep",
 		defs:    deepDefs,
 		kind:    schema.KindList,
-		relSegs: []pathSeg{segMapKey("k2"), segKey("deep")},
+		relSegs: []yamledit.PathSeg{yamledit.SegMapKey("k2"), yamledit.SegKey("deep")},
 	})
 	m = updated.(model)
 	must.Len(m.blockEdits, 3)
@@ -793,17 +797,17 @@ func TestDrillOutCascadePreservesParentFocus(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "gateway", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "gateway", Existing: true}})
 	m = updated.(model)
 	must.Len(m.blockEdits, 1)
 
 	aDefs := []schema.FieldDef{{YAMLName: "b", Kind: schema.KindObject, Children: []schema.FieldDef{{YAMLName: "x", Kind: schema.KindPrimitive}}}}
-	updated, _ = m.Update(openChildMsg{key: "a", defs: aDefs, kind: schema.KindObject, relSegs: []pathSeg{segKey("a")}})
+	updated, _ = m.Update(openChildMsg{key: "a", defs: aDefs, kind: schema.KindObject, relSegs: []yamledit.PathSeg{yamledit.SegKey("a")}})
 	m = updated.(model)
 	must.Len(m.blockEdits, 2)
 
 	bDefs := []schema.FieldDef{{YAMLName: "x", Kind: schema.KindPrimitive}}
-	updated, _ = m.Update(openChildMsg{key: "b", defs: bDefs, kind: schema.KindObject, relSegs: []pathSeg{segKey("b")}})
+	updated, _ = m.Update(openChildMsg{key: "b", defs: bDefs, kind: schema.KindObject, relSegs: []yamledit.PathSeg{yamledit.SegKey("b")}})
 	m = updated.(model)
 	must.Len(m.blockEdits, 3)
 
@@ -814,5 +818,5 @@ func TestDrillOutCascadePreservesParentFocus(t *testing.T) {
 	must.Len(m.blockEdits, 2)
 	must.Equal("a", m.topBE().key)
 	must.Equal(errNone, m.topBE().editorErr.kind, "drill-out lost the parent focus: %s", m.topBE().editorErr.message)
-	must.NotNil(nodeAt(m.editRoot, m.topBE().focus), "parent focus node must survive the prune")
+	must.NotNil(yamledit.NodeAt(m.editRoot, m.topBE().focus), "parent focus node must survive the prune")
 }

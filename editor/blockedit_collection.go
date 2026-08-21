@@ -6,7 +6,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/yamledit"
 )
 
 // collectionBuffer tracks which entry of a collection-nav editor is shown in the
@@ -19,47 +21,47 @@ type collectionBuffer struct {
 
 // collectionDeriveTree refreshes every entry's label, yamlPath, and child
 // checkmarks from be.node, preserving expansion and cursor.
-func (be blockEditState) collectionDeriveTree() treeModel {
+func (be blockEditState) collectionDeriveTree() fieldtree.Model {
 	tm := be.tree
 	isMap := be.coll.isMap
-	nodes := make([]treeNode, len(tm.nodes))
-	copy(nodes, tm.nodes)
+	nodes := make([]fieldtree.Node, len(tm.Nodes))
+	copy(nodes, tm.Nodes)
 	for i := 0; i < len(nodes); i++ {
-		if nodes[i].kind != treeNodeSeqItem {
+		if nodes[i].Kind != fieldtree.KindSeqItem {
 			continue
 		}
-		seqIdx := nodes[i].seqIdx
-		label := entryLabel(&be.node, isMap, seqIdx)
+		seqIdx := nodes[i].SeqIdx
+		label := yamledit.EntryLabel(&be.node, isMap, seqIdx)
 		// A map entry keyed by the empty string still exists and must refresh the
 		// row, or its label/yamlPath would point at a key that no longer exists.
-		hasLabel := label != "" || (isMap && seqIdx < entryCount(&be.node, isMap))
+		hasLabel := label != "" || (isMap && seqIdx < yamledit.EntryCount(&be.node, isMap))
 		if hasLabel {
 			display := label
 			if display == "" {
 				display = `""` // visible placeholder for an empty map key
 			}
-			nodes[i].label = display
-			nodes[i].yamlPath = []string{label}
+			nodes[i].Label = display
+			nodes[i].YAMLPath = []string{label}
 		}
 		var childIdx []int
-		for j := i + 1; j < len(nodes) && nodes[j].depth > 0; j++ {
-			if hasLabel && len(nodes[j].yamlPath) > 0 {
-				p := append([]string(nil), nodes[j].yamlPath...)
+		for j := i + 1; j < len(nodes) && nodes[j].Depth > 0; j++ {
+			if hasLabel && len(nodes[j].YAMLPath) > 0 {
+				p := append([]string(nil), nodes[j].YAMLPath...)
 				p[0] = label
-				nodes[j].yamlPath = p
+				nodes[j].YAMLPath = p
 			}
 			childIdx = append(childIdx, j)
 		}
-		sub := make([]treeNode, len(childIdx))
+		sub := make([]fieldtree.Node, len(childIdx))
 		for k, ci := range childIdx {
 			sub[k] = nodes[ci]
 		}
-		sub = deriveChecked(entryValueNode(&be.node, isMap, seqIdx), sub, true)
+		sub = fieldtree.DeriveChecked(yamledit.EntryValueNode(&be.node, isMap, seqIdx), sub, true)
 		for k, ci := range childIdx {
 			nodes[ci] = sub[k]
 		}
 	}
-	tm.nodes = nodes
+	tm.Nodes = nodes
 	return tm
 }
 
@@ -79,7 +81,7 @@ func (be blockEditState) performEntryDelete(seqIdx int) blockEditState {
 	be.editorErr = editorError{}
 	be = be.saveUndo()
 	be.tree = be.tree.WithDeletedSeqItem(seqIdx)
-	removeEntry(&be.node, be.coll.isMap, seqIdx)
+	yamledit.RemoveEntry(&be.node, be.coll.isMap, seqIdx)
 	return be.loadEntry(be.tree.NearestSeqItem())
 }
 
@@ -123,8 +125,8 @@ func (be blockEditState) isCollectionNav() bool {
 
 // collectionTreeNodes rebuilds the tree nodes for the current collection entries,
 // picking the map or sequence layout from the block kind.
-func (be blockEditState) collectionTreeNodes() []treeNode {
-	return buildCollectionNodesFromNode(be.childDefs, &be.node, be.isMapNav())
+func (be blockEditState) collectionTreeNodes() []fieldtree.Node {
+	return fieldtree.CollectionNodes(be.childDefs, &be.node, be.isMapNav())
 }
 
 // flushCurrentEntry parses the current entry's editor text back into the
@@ -134,7 +136,7 @@ func (be blockEditState) collectionTreeNodes() []treeNode {
 func (be blockEditState) flushCurrentEntry() blockEditState {
 	cur := be.coll.current
 	view := be.yamlEditor.Value()
-	if cur < 0 || cur >= entryCount(&be.node, be.coll.isMap) {
+	if cur < 0 || cur >= yamledit.EntryCount(&be.node, be.coll.isMap) {
 		// No current entry: a blank buffer or pristine placeholder is a clean
 		// no-op. Anything else never parsed into a first entry (applyParsedEntry
 		// appends it the moment it does), so committing would drop it.
@@ -151,11 +153,11 @@ func (be blockEditState) flushCurrentEntry() blockEditState {
 		be.editorErr = editorError{kind: errParse, message: "Entry is empty - press ctrl+d on it in the tree to delete it, or restore its content."}
 		return be
 	}
-	if !be.coll.isMap && viewHasMultipleSeqItems(view) {
+	if !be.coll.isMap && yamledit.ViewHasMultipleSeqItems(view) {
 		be.editorErr = editorError{kind: errParse, message: "One entry per editor - use [+ add new] to create additional entries."}
 		return be
 	}
-	kn, vn, ok := parseEntryFromView(view, be.coll.isMap)
+	kn, vn, ok := yamledit.ParseEntryFromView(view, be.coll.isMap)
 	if !ok {
 		msg := "Invalid YAML - fix this entry before leaving it."
 		if !strings.HasPrefix(view, be.key+":") {
@@ -170,7 +172,7 @@ func (be blockEditState) flushCurrentEntry() blockEditState {
 		be.editorErr = editorError{kind: errParse, message: fmt.Sprintf("Duplicate map key %q - rename it to a unique key first.", kn.Value)}
 		return be
 	}
-	setEntry(&be.node, be.coll.isMap, cur, kn, vn)
+	yamledit.SetEntry(&be.node, be.coll.isMap, cur, kn, vn)
 	be.editorErr = editorError{}
 	return be
 }
@@ -178,19 +180,19 @@ func (be blockEditState) flushCurrentEntry() blockEditState {
 // duplicateMapKey reports whether key exists at an index other than except.
 // Shared by the flush and per-keystroke duplicate guards.
 func duplicateMapKey(node *yaml.Node, except int, key string) bool {
-	count := entryCount(node, true)
+	count := yamledit.EntryCount(node, true)
 	for i := 0; i < count; i++ {
-		if i != except && entryLabel(node, true, i) == key {
+		if i != except && yamledit.EntryLabel(node, true, i) == key {
 			return true
 		}
 	}
 	return false
 }
 
-// loadEntry shows entry idx, clamped to [0, entryCount-1]; an empty collection
+// loadEntry shows entry idx, clamped to [0, yamledit.EntryCount-1]; an empty collection
 // sets current=-1. Always flushCurrentEntry first when switching entries.
 func (be blockEditState) loadEntry(idx int) blockEditState {
-	count := entryCount(&be.node, be.coll.isMap)
+	count := yamledit.EntryCount(&be.node, be.coll.isMap)
 	if count == 0 {
 		be.coll.current = -1
 		be.yamlEditor.SetValue(be.entryYAML(-1))
@@ -209,7 +211,7 @@ func (be blockEditState) loadEntry(idx int) blockEditState {
 
 // entryYAML returns the single-entry editor view for index idx.
 func (be blockEditState) entryYAML(idx int) string {
-	return entryViewYAML(&be.node, be.key, be.coll.isMap, idx)
+	return yamledit.EntryViewYAML(&be.node, be.key, be.coll.isMap, idx)
 }
 
 // initialEntryContent returns the YAML template for a freshly added entry.
@@ -229,10 +231,10 @@ func (be blockEditState) newEntryLabel() string {
 	}
 	// Existing keys come from the canonical node, which stays correct even when
 	// the tree is stale after an undo/redo.
-	count := entryCount(&be.node, be.coll.isMap)
+	count := yamledit.EntryCount(&be.node, be.coll.isMap)
 	existing := make(map[string]bool, count)
 	for i := 0; i < count; i++ {
-		existing[entryLabel(&be.node, true, i)] = true
+		existing[yamledit.EntryLabel(&be.node, true, i)] = true
 	}
 	// Start at count+1 for predictable positional labels, incrementing past any
 	// key that already exists.

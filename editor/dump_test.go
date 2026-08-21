@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lucasassuncao/yedit/schema"
+
+	"github.com/lucasassuncao/yedit/blocklist"
 )
 
 // readDumpEvents reads the JSONL back into generic maps so tests can assert on
@@ -86,7 +88,7 @@ func TestWireDump_CapturesGapMessages(t *testing.T) {
 	cfg := Config{}
 	wireDump(&cfg, d)
 
-	cfg.Trace.OnMsg("list", openItemMsg{Item: listItem{Key: "server"}})
+	cfg.Trace.OnMsg("list", blocklist.OpenItemMsg{Item: blocklist.Item{Key: "server"}})
 	cfg.Trace.OnMsg("block:server:tree:editing", commitRequestedMsg{})
 	cfg.Trace.OnMsg("list", confirmedDocPresetMsg{Name: "minimal", Content: "a: 1\n"})
 	cfg.Trace.OnMsg("block:server:tree:editing", validateRequestedMsg{})
@@ -97,7 +99,7 @@ func TestWireDump_CapturesGapMessages(t *testing.T) {
 	for _, ev := range events {
 		is.Equal("msg", ev["scope"])
 	}
-	is.Equal("editor.openItemMsg", events[0]["type"])
+	is.Equal("blocklist.OpenItemMsg", events[0]["type"])
 	is.Equal("editor.commitRequestedMsg", events[1]["type"])
 	is.Equal("editor.confirmedDocPresetMsg", events[2]["type"])
 	// exported fields on confirmedDocPresetMsg must survive the round trip.

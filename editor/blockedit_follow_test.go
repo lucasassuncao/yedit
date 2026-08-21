@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/yamledit"
 )
 
 // nestedStructSpec builds a KindObject blockSpec with a scalar field and an inline
@@ -30,9 +31,9 @@ func nestedStructSpec(content string) blockSpec {
 // the given label. Fails the test when the label is not visible.
 func cursorToVisibleNode(t *testing.T, be blockEditState, label string) blockEditState {
 	t.Helper()
-	for vi, ni := range be.tree.visibleNodes() {
-		if be.tree.nodes[ni].label == label {
-			be.tree.cursor = vi
+	for vi, ni := range be.tree.VisibleNodes() {
+		if be.tree.Nodes[ni].Label == label {
+			be.tree.Cursor = vi
 			return be
 		}
 	}
@@ -45,7 +46,7 @@ func TestMappingKeyLine(t *testing.T) {
 	must := require.New(t)
 
 	content := "settings:\n  retries: 3\n  source:\n    filter: \"x\"\n"
-	v := valueNodeOfSnippet(content)
+	v := yamledit.ValueNodeOfSnippet(content)
 	must.NotNil(v)
 
 	is.Equal(2, mappingKeyLine(v, []string{"retries"}), "top-level key")

@@ -1,4 +1,4 @@
-package editor
+package legend
 
 import (
 	"strings"
@@ -36,7 +36,7 @@ func TestRenderLegend_FitsOnOneLine(t *testing.T) {
 	h := plainHelp()
 	km := staticKeyMap{kb("a", "alpha"), kb("b", "beta")}
 	// "a alpha" (7) + " • " (3) + "b beta" (6) = 16
-	_, lines := renderLegend(h, km, 80)
+	_, lines := Render(h, km, 80)
 	if lines != 1 {
 		t.Errorf("expected 1 line for wide terminal, got %d", lines)
 	}
@@ -51,7 +51,7 @@ func TestRenderLegend_WrapsToTwoLines(t *testing.T) {
 		kb("ctrl+y", "redo changes"),
 		kb("ctrl+l", "validate all"),
 	}
-	_, lines := renderLegend(h, km, 50)
+	_, lines := Render(h, km, 50)
 	if lines < 2 {
 		t.Errorf("expected at least 2 lines for narrow terminal, got %d", lines)
 	}
@@ -61,7 +61,7 @@ func TestRenderLegend_ContentCorrect(t *testing.T) {
 	h := plainHelp()
 	km := staticKeyMap{kb("a", "alpha"), kb("b", "beta"), kb("c", "gamma")}
 	// "a alpha" (7) + " • " (3) + "b beta" (6) = 16; "c gamma" (7) doesn't fit on width=18
-	rendered, lines := renderLegend(h, km, 18)
+	rendered, lines := Render(h, km, 18)
 	if lines != 2 {
 		t.Errorf("expected 2 lines, got %d (rendered: %q)", lines, rendered)
 	}
@@ -82,7 +82,7 @@ func TestRenderLegend_DisabledBindingsSkipped(t *testing.T) {
 	disabled := kb("x", "hidden")
 	disabled.SetEnabled(false)
 	km := staticKeyMap{kb("a", "alpha"), disabled, kb("b", "beta")}
-	rendered, lines := renderLegend(h, km, 80)
+	rendered, lines := Render(h, km, 80)
 	if lines != 1 {
 		t.Errorf("expected 1 line, got %d", lines)
 	}
@@ -94,7 +94,7 @@ func TestRenderLegend_DisabledBindingsSkipped(t *testing.T) {
 func TestRenderLegend_EmptyKeyMap(t *testing.T) {
 	h := plainHelp()
 	km := staticKeyMap{}
-	rendered, lines := renderLegend(h, km, 80)
+	rendered, lines := Render(h, km, 80)
 	if lines != 1 {
 		t.Errorf("empty keymap should return 1 line, got %d", lines)
 	}
@@ -106,7 +106,7 @@ func TestRenderLegend_EmptyKeyMap(t *testing.T) {
 func TestRenderLegend_VeryNarrow(t *testing.T) {
 	h := plainHelp()
 	km := staticKeyMap{kb("a", "alpha"), kb("b", "beta"), kb("c", "gamma")}
-	_, lines := renderLegend(h, km, 1)
+	_, lines := Render(h, km, 1)
 	if lines != 3 {
 		t.Errorf("expected 3 lines for width=1, got %d", lines)
 	}

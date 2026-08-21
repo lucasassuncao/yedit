@@ -8,7 +8,10 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/document"
+	"github.com/lucasassuncao/yedit/yamledit"
 	"github.com/lucasassuncao/yedit/yamlnode"
+
+	"github.com/lucasassuncao/yedit/blocklist"
 )
 
 // topBE returns a copy of the active (deepest) block editor, or nil when none
@@ -86,7 +89,7 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 	}
 	childWasDirty := m.topBE().dirty
 	// Capture child focus before the stack is popped so pruning stays scoped.
-	childFocus := append([]pathSeg(nil), m.topBE().focus...)
+	childFocus := append([]yamledit.PathSeg(nil), m.topBE().focus...)
 	// Pruning must never reach the parent editor's own focus node: when the
 	// parent held nothing but the drilled-into child, going all the way up would
 	// delete it and refreshTopFromRoot would land on a lost path. Everything at
@@ -104,10 +107,10 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 	// empty. The prune stays on this path and never removes sequence items:
 	// editors still on the stack address entries by index, so removing one
 	// elsewhere would re-point them at a different entry.
-	if childNode := nodeAt(m.editRoot, childFocus); childNode != nil {
-		pruneEmptyMappings(childNode)
+	if childNode := yamledit.NodeAt(m.editRoot, childFocus); childNode != nil {
+		yamledit.PruneEmptyMappings(childNode)
 	}
-	pruneEmptyAlongFocus(m.editRoot, childFocus, parentFocusLen)
+	yamledit.PruneEmptyAlongFocus(m.editRoot, childFocus, parentFocusLen)
 
 	m.blockEdits = m.blockEdits[:len(m.blockEdits)-1]
 
@@ -129,14 +132,14 @@ func (m model) handleDrillOut() (tea.Model, tea.Cmd) {
 func (be blockEditState) refreshCollectionFromNode(node *yaml.Node) blockEditState {
 	isMap := be.isMapNav()
 	old := be.node
-	oldCount := entryCount(&old, isMap)
+	oldCount := yamledit.EntryCount(&old, isMap)
 	be.node = *yamlnode.CloneNode(node)
-	newCount := entryCount(&be.node, isMap)
+	newCount := yamledit.EntryCount(&be.node, isMap)
 	if newCount != oldCount {
-		be.tree.nodes = be.collectionTreeNodes()
+		be.tree.Nodes = be.collectionTreeNodes()
 		// The rebuilt tree may be shorter than the cursor position, so clamp it
 		// back onto a real row.
-		be.tree = be.tree.clampCursor()
+		be.tree = be.tree.ClampCursor()
 		be.coll.current = reanchorCollCursor(&old, &be.node, isMap, be.coll.current)
 	}
 	be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
@@ -151,7 +154,7 @@ func reanchorCollCursor(oldNode, newNode *yaml.Node, isMap bool, cur int) int {
 	if i := findEntryIndex(oldNode, newNode, isMap, cur); i >= 0 {
 		return i
 	}
-	if newCount := entryCount(newNode, isMap); cur >= newCount {
+	if newCount := yamledit.EntryCount(newNode, isMap); cur >= newCount {
 		return newCount - 1
 	}
 	return cur
@@ -160,30 +163,30 @@ func reanchorCollCursor(oldNode, newNode *yaml.Node, isMap bool, cur int) int {
 // findEntryIndex locates oldNode's entry cur inside newNode, by key for maps and
 // by structural equality for sequences, or -1 when it is gone.
 func findEntryIndex(oldNode, newNode *yaml.Node, isMap bool, cur int) int {
-	if cur < 0 || cur >= entryCount(oldNode, isMap) {
+	if cur < 0 || cur >= yamledit.EntryCount(oldNode, isMap) {
 		return -1
 	}
-	newCount := entryCount(newNode, isMap)
+	newCount := yamledit.EntryCount(newNode, isMap)
 	if isMap {
-		key := entryLabel(oldNode, true, cur)
+		key := yamledit.EntryLabel(oldNode, true, cur)
 		for i := 0; i < newCount; i++ {
-			if entryLabel(newNode, true, i) == key {
+			if yamledit.EntryLabel(newNode, true, i) == key {
 				return i
 			}
 		}
 		return -1
 	}
-	val := entryValueNode(oldNode, false, cur)
+	val := yamledit.EntryValueNode(oldNode, false, cur)
 	if val == nil {
 		return -1
 	}
 	// Prefer the same position: among structurally identical entries a first-match
 	// scan would re-anchor onto a different one than the user was viewing.
-	if cur < newCount && reflect.DeepEqual(entryValueNode(newNode, false, cur), val) {
+	if cur < newCount && reflect.DeepEqual(yamledit.EntryValueNode(newNode, false, cur), val) {
 		return cur
 	}
 	for i := 0; i < newCount; i++ {
-		if reflect.DeepEqual(entryValueNode(newNode, false, i), val) {
+		if reflect.DeepEqual(yamledit.EntryValueNode(newNode, false, i), val) {
 			return i
 		}
 	}
@@ -199,7 +202,7 @@ func (m model) refreshTopFromRoot() model {
 	if top == nil {
 		return m
 	}
-	node := nodeAt(m.editRoot, top.focus)
+	node := yamledit.NodeAt(m.editRoot, top.focus)
 	if node == nil {
 		return m.withTopBEError(errBlocked, "internal: focus path lost after drill-out; editor may show stale content")
 	}
@@ -208,7 +211,7 @@ func (m model) refreshTopFromRoot() model {
 		be = be.refreshCollectionFromNode(node)
 	} else {
 		be.node = *yamlnode.CloneNode(node)
-		be.yamlEditor.SetValue(nodeToContent(be.key, &be.node))
+		be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
 	}
 	be.tree = be.resyncTreeFromYAML()
 	be.dirty = be.computeDirty()
@@ -227,7 +230,7 @@ func (m model) handlePaneBlockEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m.withTopBE(be), cmd
 }
 
-func (m model) handleOpenItem(it listItem) (tea.Model, tea.Cmd) {
+func (m model) handleOpenItem(it blocklist.Item) (tea.Model, tea.Cmd) {
 	if m.mode == paneBlockEdit {
 		return m, nil // stale Cmd: editor is already open, discard
 	}
@@ -277,7 +280,7 @@ func (m model) flushTopToRoot() (model, bool) {
 		return m, false
 	}
 	rootSnap := yamlnode.CloneNode(m.editRoot)
-	if err := setNodeAt(m.editRoot, committed.focus, val); err != nil {
+	if err := yamledit.SetNodeAt(m.editRoot, committed.focus, val); err != nil {
 		*m.editRoot = *rootSnap
 		return m.withTopBEError(errCommit, fmt.Sprintf("internal error: could not write editor into canonical tree: %v", err)), false
 	}
@@ -302,21 +305,21 @@ func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Flush the parent into editRoot so the child reads the parent's live state.
-	parentFocus := append([]pathSeg(nil), top.focus...)
+	parentFocus := append([]yamledit.PathSeg(nil), top.focus...)
 	var ok bool
 	if m, ok = m.flushTopToRoot(); !ok {
 		return m, nil
 	}
 
-	childFocus := append([]pathSeg(nil), parentFocus...)
+	childFocus := append([]yamledit.PathSeg(nil), parentFocus...)
 	childFocus = append(childFocus, msg.relSegs...)
 	content := msg.key + ":\n"
-	if node := nodeAt(m.editRoot, childFocus); node != nil {
-		content = nodeToContent(msg.key, node)
+	if node := yamledit.NodeAt(m.editRoot, childFocus); node != nil {
+		content = yamledit.NodeToContent(msg.key, node)
 	}
-	// focusToStringPath drops index segments and runtime map-entry keys, so the
+	// yamledit.FocusToStringPath drops index segments and runtime map-entry keys, so the
 	// prefix holds only schema field names.
-	metaPrefix := focusToStringPath(childFocus)
+	metaPrefix := yamledit.FocusToStringPath(childFocus)
 	defs := applyPresentation(msg.defs, m.cfg.Metadata, m.editBlockKey, metaPrefix)
 	be := newBlockEdit(m.cfg, blockSpec{key: msg.key, defs: defs, kind: msg.kind, content: content, knownByPath: nil}, m.width, m.height)
 	be.isEdit = true
@@ -337,7 +340,7 @@ func (m model) docWithEditorContent() (document.Document, error) {
 		return m.doc, nil
 	}
 	root := yamlnode.CloneNode(m.editRoot)
-	pruneEmptyContent(root)
+	yamledit.PruneEmptyContent(root)
 	blockIsEmpty := len(root.Content) == 0 &&
 		(root.Kind == yaml.MappingNode || root.Kind == yaml.SequenceNode)
 	isEdit := m.blockEdits[0].isEdit
@@ -347,9 +350,9 @@ func (m model) docWithEditorContent() (document.Document, error) {
 	case blockIsEmpty:
 		return m.doc, nil
 	case isEdit:
-		return m.doc.Replace(m.editBlockKey, nodeToContent(m.editBlockKey, root))
+		return m.doc.Replace(m.editBlockKey, yamledit.NodeToContent(m.editBlockKey, root))
 	default:
-		return m.doc.Insert(nodeToContent(m.editBlockKey, root))
+		return m.doc.Insert(yamledit.NodeToContent(m.editBlockKey, root))
 	}
 }
 
@@ -378,7 +381,7 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	pruneEmptyContent(m.editRoot)
+	yamledit.PruneEmptyContent(m.editRoot)
 	blockIsEmpty := len(m.editRoot.Content) == 0 &&
 		(m.editRoot.Kind == yaml.MappingNode || m.editRoot.Kind == yaml.SequenceNode)
 	var err error
@@ -392,7 +395,7 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 		m = m.enterList()
 		return m.withStatus("Nothing added.")
 	case !blockIsEmpty:
-		final := nodeToContent(m.editBlockKey, m.editRoot)
+		final := yamledit.NodeToContent(m.editBlockKey, m.editRoot)
 		if isEdit {
 			current, readErr := m.doc.BlockContent(m.editBlockKey)
 			if readErr != nil {
@@ -400,7 +403,7 @@ func (m model) commitAll() (tea.Model, tea.Cmd) {
 				// then run against unknown document state.
 				return m.withTopBEError(errCommit, fmt.Sprintf("Apply error: %v", readErr)), nil
 			}
-			if normalizeBlockContent(m.editBlockKey, current) != final {
+			if yamledit.NormalizeBlockContent(m.editBlockKey, current) != final {
 				m.doc, err = m.doc.Replace(m.editBlockKey, final)
 			} else {
 				unchanged = true

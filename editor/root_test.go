@@ -11,6 +11,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/lucasassuncao/yedit/alert"
+
+	"github.com/lucasassuncao/yedit/blocklist"
 )
 
 // sizeProbeConfig is a minimal schema with one struct block so the test can
@@ -41,7 +43,7 @@ func TestWindowSizeReachesBlockEdit(t *testing.T) {
 	m = updated.(model)
 
 	// Open the "server" block to enter block-edit mode.
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "server"}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "server"}})
 	m = updated.(model)
 	must.Equal(paneBlockEdit, m.mode, "expected paneBlockEdit")
 	must.NotNil(m.topBE(), "blockEdit must be non-nil")
@@ -104,7 +106,7 @@ func TestCtrlU_blockEditorNoSnapDoesNotTouchDocument(t *testing.T) {
 	m = updated.(model)
 
 	// Open the "server" block editor.
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "server", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "server", Existing: true}})
 	m = updated.(model)
 	must.Equal(paneBlockEdit, m.mode, "expected paneBlockEdit")
 	must.Empty(m.topBE().undoStack, "undo stack should be empty on a freshly opened editor")
@@ -127,29 +129,13 @@ func TestBuildListItemsAvailableKeepsCanonicalOrder(t *testing.T) {
 	is := assert.New(t)
 	known := []string{"name", "image", "build", "appPort"} // canonical, not alphabetical
 	var got []string
-	for _, it := range buildListItems(known, nil, nil) {
+	for _, it := range blocklist.BuildItems(known, nil, nil) {
 		if !it.Separator {
 			got = append(got, it.Key)
 		}
 	}
 	want := []string{"name", "image", "build", "appPort"}
 	is.Equal(want, got, "available keys should preserve canonical order, not alphabetical")
-}
-
-// TestListMoveCursorClampsAtBounds verifies the main list clamps at top/bottom
-// instead of wrapping around, matching the tree panel.
-func TestListMoveCursorClampsAtBounds(t *testing.T) {
-	is := assert.New(t)
-	lm := newListModel([]string{"a", "b", "c"}, nil, nil, 10)
-	first := lm.cursor
-	lm = lm.moveCursor(-1) // already at the top - must not wrap to the bottom
-	is.Equal(first, lm.cursor, "moveCursor(-1) at top should clamp, not wrap")
-	for i := 0; i < len(lm.items); i++ {
-		lm = lm.moveCursor(1) // walk to the bottom; clamps once there
-	}
-	last := lm.cursor
-	lm = lm.moveCursor(1) // at the bottom - must not wrap to the top
-	is.Equal(last, lm.cursor, "moveCursor(+1) at bottom should clamp, not wrap")
 }
 
 // followCfg is a flat schema used to exercise preview-follows-selection.
@@ -224,7 +210,7 @@ func TestScreenInvariantAcrossTransitions(t *testing.T) {
 	checkScreenInvariant(t, m, "initial list")
 
 	// list → block edit
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "server", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "server", Existing: true}})
 	m = updated.(model)
 	checkScreenInvariant(t, m, "after openItem")
 
@@ -251,23 +237,6 @@ func TestScreenInvariantAcrossTransitions(t *testing.T) {
 	updated, _ = m.Update(alert.DismissedMsg{})
 	m = updated.(model)
 	checkScreenInvariant(t, m, "after alert dismiss")
-}
-
-// TestListFilterByTyping verifies the "/" filter narrows the list as the user types.
-func TestListFilterByTyping(t *testing.T) {
-	is := assert.New(t)
-	must := require.New(t)
-	lm := newListModel([]string{"alpha", "beta", "gamma"}, nil, nil, 10)
-	must.False(lm.IsFiltering(), "should not start in filtering mode")
-	lm, _ = lm.Update(tea.KeyPressMsg{Text: "/", Code: '/'})
-	must.True(lm.IsFiltering(), `"/" should enter filtering mode`)
-	for _, r := range "be" {
-		lm, _ = lm.Update(tea.KeyPressMsg{Text: string(r), Code: r})
-	}
-	got := lm.filteredItems()
-	if is.Len(got, 1, `filter "be" should match exactly one item`) {
-		is.Equal("beta", got[0].Key, `filter "be" should match beta`)
-	}
 }
 
 // TestRootHintPanelToggle verifies that EnableHints opens the panel on start,
@@ -376,7 +345,7 @@ func TestFilterAcceptsJK(t *testing.T) {
 		updated, _ = m.Update(tea.KeyPressMsg{Text: string(r), Code: r})
 		m = updated.(model)
 	}
-	must.Equal("unknown", m.list.filter, "filter text after typing")
+	must.Equal("unknown", m.list.Filter(), "filter text after typing")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(model)
 
@@ -430,7 +399,7 @@ func TestValidateKeysSeesUncommittedEditorContent(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "server", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "server", Existing: true}})
 	m = updated.(model)
 	must.Equal(paneBlockEdit, m.mode)
 
@@ -475,7 +444,7 @@ func TestValidateKeysBlocksOnUnparseableEditor(t *testing.T) {
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m = updated.(model)
 
-	updated, _ = m.Update(openItemMsg{Item: listItem{Key: "server", Existing: true}})
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "server", Existing: true}})
 	m = updated.(model)
 
 	be := *m.topBE()

@@ -13,9 +13,17 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/alert"
+	"github.com/lucasassuncao/yedit/animation"
+	"github.com/lucasassuncao/yedit/fieldtree"
+	"github.com/lucasassuncao/yedit/legend"
+	"github.com/lucasassuncao/yedit/presetbrowser"
+	"github.com/lucasassuncao/yedit/render"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
+	"github.com/lucasassuncao/yedit/yamledit"
 	"github.com/lucasassuncao/yedit/yamlnode"
+
+	"github.com/lucasassuncao/yedit/keys"
 )
 
 // blockSpec describes the block being opened for editing.
@@ -69,7 +77,7 @@ type blockEditState struct {
 	cfg Config
 	key string // top-level YAML key being edited
 
-	tree        treeModel
+	tree        fieldtree.Model
 	childDefs   []schema.FieldDef
 	kind        schema.Kind
 	def         schema.FieldDef  // the block's own definition; drives the hint panel for tree-less blocks
@@ -85,11 +93,11 @@ type blockEditState struct {
 	yamlEditor      textarea.Model
 	previewRenderer *glamour.TermRenderer
 	active          blockEditPanel
-	prevActive      blockEditPanel // panel to return to when leaving hint focus
-	showHint        bool           // split the right column to show the Hint/Example panel
-	hintAnim        tween          // in-flight show/hide transition for the hint panel; inactive unless Config.AnimationDuration is set
-	hintScroll      int            // scroll offset in hint panel when active == blockEditPanelHint
-	previewScroll   int            // 1-based YAML line the Preview keeps visible; 0 = top
+	prevActive      blockEditPanel  // panel to return to when leaving hint focus
+	showHint        bool            // split the right column to show the Hint/Example panel
+	hintAnim        animation.Tween // in-flight show/hide transition for the hint panel; inactive unless Config.AnimationDuration is set
+	hintScroll      int             // scroll offset in hint panel when active == blockEditPanelHint
+	previewScroll   int             // 1-based YAML line the Preview keeps visible; 0 = top
 
 	isEdit        bool   // false = add new block, true = edit existing
 	dirty         bool   // uncommitted changes since last ctrl+s
@@ -98,7 +106,7 @@ type blockEditState struct {
 	// focus is this editor's address within the model's canonical editRoot tree:
 	// nil for the top-level editor, otherwise the indexed path to the drilled-into
 	// node. Content is flushed back into editRoot here on navigation/commit.
-	focus []pathSeg
+	focus []yamledit.PathSeg
 
 	width, height int
 	listW, rightW int
@@ -108,14 +116,14 @@ type blockEditState struct {
 	currentPreset string
 
 	mode                blockEditMode
-	preset              presetBrowser
+	preset              presetbrowser.Model
 	confirmAlert        alert.Model
 	confirmAlertVisible bool
 
 	undoStack   []blockEditUndoSnap // undo history; each mutating op pushes a snapshot
 	redoStack   []blockEditUndoSnap // redo history; populated by restoreUndo, discarded on new mutations
 	actionLog   []BlockAction       // in-memory log for debug and replay
-	theme       resolvedTheme
+	theme       theme.Resolved
 	help        help.Model
 	legendLines int // lines consumed by the legend bar; updated on resize and init
 }
@@ -142,15 +150,15 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 		currentPreset: "custom",
 		width:         w,
 		height:        h,
-		theme:         resolveTheme(cfg.Theme),
+		theme:         theme.Resolve(cfg.Theme),
 		showHint:      cfg.EnableHints,
 	}
-	be.help = newHelpModel(be.theme)
+	be.help = legend.NewHelp(be.theme)
 	be.help.SetWidth(w - 1)
-	_, be.legendLines = renderLegend(be.help, be.currentKeyMap(), w-1)
+	_, be.legendLines = legend.Render(be.help, be.currentKeyMap(), w-1)
 	be = be.relayout()
 
-	be.tree = newTreeModel(spec, be.innerH())
+	be.tree = fieldtree.New(spec.kind, spec.defs, spec.content, be.innerH())
 
 	// Structured collections ([]Struct / map[string]Struct) keep their canonical
 	// entry list in be.node; the tree and per-entry editor are projected from it.
@@ -161,8 +169,8 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 			raw = spec.key + ":\n"
 		}
 		be.coll = collectionBuffer{key: spec.key, isMap: be.isMapNav(), current: -1}
-		be.node = *collValueNode(raw, be.isMapNav())
-		be.tree.nodes = be.collectionTreeNodes()
+		be.node = *yamledit.CollValueNode(raw, be.isMapNav())
+		be.tree.Nodes = be.collectionTreeNodes()
 	}
 
 	content := spec.content
@@ -176,13 +184,13 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	// tree once here so it reflects be.node even when content came from a preset
 	// rather than spec.content.
 	if !structured {
-		if v := blockValueNodeOrNil(content); v != nil {
+		if v := yamledit.BlockValueNodeOrNil(content); v != nil {
 			be.node = *v
 		} else {
 			be.editorErr = editorError{kind: errParse, message: "Could not parse block content."}
 			be.node = yaml.Node{Kind: yaml.MappingNode}
 		}
-		be.tree = syncTreeCheckedFromNode(be.tree, &be.node)
+		be.tree = fieldtree.SyncCheckedFromNode(be.tree, &be.node)
 	}
 
 	// For new struct blocks, pre-check fields listed in cfg.PreCheckedFields.
@@ -207,9 +215,9 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	// blocks normalize the buffer, so an unparseable block on disk still reads as
 	// clean until edited.
 	if structured {
-		be.committedYAML = nodeToContent(be.key, &be.node)
+		be.committedYAML = yamledit.NodeToContent(be.key, &be.node)
 	} else {
-		be.committedYAML = normalizeBlockContent(be.key, be.yamlEditor.Value())
+		be.committedYAML = yamledit.NormalizeBlockContent(be.key, be.yamlEditor.Value())
 	}
 
 	return be
@@ -220,13 +228,13 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 // returns to the baseline reads as clean again.
 func (be blockEditState) computeDirty() bool {
 	if be.isCollectionNav() {
-		if nodeToContent(be.key, &be.node) != be.committedYAML {
+		if yamledit.NodeToContent(be.key, &be.node) != be.committedYAML {
 			return true
 		}
 		// The buffer may hold unflushed edits of the current entry.
 		return be.yamlEditor.Value() != be.entryYAML(be.coll.current)
 	}
-	return normalizeBlockContent(be.key, be.yamlEditor.Value()) != be.committedYAML
+	return yamledit.NormalizeBlockContent(be.key, be.yamlEditor.Value()) != be.committedYAML
 }
 
 func (be blockEditState) newYAMLEditor(content string) textarea.Model {
@@ -235,8 +243,8 @@ func (be blockEditState) newYAMLEditor(content string) textarea.Model {
 	// A custom prompt replaces the built-in line-number gutter so it matches the
 	// Preview panel's "%4d │ " gutter (numberPreviewLines) exactly.
 	rt := be.theme
-	ta.SetPromptFunc(previewGutterWidth, func(info textarea.PromptInfo) string {
-		return rt.hintDim.Render(fmt.Sprintf("%4d │ ", info.LineNumber+1))
+	ta.SetPromptFunc(render.PreviewGutterWidth, func(info textarea.PromptInfo) string {
+		return rt.HintDim.Render(fmt.Sprintf("%4d │ ", info.LineNumber+1))
 	})
 	// The library's MaxHeight default of 99 silently caps both the viewport and
 	// the number of logical lines the buffer accepts, truncating YAML blocks
@@ -254,7 +262,7 @@ func (be blockEditState) newYAMLEditor(content string) textarea.Model {
 
 func (be blockEditState) relayout() blockEditState {
 	be.listW, be.rightW = theme.TwoColumnWidths(be.width)
-	be.previewRenderer = newPreviewRenderer(be.rightW - 2 - previewGutterWidth)
+	be.previewRenderer = render.NewPreviewRenderer(be.rightW - 2 - render.PreviewGutterWidth)
 	return be
 }
 
@@ -301,8 +309,8 @@ func (be blockEditState) hintH() int {
 	if !be.cfg.EnableHints {
 		return 0
 	}
-	if be.hintAnim.active() {
-		return be.hintAnim.cur
+	if be.hintAnim.Active() {
+		return be.hintAnim.Cur
 	}
 	if !be.showHint {
 		return 0
@@ -326,15 +334,15 @@ func (be blockEditState) editorH() int {
 // height implied by the new be.showHint, reporting whether a tick loop must
 // start. from must be sampled before be.showHint is flipped.
 func (be blockEditState) startHintAnim(from int) (blockEditState, bool) {
-	running := be.hintAnim.active()
+	running := be.hintAnim.Active()
 	target := 0
 	if be.showHint {
 		target = be.hintTargetH()
 	}
-	be.hintAnim = startTween(from, target, be.cfg.AnimationDuration)
+	be.hintAnim = animation.New(from, target, be.cfg.AnimationDuration)
 	// A rapid double toggle retargets the existing tween instead of stacking a
 	// second ticker.
-	return be, be.hintAnim.active() && !running
+	return be, be.hintAnim.Active() && !running
 }
 
 func (be blockEditState) Init() tea.Cmd { return textarea.Blink }
@@ -377,11 +385,11 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.width = m.Width
 		be.height = m.Height
 		be.help.SetWidth(be.width - 1)
-		_, be.legendLines = renderLegend(be.help, be.currentKeyMap(), be.width-1)
+		_, be.legendLines = legend.Render(be.help, be.currentKeyMap(), be.width-1)
 		be = be.relayout()
 		be.yamlEditor.SetWidth(be.rightW - 2)
 		be.yamlEditor.SetHeight(be.editorH() - 1)
-		be.tree.height = be.innerH()
+		be.tree.Height = be.innerH()
 		return be, nil
 	}
 
@@ -405,9 +413,9 @@ func (be blockEditState) updateConfirming(msg tea.Msg) (blockEditState, tea.Cmd)
 		// Global shortcuts stay live under the overlay so Ctrl+S / Ctrl+L never
 		// appear to be unavailable.
 		switch {
-		case key.Matches(km, kbCtrlSSaveCh):
+		case key.Matches(km, keys.CtrlSSaveCh):
 			return be, func() tea.Msg { return commitRequestedMsg{} }
-		case key.Matches(km, kbCtrlLValid):
+		case key.Matches(km, keys.CtrlLValid):
 			return be, func() tea.Msg { return validateRequestedMsg{} }
 		}
 		al, cmd := be.confirmAlert.Update(km)
@@ -425,7 +433,7 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 	pb, action, name := be.preset.Update(km, be.isCollectionNav())
 	be.preset = pb
 	switch action {
-	case presetApplied:
+	case presetbrowser.Applied:
 		if be.cfg.BlockPresets != nil {
 			y, err := be.cfg.BlockPresets.PresetYAML(be.key, name)
 			if err != nil {
@@ -434,7 +442,7 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 				be = be.dispatch(ApplyPreset{Name: name, Content: y})
 			}
 		}
-	case presetAppended:
+	case presetbrowser.Appended:
 		if be.cfg.BlockPresets != nil {
 			y, err := be.cfg.BlockPresets.PresetYAML(be.key, name)
 			if err != nil {
@@ -443,10 +451,10 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 				be = be.dispatch(AppendPreset{Name: name, Content: y})
 			}
 		}
-	case presetNone:
+	case presetbrowser.None:
 		return be, nil
 	}
-	// presetDismissed, presetApplied, presetAppended all close the browser.
+	// presetbrowser.Dismissed, presetbrowser.Applied, presetbrowser.Appended all close the browser.
 	be.mode = modeEditing
 	return be, nil
 }
@@ -487,7 +495,7 @@ func (be blockEditState) updateNonKeyBuffer(msg tea.Msg) (blockEditState, tea.Cm
 // handleHintKey handles ctrl+h (toggle hint focus) and navigation when the hint
 // panel is focused. Returns (state, true) when it consumed the key.
 func (be blockEditState) handleHintKey(msg tea.KeyMsg) (blockEditState, bool) {
-	if key.Matches(msg, kbCtrlHHint) && be.cfg.EnableHints && be.showHint {
+	if key.Matches(msg, keys.CtrlHHint) && be.cfg.EnableHints && be.showHint {
 		if be.active == blockEditPanelHint {
 			be.active = be.prevActive
 		} else {
@@ -500,11 +508,11 @@ func (be blockEditState) handleHintKey(msg tea.KeyMsg) (blockEditState, bool) {
 		return be, false
 	}
 	switch {
-	case key.Matches(msg, kbUp):
+	case key.Matches(msg, keys.Up):
 		if be.hintScroll > 0 {
 			be.hintScroll--
 		}
-	case key.Matches(msg, kbDown):
+	case key.Matches(msg, keys.Down):
 		// Bound by content height, not panel height: otherwise the tail of a hint
 		// longer than two panel-fulls stays unreachable.
 		lines := strings.Count(strings.TrimSuffix(be.hintContent(), "\n"), "\n") + 1
@@ -515,14 +523,14 @@ func (be blockEditState) handleHintKey(msg tea.KeyMsg) (blockEditState, bool) {
 		if be.hintScroll < maxScroll {
 			be.hintScroll++
 		}
-	case key.Matches(msg, kbTab, kbCtrlHHint):
+	case key.Matches(msg, keys.Tab, keys.CtrlHHint):
 		be.active = be.prevActive
 	}
 	return be, true
 }
 
 func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
-	if key.Matches(msg, kbEsc) {
+	if key.Matches(msg, keys.Esc) {
 		// Nested editor: Esc goes up one level and the model flushes the edits into
 		// the canonical tree. Nothing is lost, so no discard prompt - that only
 		// guards leaving the block edit entirely.
@@ -543,23 +551,23 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 
 	// Ctrl+S commits the editor stack into the document. That needs model access,
 	// so the block layer requests it as a message the root Update handles.
-	if key.Matches(msg, kbCtrlSSaveCh) {
+	if key.Matches(msg, keys.CtrlSSaveCh) {
 		return be, func() tea.Msg { return commitRequestedMsg{} }
 	}
 	// Ctrl+L triggers doc-level validation (available in every mode).
-	if key.Matches(msg, kbCtrlLValid) {
+	if key.Matches(msg, keys.CtrlLValid) {
 		return be, func() tea.Msg { return validateRequestedMsg{} }
 	}
 
 	// Ctrl+U / Ctrl+Y: block-level undo/redo. Empty stacks only report status.
-	if key.Matches(msg, kbCtrlUUndo) {
+	if key.Matches(msg, keys.CtrlUUndo) {
 		if len(be.undoStack) == 0 {
 			be.statusMsg = "Nothing to undo."
 			return be, nil
 		}
 		return be.dispatch(Undo{}), nil
 	}
-	if key.Matches(msg, kbCtrlYRedo) {
+	if key.Matches(msg, keys.CtrlYRedo) {
 		if len(be.redoStack) == 0 {
 			be.statusMsg = "Nothing to redo."
 			return be, nil
@@ -570,7 +578,7 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	// H toggles the hint panel, mirroring the root list view. Checked before
 	// handleHintKey, which otherwise captures every key while the hint panel has
 	// focus, and skipped on the YAML panel so typing "h" still inserts it.
-	if key.Matches(msg, kbHint) && be.cfg.EnableHints && be.active != blockEditPanelYAML {
+	if key.Matches(msg, keys.Hint) && be.cfg.EnableHints && be.active != blockEditPanelYAML {
 		// Sample the on-screen height before flipping the flag: mid-flight it is
 		// neither 0 nor the settled target.
 		from := be.hintH()
@@ -593,12 +601,12 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 		return be2, nil
 	}
 
-	if key.Matches(msg, kbTab) {
+	if key.Matches(msg, keys.Tab) {
 		return be.switchPanel(), nil
 	}
 
 	if be.active == blockEditPanelTree {
-		if key.Matches(msg, kbPreset) {
+		if key.Matches(msg, keys.Preset) {
 			return be.openPresetPicker(), nil
 		}
 		return be.updateTreePanel(msg)
@@ -639,13 +647,13 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 // place otherwise. Returns false when nothing changed.
 func (be blockEditState) syncParsedNode(content string) (blockEditState, bool) {
 	if be.isCollectionNav() {
-		kn, vn, ok := parseEntryFromView(content, be.coll.isMap)
+		kn, vn, ok := yamledit.ParseEntryFromView(content, be.coll.isMap)
 		if !ok {
 			return be, false
 		}
 		return be.applyParsedEntry(kn, vn), true
 	}
-	if v := valueNodeOfSnippet(content); v != nil {
+	if v := yamledit.ValueNodeOfSnippet(content); v != nil {
 		be.node = *v
 		return be, true
 	}
@@ -656,7 +664,7 @@ func (be blockEditState) syncParsedNode(content string) (blockEditState, bool) {
 // entry when the collection is empty so a direct YAML edit is not discarded.
 func (be blockEditState) applyParsedEntry(kn, vn *yaml.Node) blockEditState {
 	cur := be.coll.current
-	count := entryCount(&be.node, be.coll.isMap)
+	count := yamledit.EntryCount(&be.node, be.coll.isMap)
 	// A map key renamed onto an existing one would splice a duplicate into the
 	// canonical mapping. flushCurrentEntry guards navigation/commit; this
 	// per-keystroke path writes into the node too, so it needs the same gate.
@@ -666,7 +674,7 @@ func (be blockEditState) applyParsedEntry(kn, vn *yaml.Node) blockEditState {
 	}
 	switch {
 	case cur >= 0 && cur < count:
-		setEntry(&be.node, be.coll.isMap, cur, kn, vn)
+		yamledit.SetEntry(&be.node, be.coll.isMap, cur, kn, vn)
 	case count == 0:
 		if be.coll.isMap {
 			be.node.Content = append(be.node.Content, kn, vn)
@@ -674,7 +682,7 @@ func (be blockEditState) applyParsedEntry(kn, vn *yaml.Node) blockEditState {
 			be.node.Content = append(be.node.Content, vn)
 		}
 		be.coll.current = 0
-		be.tree.nodes = be.collectionTreeNodes()
+		be.tree.Nodes = be.collectionTreeNodes()
 	default:
 		return be
 	}
@@ -687,11 +695,11 @@ func (be blockEditState) applyParsedEntry(kn, vn *yaml.Node) blockEditState {
 
 // resyncTreeFromYAML re-derives the tree's checked states from the canonical
 // node, so the tree can never disagree with it even mid-edit.
-func (be blockEditState) resyncTreeFromYAML() treeModel {
+func (be blockEditState) resyncTreeFromYAML() fieldtree.Model {
 	if be.isCollectionNav() {
 		return be.collectionDeriveTree()
 	}
-	return syncTreeCheckedFromNode(be.tree, &be.node)
+	return fieldtree.SyncCheckedFromNode(be.tree, &be.node)
 }
 
 // snippetsFn looks up FieldMeta.Snippet scoped to be.key, or nil when no
@@ -712,23 +720,23 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 	if be.cfg.Metadata == nil {
 		return be
 	}
-	ctx := toggleCtx{key: be.key, snippets: be.snippetsFn(), childDefs: be.childDefs}
+	ctx := yamledit.ToggleCtx{Snippets: be.snippetsFn(), ChildDefs: be.childDefs}
 	changed := false
-	for _, n := range be.tree.nodes {
-		if n.kind != treeNodeField || n.depth != 0 || n.checked {
+	for _, n := range be.tree.Nodes {
+		if n.Kind != fieldtree.KindField || n.Depth != 0 || n.Checked {
 			continue
 		}
-		meta := be.cfg.Metadata.FieldMeta(be.key, n.label)
+		meta := be.cfg.Metadata.FieldMeta(be.key, n.Label)
 		if meta.PreChecked {
-			be.node = *toggleNodeField(&be.node, ctx, n, true)
+			be.node = *fieldtree.ToggleNodeField(&be.node, ctx, n, true)
 			changed = true
 		}
 	}
 	if !changed {
 		return be
 	}
-	be.yamlEditor.SetValue(nodeToContent(be.key, &be.node))
-	be.tree = syncTreeCheckedFromNode(be.tree, &be.node)
+	be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
+	be.tree = fieldtree.SyncCheckedFromNode(be.tree, &be.node)
 	return be
 }
 
@@ -740,30 +748,30 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 // stack. Kept with its test for a future commit-in-place flow.
 func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 	if !be.isCollectionNav() {
-		if v := blockValueNodeOrNil(fresh); v != nil {
+		if v := yamledit.BlockValueNodeOrNil(fresh); v != nil {
 			be.node = *v
 		} else {
 			be.node = yaml.Node{Kind: yaml.MappingNode}
 		}
 		be.yamlEditor.SetValue(fresh)
-		be.committedYAML = nodeToContent(be.key, &be.node)
+		be.committedYAML = yamledit.NodeToContent(be.key, &be.node)
 		be.dirty = be.computeDirty()
 		return be
 	}
 	isMap := be.isMapNav()
-	oldCount := entryCount(&be.node, isMap)
-	be.node = *collValueNode(fresh, isMap)
-	if entryCount(&be.node, isMap) != oldCount {
+	oldCount := yamledit.EntryCount(&be.node, isMap)
+	be.node = *yamledit.CollValueNode(fresh, isMap)
+	if yamledit.EntryCount(&be.node, isMap) != oldCount {
 		// Entry count changed: rebuild the tree, losing expansion state, since the
 		// structure must match the new node.
-		be.tree.nodes = be.collectionTreeNodes()
-		if be.coll.current >= entryCount(&be.node, isMap) {
-			be.coll.current = entryCount(&be.node, isMap) - 1
+		be.tree.Nodes = be.collectionTreeNodes()
+		if be.coll.current >= yamledit.EntryCount(&be.node, isMap) {
+			be.coll.current = yamledit.EntryCount(&be.node, isMap) - 1
 		}
 	}
 	be.tree = be.collectionDeriveTree()
 	be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
-	be.committedYAML = nodeToContent(be.key, &be.node)
+	be.committedYAML = yamledit.NodeToContent(be.key, &be.node)
 	be.dirty = be.computeDirty()
 	return be
 }
@@ -785,7 +793,7 @@ func (be blockEditState) switchPanel() blockEditState {
 // or (nil, false) with the detail in be.editorErr. The node is detached data and
 // commit performs no effect itself, leaving the caller to write it into the
 // canonical tree or serialize it. Returning the node rather than a snippet
-// spares the caller a lossy parse-back: parseBlockText already rejected stray or
+// spares the caller a lossy parse-back: yamledit.ParseBlockText already rejected stray or
 // renamed top-level keys with a user-facing message.
 func (be blockEditState) commit() (blockEditState, *yaml.Node, bool) {
 	var val *yaml.Node
@@ -797,7 +805,7 @@ func (be blockEditState) commit() (blockEditState, *yaml.Node, bool) {
 		val = yamlnode.CloneNode(&be.node)
 	} else {
 		be.editorErr = editorError{}
-		v, errMsg := parseBlockText(be.key, be.yamlEditor.Value())
+		v, errMsg := yamledit.ParseBlockText(be.key, be.yamlEditor.Value())
 		if errMsg != "" {
 			be.editorErr = editorError{kind: errCommit, message: errMsg}
 			return be, nil, false
@@ -808,13 +816,13 @@ func (be blockEditState) commit() (blockEditState, *yaml.Node, bool) {
 	// Final gate against duplicate mapping keys: schema.UnknownKeys cannot see
 	// them (yaml.v3 keeps the last value), so one that slipped past the flush
 	// guards would be persisted verbatim.
-	if path, dup := findDuplicateMappingKey(val); dup {
+	if path, dup := yamledit.FindDuplicateMappingKey(val); dup {
 		be.editorErr = editorError{kind: errCommit, message: fmt.Sprintf("Duplicate key %q - remove or rename it first.", path)}
 		return be, nil, false
 	}
 
 	if be.knownByPath != nil {
-		unknown, err := schema.UnknownKeys([]byte(nodeToContent(be.key, val)), be.knownByPath)
+		unknown, err := schema.UnknownKeys([]byte(yamledit.NodeToContent(be.key, val)), be.knownByPath)
 		if err != nil {
 			be.editorErr = editorError{kind: errCommit, message: fmt.Sprintf("Unknown keys check failed: %v", err)}
 			return be, nil, false
@@ -843,10 +851,10 @@ func (be blockEditState) View(parentSegs []string) string {
 
 	treeActive := be.active == blockEditPanelTree
 	leftTitle, leftContent := "Fields", be.tree.View(be.theme)
-	if be.tree.isEmpty() {
+	if be.tree.IsEmpty() {
 		leftTitle, leftContent = "Field", be.fieldItemView()
 	}
-	leftPanel := theme.RenderTitledPanelWith(leftTitle, theme.Size{W: be.listW, H: be.innerH() + 2}, treeActive, leftContent, be.theme.colors)
+	leftPanel := theme.RenderTitledPanelWith(leftTitle, theme.Size{W: be.listW, H: be.innerH() + 2}, treeActive, leftContent, be.theme.Colors)
 
 	yamlActive := be.active == blockEditPanelYAML
 	var topTitle, topContent string
@@ -854,27 +862,27 @@ func (be blockEditState) View(parentSegs []string) string {
 		topTitle = "Preview"
 		// The preview follows the tree selection; rendered preview lines map ~1:1
 		// to YAML lines.
-		preview := numberPreviewLines(renderPreviewYAML(be.yamlEditor.Value(), be.previewRenderer), be.theme)
+		preview := numberPreviewLines(render.PreviewYAML(be.yamlEditor.Value(), be.previewRenderer), be.theme)
 		topContent = scrollLinesTo(preview, be.editorH(), be.previewScroll)
 	} else {
 		topTitle = "Editing YAML"
-		topContent = clampLines(be.yamlEditor.View(), be.editorH())
+		topContent = render.ClampLines(be.yamlEditor.View(), be.editorH())
 	}
-	topPanel := theme.RenderTitledPanelWith(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, topContent, be.theme.colors)
+	topPanel := theme.RenderTitledPanelWith(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, topContent, be.theme.Colors)
 
 	rightPanel := topPanel
 	if be.hintVisible() {
 		hintActive := be.active == blockEditPanelHint
-		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, hintActive, be.scrolledHintContent(), be.theme.colors)
+		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, hintActive, be.scrolledHintContent(), be.theme.Colors)
 		rightPanel = lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)
 	}
 
 	feedback := be.feedbackLine()
-	legend := renderHelpLine(be.width, be.help, be.currentKeyMap())
+	legendBar := legend.HelpLine(be.width, be.help, be.currentKeyMap())
 
-	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legend})
+	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legendBar})
 	if be.height > 0 {
-		out = clampLines(out, be.height)
+		out = render.ClampLines(out, be.height)
 	}
 	if be.confirmAlertVisible {
 		out = theme.CompositeCenter(be.confirmAlert.Box(), out)
@@ -885,23 +893,23 @@ func (be blockEditState) View(parentSegs []string) string {
 func (be blockEditState) presetView(parentSegs []string) string {
 	header := be.breadcrumbHeader(parentSegs)
 
-	leftPanel := theme.RenderTitledPanelWith("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, !be.preset.previewFocus, be.preset.listView(be.theme), be.theme.colors)
-	rightPanel := theme.RenderTitledPanelWith("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, be.preset.previewFocus, be.preset.previewView(be.innerH()), be.theme.colors)
+	leftPanel := theme.RenderTitledPanelWith("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, !be.preset.PreviewFocus, be.preset.ListView(be.theme), be.theme.Colors)
+	rightPanel := theme.RenderTitledPanelWith("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, be.preset.PreviewFocus, be.preset.PreviewView(be.innerH()), be.theme.Colors)
 
 	var presetKM help.KeyMap
 	switch {
-	case be.preset.previewFocus:
-		presetKM = presetPreviewMap{}
+	case be.preset.PreviewFocus:
+		presetKM = legend.PresetPreview{}
 	case be.isCollectionNav():
-		presetKM = presetListCollectionMap{}
+		presetKM = legend.PresetListCollection{}
 	default:
-		presetKM = presetListScalarMap{}
+		presetKM = legend.PresetListScalar{}
 	}
-	legend := renderHelpLine(be.width, be.help, presetKM)
+	legendBar := legend.HelpLine(be.width, be.help, presetKM)
 
-	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Legend: legend})
+	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Legend: legendBar})
 	if be.height > 0 {
-		out = clampLines(out, be.height)
+		out = render.ClampLines(out, be.height)
 	}
 	return out
 }

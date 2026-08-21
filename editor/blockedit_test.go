@@ -11,8 +11,9 @@ import (
 
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
+	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
-	"github.com/lucasassuncao/yedit/theme"
+	"github.com/lucasassuncao/yedit/yamledit"
 )
 
 // stubPresets implements presets.Source for tests.
@@ -66,27 +67,27 @@ func filterSpec(content string) blockSpec {
 	}
 }
 
-// findFieldNode returns the first treeNodeField with the given label.
-func findFieldNode(tm treeModel, label string) (treeNode, bool) {
-	for _, n := range tm.nodes {
-		if n.kind == treeNodeField && n.label == label {
+// findFieldNode returns the first fieldtree.KindField with the given label.
+func findFieldNode(tm fieldtree.Model, label string) (fieldtree.Node, bool) {
+	for _, n := range tm.Nodes {
+		if n.Kind == fieldtree.KindField && n.Label == label {
 			return n, true
 		}
 	}
-	return treeNode{}, false
+	return fieldtree.Node{}, false
 }
 
 // cursorToFieldExpanded expands all seq items so field rows are visible, then
 // positions the cursor on the named field.
 func cursorToFieldExpanded(be blockEditState, label string) blockEditState {
-	for i := range be.tree.nodes {
-		if be.tree.nodes[i].kind == treeNodeSeqItem {
-			be.tree.nodes[i].expanded = true
+	for i := range be.tree.Nodes {
+		if be.tree.Nodes[i].Kind == fieldtree.KindSeqItem {
+			be.tree.Nodes[i].Expanded = true
 		}
 	}
-	for vi, ni := range be.tree.visibleNodes() {
-		if be.tree.nodes[ni].kind == treeNodeField && be.tree.nodes[ni].label == label {
-			be.tree.cursor = vi
+	for vi, ni := range be.tree.VisibleNodes() {
+		if be.tree.Nodes[ni].Kind == fieldtree.KindField && be.tree.Nodes[ni].Label == label {
+			be.tree.Cursor = vi
 			break
 		}
 	}
@@ -107,7 +108,7 @@ func TestOpenableChildReflectsContent(t *testing.T) {
 	tm := filled.collectionDeriveTree()
 	n, ok := findFieldNode(tm, "any")
 	must.True(ok, "filled 'any' field not found in tree")
-	is.True(n.checked, "filled 'any' should be checked/active")
+	is.True(n.Checked, "filled 'any' should be checked/active")
 
 	empty := newBlockEdit(Config{}, filterSpec(`filters:
   - regex: "x"
@@ -115,7 +116,7 @@ func TestOpenableChildReflectsContent(t *testing.T) {
 	tm = empty.collectionDeriveTree()
 	n, ok = findFieldNode(tm, "any")
 	must.True(ok, "empty 'any' field not found in tree")
-	is.False(n.checked, "empty 'any' should be unchecked/muted")
+	is.False(n.Checked, "empty 'any' should be unchecked/muted")
 }
 
 // ctrl+d on an openable field with content opens the remove confirm rather than
@@ -147,73 +148,6 @@ func TestCtrlDOnEmptyOpenableNoop(t *testing.T) {
 	is.Equal(modeEditing, be.mode, "ctrl+d on an empty openable should be a no-op")
 }
 
-// Exercises the preset-picker sub-model: construction, navigation, focus
-// toggling, and the apply/append/dismiss actions it reports back.
-func TestPresetBrowser_updateAndSelection(t *testing.T) {
-	is := assert.New(t)
-	must := require.New(t)
-
-	src := stubPresets{data: map[string]string{
-		"workers/alpha": "workers:\n  - name: a\n",
-		"workers/beta":  "workers:\n  - name: b\n",
-	}}
-
-	_, ok := newPresetBrowser(nil, "workers", "")
-	is.False(ok, "nil source should not open a browser")
-	_, ok = newPresetBrowser(src, "nothing", "")
-	is.False(ok, "field without presets should not open a browser")
-
-	pb, ok := newPresetBrowser(src, "workers", "beta")
-	must.True(ok, "expected a browser for workers")
-	is.Equal("beta", pb.names[pb.cursor], "cursor should pre-select the current preset")
-
-	keyOf := func(s string) tea.KeyMsg {
-		switch s {
-		case "enter":
-			return tea.KeyPressMsg{Code: tea.KeyEnter}
-		case "esc":
-			return tea.KeyPressMsg{Code: tea.KeyEsc}
-		case "tab":
-			return tea.KeyPressMsg{Code: tea.KeyTab}
-		default:
-			return tea.KeyPressMsg{Text: s, Code: []rune(s)[0]}
-		}
-	}
-
-	var (
-		action presetAction
-		name   string
-	)
-	pb, action, _ = pb.Update(tea.KeyPressMsg{Code: tea.KeyUp}, false)
-	is.Equal(presetNone, action, "up should not trigger action")
-	is.Equal(0, pb.cursor, "up should move cursor to 0")
-
-	pb, action, name = pb.Update(keyOf("enter"), false)
-	is.Equal(presetApplied, action, "enter should apply preset")
-	is.Equal(pb.names[0], name, "enter should apply first preset name")
-
-	pb, action, name = pb.Update(keyOf("a"), true)
-	is.Equal(presetAppended, action, "a with allowAppend should append")
-	is.Equal(pb.names[0], name, "a should append first preset name")
-
-	pb, action, _ = pb.Update(keyOf("a"), false)
-	is.Equal(presetNone, action, "a without allowAppend should be a no-op")
-
-	// Tab moves focus to the preview; esc first returns focus, then dismisses.
-	pb, _, _ = pb.Update(keyOf("tab"), false)
-	must.True(pb.previewFocus, "tab should focus the preview")
-
-	pb, action, _ = pb.Update(keyOf("enter"), false)
-	is.Equal(presetNone, action, "enter with preview focused should be a no-op")
-
-	pb, action, _ = pb.Update(keyOf("esc"), false)
-	is.Equal(presetNone, action, "first esc should only return focus to the list")
-	is.False(pb.previewFocus, "first esc should clear previewFocus")
-
-	pb, action, _ = pb.Update(keyOf("esc"), false)
-	is.Equal(presetDismissed, action, "second esc should dismiss")
-}
-
 // appendPreset appends every preset entry after the existing ones and leaves the
 // cursor on the last entry.
 func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
@@ -228,18 +162,18 @@ func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
 	y, _ := stub.PresetYAML("categories", "extra")
 	be = be.dispatch(AppendPreset{Name: "extra", Content: y})
 
-	base := nodeToContent("categories", &be.node)
+	base := yamledit.NodeToContent("categories", &be.node)
 	is.Contains(base, "name: existing", "entries missing original entry")
 	is.Contains(base, "name: appended", "entries missing appended entry")
 
 	seqCount := 0
-	for _, n := range be.tree.nodes {
-		if n.kind == treeNodeSeqItem {
+	for _, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindSeqItem {
 			seqCount++
 		}
 	}
 	is.Equal(2, seqCount, "tree should have 2 seq items")
-	is.Equal(1, be.tree.cursor, "cursor should be on last entry")
+	is.Equal(1, be.tree.Cursor, "cursor should be on last entry")
 	is.Contains(be.yamlEditor.Value(), "appended", "yamlEditor not showing appended entry")
 	is.True(be.dirty, "dirty should be true after appendPreset")
 }
@@ -266,7 +200,7 @@ func TestAppendPreset_indentMismatch(t *testing.T) {
 	y, _ := stub.PresetYAML("categories", "extra")
 	be = be.dispatch(AppendPreset{Name: "extra", Content: y})
 
-	base2 := nodeToContent("categories", &be.node)
+	base2 := yamledit.NodeToContent("categories", &be.node)
 	is.Contains(base2, "name: existing", "entries missing original entry")
 	is.Contains(base2, "name: appended", "entries missing appended entry")
 	is.Contains(be.yamlEditor.Value(), "appended", "yamlEditor not showing appended entry")
@@ -285,13 +219,13 @@ func TestAppendPreset_multiEntryPreset(t *testing.T) {
 	be = be.dispatch(AppendPreset{Name: "multi", Content: y})
 
 	seqCount := 0
-	for _, n := range be.tree.nodes {
-		if n.kind == treeNodeSeqItem {
+	for _, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindSeqItem {
 			seqCount++
 		}
 	}
 	is.Equal(3, seqCount, "tree should have 3 seq items (1 existing + 2 from preset)")
-	is.Equal(2, be.tree.cursor, "cursor should be on last entry")
+	is.Equal(2, be.tree.Cursor, "cursor should be on last entry")
 }
 
 // Appending a preset whose entry key already exists must be rejected, not
@@ -324,7 +258,7 @@ func TestAppendPreset_duplicateMapKeyRejected(t *testing.T) {
 		}
 	}
 	is.Equal(1, count, "'alpha' must remain a single entry")
-	base := nodeToContent("moves", &be.node)
+	base := yamledit.NodeToContent("moves", &be.node)
 	is.Contains(base, "path: /original", "original entry value must be preserved")
 }
 
@@ -346,8 +280,8 @@ func structSpec() blockSpec {
 
 func seqItemCount(be blockEditState) int {
 	n := 0
-	for _, nd := range be.tree.nodes {
-		if nd.kind == treeNodeSeqItem {
+	for _, nd := range be.tree.Nodes {
+		if nd.Kind == fieldtree.KindSeqItem {
 			n++
 		}
 	}
@@ -399,8 +333,8 @@ func TestUndo_structFieldRemoveWithContent(t *testing.T) {
 
 	// Locate the output node and simulate the user confirming via dispatch.
 	outputIdx := -1
-	for i, n := range be.tree.nodes {
-		if n.kind == treeNodeField && n.label == "output" {
+	for i, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && n.Label == "output" {
 			outputIdx = i
 			break
 		}
@@ -448,7 +382,7 @@ func TestUndo_seqItemDelete(t *testing.T) {
 	must := require.New(t)
 	spec := seqSpec("categories:\n  - name: alpha\n  - name: beta\n")
 	be := newBlockEdit(Config{}, spec, 100, 40)
-	wantBase := nodeToContent("categories", &be.node)
+	wantBase := yamledit.NodeToContent("categories", &be.node)
 
 	// ctrl+d on the first item (alpha) now confirms before deleting.
 	be, _ = be.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
@@ -458,7 +392,7 @@ func TestUndo_seqItemDelete(t *testing.T) {
 	must.NotEmpty(be.undoStack, "undoStack must be non-empty after seq item delete")
 
 	be = be.restoreUndo()
-	gotBase := nodeToContent("categories", &be.node)
+	gotBase := yamledit.NodeToContent("categories", &be.node)
 	is.Equal(wantBase, gotBase, "after undo entries")
 	is.Equal(2, seqItemCount(be), "after undo seq item count")
 }
@@ -469,7 +403,7 @@ func TestUndo_seqItemAdd(t *testing.T) {
 	must := require.New(t)
 	spec := seqSpec("categories:\n  - name: alpha\n")
 	be := newBlockEdit(Config{}, spec, 100, 40)
-	wantBase := nodeToContent("categories", &be.node)
+	wantBase := yamledit.NodeToContent("categories", &be.node)
 
 	// Navigate to [+ add new] and press Enter.
 	be, _ = be.Update(tea.KeyPressMsg{Code: tea.KeyDown})
@@ -479,7 +413,7 @@ func TestUndo_seqItemAdd(t *testing.T) {
 	is.Equal(2, seqItemCount(be), "after add seq item count")
 
 	be = be.restoreUndo()
-	gotBase := nodeToContent("categories", &be.node)
+	gotBase := yamledit.NodeToContent("categories", &be.node)
 	is.Equal(wantBase, gotBase, "after undo entries")
 	is.Equal(1, seqItemCount(be), "after undo seq item count")
 }
@@ -514,7 +448,7 @@ func TestCollectionNav_CommitFlushesAndSerializesAll(t *testing.T) {
 	_, val, ok := be.commit()
 	must.True(ok, "commit failed")
 
-	snippet := nodeToContent(be.key, val)
+	snippet := yamledit.NodeToContent(be.key, val)
 	must.Contains(snippet, "name: alpha_edited", "snippet missing edited entry")
 	must.Contains(snippet, "name: beta", "snippet missing second entry")
 }
@@ -533,14 +467,14 @@ func TestCollectionNav_DoubleCommitIdempotent(t *testing.T) {
 
 	be, val1, ok := be.commit()
 	must.True(ok, "first commit failed")
-	snippet1 := nodeToContent(be.key, val1)
+	snippet1 := yamledit.NodeToContent(be.key, val1)
 
 	// Re-sync after commit (mirrors the live flush path).
 	be = be.resyncAfterCommit(snippet1)
 
 	_, val2, ok := be.commit()
 	must.True(ok, "second commit failed")
-	snippet2 := nodeToContent(be.key, val2)
+	snippet2 := yamledit.NodeToContent(be.key, val2)
 
 	must.Equal(snippet1, snippet2, "double commit diverged")
 	is.Equal(1, strings.Count(snippet2, "name: beta"), "duplication detected")
@@ -571,7 +505,7 @@ func TestPrimitiveBlock_showsFieldItemAndHint(t *testing.T) {
 	}
 	be := newBlockEdit(cfg, spec, 100, 40)
 
-	must.True(be.tree.isEmpty(), "expected an empty tree for a primitive block")
+	must.True(be.tree.IsEmpty(), "expected an empty tree for a primitive block")
 
 	left := be.fieldItemView()
 	is.Contains(left, "debug", "left panel should name the field")
@@ -582,65 +516,6 @@ func TestPrimitiveBlock_showsFieldItemAndHint(t *testing.T) {
 	}
 
 	is.NotContains(be.View(nil), "(no fields)", "full view should no longer show the (no fields) placeholder")
-}
-
-// Type shows only when set, Required only when true.
-func TestRenderFieldHint_typeAndRequiredBehavior(t *testing.T) {
-	th := resolveTheme(theme.Theme{})
-
-	t.Run("type shown when set", func(t *testing.T) {
-		is := assert.New(t)
-		out := renderFieldHint(th, FieldMeta{Type: "string"}, "")
-		is.Contains(out, "Type:")
-		is.Contains(out, "string")
-	})
-
-	t.Run("type omitted when empty", func(t *testing.T) {
-		is := assert.New(t)
-		out := renderFieldHint(th, FieldMeta{Description: "desc"}, "")
-		is.NotContains(out, "Type:", "expected no Type line when Type is empty")
-	})
-
-	t.Run("required shown only when true", func(t *testing.T) {
-		is := assert.New(t)
-		out := renderFieldHint(th, FieldMeta{Required: true}, "")
-		is.Contains(out, "Required:")
-		is.Contains(out, "yes")
-	})
-
-	t.Run("required omitted when false", func(t *testing.T) {
-		is := assert.New(t)
-		out := renderFieldHint(th, FieldMeta{Description: "desc"}, "")
-		is.NotContains(out, "Required:", "expected no Required line when false")
-	})
-}
-
-// Constraint fields render when set and stay absent on a zero FieldMeta.
-func TestRenderFieldHint_constraints(t *testing.T) {
-	is := assert.New(t)
-	th := resolveTheme(theme.Theme{})
-	out := renderFieldHint(th, FieldMeta{
-		Min: "1s", Max: "168h",
-		Pattern:    `^\d+$`,
-		MinCount:   1,
-		Unique:     true,
-		Deprecated: "use limits instead",
-	}, "")
-	for _, want := range []string{
-		"Range:", "1s – 168h",
-		"Pattern:", `^\d+$`,
-		"Entries:", "1 – ∞",
-		"Unique:", "yes",
-		"Deprecated:", "use limits instead",
-	} {
-		is.Contains(out, want, "rendered hint should contain %q", want)
-	}
-	empty := renderFieldHint(th, FieldMeta{}, "")
-	is.NotContains(empty, "Range:", "zero FieldMeta must render no constraint lines")
-	is.NotContains(empty, "Pattern:", "zero FieldMeta must render no constraint lines")
-	is.NotContains(empty, "Entries:", "zero FieldMeta must render no constraint lines")
-	is.NotContains(empty, "Unique:", "zero FieldMeta must render no constraint lines")
-	is.NotContains(empty, "Deprecated:", "zero FieldMeta must render no constraint lines")
 }
 
 // restoreUndo on an empty stack must not panic and must leave the state alone.
@@ -663,9 +538,9 @@ func TestResyncToleratesInvalidYAML_struct(t *testing.T) {
 	be := newBlockEdit(Config{}, structSpec(), 100, 40)
 
 	before := map[string]bool{}
-	for _, n := range be.tree.nodes {
-		if n.kind == treeNodeField {
-			before[n.label] = n.checked
+	for _, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField {
+			before[n.Label] = n.Checked
 		}
 	}
 
@@ -676,9 +551,9 @@ func TestResyncToleratesInvalidYAML_struct(t *testing.T) {
 	tm := be.resyncTreeFromYAML() // must not panic
 
 	after := map[string]bool{}
-	for _, n := range tm.nodes {
-		if n.kind == treeNodeField {
-			after[n.label] = n.checked
+	for _, n := range tm.Nodes {
+		if n.Kind == fieldtree.KindField {
+			after[n.Label] = n.Checked
 		}
 	}
 	must.Len(after, len(before), "tree fields changed on invalid YAML")
@@ -693,7 +568,7 @@ func TestResyncToleratesInvalidYAML_collection(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
 	be := newBlockEdit(Config{}, seqSpec("categories:\n  - name: alpha\n"), 100, 40)
-	nodeBefore := nodeToContent(be.key, &be.node)
+	nodeBefore := yamledit.NodeToContent(be.key, &be.node)
 
 	be.active = blockEditPanelYAML
 	be.yamlEditor.SetValue("categories:\n  - name: [unterminated\n")
@@ -702,12 +577,12 @@ func TestResyncToleratesInvalidYAML_collection(t *testing.T) {
 
 	// The canonical node must be untouched: the tree is derived from it, not from
 	// the (now invalid) buffer.
-	must.Equal(nodeBefore, nodeToContent(be.key, &be.node), "resync mutated canonical node")
+	must.Equal(nodeBefore, yamledit.NodeToContent(be.key, &be.node), "resync mutated canonical node")
 
 	// The existing item label must survive an unparseable buffer.
 	foundAlpha := false
-	for _, n := range tm.nodes {
-		if n.kind == treeNodeSeqItem && n.label == "alpha" {
+	for _, n := range tm.Nodes {
+		if n.Kind == fieldtree.KindSeqItem && n.Label == "alpha" {
 			foundAlpha = true
 		}
 	}
@@ -762,8 +637,8 @@ func TestCtrlDRemovesNestedParentBlock(t *testing.T) {
 	be := newBlockEdit(Config{}, blockSpec{key: "categories", defs: defs, kind: schema.KindList, content: content}, 120, 40)
 
 	// Expand every node so "before" is visible, then place the cursor on it.
-	for i := range be.tree.nodes {
-		be.tree.nodes[i].expanded = true
+	for i := range be.tree.Nodes {
+		be.tree.Nodes[i].Expanded = true
 	}
 	be = cursorToLabel(be, "before")
 
@@ -772,8 +647,8 @@ func TestCtrlDRemovesNestedParentBlock(t *testing.T) {
 
 	// Locate the captured "before" node index and confirm the removal.
 	beforeIdx := -1
-	for i, n := range be.tree.nodes {
-		if n.kind == treeNodeField && n.label == "before" {
+	for i, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && n.Label == "before" {
 			beforeIdx = i
 			break
 		}
@@ -941,8 +816,8 @@ func TestUndoAfterSpeculativeCheckpointRestoresInOnePress(t *testing.T) {
 	want := be.yamlEditor.Value()
 
 	outputIdx := -1
-	for i, n := range be.tree.nodes {
-		if n.kind == treeNodeField && n.label == "output" {
+	for i, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && n.Label == "output" {
 			outputIdx = i
 			break
 		}
@@ -1049,7 +924,7 @@ func TestCommit_AcceptsWellFormedBlock(t *testing.T) {
 	committed, val, ok := be.commit()
 	must.True(ok, "commit failed; editorErr=%v", committed.editorErr)
 	must.NotNil(val)
-	is.Equal("server:\n  host: example.org\n  port: 8080\n", nodeToContent("server", val))
+	is.Equal("server:\n  host: example.org\n  port: 8080\n", yamledit.NodeToContent("server", val))
 }
 
 // Blocks that open with the YAML panel focused never fire a Tab checkpoint, so
@@ -1181,7 +1056,7 @@ func FuzzCollectionInvariants(f *testing.F) {
 
 // applyFuzzAction maps a byte to one of 5 safe editor actions.
 func applyFuzzAction(be blockEditState, a byte) blockEditState {
-	vis := be.tree.visibleNodes()
+	vis := be.tree.VisibleNodes()
 	switch a % 5 {
 	case 0:
 		be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyDown})
@@ -1191,16 +1066,16 @@ func applyFuzzAction(be blockEditState, a byte) blockEditState {
 		be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 		be = expandAll(be)
 	case 3:
-		if be.tree.cursor >= 0 && be.tree.cursor < len(vis) {
-			ni := vis[be.tree.cursor]
-			if ni < len(be.tree.nodes) {
-				n := be.tree.nodes[ni]
+		if be.tree.Cursor >= 0 && be.tree.Cursor < len(vis) {
+			ni := vis[be.tree.Cursor]
+			if ni < len(be.tree.Nodes) {
+				n := be.tree.Nodes[ni]
 				switch {
-				case n.kind == treeNodeField && n.checked:
+				case n.Kind == fieldtree.KindField && n.Checked:
 					be = be.dispatch(ToggleField{NodeIdx: ni, Checked: false})
 					be = expandAll(be)
-				case n.kind == treeNodeSeqItem:
-					be = be.dispatch(DeleteEntry{SeqIdx: n.seqIdx})
+				case n.Kind == fieldtree.KindSeqItem:
+					be = be.dispatch(DeleteEntry{SeqIdx: n.SeqIdx})
 				}
 			}
 		}
@@ -1220,22 +1095,22 @@ func TestComputedDirty_ToggleOnOffReadsClean(t *testing.T) {
 	must.False(be.dirty, "freshly opened editor must be clean")
 
 	idx := -1
-	for i, n := range be.tree.nodes {
-		if n.kind == treeNodeField && n.isLeaf && !n.checked {
+	for i, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && n.IsLeaf && !n.Checked {
 			idx = i
 			break
 		}
 	}
 	must.GreaterOrEqual(idx, 0, "need an unchecked leaf field")
-	label := be.tree.nodes[idx].label
+	label := be.tree.Nodes[idx].Label
 
 	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: true})
 	must.True(be.dirty, "adding a field must read dirty")
 
 	// The tree was resectioned by the toggle; find the field again by label.
 	idx = -1
-	for i, n := range be.tree.nodes {
-		if n.kind == treeNodeField && n.label == label && n.checked {
+	for i, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && n.Label == label && n.Checked {
 			idx = i
 			break
 		}
@@ -1273,7 +1148,7 @@ func TestPasteUndoRestoresBufferAndNode(t *testing.T) {
 	be := newBlockEdit(Config{}, structSpec(), 100, 40)
 	be = be.switchPanel() // focus the YAML panel (checkpoints, like a real Tab)
 	prevBuf := be.yamlEditor.Value()
-	prevNode := nodeToContent(be.key, &be.node)
+	prevNode := yamledit.NodeToContent(be.key, &be.node)
 
 	be2, _ := be.updateEditing(textarea.Paste())
 	if be2.yamlEditor.Value() == prevBuf {
@@ -1284,7 +1159,7 @@ func TestPasteUndoRestoresBufferAndNode(t *testing.T) {
 	if be3.yamlEditor.Value() != prevBuf {
 		t.Errorf("undo after paste left the buffer at %q, want pre-paste %q", be3.yamlEditor.Value(), prevBuf)
 	}
-	if got := nodeToContent(be3.key, &be3.node); got != prevNode {
+	if got := yamledit.NodeToContent(be3.key, &be3.node); got != prevNode {
 		t.Errorf("undo after paste left the node at %q, want pre-paste %q", got, prevNode)
 	}
 }

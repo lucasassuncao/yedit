@@ -1,4 +1,4 @@
-package editor
+package blocklist
 
 import (
 	"fmt"
@@ -10,10 +10,12 @@ import (
 
 	"github.com/lucasassuncao/yedit/document"
 	"github.com/lucasassuncao/yedit/theme"
+
+	"github.com/lucasassuncao/yedit/keys"
 )
 
-// listItem represents one row in the left panel of the root editor view.
-type listItem struct {
+// Item represents one row in the left panel of the root editor view.
+type Item struct {
 	Key      string
 	Existing bool
 	Unknown  bool // present in YAML but not in schema; not openable, excluded from AddedCount
@@ -24,17 +26,17 @@ type listItem struct {
 	Separator   bool // visual divider row, not selectable
 }
 
-// openItemMsg is sent when the user presses Enter on a list item.
-type openItemMsg struct{ Item listItem }
+// OpenItemMsg is sent when the user presses Enter on a list item.
+type OpenItemMsg struct{ Item Item }
 
-// deleteItemMsg is sent when the user presses d on an existing item.
-type deleteItemMsg struct{ Key string }
+// DeleteItemMsg is sent when the user presses d on an existing item.
+type DeleteItemMsg struct{ Key string }
 
-// listModel is the scrollable left-panel list of known + existing top-level keys.
-type listModel struct {
+// Model is the scrollable left-panel list of known + existing top-level keys.
+type Model struct {
 	knownKeys   []string // canonical order from the schema
 	passthrough map[string]bool
-	items       []listItem
+	items       []Item
 	cursor      int
 	height      int
 	offset      int
@@ -46,12 +48,12 @@ type listModel struct {
 }
 
 // IsFiltering reports whether the list is in text-filter mode (/ was pressed).
-func (lm listModel) IsFiltering() bool { return lm.filtering }
+func (lm Model) IsFiltering() bool { return lm.filtering }
 
-// buildListItems merges the canonical key order with the document's blocks,
+// BuildItems merges the canonical key order with the document's blocks,
 // keeping existing keys in file order above the available ones. The caller
 // strips hidden keys beforehand.
-func buildListItems(knownKeys []string, existing []document.Block, passthrough map[string]bool) []listItem {
+func BuildItems(knownKeys []string, existing []document.Block, passthrough map[string]bool) []Item {
 	knownSet := make(map[string]bool, len(knownKeys))
 	for _, k := range knownKeys {
 		knownSet[k] = true
@@ -64,16 +66,16 @@ func buildListItems(knownKeys []string, existing []document.Block, passthrough m
 		}
 	}
 
-	items := make([]listItem, 0, len(knownKeys)+4)
+	items := make([]Item, 0, len(knownKeys)+4)
 
-	existingItems := make([]listItem, 0)
+	existingItems := make([]Item, 0)
 	for _, b := range existing {
 		if knownSet[b.Key] {
-			existingItems = append(existingItems, listItem{Key: b.Key, Existing: true})
+			existingItems = append(existingItems, Item{Key: b.Key, Existing: true})
 		}
 	}
 	if len(existingItems) > 0 {
-		items = append(items, listItem{Separator: true, Key: "ADDED"})
+		items = append(items, Item{Separator: true, Key: "ADDED"})
 		items = append(items, existingItems...)
 	}
 
@@ -87,38 +89,38 @@ func buildListItems(knownKeys []string, existing []document.Block, passthrough m
 	}
 
 	if len(available) > 0 {
-		items = append(items, listItem{Separator: true, Key: ""})
-		items = append(items, listItem{Separator: true, Key: "AVAILABLE"})
+		items = append(items, Item{Separator: true, Key: ""})
+		items = append(items, Item{Separator: true, Key: "AVAILABLE"})
 		for _, k := range available {
-			items = append(items, listItem{Key: k, Existing: false})
+			items = append(items, Item{Key: k, Existing: false})
 		}
 	}
 
 	// UNKNOWN: in the file, absent from the schema, and not declared passthrough.
-	var unknownItems []listItem
+	var unknownItems []Item
 	for _, b := range existing {
 		if !knownSet[b.Key] && !passthrough[b.Key] {
-			unknownItems = append(unknownItems, listItem{Key: b.Key, Existing: true, Unknown: true})
+			unknownItems = append(unknownItems, Item{Key: b.Key, Existing: true, Unknown: true})
 		}
 	}
 	if len(unknownItems) > 0 {
-		items = append(items, listItem{Separator: true, Key: ""})
-		items = append(items, listItem{Separator: true, Key: "UNKNOWN"})
+		items = append(items, Item{Separator: true, Key: ""})
+		items = append(items, Item{Separator: true, Key: "UNKNOWN"})
 		items = append(items, unknownItems...)
 	}
 
 	// PASSTHROUGH: declared passthrough, in the file, and not in the schema. Keys
 	// in both the schema and the passthrough list belong to ADDED/AVAILABLE and
 	// must not be duplicated here.
-	var passthroughItems []listItem
+	var passthroughItems []Item
 	for _, b := range existing {
 		if passthrough[b.Key] && !knownSet[b.Key] {
-			passthroughItems = append(passthroughItems, listItem{Key: b.Key, Existing: true, Unknown: true, Passthrough: true})
+			passthroughItems = append(passthroughItems, Item{Key: b.Key, Existing: true, Unknown: true, Passthrough: true})
 		}
 	}
 	if len(passthroughItems) > 0 {
-		items = append(items, listItem{Separator: true, Key: ""})
-		items = append(items, listItem{Separator: true, Key: "PASSTHROUGH"})
+		items = append(items, Item{Separator: true, Key: ""})
+		items = append(items, Item{Separator: true, Key: "PASSTHROUGH"})
 		items = append(items, passthroughItems...)
 	}
 
@@ -126,13 +128,13 @@ func buildListItems(knownKeys []string, existing []document.Block, passthrough m
 }
 
 // SetHeight updates the visible row count and re-clamps the scroll offset.
-func (lm listModel) SetHeight(h int) listModel {
+func (lm Model) SetHeight(h int) Model {
 	lm.height = h
 	return lm.clampScroll()
 }
 
-func newListModel(knownKeys []string, existing []document.Block, passthrough map[string]bool, height int) listModel {
-	items := buildListItems(knownKeys, existing, passthrough)
+func New(knownKeys []string, existing []document.Block, passthrough map[string]bool, height int) Model {
+	items := BuildItems(knownKeys, existing, passthrough)
 	cursor := 0
 	for i, it := range items {
 		if !it.Separator {
@@ -140,12 +142,12 @@ func newListModel(knownKeys []string, existing []document.Block, passthrough map
 			break
 		}
 	}
-	return listModel{knownKeys: knownKeys, passthrough: passthrough, items: items, cursor: cursor, height: height}
+	return Model{knownKeys: knownKeys, passthrough: passthrough, items: items, cursor: cursor, height: height}
 }
 
 // clampFCursorToFiltered keeps fCursor in range after a rebuild changes the
 // filtered item count. No-op when not filtering.
-func (lm listModel) clampFCursorToFiltered() listModel {
+func (lm Model) clampFCursorToFiltered() Model {
 	if !lm.filtering {
 		return lm
 	}
@@ -165,12 +167,12 @@ func (lm listModel) clampFCursorToFiltered() listModel {
 }
 
 // Rebuild refreshes the list after blocks change without losing cursor position.
-func (lm listModel) Rebuild(existing []document.Block) listModel {
+func (lm Model) Rebuild(existing []document.Block) Model {
 	prevKey := ""
 	if lm.cursor < len(lm.items) && !lm.items[lm.cursor].Separator {
 		prevKey = lm.items[lm.cursor].Key
 	}
-	lm.items = buildListItems(lm.knownKeys, existing, lm.passthrough)
+	lm.items = BuildItems(lm.knownKeys, existing, lm.passthrough)
 	if prevKey != "" {
 		for i, it := range lm.items {
 			if it.Key == prevKey {
@@ -190,7 +192,7 @@ func (lm listModel) Rebuild(existing []document.Block) listModel {
 }
 
 // AddedCount returns how many recognised top-level keys are present in the doc.
-func (lm listModel) AddedCount() int {
+func (lm Model) AddedCount() int {
 	n := 0
 	for _, it := range lm.items {
 		if it.Existing && !it.Unknown {
@@ -200,9 +202,9 @@ func (lm listModel) AddedCount() int {
 	return n
 }
 
-func (lm listModel) filteredItems() []listItem {
+func (lm Model) filteredItems() []Item {
 	f := strings.ToLower(lm.filter)
-	var out []listItem
+	var out []Item
 	for _, it := range lm.items {
 		if it.Separator {
 			continue
@@ -216,7 +218,7 @@ func (lm listModel) filteredItems() []listItem {
 
 // SelectedItem returns the item under the cursor, or nil on a separator or an
 // empty list. In filter mode it follows the filter cursor instead.
-func (lm listModel) SelectedItem() *listItem {
+func (lm Model) SelectedItem() *Item {
 	if lm.filtering {
 		items := lm.filteredItems()
 		if lm.fCursor >= len(items) {
@@ -235,20 +237,20 @@ func (lm listModel) SelectedItem() *listItem {
 	return &it
 }
 
-// ItemByKey returns the listItem for key, or a zero listItem when absent.
+// ItemByKey returns the Item for key, or a zero Item when absent.
 // Separators are skipped so a block named like a section label ("ADDED") cannot
 // match one.
-func (lm listModel) ItemByKey(key string) listItem {
+func (lm Model) ItemByKey(key string) Item {
 	for _, it := range lm.items {
 		if !it.Separator && it.Key == key {
 			return it
 		}
 	}
-	return listItem{Key: key}
+	return Item{Key: key}
 }
 
 // Update handles keyboard input for both normal and filter modes.
-func (lm listModel) Update(msg tea.Msg) (listModel, tea.Cmd) {
+func (lm Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return lm, nil
@@ -257,37 +259,37 @@ func (lm listModel) Update(msg tea.Msg) (listModel, tea.Cmd) {
 		return lm.updateFilter(km)
 	}
 	switch {
-	case key.Matches(km, kbFilter):
+	case key.Matches(km, keys.Filter):
 		lm.filtering = true
 		lm.filter = ""
 		lm.fCursor = 0
 		lm.fOffset = 0
-	case key.Matches(km, kbUp):
+	case key.Matches(km, keys.Up):
 		lm = lm.moveCursor(-1)
-	case key.Matches(km, kbDown):
+	case key.Matches(km, keys.Down):
 		lm = lm.moveCursor(1)
-	case key.Matches(km, kbEnter):
+	case key.Matches(km, keys.Enter):
 		if it := lm.SelectedItem(); it != nil && !it.Unknown {
 			item := *it
-			return lm, func() tea.Msg { return openItemMsg{Item: item} }
+			return lm, func() tea.Msg { return OpenItemMsg{Item: item} }
 		}
-	case key.Matches(km, kbCtrlDDelete):
+	case key.Matches(km, keys.CtrlDDelete):
 		if it := lm.SelectedItem(); it != nil && it.Existing {
 			k := it.Key
-			return lm, func() tea.Msg { return deleteItemMsg{Key: k} }
+			return lm, func() tea.Msg { return DeleteItemMsg{Key: k} }
 		}
 	}
 	return lm, nil
 }
 
-func (lm listModel) updateFilter(km tea.KeyMsg) (listModel, tea.Cmd) {
+func (lm Model) updateFilter(km tea.KeyMsg) (Model, tea.Cmd) {
 	switch {
-	case key.Matches(km, kbEsc):
+	case key.Matches(km, keys.Esc):
 		lm.filtering = false
 		lm.filter = ""
 		lm.fCursor = 0
 		lm.fOffset = 0
-	case key.Matches(km, kbEnter):
+	case key.Matches(km, keys.Enter):
 		items := lm.filteredItems()
 		var selCmd tea.Cmd
 		if lm.fCursor < len(items) {
@@ -303,7 +305,7 @@ func (lm listModel) updateFilter(km tea.KeyMsg) (listModel, tea.Cmd) {
 			// anyway in case the list is rebuilt alongside a keypress.
 			item := items[lm.fCursor]
 			if !item.Separator && !item.Unknown {
-				selCmd = func() tea.Msg { return openItemMsg{Item: item} }
+				selCmd = func() tea.Msg { return OpenItemMsg{Item: item} }
 			}
 		}
 		lm.filtering = false
@@ -319,9 +321,9 @@ func (lm listModel) updateFilter(km tea.KeyMsg) (listModel, tea.Cmd) {
 			lm.fOffset = 0
 		}
 	// Only arrows navigate while filtering, so "j"/"k" stay typeable.
-	case key.Matches(km, kbUp):
+	case key.Matches(km, keys.Up):
 		lm = lm.moveFCursor(-1)
-	case key.Matches(km, kbDown):
+	case key.Matches(km, keys.Down):
 		lm = lm.moveFCursor(1)
 	default:
 		if text := km.Key().Text; utf8.RuneCountInString(text) == 1 {
@@ -333,7 +335,7 @@ func (lm listModel) updateFilter(km tea.KeyMsg) (listModel, tea.Cmd) {
 	return lm, nil
 }
 
-func (lm listModel) moveFCursor(delta int) listModel {
+func (lm Model) moveFCursor(delta int) Model {
 	next := lm.fCursor + delta
 	if next < 0 || next >= len(lm.filteredItems()) {
 		return lm
@@ -342,7 +344,7 @@ func (lm listModel) moveFCursor(delta int) listModel {
 	return lm.clampFScroll()
 }
 
-func (lm listModel) clampFScroll() listModel {
+func (lm Model) clampFScroll() Model {
 	visH := lm.height - 1
 	if visH <= 0 {
 		return lm
@@ -356,7 +358,7 @@ func (lm listModel) clampFScroll() listModel {
 	return lm
 }
 
-func (lm listModel) moveCursor(delta int) listModel {
+func (lm Model) moveCursor(delta int) Model {
 	// Clamp at the list bounds without wrapping, skipping separators, matching
 	// the tree and viewer panels.
 	for i := lm.cursor + delta; i >= 0 && i < len(lm.items); i += delta {
@@ -368,7 +370,7 @@ func (lm listModel) moveCursor(delta int) listModel {
 	return lm.clampScroll()
 }
 
-func (lm listModel) clampScroll() listModel {
+func (lm Model) clampScroll() Model {
 	if lm.height <= 0 {
 		return lm
 	}
@@ -381,7 +383,7 @@ func (lm listModel) clampScroll() listModel {
 	return lm
 }
 
-func renderListItem(it listItem, selected bool, th resolvedTheme) string {
+func renderListItem(it Item, selected bool, th theme.Resolved) string {
 	if selected {
 		mark := "+"
 		switch {
@@ -392,22 +394,22 @@ func renderListItem(it listItem, selected bool, th resolvedTheme) string {
 		case it.Existing:
 			mark = "●"
 		}
-		return th.selectedItem.Render("▶ " + mark + "  " + it.Key)
+		return th.SelectedItem.Render("▶ " + mark + "  " + it.Key)
 	}
 	if it.Passthrough {
-		return th.passthroughItem.Render("  ○  " + it.Key)
+		return th.PassthroughItem.Render("  ○  " + it.Key)
 	}
 	if it.Unknown {
-		return th.unknownItem.Render("  ⚠  " + it.Key)
+		return th.UnknownItem.Render("  ⚠  " + it.Key)
 	}
 	if it.Existing {
-		return th.existingItem.Render("  ●  " + it.Key)
+		return th.ExistingItem.Render("  ●  " + it.Key)
 	}
-	return th.availableItem.Render("  +  " + it.Key)
+	return th.AvailableItem.Render("  +  " + it.Key)
 }
 
 // View renders the scrollable list or the filter prompt, depending on mode.
-func (lm listModel) View(th resolvedTheme) string {
+func (lm Model) View(th theme.Resolved) string {
 	if lm.filtering {
 		return lm.viewFilter(th)
 	}
@@ -431,7 +433,7 @@ func (lm listModel) View(th resolvedTheme) string {
 		}
 		it := lm.items[i]
 		if it.Separator {
-			sb.WriteString(th.sectionLabel.Render(it.Key))
+			sb.WriteString(th.SectionLabel.Render(it.Key))
 		} else {
 			sb.WriteString(renderListItem(it, i == lm.cursor, th))
 		}
@@ -442,13 +444,13 @@ func (lm listModel) View(th resolvedTheme) string {
 		if sb.Len() > 0 {
 			sb.WriteByte('\n')
 		}
-		sb.WriteString(th.availableItem.Render(fmt.Sprintf("  ↓ %d more", remaining)))
+		sb.WriteString(th.AvailableItem.Render(fmt.Sprintf("  ↓ %d more", remaining)))
 	}
 
 	return sb.String()
 }
 
-func (lm listModel) viewFilter(th resolvedTheme) string {
+func (lm Model) viewFilter(th theme.Resolved) string {
 	items := lm.filteredItems()
 	visH := lm.height - 1
 	end := lm.fOffset + visH
@@ -463,6 +465,17 @@ func (lm listModel) viewFilter(th resolvedTheme) string {
 	for len(lines) < visH {
 		lines = append(lines, "")
 	}
-	lines = append(lines, th.filterPrompt.Render("/"+lm.filter+"▋"))
+	lines = append(lines, th.FilterPrompt.Render("/"+lm.filter+"▋"))
 	return strings.Join(lines, "\n")
 }
+
+// KnownCount is how many keys the schema declares, filtered or not. Pair it
+// with AddedCount for a "3/12" style counter.
+func (lm Model) KnownCount() int { return len(lm.knownKeys) }
+
+// IsPassthrough reports whether key is carried through untouched rather than
+// being part of the editable schema.
+func (lm Model) IsPassthrough(key string) bool { return lm.passthrough[key] }
+
+// Filter is the text typed in filtering mode, empty when not filtering.
+func (lm Model) Filter() string { return lm.filter }

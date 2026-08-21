@@ -2,6 +2,7 @@ package editor
 
 import (
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/yamledit"
 )
 
 // BlockAction is a pure synchronous mutation of blockEditState. Every
@@ -65,7 +66,7 @@ type DrillIn struct {
 	Key     string
 	Defs    []schema.FieldDef
 	Kind    schema.Kind
-	RelSegs []pathSeg
+	RelSegs []yamledit.PathSeg
 }
 type DrillOut struct{}
 type DocUndo struct{}

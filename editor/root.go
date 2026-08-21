@@ -13,10 +13,18 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/lucasassuncao/yedit/alert"
+	"github.com/lucasassuncao/yedit/animation"
 	"github.com/lucasassuncao/yedit/document"
+	"github.com/lucasassuncao/yedit/legend"
+	"github.com/lucasassuncao/yedit/presetbrowser"
+	"github.com/lucasassuncao/yedit/render"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/theme"
 	"github.com/lucasassuncao/yedit/validate"
+
+	"github.com/lucasassuncao/yedit/keys"
+
+	"github.com/lucasassuncao/yedit/blocklist"
 )
 
 type pane int
@@ -40,7 +48,7 @@ type model struct {
 	childrenOf      map[string][]schema.FieldDef
 	wiredValidators WiredValidators // built once in newModel, reused on every save/validate
 
-	list            listModel
+	list            blocklist.Model
 	preview         viewport.Model
 	previewRenderer *glamour.TermRenderer
 	// blockEdits stacks the block editors: index 0 is the block opened from the
@@ -56,14 +64,14 @@ type model struct {
 	editBlockKey string // top-level YAML key of editRoot
 	alert        alert.Model
 	alertVisible bool
-	docPreset    presetBrowser
-	theme        resolvedTheme
+	docPreset    presetbrowser.Model
+	theme        theme.Resolved
 	help         help.Model
 
 	mode                         pane
-	showHint                     bool  // split the right column to show the Hint/Example panel
-	hintAnim                     tween // in-flight hint transition; inactive unless Config.AnimationDuration is set
-	saved                        bool  // at least one save succeeded this session; reported via Result
+	showHint                     bool            // split the right column to show the Hint/Example panel
+	hintAnim                     animation.Tween // in-flight hint transition; inactive unless Config.AnimationDuration is set
+	saved                        bool            // at least one save succeeded this session; reported via Result
 	statusMsg                    string
 	statusSeq                    uint // incremented per status, to cancel stale clear ticks
 	width, height, listW, innerH int
@@ -94,13 +102,13 @@ func newModel(cfg Config) (model, error) {
 		passthrough[k] = true
 	}
 
-	list := newListModel(knownOrder, doc.Blocks(), passthrough, 0)
+	list := blocklist.New(knownOrder, doc.Blocks(), passthrough, 0)
 
 	preview := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
-	preview.SetContent(renderPreviewYAML(string(doc.Raw()), nil))
+	preview.SetContent(render.PreviewYAML(string(doc.Raw()), nil))
 
-	rt := resolveTheme(cfg.Theme)
-	preview.LeftGutterFunc = previewGutter(rt)
+	rt := theme.Resolve(cfg.Theme)
+	preview.LeftGutterFunc = render.PreviewGutter(rt)
 	return model{
 		cfg:             cfg,
 		doc:             doc,
@@ -113,7 +121,7 @@ func newModel(cfg Config) (model, error) {
 		preview:  preview,
 		showHint: cfg.EnableHints,
 		theme:    rt,
-		help:     newHelpModel(rt),
+		help:     legend.NewHelp(rt),
 	}, nil
 }
 
@@ -155,7 +163,7 @@ func (m model) enterAlert(al alert.Model) model {
 }
 
 // enterDocPreset switches to the document-level template picker.
-func (m model) enterDocPreset(pb presetBrowser) model {
+func (m model) enterDocPreset(pb presetbrowser.Model) model {
 	m.mode = paneDocPreset
 	m.docPreset = pb
 	m.alertVisible = false
@@ -165,23 +173,23 @@ func (m model) enterDocPreset(pb presetBrowser) model {
 func (m model) viewDocPreset() string {
 	header := renderHeader(m.cfg.Title, m.doc.Path(), m.doc.Dirty(), m.width, m.theme)
 
-	leftPanel := theme.RenderTitledPanelWith("Templates", theme.Size{W: m.listW, H: m.innerH + 2}, !m.docPreset.previewFocus, m.docPreset.listView(m.theme), m.theme.colors)
+	leftPanel := theme.RenderTitledPanelWith("Templates", theme.Size{W: m.listW, H: m.innerH + 2}, !m.docPreset.PreviewFocus, m.docPreset.ListView(m.theme), m.theme.Colors)
 
 	_, rightW := theme.TwoColumnWidths(m.width)
-	rightPanel := theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.innerH + 2}, m.docPreset.previewFocus, m.docPreset.previewView(m.innerH), m.theme.colors)
+	rightPanel := theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.innerH + 2}, m.docPreset.PreviewFocus, m.docPreset.PreviewView(m.innerH), m.theme.Colors)
 
-	feedback := renderStatusLine(m.width, m.theme.status, m.statusMsg)
+	feedback := legend.StatusLine(m.width, m.theme.Status, m.statusMsg)
 	var km help.KeyMap
-	if m.docPreset.previewFocus {
-		km = docPresetPreviewKeyMap{}
+	if m.docPreset.PreviewFocus {
+		km = legend.DocPresetPreview{}
 	} else {
-		km = docPresetListKeyMap{}
+		km = legend.DocPresetList{}
 	}
-	legend := renderHelpLine(m.width, m.help, km)
+	legendBar := legend.HelpLine(m.width, m.help, km)
 
-	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legend})
+	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legendBar})
 	if m.height > 0 {
-		out = clampLines(out, m.height)
+		out = render.ClampLines(out, m.height)
 	}
 	return out
 }
@@ -307,7 +315,7 @@ func (m model) traceLocation() string {
 		modeName := "editing"
 		switch be.mode {
 		case modePresetBrowser:
-			modeName = "presetBrowser"
+			modeName = "presetbrowser.Model"
 		case modeConfirming:
 			modeName = "confirming"
 		}
@@ -326,7 +334,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.handleWindowSizeMsg(msg)
-	case openItemMsg:
+	case blocklist.OpenItemMsg:
 		return m.handleOpenItem(msg.Item)
 	case openChildMsg:
 		return m.dispatch(DrillIn{Key: msg.key, Defs: msg.defs, Kind: msg.kind, RelSegs: msg.relSegs})
@@ -336,7 +344,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.dispatch(DrillOut{})
 	case commitRequestedMsg:
 		return m.saveAll()
-	case deleteItemMsg:
+	case blocklist.DeleteItemMsg:
 		return m.handleDeleteItemMsg(msg)
 	case confirmedDeleteMsg:
 		m = m.enterList()
@@ -422,7 +430,7 @@ func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Ctrl+C quits from every mode (the terminal is in raw mode, so it arrives
 	// as a plain key). Intercepting it here keeps the policy uniform instead of
 	// working only in the list view.
-	if km, ok := msg.(tea.KeyMsg); ok && key.Matches(km, kbCtrlCQuit) {
+	if km, ok := msg.(tea.KeyMsg); ok && key.Matches(km, keys.CtrlCQuit) {
 		return m.quitOrConfirm()
 	}
 	switch m.mode {
@@ -507,7 +515,7 @@ func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) handleDeleteItemMsg(msg deleteItemMsg) (tea.Model, tea.Cmd) {
+func (m model) handleDeleteItemMsg(msg blocklist.DeleteItemMsg) (tea.Model, tea.Cmd) {
 	if m.mode == paneBlockEdit {
 		return m, nil // stale Cmd: editor is already open, discard
 	}
@@ -569,25 +577,25 @@ func (m model) viewContent() string {
 
 	header := renderHeader(m.cfg.Title, m.doc.Path(), m.doc.Dirty(), m.width, m.theme)
 
-	leftTitle := fmt.Sprintf("Blocks (%d/%d)", m.list.AddedCount(), len(m.list.knownKeys))
-	leftPanel := theme.RenderTitledPanelWith(leftTitle, theme.Size{W: m.listW, H: m.innerH + 2}, !previewFocused, m.list.View(m.theme), m.theme.colors)
+	leftTitle := fmt.Sprintf("Blocks (%d/%d)", m.list.AddedCount(), m.list.KnownCount())
+	leftPanel := theme.RenderTitledPanelWith(leftTitle, theme.Size{W: m.listW, H: m.innerH + 2}, !previewFocused, m.list.View(m.theme), m.theme.Colors)
 
 	_, rightW := theme.TwoColumnWidths(m.width)
 	var rightPanel string
 	if m.hintVisible() {
-		previewPanel := theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.previewPanelH() + 2}, previewFocused, m.preview.View(), m.theme.colors)
-		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: rightW, H: m.hintPanelH() + 2}, false, clampLines(m.selectedHint(), m.hintPanelH()), m.theme.colors)
+		previewPanel := theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.previewPanelH() + 2}, previewFocused, m.preview.View(), m.theme.Colors)
+		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: rightW, H: m.hintPanelH() + 2}, false, render.ClampLines(m.selectedHint(), m.hintPanelH()), m.theme.Colors)
 		rightPanel = lipgloss.JoinVertical(lipgloss.Left, previewPanel, hintPanel)
 	} else {
-		rightPanel = theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.innerH + 2}, previewFocused, m.preview.View(), m.theme.colors)
+		rightPanel = theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.innerH + 2}, previewFocused, m.preview.View(), m.theme.Colors)
 	}
 
-	feedback := renderStatusLine(m.width, m.theme.status, m.statusMsg)
-	legend := renderHelpLine(m.width, m.help, listKeyMapFor(m, previewFocused))
+	feedback := legend.StatusLine(m.width, m.theme.Status, m.statusMsg)
+	legendBar := legend.HelpLine(m.width, m.help, listKeyMapFor(m, previewFocused))
 
-	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legend})
+	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legendBar})
 	if m.height > 0 {
-		out = clampLines(out, m.height)
+		out = render.ClampLines(out, m.height)
 	}
 	if m.alertVisible {
 		out = theme.CompositeCenter(m.alert.Box(), out)

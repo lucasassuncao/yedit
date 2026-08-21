@@ -5,14 +5,17 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/lucasassuncao/yedit/keys"
+	"github.com/lucasassuncao/yedit/presetbrowser"
 )
 
 func (m model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch {
-	case key.Matches(msg, kbCtrlSSave):
+	case key.Matches(msg, keys.CtrlSSave):
 		mo, cmd := m.dispatch(CommitBlock{})
 		return mo, cmd, true
-	case key.Matches(msg, kbCtrlLValid):
+	case key.Matches(msg, keys.CtrlLValid):
 		mo, cmd := m.validateKeys()
 		return mo, cmd, true
 	}
@@ -26,15 +29,15 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if !m.list.IsFiltering() {
 		switch {
-		case key.Matches(msg, kbTabPreview):
+		case key.Matches(msg, keys.TabPreview):
 			return m.togglePreviewPane()
-		case key.Matches(msg, kbCtrlRReload):
+		case key.Matches(msg, keys.CtrlRReload):
 			return m.reload()
-		case key.Matches(msg, kbTemplates):
-			if pb, ok := newPresetBrowser(m.cfg.DocPresets, "", ""); ok {
+		case key.Matches(msg, keys.Templates):
+			if pb, ok := presetbrowser.New(m.cfg.DocPresets, "", ""); ok {
 				return m.enterDocPreset(pb), nil
 			}
-		case key.Matches(msg, kbEsc):
+		case key.Matches(msg, keys.Esc):
 			// ctrl+c is handled for every mode in handleModeUpdate.
 			return m.quitOrConfirm()
 		}
@@ -56,9 +59,9 @@ func (m model) handleDocPresetKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	pb, action, name := m.docPreset.Update(msg, false)
 	m.docPreset = pb
 	switch action {
-	case presetDismissed:
+	case presetbrowser.Dismissed:
 		return m.enterList(), nil
-	case presetApplied:
+	case presetbrowser.Applied:
 		y, err := m.cfg.DocPresets.PresetYAML("", name)
 		if err != nil {
 			return m.withStatus(fmt.Sprintf("preset error: %v", err))
@@ -74,7 +77,7 @@ func (m model) handlePreviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if mo, cmd, handled := m.handleGlobalKey(msg); handled {
 		return mo, cmd
 	}
-	if key.Matches(msg, kbTabEscList) {
+	if key.Matches(msg, keys.TabEscList) {
 		return m.togglePreviewPane()
 	}
 	// The preview is read-only; remaining keys only scroll the viewport.

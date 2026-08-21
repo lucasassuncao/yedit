@@ -9,7 +9,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"gopkg.in/yaml.v3"
 
+	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
+
+	"github.com/lucasassuncao/yedit/yamledit"
 )
 
 func mapSpec() blockSpec {
@@ -32,9 +35,9 @@ func mapSpec() blockSpec {
 
 func seqItemLabels(be blockEditState) []string {
 	var out []string
-	for _, n := range be.tree.nodes {
-		if n.kind == treeNodeSeqItem {
-			out = append(out, n.label)
+	for _, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindSeqItem {
+			out = append(out, n.Label)
 		}
 	}
 	return out
@@ -77,9 +80,9 @@ func TestMapBlockAddEntry(t *testing.T) {
 }
 
 func fieldNodeChecked(be blockEditState, entryLabel, field string) (checked, found bool) {
-	for _, n := range be.tree.nodes {
-		if n.kind == treeNodeField && len(n.yamlPath) == 2 && n.yamlPath[0] == entryLabel && n.yamlPath[1] == field {
-			return n.checked, true
+	for _, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && len(n.YAMLPath) == 2 && n.YAMLPath[0] == entryLabel && n.YAMLPath[1] == field {
+			return n.Checked, true
 		}
 	}
 	return false, false
@@ -109,8 +112,8 @@ func TestMapBlockRenameUpdatesTreeLabel(t *testing.T) {
     onAutoForward: notify
 `)
 	// Simulate the parse-gated keystroke: splice the edited entry into the node.
-	if kn, vn, ok := parseEntryFromView(be.yamlEditor.Value(), be.coll.isMap); ok {
-		setEntry(&be.node, be.coll.isMap, be.coll.current, kn, vn)
+	if kn, vn, ok := yamledit.ParseEntryFromView(be.yamlEditor.Value(), be.coll.isMap); ok {
+		yamledit.SetEntry(&be.node, be.coll.isMap, be.coll.current, kn, vn)
 	}
 	be.tree = be.resyncTreeFromYAML()
 	if labels := seqItemLabels(be); len(labels) == 0 || labels[0] != "lucas" {
@@ -141,7 +144,7 @@ func TestMapBlockCommitReassembles(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	be2, val, ok := be.commit()
 	must.True(ok, "commit failed; editorErr=%v", be2.editorErr)
-	snippet := nodeToContent(be2.key, val)
+	snippet := yamledit.NodeToContent(be2.key, val)
 	is.Contains(snippet, "\"3000\":", "committed snippet dropped entries")
 	is.Contains(snippet, "\"8080\":", "committed snippet dropped entries")
 }
@@ -251,17 +254,17 @@ func TestCollectionDerive_perEntryLabels(t *testing.T) {
 	// Edit entry 1 through the parse gate (the real keystroke path splices the
 	// parsed entry into be.node), then re-derive the tree.
 	be.coll.current = 1
-	kn, vn, ok := parseEntryFromView("categories:\n  - name: beta_edited\n", false)
+	kn, vn, ok := yamledit.ParseEntryFromView("categories:\n  - name: beta_edited\n", false)
 	if !ok {
-		t.Fatal("parseEntryFromView failed on valid entry text")
+		t.Fatal("yamledit.ParseEntryFromView failed on valid entry text")
 	}
-	setEntry(&be.node, false, 1, kn, vn)
+	yamledit.SetEntry(&be.node, false, 1, kn, vn)
 	tm := be.collectionDeriveTree()
 
 	labels := map[int]string{}
-	for _, n := range tm.nodes {
-		if n.kind == treeNodeSeqItem {
-			labels[n.seqIdx] = n.label
+	for _, n := range tm.Nodes {
+		if n.Kind == fieldtree.KindSeqItem {
+			labels[n.SeqIdx] = n.Label
 		}
 	}
 	if labels[0] != "alpha" {
@@ -282,7 +285,7 @@ func TestMapSyncRejectsDuplicateKey(t *testing.T) {
 	// Current entry is "3000"; rename it to the existing "8080" via the
 	// dispatch path used on every keystroke.
 	be = be.dispatch(SyncYAML{Content: "portsAttributes:\n  \"8080\":\n    label: web\n"})
-	if dup, ok := findDuplicateMappingKey(&be.node); ok {
+	if dup, ok := yamledit.FindDuplicateMappingKey(&be.node); ok {
 		t.Fatalf("duplicate key %q reached the canonical node", dup)
 	}
 	if be.editorErr.kind != errParse {
@@ -295,7 +298,7 @@ func TestMapSyncRejectsDuplicateKey(t *testing.T) {
 	if !ok {
 		t.Fatalf("commit after add-new should succeed, got %q", committed.editorErr.message)
 	}
-	if dup, has := findDuplicateMappingKey(val); has {
+	if dup, has := yamledit.FindDuplicateMappingKey(val); has {
 		t.Fatalf("commit produced duplicate key %q", dup)
 	}
 }
@@ -386,8 +389,8 @@ func TestDeleteOtherEntryBlockedByInvalidCurrent(t *testing.T) {
 func TestEmptyMapKeyRefreshesTreeRow(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
 	be.yamlEditor.SetValue("portsAttributes:\n  \"\":\n    label: web\n")
-	if kn, vn, ok := parseEntryFromView(be.yamlEditor.Value(), be.coll.isMap); ok {
-		setEntry(&be.node, be.coll.isMap, be.coll.current, kn, vn)
+	if kn, vn, ok := yamledit.ParseEntryFromView(be.yamlEditor.Value(), be.coll.isMap); ok {
+		yamledit.SetEntry(&be.node, be.coll.isMap, be.coll.current, kn, vn)
 	} else {
 		t.Fatal("entry with empty key should parse")
 	}
