@@ -696,7 +696,8 @@ func (tm Model) View(th theme.Resolved) string {
 	var sb strings.Builder
 	for vi := tm.Offset; vi < end; vi++ {
 		ni := vis[vi]
-		sb.WriteString(tm.nodeLine(tm.Nodes[ni], ni, vi, th, checkedDesc) + "\n")
+		sb.WriteString(tm.nodeLine(tm.Nodes[ni], ni, vi, th, checkedDesc))
+		sb.WriteByte('\n')
 	}
 
 	if hasMore {

@@ -168,8 +168,17 @@ func defAtPath(defs []schema.FieldDef, path []string) (schema.FieldDef, bool) {
 	return found, true
 }
 
+// A block with no defs has no schema to be unknown against: it is a free-form
+// map (map[string]string, map[string]map[string]any) whose keys are user data,
+// not fields. Without this guard every key the user typed was listed under
+// UNKNOWN with a warning, because an empty defs list makes the known set empty
+// and so nothing can match it.
+//
+// This is the same rule schema.walkChildren applies when it declines to
+// register a KindDictionary path, which is why saving such a block was already
+// correct while the tree panel beside it was not.
 func collectUnknownNodes(valueNode *yaml.Node, defs []schema.FieldDef) []Node {
-	if valueNode == nil || valueNode.Kind != yaml.MappingNode {
+	if valueNode == nil || valueNode.Kind != yaml.MappingNode || len(defs) == 0 {
 		return nil
 	}
 	known := make(map[string]bool, len(defs))
