@@ -18,6 +18,7 @@ Package schema discovers the editable shape of a Go struct via reflection over y
 - [func UnknownKeys\(raw \[\]byte, known map\[string\]map\[string\]bool\) \(\[\]string, error\)](<#UnknownKeys>)
 - [type FieldDef](<#FieldDef>)
   - [func Discover\(v any, recursionLimit ...int\) \[\]FieldDef](<#Discover>)
+  - [func DiscoverDepth\(v any, depth int\) \[\]FieldDef](<#DiscoverDepth>)
 - [type Kind](<#Kind>)
 - [type Presentation](<#Presentation>)
 - [type Provider](<#Provider>)
@@ -109,6 +110,15 @@ Only the yaml tag is read. Field metadata \(required, allowed values, ranges, de
 To customise discovery for union types \(a value that can be a scalar OR a struct OR a map\), make the wrapper type implement Provider \- its Schema\(\) return value is used in place of reflective traversal.
 
 The optional recursionLimit controls how many extra times each individual type may re\-enter the traversal beyond its first visit. Omitted, it defaults to 1, which allows one recursive level so that fields like "any \[\]CategoryFilter" are navigable. Passing 0 explicitly selects strict mode: recursive occurrences are not expanded at all. The bound is counted per type, so mutually recursive chains \(A contains B contains A\) may expand deeper overall than a single self\-referential type would.
+
+<a name="DiscoverDepth"></a>
+### func [DiscoverDepth](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L290>)
+
+```go
+func DiscoverDepth(v any, depth int) []FieldDef
+```
+
+DiscoverDepth is Discover with the recursion depth supplied as a plain int, where a non\-positive depth selects the default \(one extra recursive level\) instead of strict mode. It encodes the convention Config.SchemaRecursionDepth uses, so the editor and headless validation resolve depth identically rather than each spelling the rule out.
 
 <a name="Kind"></a>
 ## type [Kind](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L19>)

@@ -52,6 +52,25 @@ func RunAll(w WiredValidators, raw []byte, blocks []document.Block) []spec.Viola
 	return errs
 }
 
+// Wire prepares a validator slice for a caller that has a schema type but no
+// editor.Config, so validation can run without linking the TUI into the build:
+// a lint subcommand, a pre-commit hook, a CI gate.
+//
+// schemaPtr is the same non-nil struct pointer the editor would take
+// (e.g. &MyConfig{}). depth follows Config.SchemaRecursionDepth: non-positive
+// selects the default of one extra recursive level. metadata may be nil, in
+// which case FromMetadata validators stay inert.
+//
+// editor.Wire is the same call with the values read off a Config, plus the
+// Hidden filter, so the editor and a headless run agree on the schema by
+// construction.
+func Wire(validators []spec.Validator, schemaPtr any, depth int, metadata spec.MetadataSource) WiredValidators {
+	if schemaPtr == nil {
+		return WireNoSchema(validators)
+	}
+	return WireWithSchema(validators, schema.DiscoverDepth(schemaPtr, depth), metadata)
+}
+
 // WireNoSchema prepares a validator slice when no schema tree is available:
 // FromMetadata validators stay inert, explicit ones are included as-is. The
 // original slice is never modified, so the same global validator slice can be

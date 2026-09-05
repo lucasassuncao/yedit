@@ -112,11 +112,38 @@ const (
 	GroupRules             Group = "Rules"
 )
 
+// Severity classifies how a Violation should be treated by the caller.
+//
+// The zero value is SeverityError, so a Violation built without naming a
+// severity behaves exactly as it did before this field existed. The editor
+// itself does not read Severity: it still treats every violation as blocking,
+// subject to Config.NoValidateOnSave. Severity is for callers that report
+// violations outside the TUI, where "valid but questionable" and "wrong" need
+// to be told apart.
+type Severity int
+
+const (
+	// SeverityError marks a violation that makes the document invalid.
+	SeverityError Severity = iota
+	// SeverityWarning marks a document that is valid as written but likely
+	// not what was intended. Warnings are reported, never fatal.
+	SeverityWarning
+)
+
+// String returns "error" or "warning".
+func (s Severity) String() string {
+	if s == SeverityWarning {
+		return "warning"
+	}
+	return "error"
+}
+
 // Violation is a single rule violation reported by a Validator.
 type Violation struct {
-	Path    string // dot-separated YAML path to the offending node; empty for document-wide rules
-	Message string // human-readable description, without the path prefix
-	Group   Group  // when non-empty, violations with the same Group are merged under one bullet in the error display
+	Path     string   // dot-separated YAML path to the offending node; empty for document-wide rules
+	Message  string   // human-readable description, without the path prefix
+	Group    Group    // when non-empty, violations with the same Group are merged under one bullet in the error display
+	Severity Severity // zero value SeverityError; see Severity
 }
 
 // String renders "<path>: <message>", or just the message when Path is empty.

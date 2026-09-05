@@ -7,6 +7,12 @@ coverage.out
 coverage.html
 coverage.xml
 
+# Pinned tools installed by the Makefile
+.gobin/
+
+# Supply-chain scan output
+sbom.json
+
 # Dependency directories
 vendor/
 

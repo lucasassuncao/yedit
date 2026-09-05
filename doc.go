@@ -4,7 +4,10 @@
 // The library is composed of independent sub-packages:
 //
 //   - schema:       reflection over the client's Go structs (yaml tags only)
+//   - spec:         the shared vocabulary (FieldMeta, Violation, Validator, Format)
 //   - metadata:     tree-based MetadataSource with strict schema validation
+//   - validate:     the validation rules, usable without importing the TUI
+//   - report:       renders violations for humans (tree, table, plain) and CI (JSON)
 //   - document:     YAML state with block-level mutations, history, and parsing
 //   - editor:       two-panel bubbletea TUI that ties the pieces together
 //   - presets:      Source interface + struct-backed helpers (ForField, Combine) for per-field YAML snippets

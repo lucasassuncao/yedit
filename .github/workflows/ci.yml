@@ -5,31 +5,26 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
-  ci:
+  # Repository hygiene, which is platform-independent and only worth doing
+  # once: formatting, generated docs, and dependency tidiness. The git-diff
+  # comparisons these rely on would only produce line-ending noise anywhere
+  # else, since the working tree is CRLF on Windows and gofmt writes LF.
+  checks:
+    name: Checks
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: 'go.mod'
           cache: true
-
-      - name: Check formatting
-        run: |
-          make fmt
-          if ! git diff --exit-code; then
-            echo ""
-            echo "❌ Code is not formatted. Run 'make fmt' locally and commit the result."
-            exit 1
-          fi
-          echo "✅ Code is properly formatted."
 
       - name: Check dependencies
         run: |
@@ -41,17 +36,15 @@ jobs:
           fi
           echo "✅ Dependencies are up to date."
 
-      - name: Test
-        run: make test-coverage
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: |
-            coverage.out
-            coverage.html
-            coverage.xml
+      - name: Check formatting
+        run: |
+          make fmt
+          if ! git diff --exit-code; then
+            echo ""
+            echo "❌ Code is not formatted. Run 'make fmt' locally and commit the result."
+            exit 1
+          fi
+          echo "✅ Code is properly formatted."
 
       - name: Check docs
         run: |
@@ -63,8 +56,97 @@ jobs:
           fi
           echo "✅ Documentation is up to date."
 
+  # Lint, security and tests. Separate from Checks so a formatting slip and a
+  # failing test do not land as one red mark with one log to dig through.
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      # The Makefile builds the pinned tools from source, which dwarfs the
+      # runtime of the checks themselves. The install rules have no
+      # prerequisites, so a restored .gobin is enough for make to skip the
+      # build; the key follows the Makefile because that is where the versions
+      # are pinned.
+      - name: Cache pinned tools
+        uses: actions/cache@v6
+        with:
+          path: .gobin
+          key: gobin-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
       - name: Lint
         run: make lint
 
       - name: Security
         run: make security
+
+      - name: Test
+        run: make test-coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: |
+            coverage.out
+            coverage.html
+            coverage.xml
+          if-no-files-found: warn
+
+  # The SBOM and the vulnerability scan describe the dependency graph, which
+  # comes from go.mod. This is its own job rather than a step inside Test
+  # because it fails differently: a red mark here usually means a CVE was
+  # published against a dependency, not that the commit broke something, so it
+  # can go red with nothing in the repo having changed.
+  #
+  # For a library the answer matters to every consumer, which inherits this
+  # dependency tree wholesale.
+  supply-chain:
+    name: Supply chain
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Cache pinned tools
+        uses: actions/cache@v6
+        with:
+          path: .gobin
+          key: gobin-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      # govulncheck resolves the call graph, so it only reports advisories
+      # reachable from this module's code. It runs before the SBOM scan so its
+      # answer is in the log even when grype fails the job on an advisory
+      # nothing here can execute.
+      - name: Check reachable vulnerabilities
+        run: make govulncheck
+
+      - name: Scan dependencies
+        run: make vuln
+
+      # Uploaded even when the scan fails: the SBOM is written before grype
+      # runs, and it is what you need to triage the findings.
+      - name: Upload SBOM
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom
+          path: sbom.json
+          if-no-files-found: warn

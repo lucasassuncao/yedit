@@ -199,13 +199,7 @@ func (m model) viewDocPreset() string {
 // newModel hands the same tree to the UI and to the wired validators, so the
 // two can never disagree about the schema.
 func discoverSchema(cfg Config) []schema.FieldDef {
-	var tree []schema.FieldDef
-	if cfg.SchemaRecursionDepth > 0 {
-		tree = schema.Discover(cfg.Schema, cfg.SchemaRecursionDepth)
-	} else {
-		tree = schema.Discover(cfg.Schema) // schema default: 1 extra recursive level
-	}
-	return applyHidden(tree, cfg.Hidden)
+	return applyHidden(schema.DiscoverDepth(cfg.Schema, cfg.SchemaRecursionDepth), cfg.Hidden)
 }
 
 func applyHidden(fields []schema.FieldDef, hidden []string) []schema.FieldDef {

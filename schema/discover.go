@@ -281,3 +281,15 @@ func TopLevelOrder(fields []FieldDef) []string {
 	}
 	return out
 }
+
+// DiscoverDepth is Discover with the recursion depth supplied as a plain int,
+// where a non-positive depth selects the default (one extra recursive level)
+// instead of strict mode. It encodes the convention Config.SchemaRecursionDepth
+// uses, so the editor and headless validation resolve depth identically rather
+// than each spelling the rule out.
+func DiscoverDepth(v any, depth int) []FieldDef {
+	if depth > 0 {
+		return Discover(v, depth)
+	}
+	return Discover(v)
+}

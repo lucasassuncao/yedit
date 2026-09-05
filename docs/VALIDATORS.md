@@ -1,8 +1,8 @@
 # Validators
 
-This document describes every built-in validator in `yamltui/editor`, how paths are
-resolved, and how to write custom rules. Validators are pluggable rules executed
-at validate/save time, registered through `editor.Config`:
+This document describes every built-in validator in `yedit/validate`, how paths
+are resolved, and how to write custom rules. Validators are pluggable rules
+executed at validate/save time, registered through `editor.Config`:
 
 ```go
 editor.Run(editor.Config{
@@ -15,8 +15,14 @@ editor.Run(editor.Config{
 ```
 
 Each validator returns zero or more `Violation`s. A `Violation` carries the
-dot-separated YAML `Path` to the offending node (empty for document-wide rules)
-and a human-readable `Message`.
+dot-separated YAML `Path` to the offending node (empty for document-wide rules),
+a human-readable `Message`, and a `Severity` that defaults to error. See
+[Severity](#severity-errors-and-warnings).
+
+The rules live in `yedit/validate` and the types in `yedit/spec`, neither of
+which imports the TUI, so the same rule set can run in the editor, in a lint
+command, and in CI. See
+[Using validators outside the TUI](#using-validators-outside-the-tui-wire--runall).
 
 ---
 
@@ -488,37 +494,52 @@ editor.Run(editor.Config{
 
 ## Using validators outside the TUI (`Wire` + `RunAll`)
 
-For CLI lint-style commands that reuse the same rules without opening the
-editor, use `Wire` followed by `RunAll`:
+For a lint subcommand, a pre-commit hook, or a CI gate that reuses the same
+rules without opening the editor, use `validate.Wire` followed by
+`validate.RunAll`:
 
 ```go
-wired := editor.Wire(MyValidators, editor.Config{
-    Schema:   &MySchema{},
-    Metadata: hints,
-})
-violations := editor.RunAll(wired, raw, blocks)
+wired := validate.Wire(MyValidators, &MySchema{}, 0, hints)
+violations := validate.RunAll(wired, raw, blocks)
 ```
 
-### Why `Wire` exists — and why `RunAll` requires `WiredValidators`
+`validate.Wire` takes the schema pointer and recursion depth directly, so
+nothing in the `editor` package is imported and **the TUI is never linked into
+the binary**. Pass `0` for depth to get the default of one extra recursive
+level, exactly as `Config.SchemaRecursionDepth` does.
 
-Think of a `FromMetadata` validator as a **light bulb**: it knows what to do, but it needs to be plugged into a socket before it can do anything. `Wire` is the moment you plug it in — it injects the schema tree and the `MetadataSource` into each `FromMetadata` validator. `RunAll` is then the switch that turns them on.
+### Which `Wire` to call
+
+| You have | Call | Links the TUI |
+|---|---|---|
+| a schema type and metadata | `validate.Wire(vs, &MySchema{}, depth, meta)` | no |
+| an `editor.Config` already | `editor.Wire(vs, cfg)` | yes |
+| the discovered tree already | `validate.WireWithSchema(vs, tree, meta)` | no |
+| no schema at all | `validate.WireNoSchema(vs)` | no |
+
+`editor.Wire` is `validate.Wire` with the values read off a `Config`, plus the
+`Config.Hidden` filter. Both resolve the schema through
+`schema.DiscoverDepth`, which is the single owner of the depth convention, so
+a headless run and an editing session cannot disagree about the schema. A test
+in the `editor` package pins that equivalence.
+
+### Why `Wire` exists, and why `RunAll` requires `WiredValidators`
+
+Think of a `FromMetadata` validator as a **light bulb**: it knows what to do, but it needs to be plugged into a socket before it can do anything. `Wire` is the moment you plug it in, injecting the schema tree and the `MetadataSource` into each `FromMetadata` validator. `RunAll` is then the switch that turns them on.
 
 ```go
-// Declared statically — no schema yet, like an unplugged bulb:
-var MyValidators = []editor.Validator{
-    editor.RequiredFromMetadata(), // inert until wired
-    editor.OneOfFromMetadata(),    // inert until wired
-    editor.Required("server"),     // explicit: works without wiring
+// Declared statically, no schema yet, like an unplugged bulb:
+var MyValidators = []spec.Validator{
+    validate.RequiredFromMetadata(), // inert until wired
+    validate.OneOfFromMetadata(),    // inert until wired
+    validate.Required("server"),     // explicit: works without wiring
 }
 
-// Wire plugs them in — injects schema and MetadataSource:
-wired := editor.Wire(MyValidators, editor.Config{
-    Schema:   &MyConfig{},
-    Metadata: hints,
-})
+// Wire plugs them in, injecting schema and MetadataSource:
+wired := validate.Wire(MyValidators, &MyConfig{}, 0, hints)
 
 // RunAll flips the switch:
-violations := editor.RunAll(wired, raw, blocks)
+violations := validate.RunAll(wired, raw, blocks)
 ```
 
 `RunAll` accepts `WiredValidators`, not `[]Validator` directly. This is
@@ -530,7 +551,7 @@ By requiring `WiredValidators` as the argument type, the compiler prevents
 the "forgot to wire" mistake at compile time rather than letting it manifest
 as a silent test gap at runtime.
 
-Inside `editor.Run`, wiring happens automatically — `newModel` calls `Wire`
+Inside `editor.Run`, wiring happens automatically: `newModel` calls `Wire`
 once and stores the result in the model. You only need `Wire` explicitly when
 operating outside a TUI session.
 
@@ -540,10 +561,105 @@ operating outside a TUI session.
   copies each `*metadataRuleValidator` struct before injecting `defs`/`hints`.
   The same global validator slice can be passed to `Wire` from multiple call
   sites or goroutines without data races.
-- **Calling `Wire` with `Config{Schema: nil}` is safe** — it wraps the slice
-  as-is and explicit validators run normally. Only FromMetadata validators
-  remain inert (same behaviour as before wiring).
-- **`Wire` is cheap to call repeatedly** — schema discovery (`schema.Discover`)
-  runs once per `Wire` call, not once per `RunAll` call. For high-frequency
-  paths (e.g. inside a loop), call `Wire` once outside the loop and reuse the
-  `WiredValidators` handle.
+- **Calling `Wire` with a nil schema is safe.** Both `validate.Wire(vs, nil, ...)`
+  and `editor.Wire(vs, Config{Schema: nil})` wrap the slice as-is, and explicit
+  validators run normally. Only FromMetadata validators remain inert (same
+  behaviour as before wiring).
+- **`Wire` is cheap to call repeatedly.** Schema discovery runs once per `Wire`
+  call, not once per `RunAll` call. For high-frequency paths (e.g. inside a
+  loop), call `Wire` once outside the loop and reuse the `WiredValidators`
+  handle.
+
+---
+
+## Severity: errors and warnings
+
+Every `spec.Violation` carries a `Severity`:
+
+```go
+spec.SeverityError    // the document is invalid (zero value)
+spec.SeverityWarning  // valid as written, but likely not intended
+```
+
+`SeverityError` is the **zero value**, so a validator written without naming a
+severity keeps failing exactly as it always did. A rule opts into warning
+semantics explicitly:
+
+```go
+spec.Violation{
+    Path:     "categories[0].destination.path",
+    Message:  "source and destination are the same directory",
+    Severity: spec.SeverityWarning,
+}
+```
+
+**The editor does not read `Severity`.** It still treats every violation as
+blocking, subject to `Config.NoValidateOnSave`. The field is for callers that
+report violations outside the TUI, where "questionable" and "wrong" need
+different exit codes.
+
+---
+
+## Reporting violations (`report`)
+
+`RunAll` returns `[]spec.Violation`. The `report` package turns that slice into
+output, so a lint command does not have to reinvent grouping and formatting:
+
+```go
+import "github.com/lucasassuncao/yedit/report"
+
+opts := report.Options{Theme: myTheme, WarningNote: "valid but lossy"}
+
+report.Pretty(os.Stdout, violations, opts) // themed tree, grouped by section
+report.Table(os.Stdout, violations, opts)  // bordered tables per section
+report.Plain(os.Stdout, violations, opts)  // one line per violation, no color
+report.JSON(os.Stdout, violations, opts)   // machine-readable, for CI
+```
+
+All four split errors from warnings on their own, count them separately, and
+report only errors as fatal.
+
+### Data helpers
+
+Useful on their own if you are writing a custom renderer:
+
+| Function | Returns |
+|---|---|
+| `report.Partition(vs)` | `(errors, warnings []spec.Violation)` |
+| `report.GroupBySection(vs)` | sorted section names plus violations per section |
+| `report.Section(path)` | the top-level section of a path, or `"(general)"` |
+| `report.SubPath(path)` | the path with its leading section stripped |
+
+### The JSON contract
+
+`report.JSON` writes a documented, stable shape, so one CI parser works across
+every yedit-based tool:
+
+```json
+{
+  "valid": false,
+  "error_count": 2,
+  "warning_count": 1,
+  "errors":   [{"path": "categories[0].name", "message": "is required"}],
+  "warnings": [{"path": "categories[0].source", "message": "competes with ..."}],
+  "summary":  {"categories": 2}
+}
+```
+
+`valid` is derived from the error count alone, so **a warning never fails a
+build**. `summary` counts errors per top-level section and is always present.
+
+### Dependencies
+
+`report` is opt-in. The `validate` package itself pulls in no rendering
+dependency, so a headless run that only inspects the returned violations never
+links lipgloss or `go-pretty`. Only `report.Table` needs `go-pretty`;
+`report.Pretty` covers the same ground without it.
+
+### Color
+
+Structure (section headings, connectors, paths) follows `Options.Theme`, so a
+lint command looks like the editor it ships with. Severity does not: an error
+is red and a warning is yellow in every theme, the same rule the `alert`
+component follows, because nobody should have to learn a palette to know
+whether something is broken.

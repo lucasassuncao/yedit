@@ -23,6 +23,10 @@ type WiredValidators = validate.WiredValidators
 // cfg.Schema must be non-nil for FromMetadata validators to report anything;
 // cfg.Metadata may be nil. Callers that already hold the discovered tree should
 // use validate.WireWithSchema directly, so both sides see the same schema.
+//
+// Callers with no Config at all - a lint command that must not link the TUI -
+// want validate.Wire, which takes the schema pointer and depth directly. This
+// is that call plus the Hidden filter.
 func Wire(validators []spec.Validator, cfg Config) WiredValidators {
 	if cfg.Schema == nil {
 		return validate.WireNoSchema(validators)
