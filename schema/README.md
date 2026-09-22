@@ -28,7 +28,7 @@ Package schema discovers the editable shape of a Go struct via reflection over y
 
 
 <a name="DeclaresShape"></a>
-## func [DeclaresShape](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L331>)
+## func [DeclaresShape](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L375>)
 
 ```go
 func DeclaresShape(t reflect.Type) bool
@@ -48,7 +48,7 @@ KnownChildren collapses a FieldDef tree into a map of dotted paths to the set of
 A nil value at a path means "free\-form" \- children at that path are not validated \(e.g. customizations.vscode.settings has no fixed schema\).
 
 <a name="ScalarLabel"></a>
-## func [ScalarLabel](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L271>)
+## func [ScalarLabel](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L309>)
 
 ```go
 func ScalarLabel(t reflect.Type) string
@@ -57,7 +57,7 @@ func ScalarLabel(t reflect.Type) string
 ScalarLabel returns a human label for a scalar Go type \("string", "int", "bool", "float", "duration", "uint"\) or "" when t is not a scalar. Named types with their own meaning \(time.Duration\) take precedence over their underlying kind. It is the single vocabulary for scalar type labels: it enriches FieldDef.Scalar and the metadata package builds its hint\-panel labels on top of it, so the two can never name the same type differently.
 
 <a name="TopLevelOrder"></a>
-## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L308>)
+## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L352>)
 
 ```go
 func TopLevelOrder(fields []FieldDef) []string
@@ -124,7 +124,7 @@ To customise discovery for union types \(a value that can be a scalar OR a struc
 The optional recursionLimit controls how many extra times each individual type may re\-enter the traversal beyond its first visit. Omitted, it defaults to 1, which allows one recursive level so that fields like "any \[\]CategoryFilter" are navigable. Passing 0 explicitly selects strict mode: recursive occurrences are not expanded at all. The bound is counted per type, so mutually recursive chains \(A contains B contains A\) may expand deeper overall than a single self\-referential type would.
 
 <a name="DiscoverDepth"></a>
-### func [DiscoverDepth](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L321>)
+### func [DiscoverDepth](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L365>)
 
 ```go
 func DiscoverDepth(v any, depth int) []FieldDef

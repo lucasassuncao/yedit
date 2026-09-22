@@ -97,7 +97,7 @@ Validators implement `editor.Validator` and are called before every save via `Ru
 
 Two construction paths, both validating field names against the struct at startup:
 
-- **`New(v any)`** - the recommended path. The struct implements `MetadataProvider` (returns `map[string]any` for its direct fields). `DecodeTree` turns that map into a `Node` tree through yaml, using the `FieldMeta` tags, and rejects keys that match no field. Nested structs that also implement `MetadataProvider` have their children composed automatically via reflection. Cycles (e.g. `Filter.Any []Filter`) are resolved by caching each type's decoded tree. Returns an error if any `yaml`-tagged field is undocumented.
+- **`New(v any)`** - the recommended path. The struct implements `MetadataProvider` (returns `map[string]any` for its direct fields). `DecodeTree` turns that map into a `Node` tree through yaml, using the `FieldMeta` tags, and rejects keys that match no field. Nested structs that also implement `MetadataProvider` have their children composed automatically via reflection. Cycles (e.g. `Filter.Any []Filter`) are resolved by caching each type's decoded tree. Fields not covered by `Metadata()` are silently accepted with default (empty) `FieldMeta` values.
 
 - **`NewFromTree(schemaPtr any, tree map[string]*Node)`** - the manual path. Pass a fully-constructed tree; useful for structs you don't own or when child metadata is built programmatically.
 

@@ -89,7 +89,7 @@ is a startup error.
 
 ## metadata.New (recommended)
 
-Use when the root struct is yours and can implement `MetadataProvider`. Each struct declares its own direct fields via `Metadata()`; nested structs that also implement `MetadataProvider` have their children populated automatically. Full coverage is enforced: adding a yaml-tagged field to the struct without updating `Metadata()` is a startup error.
+Use when the root struct is yours and can implement `MetadataProvider`. Each struct declares its own direct fields via `Metadata()`; nested structs that also implement `MetadataProvider` have their children populated automatically. Fields not covered by `Metadata()` are silently accepted and receive default (empty) `FieldMeta` values.
 
 `Metadata()` returns a plain `map[string]any`, not a package type, so the same method can also feed a documentation generator without either package importing the other. The keys are the lowercased `FieldMeta` field names; a key that matches none is a startup error naming it.
 

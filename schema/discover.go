@@ -52,7 +52,7 @@ func Discover(v any, recursionLimit ...int) []FieldDef {
 	if t == nil {
 		return nil
 	}
-	if t.Kind() == reflect.Pointer {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return discoverFields(t, 0, make(map[reflect.Type]int), limit)
@@ -188,7 +188,7 @@ func isMarshalerType(t reflect.Type) bool {
 func providerChildren(t reflect.Type) []FieldDef {
 	// Unwrap wrappers until stable so map[string]*T, map[string][]T, []*T,
 	// and other combinations all reach the element type T.
-	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Map {
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Map || t.Kind() == reflect.Array {
 		t = t.Elem()
 	}
 	// An interface type has no concrete value to call Metadata on - such
@@ -196,33 +196,71 @@ func providerChildren(t reflect.Type) []FieldDef {
 	if t.Kind() == reflect.Interface {
 		return nil
 	}
-	raw := providerMap(t)
-	if len(raw) == 0 {
+	declared, err := decodeShape(providerMap(t))
+	if err != nil || len(declared) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(raw))
-	for name := range raw {
+	names := make([]string, 0, len(declared))
+	for name := range declared {
 		names = append(names, name)
 	}
 	slices.Sort(names) // a map has no order; the documented one is alphabetical
 	out := make([]FieldDef, 0, len(names))
 	for _, name := range names {
-		entry, ok := raw[name].(map[string]any)
+		kind, ok := kindNames[declared[name].Kind]
 		if !ok {
-			return nil
+			return nil // not a shape declaration; ordinary metadata
 		}
-		kindName, ok := entry["kind"].(string)
-		if !ok {
-			return nil
-		}
-		kind, ok := kindNames[kindName]
-		if !ok {
-			return nil
-		}
-		scalar, _ := entry["scalar"].(string)
-		out = append(out, FieldDef{YAMLName: name, Kind: kind, Scalar: scalar})
+		out = append(out, FieldDef{YAMLName: name, Kind: kind, Scalar: declared[name].Scalar})
 	}
 	return out
+}
+
+// shapeEntry is the part of a metadata entry that declares structure.
+type shapeEntry struct {
+	Kind   string `yaml:"kind"`
+	Scalar string `yaml:"scalar"`
+}
+
+// decodeShape reads kind and scalar out of a Metadata map. It goes through
+// yaml rather than a type assertion so an entry declared as a struct with yaml
+// tags works as well as one written as a map. Scalar entries in the root map
+// (e.g. "description": "...") are silently skipped instead of causing an
+// unmarshal error.
+func decodeShape(raw map[string]any) (map[string]shapeEntry, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	b, err := yaml.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+	var root yaml.Node
+	if err := yaml.Unmarshal(b, &root); err != nil {
+		return nil, err
+	}
+	// root is a document node; its first child is the mapping.
+	if root.Kind != yaml.DocumentNode || len(root.Content) == 0 {
+		return nil, nil
+	}
+	mapping := root.Content[0]
+	if mapping.Kind != yaml.MappingNode {
+		return nil, nil
+	}
+	out := make(map[string]shapeEntry, len(mapping.Content)/2)
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		keyNode := mapping.Content[i]
+		valNode := mapping.Content[i+1]
+		if valNode.Kind != yaml.MappingNode {
+			continue // scalar entry (e.g. "description": "..."); skip
+		}
+		var entry shapeEntry
+		if err := valNode.Decode(&entry); err != nil {
+			continue // not a shape declaration; skip
+		}
+		out[keyNode.Value] = entry
+	}
+	return out, nil
 }
 
 // providerMap calls Metadata on a zero value of t, or returns nil when t does
@@ -275,6 +313,9 @@ func ScalarLabel(t reflect.Type) string {
 	if t.PkgPath() == "time" && t.Name() == "Duration" {
 		return "duration"
 	}
+	if t.PkgPath() == "time" && t.Name() == "Time" {
+		return "time"
+	}
 	switch t.Kind() {
 	case reflect.String:
 		return "string"
@@ -287,6 +328,9 @@ func ScalarLabel(t reflect.Type) string {
 	case reflect.Float32, reflect.Float64:
 		return "float"
 	default:
+		if isMarshalerType(t) {
+			return "string"
+		}
 		return ""
 	}
 }
