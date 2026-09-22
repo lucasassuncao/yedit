@@ -12,6 +12,7 @@ Package schema discovers the editable shape of a Go struct via reflection over y
 
 ## Index
 
+- [func DeclaresShape\(t reflect.Type\) bool](<#DeclaresShape>)
 - [func KnownChildren\(fields \[\]FieldDef\) map\[string\]map\[string\]bool](<#KnownChildren>)
 - [func ScalarLabel\(t reflect.Type\) string](<#ScalarLabel>)
 - [func TopLevelOrder\(fields \[\]FieldDef\) \[\]string](<#TopLevelOrder>)
@@ -21,8 +22,19 @@ Package schema discovers the editable shape of a Go struct via reflection over y
   - [func DiscoverDepth\(v any, depth int\) \[\]FieldDef](<#DiscoverDepth>)
 - [type Kind](<#Kind>)
 - [type Presentation](<#Presentation>)
+  - [func \(p Presentation\) MarshalYAML\(\) \(any, error\)](<#Presentation.MarshalYAML>)
+  - [func \(p \*Presentation\) UnmarshalYAML\(n \*yaml.Node\) error](<#Presentation.UnmarshalYAML>)
 - [type Provider](<#Provider>)
 
+
+<a name="DeclaresShape"></a>
+## func [DeclaresShape](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L331>)
+
+```go
+func DeclaresShape(t reflect.Type) bool
+```
+
+DeclaresShape reports whether t declares its own fields through Metadata rather than leaving them to reflection. Consumers that walk a struct use it to stop where a union type takes over.
 
 <a name="KnownChildren"></a>
 ## func [KnownChildren](<https://github.com/lucasassuncao/yedit/blob/main/schema/validate.go#L15>)
@@ -36,7 +48,7 @@ KnownChildren collapses a FieldDef tree into a map of dotted paths to the set of
 A nil value at a path means "free\-form" \- children at that path are not validated \(e.g. customizations.vscode.settings has no fixed schema\).
 
 <a name="ScalarLabel"></a>
-## func [ScalarLabel](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L240>)
+## func [ScalarLabel](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L271>)
 
 ```go
 func ScalarLabel(t reflect.Type) string
@@ -45,7 +57,7 @@ func ScalarLabel(t reflect.Type) string
 ScalarLabel returns a human label for a scalar Go type \("string", "int", "bool", "float", "duration", "uint"\) or "" when t is not a scalar. Named types with their own meaning \(time.Duration\) take precedence over their underlying kind. It is the single vocabulary for scalar type labels: it enriches FieldDef.Scalar and the metadata package builds its hint\-panel labels on top of it, so the two can never name the same type differently.
 
 <a name="TopLevelOrder"></a>
-## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L277>)
+## func [TopLevelOrder](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L308>)
 
 ```go
 func TopLevelOrder(fields []FieldDef) []string
@@ -63,7 +75,7 @@ func UnknownKeys(raw []byte, known map[string]map[string]bool) ([]string, error)
 UnknownKeys returns the dotted paths of any YAML keys not present in the schema described by known. Free\-form sub\-trees \(paths missing from known\) are not validated. Returns an error if raw does not parse as YAML.
 
 <a name="FieldDef"></a>
-## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L38-L59>)
+## type [FieldDef](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L44-L65>)
 
 FieldDef describes a single editable field discovered from a Go struct.
 
@@ -97,7 +109,7 @@ type FieldDef struct {
 ```
 
 <a name="Discover"></a>
-### func [Discover](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L45>)
+### func [Discover](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L46>)
 
 ```go
 func Discover(v any, recursionLimit ...int) []FieldDef
@@ -107,12 +119,12 @@ Discover walks the type of v by reflection and returns the editable schema of it
 
 Only the yaml tag is read. Field metadata \(required, allowed values, ranges, descriptions\) is not derived from struct tags \- declare it through the editor's MetadataSource instead \(see the yedit/metadata package\).
 
-To customise discovery for union types \(a value that can be a scalar OR a struct OR a map\), make the wrapper type implement Provider \- its Schema\(\) return value is used in place of reflective traversal.
+To customise discovery for union types \(a value that can be a scalar OR a struct OR a map\), make the wrapper type implement Provider and give its Metadata entries a "kind". Those entries replace reflective traversal.
 
 The optional recursionLimit controls how many extra times each individual type may re\-enter the traversal beyond its first visit. Omitted, it defaults to 1, which allows one recursive level so that fields like "any \[\]CategoryFilter" are navigable. Passing 0 explicitly selects strict mode: recursive occurrences are not expanded at all. The bound is counted per type, so mutually recursive chains \(A contains B contains A\) may expand deeper overall than a single self\-referential type would.
 
 <a name="DiscoverDepth"></a>
-### func [DiscoverDepth](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L290>)
+### func [DiscoverDepth](<https://github.com/lucasassuncao/yedit/blob/main/schema/discover.go#L321>)
 
 ```go
 func DiscoverDepth(v any, depth int) []FieldDef
@@ -121,7 +133,7 @@ func DiscoverDepth(v any, depth int) []FieldDef
 DiscoverDepth is Discover with the recursion depth supplied as a plain int, where a non\-positive depth selects the default \(one extra recursive level\) instead of strict mode. It encodes the convention Config.SchemaRecursionDepth uses, so the editor and headless validation resolve depth identically rather than each spelling the rule out.
 
 <a name="Kind"></a>
-## type [Kind](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L19>)
+## type [Kind](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L25>)
 
 Kind classifies a discovered field's shape.
 
@@ -143,7 +155,7 @@ const (
 ```
 
 <a name="Presentation"></a>
-## type [Presentation](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L9>)
+## type [Presentation](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L15>)
 
 Presentation controls how a field's children are shown in the tree panel. It is applied after schema discovery via the editor's applyPresentation step. KindPrimitive fields are always PresentationFlat regardless of what is set.
 
@@ -162,14 +174,32 @@ const (
 )
 ```
 
-<a name="Provider"></a>
-## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L65-L67>)
+<a name="Presentation.MarshalYAML"></a>
+### func \(Presentation\) [MarshalYAML](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L108>)
 
-Provider is an opt\-in interface for types that reflection cannot introspect correctly \- typically union types \(e.g. a value that can be a string OR a struct OR a map\). Implementations return the FieldDef tree they want the editor to see in place of the wrapper type's own fields.
+```go
+func (p Presentation) MarshalYAML() (any, error)
+```
+
+MarshalYAML writes a presentation as its name.
+
+<a name="Presentation.UnmarshalYAML"></a>
+### func \(\*Presentation\) [UnmarshalYAML](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L94>)
+
+```go
+func (p *Presentation) UnmarshalYAML(n *yaml.Node) error
+```
+
+UnmarshalYAML resolves a presentation declared by name.
+
+<a name="Provider"></a>
+## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/schema/field.go#L70-L72>)
+
+Provider is the opt\-in for types reflection cannot read \- a union that is a string OR a struct OR a map. Entries carrying a "kind" replace the wrapper's own fields. See docs/SCHEMA\-KINDS.md.
 
 ```go
 type Provider interface {
-    Schema() []FieldDef
+    Metadata() map[string]any
 }
 ```
 

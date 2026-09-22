@@ -17,7 +17,7 @@ How Go types map to yamltui editor behavior, with complete code examples.
 | `[]map[string]T` | `KindList` (no child defs) | YAML pane only |
 | `map[string]string`, `map[string]any` | `KindDictionary` (no child defs) | YAML pane only |
 | `map[string]SomeStruct` | `KindDictionary` with child defs | `[N]` navigator keyed by map key |
-| Implements `schema.Provider` | `KindVariant` | Delegates to `YamltuiSchema()` return |
+| Implements `schema.Provider` | `KindVariant` | Delegates to the `"kind"` entries of `Metadata()` |
 
 ---
 
@@ -321,17 +321,19 @@ For fields that can be either a scalar **or** a struct in YAML:
 
 **Go:**
 ```go
-// Implement schema.Provider to bypass reflection and declare the schema manually.
+// Give the Metadata entries a "kind" to bypass reflection and declare the
+// shape manually. It is the same method the metadata package reads, so the
+// field's meaning is declared in the same place.
 type TimeoutValue struct{}
 
-func (TimeoutValue) YamltuiSchema() []schema.FieldDef {
-    return []schema.FieldDef{
-        {YAMLName: "connect", Kind: schema.KindPrimitive, Default: "5s",
-            Description: "TCP connection timeout"},
-        {YAMLName: "read", Kind: schema.KindPrimitive, Default: "30s",
-            Description: "Read timeout per request"},
-        {YAMLName: "write", Kind: schema.KindPrimitive, Default: "30s",
-            Description: "Write timeout per request"},
+func (TimeoutValue) Metadata() map[string]any {
+    return map[string]any{
+        "connect": map[string]any{"kind": "primitive", "scalar": "duration",
+            "default": "5s", "description": "TCP connection timeout"},
+        "read": map[string]any{"kind": "primitive", "scalar": "duration",
+            "default": "30s", "description": "Read timeout per request"},
+        "write": map[string]any{"kind": "primitive", "scalar": "duration",
+            "default": "30s", "description": "Write timeout per request"},
     }
 }
 
@@ -354,8 +356,10 @@ timeout:
 ```
 
 **Notes:**
-- yamltui renders the schema from `YamltuiSchema()` - reflection is skipped entirely
-- Useful for types that don't have a clean Go representation (union types, custom DSLs)
+- the shape comes from the `"kind"` entries - reflection is skipped entirely
+- every entry must carry `"kind"`; a map where some do not is read as ordinary metadata and reflection takes over
+- entries come out in alphabetical order, since a Go map has none
+- useful for types that don't have a clean Go representation (union types, custom DSLs)
 - `schema.Provider` can also be implemented on a pointer receiver
 
 ---

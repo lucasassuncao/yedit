@@ -3,6 +3,7 @@ package schema
 import (
 	"encoding"
 	"reflect"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -32,8 +33,8 @@ var (
 // editor's MetadataSource instead (see the yedit/metadata package).
 //
 // To customise discovery for union types (a value that can be a scalar OR a
-// struct OR a map), make the wrapper type implement Provider - its
-// Schema() return value is used in place of reflective traversal.
+// struct OR a map), make the wrapper type implement Provider and give its
+// Metadata entries a "kind". Those entries replace reflective traversal.
 //
 // The optional recursionLimit controls how many extra times each individual
 // type may re-enter the traversal beyond its first visit. Omitted, it defaults
@@ -181,29 +182,59 @@ func isMarshalerType(t reflect.Type) bool {
 		reflect.PointerTo(t).Implements(textMarshalerType)
 }
 
-// providerChildren returns the FieldDef list declared by a type implementing
-// Provider, or nil if the type does not implement the interface.
+// providerChildren returns the fields a type declares through Metadata, or nil
+// when it declares none. A declaration is recognised by "kind": metadata
+// without it describes what fields mean, not which exist.
 func providerChildren(t reflect.Type) []FieldDef {
 	// Unwrap wrappers until stable so map[string]*T, map[string][]T, []*T,
 	// and other combinations all reach the element type T.
 	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Map {
 		t = t.Elem()
 	}
-	providerType := reflect.TypeOf((*Provider)(nil)).Elem()
-	// An interface type has no concrete value to call Schema on - such
+	// An interface type has no concrete value to call Metadata on - such
 	// fields classify as KindAny instead.
 	if t.Kind() == reflect.Interface {
 		return nil
 	}
-	// Instantiate via reflect.New so the receiver is never a typed nil
-	// pointer, which would panic when Schema has a value receiver.
+	raw := providerMap(t)
+	if len(raw) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(raw))
+	for name := range raw {
+		names = append(names, name)
+	}
+	slices.Sort(names) // a map has no order; the documented one is alphabetical
+	out := make([]FieldDef, 0, len(names))
+	for _, name := range names {
+		entry, ok := raw[name].(map[string]any)
+		if !ok {
+			return nil
+		}
+		kindName, ok := entry["kind"].(string)
+		if !ok {
+			return nil
+		}
+		kind, ok := kindNames[kindName]
+		if !ok {
+			return nil
+		}
+		scalar, _ := entry["scalar"].(string)
+		out = append(out, FieldDef{YAMLName: name, Kind: kind, Scalar: scalar})
+	}
+	return out
+}
+
+// providerMap calls Metadata on a zero value of t, or returns nil when t does
+// not implement Provider. reflect.New keeps the receiver from being a typed
+// nil pointer, which would panic for a value receiver.
+func providerMap(t reflect.Type) map[string]any {
+	providerType := reflect.TypeOf((*Provider)(nil)).Elem()
 	switch {
 	case t.Implements(providerType):
-		zero := reflect.New(t).Elem().Interface().(Provider)
-		return zero.Schema()
+		return reflect.New(t).Elem().Interface().(Provider).Metadata()
 	case reflect.PointerTo(t).Implements(providerType):
-		zero := reflect.New(t).Interface().(Provider)
-		return zero.Schema()
+		return reflect.New(t).Interface().(Provider).Metadata()
 	}
 	return nil
 }
@@ -293,3 +324,8 @@ func DiscoverDepth(v any, depth int) []FieldDef {
 	}
 	return Discover(v)
 }
+
+// DeclaresShape reports whether t declares its own fields through Metadata
+// rather than leaving them to reflection. Consumers that walk a struct use it
+// to stop where a union type takes over.
+func DeclaresShape(t reflect.Type) bool { return providerChildren(t) != nil }

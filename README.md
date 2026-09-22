@@ -31,7 +31,7 @@ go get github.com/lucasassuncao/yedit
 
 ### Recommended: implement `Metadata()` on your struct
 
-Each struct declares only its own direct fields; nested structs that also implement `MetadataProvider` are composed automatically.
+Each struct declares only its own direct fields; nested structs that also implement `MetadataProvider` are composed automatically. The map keys are the lowercased `editor.FieldMeta` field names, and an unknown key is a startup error.
 
 ```go
 package main
@@ -48,10 +48,10 @@ type ServerConfig struct {
 	Port int    `yaml:"port"`
 }
 
-func (ServerConfig) Metadata() map[string]*metadata.Node {
-	return map[string]*metadata.Node{
-		"host": {FieldMeta: editor.FieldMeta{Description: "Address to bind.", Default: "localhost"}},
-		"port": {FieldMeta: editor.FieldMeta{Description: "Port to listen on.", Default: "8080"}},
+func (ServerConfig) Metadata() map[string]any {
+	return map[string]any{
+		"host": map[string]any{"description": "Address to bind.", "default": "localhost"},
+		"port": map[string]any{"description": "Port to listen on.", "default": "8080"},
 	}
 }
 
@@ -59,10 +59,10 @@ type Config struct {
 	Server ServerConfig `yaml:"server"`
 }
 
-func (Config) Metadata() map[string]*metadata.Node {
-	return map[string]*metadata.Node{
-		"server": {FieldMeta: editor.FieldMeta{Description: "HTTP server configuration."}},
-		// no Children needed - ServerConfig.Metadata() is composed automatically
+func (Config) Metadata() map[string]any {
+	return map[string]any{
+		"server": map[string]any{"description": "HTTP server configuration."},
+		// no children needed - ServerConfig.Metadata() is composed automatically
 	}
 }
 

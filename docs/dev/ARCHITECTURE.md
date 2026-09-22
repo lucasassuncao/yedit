@@ -15,7 +15,6 @@ yamltui/
 ├── schema/             - schema.Discover: reflects a Go struct into a []FieldDef tree
 ├── document/           - raw YAML bytes, block list, undo/redo history
 ├── presets/            - ForField, Combine, Func: struct-backed and ad-hoc preset sources
-├── docgenerator/       - generates Markdown reference tables
 ├── theme/              - color palette, layout helpers
 ├── viewer/             - read-only preset browser TUI
 ├── themebrowser/       - inline table of the built-in themes
@@ -41,21 +40,16 @@ your app
         ├── spec      ← FieldMeta, MetadataSource
         └── schema    ← Discover
 
-  └── docgenerator    ← Generate + WithMarkdown / WithJSONSchema / WithExamples / WithIndex
-        ├── spec      ← MetadataSource
-        ├── metadata  ← New
-        └── schema    ← Discover
-
   └── presets         ← ForField, Combine, Func (struct-backed and ad-hoc preset sources)
 ```
 
 `spec` is the reason the arrows point the way they do. It holds only the types
 that describe a field, and imports nothing but `document`, `schema`, and
-`yamlnode` - all leaves. That is what lets `metadata`, `docgenerator`,
-`validate`, and third-party rules name a `FieldMeta` or implement a `Validator`
-without compiling the TUI: each of those four pulls in **zero** bubbletea,
-glamour, or Markdown packages. Before the split they imported `editor` for those
-types and dragged in 35.
+`yamlnode` - all leaves. That is what lets `metadata`, `validate`, and
+third-party rules name a `FieldMeta` or implement a `Validator` without
+compiling the TUI: each of them pulls in **zero** bubbletea, glamour, or
+Markdown packages. Before the split they imported `editor` for those types and
+dragged in 35.
 
 `spec` must never import `validate` or `editor`.
 
@@ -103,11 +97,11 @@ Validators implement `editor.Validator` and are called before every save via `Ru
 
 Two construction paths, both validating field names against the struct at startup:
 
-- **`New(v any)`** - the recommended path. The struct implements `MetadataProvider` (returns `map[string]*Node` for its direct fields). Nested structs that also implement `MetadataProvider` have their children composed automatically via reflection. Cycles (e.g. `Filter.Any []Filter`) are resolved through shared-pointer caching. Returns an error if any `yaml`-tagged field is undocumented.
+- **`New(v any)`** - the recommended path. The struct implements `MetadataProvider` (returns `map[string]any` for its direct fields). `DecodeTree` turns that map into a `Node` tree through yaml, using the `FieldMeta` tags, and rejects keys that match no field. Nested structs that also implement `MetadataProvider` have their children composed automatically via reflection. Cycles (e.g. `Filter.Any []Filter`) are resolved by caching each type's decoded tree. Returns an error if any `yaml`-tagged field is undocumented.
 
 - **`NewFromTree(schemaPtr any, tree map[string]*Node)`** - the manual path. Pass a fully-constructed tree; useful for structs you don't own or when child metadata is built programmatically.
 
-`metadata.Node` embeds `editor.FieldMeta` and adds `Children map[string]*Node`. Shared pointers in `Children` model recursive types without infinite loops.
+`metadata.Node` embeds `editor.FieldMeta` and adds `Children map[string]*Node`. Shared pointers in `Children` model recursive types without infinite loops; a decoded tree has none, since a `map[string]any` cannot be cyclic.
 
 ---
 
@@ -127,7 +121,7 @@ type FieldDef struct {
 
 `Kind` is the driving concept: `KindObject` gets a field tree, `KindList`/`KindDictionary` with children get a `[N]` navigator, everything else gets the raw YAML pane. See [Schema Kinds Reference](../SCHEMA-KINDS.md) for the full mapping.
 
-The schema package has no dependency on `editor` - it can be used standalone (e.g. by `docgenerator`).
+The schema package has no dependency on `editor` - it can be used standalone.
 
 ---
 
@@ -147,11 +141,19 @@ A round-trip guard validates each `Insert`/`Replace` by re-parsing the stored bl
 
 ---
 
-## docgenerator
+## Doc generation
 
-Generates Markdown reference tables from a Go struct and a `MetadataSource`. Used for a `generate-docs` CLI subcommand that writes the files into the repository. `docgenerator` depends on `editor` (for `MetadataSource`) and `schema` (for `Discover`), but not the other way around - no import cycle.
+Generating Markdown and a JSON Schema lives in a separate module,
+[docgen](https://github.com/lucasassuncao/docgen). It reads the same
+`Metadata()` method the editor does, and declares its own field types, so
+neither module imports the other.
 
-This is a user-facing feature, not an implementation detail - see [Doc Generation](../DOC-GENERATION.md) for the full API and usage examples.
+That is why `Provider.Metadata()` returns `map[string]any` instead of
+`map[string]*Node`: a package type would force one side to import the other.
+The cost is that the keys are not checked by the compiler; `DecodeTree` checks
+them at startup instead and names the offending key.
+
+See [Doc Generation](../DOC-GENERATION.md).
 
 ---
 

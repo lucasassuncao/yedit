@@ -48,13 +48,13 @@ func TestDiscover_descents(t *testing.T) {
 	is.Equal([]string{"dockerfile", "context", "args"}, names)
 }
 
-// unionItem opts into Provider to declare its own schema.
+// unionItem opts into Provider to declare its own shape.
 type unionItem struct{}
 
-func (unionItem) Schema() []schema.FieldDef {
-	return []schema.FieldDef{
-		{YAMLName: "type", Kind: schema.KindPrimitive},
-		{YAMLName: "target", Kind: schema.KindPrimitive},
+func (unionItem) Metadata() map[string]any {
+	return map[string]any{
+		"type":   map[string]any{"kind": "primitive"},
+		"target": map[string]any{"kind": "primitive"},
 	}
 }
 
@@ -103,9 +103,10 @@ func TestDiscover_providerOverridesReflection(t *testing.T) {
 	must.Len(fields, 1, "expected single field 'items'")
 	is.Equal("items", fields[0].YAMLName)
 	is.Equal(schema.KindVariant, fields[0].Kind)
+	// A declaration is a map, so the order is alphabetical, not as written.
 	if is.Len(fields[0].Children, 2, "expected 2 children from Provider") {
-		is.Equal("type", fields[0].Children[0].YAMLName)
-		is.Equal("target", fields[0].Children[1].YAMLName)
+		is.Equal("target", fields[0].Children[0].YAMLName)
+		is.Equal("type", fields[0].Children[1].YAMLName)
 	}
 }
 
@@ -350,12 +351,12 @@ func TestDiscover_marshalerIsKindPrimitive(t *testing.T) {
 // ── map-wrapped Provider elements ─────────────────────────────────────────────
 
 // mapUnionItem implements Provider with a value receiver, so calling
-// Schema on a typed nil pointer would panic.
+// Metadata on a typed nil pointer would panic.
 type mapUnionItem struct{}
 
-func (mapUnionItem) Schema() []schema.FieldDef {
-	return []schema.FieldDef{
-		{YAMLName: "kind", Kind: schema.KindPrimitive},
+func (mapUnionItem) Metadata() map[string]any {
+	return map[string]any{
+		"kind": map[string]any{"kind": "primitive"},
 	}
 }
 

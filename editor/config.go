@@ -13,9 +13,9 @@ import (
 	"github.com/lucasassuncao/yedit/theme"
 )
 
-// These names live in yedit/spec so metadata, docgenerator, validate, and
-// third-party rules can describe a field without importing the TUI. They are
-// aliases, not new types, so consumer code keeps compiling.
+// These names live in yedit/spec so metadata, validate, and outside rules can
+// describe a field without importing the TUI. They are aliases, not new types,
+// so consumer code keeps compiling.
 type (
 	FieldMeta       = spec.FieldMeta
 	MetadataSource  = spec.MetadataSource

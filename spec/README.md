@@ -8,9 +8,9 @@
 import "github.com/lucasassuncao/yedit/spec"
 ```
 
-Package spec holds the vocabulary shared by everything that describes a configuration field: the editor, the validation rules, the metadata tree, and the documentation generator.
+Package spec holds the vocabulary shared by everything that describes a configuration field: the editor, the validation rules, and the metadata tree.
 
-These types used to live in the editor package, which meant that any consumer wanting to name a FieldMeta or implement a Validator had to import the whole TUI \- roughly 35 packages of bubbletea, glamour, and Markdown machinery \- for a handful of struct definitions. Keeping them here lets metadata, docgenerator, validate, and third\-party rules depend on the vocabulary alone.
+These types used to live in the editor package, which meant that any consumer wanting to name a FieldMeta or implement a Validator had to import the whole TUI \- roughly 35 packages of bubbletea, glamour, and Markdown machinery \- for a handful of struct definitions. Keeping them here lets metadata, validate, and third\-party rules depend on the vocabulary alone.
 
 spec deliberately imports only document, schema, and yamlnode, all of which are leaves. It must never import editor or validate.
 
@@ -19,10 +19,13 @@ spec deliberately imports only document, schema, and yamlnode, all of which are 
 - [Variables](<#variables>)
 - [type FieldMeta](<#FieldMeta>)
 - [type Format](<#Format>)
+  - [func FormatByName\(name string\) \(Format, bool\)](<#FormatByName>)
   - [func FormatCustom\(name string, validate func\(string\) bool\) Format](<#FormatCustom>)
   - [func \(f Format\) IsZero\(\) bool](<#Format.IsZero>)
   - [func \(f Format\) Label\(\) string](<#Format.Label>)
+  - [func \(f Format\) MarshalYAML\(\) \(any, error\)](<#Format.MarshalYAML>)
   - [func \(f Format\) Matches\(v string\) bool](<#Format.Matches>)
+  - [func \(f \*Format\) UnmarshalYAML\(n \*yaml.Node\) error](<#Format.UnmarshalYAML>)
 - [type Group](<#Group>)
 - [type MetadataFunc](<#MetadataFunc>)
   - [func \(f MetadataFunc\) FieldMeta\(blockKey, fieldPath string\) FieldMeta](<#MetadataFunc.FieldMeta>)
@@ -207,62 +210,59 @@ var FormatUUID = FormatCustom("uuid", func(v string) bool {
 ```
 
 <a name="FieldMeta"></a>
-## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L31-L77>)
+## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L27-L70>)
 
-FieldMeta carries a single field's metadata: displayed in the Hint/Example panel and enforced by the FromMetadata validator family. Fields at their zero value declare nothing \- no panel line, no enforcement. MetadataSource is the sole authority: yedit never auto\-populates any FieldMeta field from struct tags. If no MetadataSource is configured, the hint panel shows only a generated example.
+FieldMeta carries a single field's metadata: displayed in the Hint/Example panel and enforced by the FromMetadata validator family. A zero field declares nothing; yedit never derives any of this from struct tags.
 
 ```go
 type FieldMeta struct {
-    Description string
-    Type        string   // human-readable Go type: "string", "bool", "int", "[]string", "duration", "object", etc.
-    Required    bool     // enforced by RequiredFromMetadata
-    Default     string   // display only - no enforcement rule exists for defaults
-    OneOf       []string // enforced by OneOfFromMetadata
-    Example     string   // YAML snippet shown verbatim in the Example section
+    Description string   `yaml:"description"`
+    Type        string   `yaml:"type"`     // human-readable Go type: "string", "bool", "int", "[]string", "duration", "object", etc.
+    Required    bool     `yaml:"required"` // enforced by RequiredFromMetadata
+    Default     string   `yaml:"default"`  // display only - no enforcement rule exists for defaults
+    OneOf       []string `yaml:"oneof"`    // enforced by OneOfFromMetadata
+    Example     string   `yaml:"example"`  // YAML snippet shown verbatim in the Example section
 
     // Value constraints, enforced by the FromMetadata validator family.
-    Min, Max string // RangeFromMetadata - number, duration, or size strings (ValueInRange semantics)
-    Pattern  string // PatternFromMetadata - RE2 regular expression (ValueMatches semantics)
+    Min     string `yaml:"min"`     // RangeFromMetadata - number, duration, or size strings (ValueInRange semantics)
+    Max     string `yaml:"max"`     // RangeFromMetadata
+    Pattern string `yaml:"pattern"` // PatternFromMetadata - RE2 regular expression (ValueMatches semantics)
     // Collection constraints. MinCount/MaxCount both zero means no rule;
     // MinCount > 0 with MaxCount == 0 means "at least MinCount, no upper bound".
-    MinCount, MaxCount int  // CountFromMetadata (CountRange semantics)
-    Unique             bool // UniqueFromMetadata - scalar list items must not repeat
+    MinCount int  `yaml:"mincount"` // CountFromMetadata (CountRange semantics)
+    MaxCount int  `yaml:"maxcount"` // CountFromMetadata
+    Unique   bool `yaml:"unique"`   // UniqueFromMetadata - scalar list items must not repeat
     // Deprecation: non-empty marks the field deprecated; the value is the
     // migration hint shown to the user (DeprecatedFromMetadata).
-    Deprecated string
+    Deprecated string `yaml:"deprecated"`
 
-    // Formats lists the acceptable string formats for this field.
-    // FormatFromMetadata validates the field's value against each format
-    // using OR semantics: valid if any format's validator returns true.
-    // Empty means no format rule. Use FormatCustom for app-specific formats.
-    Formats []Format
+    // FormatFromMetadata accepts a value matching any one of these. Empty means
+    // no rule. Use FormatCustom for app-specific formats.
+    Formats []Format `yaml:"formats"`
     // MinLength and MaxLength constrain string length in Unicode code points.
     // 0 means no rule. Enforced by LengthFromMetadata.
-    MinLength int
-    MaxLength int
+    MinLength int `yaml:"minlength"`
+    MaxLength int `yaml:"maxlength"`
     // NotOneOf is a case-sensitive denylist. Enforced by NotOneOfFromMetadata.
     // Skipped when empty or when the field value is empty.
-    NotOneOf []string
-    // Presentation overrides how the field's children are shown in the tree panel.
-    // PresentationOverlay: field opens in a dedicated overlay editor (drill-in).
-    // PresentationInline: children are expanded inline in the tree.
-    // PresentationFlat: field is shown as a leaf with no children.
-    // Zero value (PresentationDefault) derives behavior from Kind.
-    Presentation schema.Presentation
+    NotOneOf []string `yaml:"notoneof"`
+    // Presentation overrides how children are shown in the tree panel: overlay
+    // (drill-in), inline, or flat (leaf). Zero derives it from Kind.
+    Presentation schema.Presentation `yaml:"presentation"`
     // Multiline is display-only: sets Type to "multiline string" when Type is
     // empty, and auto-generates a block-scalar example when Example is empty.
     // Does not change editor behavior.
-    Multiline bool
+    Multiline bool `yaml:"multiline"`
     // Snippet is the YAML inserted when the field is toggled on in the tree
     // panel. Falls back to "<fieldName>: \n" when empty.
-    Snippet string
+    Snippet string `yaml:"snippet"`
     // PreChecked marks the field as checked when a new (empty) block is opened.
-    PreChecked bool
+    PreChecked bool `yaml:"prechecked"`
 }
 ```
 
 <a name="Format"></a>
-## type [Format](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L15-L18>)
+## type [Format](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L19-L22>)
 
 Format describes the expected string format for a field. Use built\-in vars \(FormatURL, FormatUUID, ...\) or FormatCustom for app\-specific formats.
 
@@ -272,8 +272,17 @@ type Format struct {
 }
 ```
 
+<a name="FormatByName"></a>
+### func [FormatByName](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L51>)
+
+```go
+func FormatByName(name string) (Format, bool)
+```
+
+FormatByName returns the registered format called name.
+
 <a name="FormatCustom"></a>
-### func [FormatCustom](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L26>)
+### func [FormatCustom](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L30>)
 
 ```go
 func FormatCustom(name string, validate func(string) bool) Format
@@ -289,7 +298,7 @@ var FormatLeanIXID = editor.FormatCustom("leanix-id", func(v string) bool {
 ```
 
 <a name="Format.IsZero"></a>
-### func \(Format\) [IsZero](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L31>)
+### func \(Format\) [IsZero](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L77>)
 
 ```go
 func (f Format) IsZero() bool
@@ -298,16 +307,25 @@ func (f Format) IsZero() bool
 IsZero reports whether f is the zero value \(not a real format\).
 
 <a name="Format.Label"></a>
-### func \(Format\) [Label](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L34>)
+### func \(Format\) [Label](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L81>)
 
 ```go
 func (f Format) Label() string
 ```
 
-Label returns the display name used in the hint panel and docgenerator.
+Label returns the display name used in the hint panel, and the name metadata declares this format by.
+
+<a name="Format.MarshalYAML"></a>
+### func \(Format\) [MarshalYAML](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L74>)
+
+```go
+func (f Format) MarshalYAML() (any, error)
+```
+
+MarshalYAML writes a format as its name.
 
 <a name="Format.Matches"></a>
-### func \(Format\) [Matches](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L38>)
+### func \(Format\) [Matches](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L85>)
 
 ```go
 func (f Format) Matches(v string) bool
@@ -315,8 +333,17 @@ func (f Format) Matches(v string) bool
 
 Matches reports whether v satisfies this format. A zero Format matches nothing. Exported so the validation rules can live outside this package.
 
+<a name="Format.UnmarshalYAML"></a>
+### func \(\*Format\) [UnmarshalYAML](<https://github.com/lucasassuncao/yedit/blob/main/spec/format.go#L60>)
+
+```go
+func (f *Format) UnmarshalYAML(n *yaml.Node) error
+```
+
+UnmarshalYAML resolves a format declared by name. An unregistered name is an error: a format with no validator would silently enforce nothing.
+
 <a name="Group"></a>
-## type [Group](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L107>)
+## type [Group](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L100>)
 
 Group is the display\-grouping key for Violation. Violations sharing the same Group are merged under a single bullet in the error modal. It was unexported while it lived in the editor package; exporting it is what lets validation rules outside that package build a Violation.
 
@@ -335,7 +362,7 @@ const (
 ```
 
 <a name="MetadataFunc"></a>
-## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L96>)
+## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L89>)
 
 MetadataFunc adapts a plain function to the MetadataSource interface:
 
@@ -353,7 +380,7 @@ type MetadataFunc func(blockKey, fieldPath string) FieldMeta
 ```
 
 <a name="MetadataFunc.FieldMeta"></a>
-### func \(MetadataFunc\) [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L99>)
+### func \(MetadataFunc\) [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L92>)
 
 ```go
 func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta
@@ -362,7 +389,7 @@ func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta
 FieldMeta calls f.
 
 <a name="MetadataSource"></a>
-## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L84-L86>)
+## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L77-L79>)
 
 MetadataSource provides per\-field metadata for the Hint/Example panel and the FromMetadata validator family. It is called with the top\-level block key and the field's dot\-joined path from the block root \(e.g. "source", "source.path"\). For top\-level block entries in the root list, fieldPath is empty \(""\). Returning a zero FieldMeta means "no override".
 
@@ -373,7 +400,7 @@ type MetadataSource interface {
 ```
 
 <a name="Severity"></a>
-## type [Severity](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L123>)
+## type [Severity](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L116>)
 
 Severity classifies how a Violation should be treated by the caller.
 
@@ -396,7 +423,7 @@ const (
 ```
 
 <a name="Severity.String"></a>
-### func \(Severity\) [String](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L134>)
+### func \(Severity\) [String](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L127>)
 
 ```go
 func (s Severity) String() string
@@ -405,7 +432,7 @@ func (s Severity) String() string
 String returns "error" or "warning".
 
 <a name="ValidationInput"></a>
-## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L161-L165>)
+## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L154-L158>)
 
 ValidationInput carries the document state inspected by validators. RunAll builds it once per run and shares it across all validators, so the document is parsed a single time instead of once per validator. Build one with NewValidationInput when invoking a validator directly.
 
@@ -418,7 +445,7 @@ type ValidationInput struct {
 ```
 
 <a name="NewValidationInput"></a>
-### func [NewValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L170>)
+### func [NewValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L163>)
 
 ```go
 func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
@@ -427,7 +454,7 @@ func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
 NewValidationInput parses raw once and bundles it with blocks for a validation run. Root is nil when raw is not valid YAML; an empty document yields an empty mapping so unconditional checks still run.
 
 <a name="Validator"></a>
-## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L178-L180>)
+## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L171-L173>)
 
 Validator is a pluggable rule executed at validate/save time. It returns one Violation per problem it finds. Returning an empty slice \(or nil\) means "all good".
 
@@ -438,7 +465,7 @@ type Validator interface {
 ```
 
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L193>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L186>)
 
 ValidatorFunc adapts a plain function to the Validator interface, letting callers register inline validators without defining a named type:
 
@@ -458,7 +485,7 @@ type ValidatorFunc func(in ValidationInput) []Violation
 ```
 
 <a name="ValidatorFunc.Validate"></a>
-### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L196>)
+### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L189>)
 
 ```go
 func (f ValidatorFunc) Validate(in ValidationInput) []Violation
@@ -467,7 +494,7 @@ func (f ValidatorFunc) Validate(in ValidationInput) []Violation
 Validate calls f.
 
 <a name="Violation"></a>
-## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L142-L147>)
+## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L135-L140>)
 
 Violation is a single rule violation reported by a Validator.
 
@@ -481,7 +508,7 @@ type Violation struct {
 ```
 
 <a name="Violation.String"></a>
-### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L150>)
+### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L143>)
 
 ```go
 func (v Violation) String() string

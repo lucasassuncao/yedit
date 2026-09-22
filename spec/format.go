@@ -1,12 +1,16 @@
 package spec
 
 import (
+	"fmt"
 	"net"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Format describes the expected string format for a field.
@@ -24,13 +28,56 @@ type Format struct {
 //	    return ok
 //	})
 func FormatCustom(name string, validate func(string) bool) Format {
-	return Format{name: name, validate: validate}
+	f := Format{name: name, validate: validate}
+	registerFormat(f)
+	return f
 }
+
+// formatsByName resolves a format's name back to the format itself, which is
+// what lets metadata declare formats as plain strings. Every Format built by
+// FormatCustom registers here, so an app's own formats resolve too.
+var (
+	formatsMu     sync.RWMutex
+	formatsByName = map[string]Format{}
+)
+
+func registerFormat(f Format) {
+	formatsMu.Lock()
+	defer formatsMu.Unlock()
+	formatsByName[f.name] = f
+}
+
+// FormatByName returns the registered format called name.
+func FormatByName(name string) (Format, bool) {
+	formatsMu.RLock()
+	defer formatsMu.RUnlock()
+	f, ok := formatsByName[name]
+	return f, ok
+}
+
+// UnmarshalYAML resolves a format declared by name. An unregistered name is an
+// error: a format with no validator would silently enforce nothing.
+func (f *Format) UnmarshalYAML(n *yaml.Node) error {
+	var name string
+	if err := n.Decode(&name); err != nil {
+		return err
+	}
+	found, ok := FormatByName(name)
+	if !ok {
+		return fmt.Errorf("unknown format %q", name)
+	}
+	*f = found
+	return nil
+}
+
+// MarshalYAML writes a format as its name.
+func (f Format) MarshalYAML() (any, error) { return f.name, nil }
 
 // IsZero reports whether f is the zero value (not a real format).
 func (f Format) IsZero() bool { return f.name == "" }
 
-// Label returns the display name used in the hint panel and docgenerator.
+// Label returns the display name used in the hint panel, and the name metadata
+// declares this format by.
 func (f Format) Label() string { return f.name }
 
 // Matches reports whether v satisfies this format. A zero Format matches

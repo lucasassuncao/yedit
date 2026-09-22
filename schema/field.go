@@ -3,6 +3,12 @@
 // its UI.
 package schema
 
+import (
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+)
+
 // Presentation controls how a field's children are shown in the tree panel.
 // It is applied after schema discovery via the editor's applyPresentation step.
 // KindPrimitive fields are always PresentationFlat regardless of what is set.
@@ -58,10 +64,52 @@ type FieldDef struct {
 	ElemScalar string
 }
 
-// Provider is an opt-in interface for types that reflection cannot introspect
-// correctly - typically union types (e.g. a value that can be a string OR a
-// struct OR a map). Implementations return the FieldDef tree they want the
-// editor to see in place of the wrapper type's own fields.
+// Provider is the opt-in for types reflection cannot read - a union that is a
+// string OR a struct OR a map. Entries carrying a "kind" replace the wrapper's
+// own fields. See docs/SCHEMA-KINDS.md.
 type Provider interface {
-	Schema() []FieldDef
+	Metadata() map[string]any
+}
+
+// kindNames maps the metadata spelling of a kind to its value.
+var kindNames = map[string]Kind{
+	"primitive":  KindPrimitive,
+	"object":     KindObject,
+	"list":       KindList,
+	"dictionary": KindDictionary,
+	"variant":    KindVariant,
+	"any":        KindAny,
+}
+
+// presentationNames maps the metadata spelling of a presentation to its value.
+var presentationNames = map[string]Presentation{
+	"":        PresentationDefault,
+	"default": PresentationDefault,
+	"flat":    PresentationFlat,
+	"inline":  PresentationInline,
+	"overlay": PresentationOverlay,
+}
+
+// UnmarshalYAML resolves a presentation declared by name.
+func (p *Presentation) UnmarshalYAML(n *yaml.Node) error {
+	var name string
+	if err := n.Decode(&name); err != nil {
+		return err
+	}
+	found, ok := presentationNames[name]
+	if !ok {
+		return fmt.Errorf("unknown presentation %q", name)
+	}
+	*p = found
+	return nil
+}
+
+// MarshalYAML writes a presentation as its name.
+func (p Presentation) MarshalYAML() (any, error) {
+	for name, v := range presentationNames {
+		if v == p && name != "" && name != "default" {
+			return name, nil
+		}
+	}
+	return "default", nil
 }

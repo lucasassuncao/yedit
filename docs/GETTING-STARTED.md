@@ -43,59 +43,59 @@ import (
     "github.com/lucasassuncao/yedit/metadata"
 )
 
-func (ServerConfig) Metadata() map[string]*metadata.Node {
-    return map[string]*metadata.Node{
-        "host": {FieldMeta: editor.FieldMeta{
-            Description: "Address the server binds to.",
-            Default:     "localhost",
-            Example:     "host: 0.0.0.0",
-        }},
-        "port": {FieldMeta: editor.FieldMeta{
-            Description: "TCP port to listen on.",
-            Default:     "8080",
-            Example:     "port: 8080",
-        }},
-        "tls": {FieldMeta: editor.FieldMeta{
-            Description: "Enable HTTPS. Requires a certificate and key.",
-            Default:     "false",
-        }},
+func (ServerConfig) Metadata() map[string]any {
+    return map[string]any{
+        "host": map[string]any{
+            "description": "Address the server binds to.",
+            "default":     "localhost",
+            "example":     "host: 0.0.0.0",
+        },
+        "port": map[string]any{
+            "description": "TCP port to listen on.",
+            "default":     "8080",
+            "example":     "port: 8080",
+        },
+        "tls": map[string]any{
+            "description": "Enable HTTPS. Requires a certificate and key.",
+            "default":     "false",
+        },
     }
 }
 
-func (LoggingConfig) Metadata() map[string]*metadata.Node {
-    return map[string]*metadata.Node{
-        "level": {FieldMeta: editor.FieldMeta{
-            Description: "Minimum log severity to emit.",
-            Required:    true,
-            OneOf:       []string{"debug", "info", "warn", "error"},
-            Default:     "info",
-        }},
-        "file": {FieldMeta: editor.FieldMeta{
-            Description: "Path to the log file.",
-            Example:     "file: /var/log/app.log",
-        }},
-        "show-caller": {FieldMeta: editor.FieldMeta{
-            Description: "Append source file and line to each log entry.",
-            Default:     "false",
-        }},
+func (LoggingConfig) Metadata() map[string]any {
+    return map[string]any{
+        "level": map[string]any{
+            "description": "Minimum log severity to emit.",
+            "required":    true,
+            "oneof":       []string{"debug", "info", "warn", "error"},
+            "default":     "info",
+        },
+        "file": map[string]any{
+            "description": "Path to the log file.",
+            "example":     "file: /var/log/app.log",
+        },
+        "show-caller": map[string]any{
+            "description": "Append source file and line to each log entry.",
+            "default":     "false",
+        },
     }
 }
 
 // Root struct lists its top-level blocks; children are composed automatically.
-func (Config) Metadata() map[string]*metadata.Node {
-    return map[string]*metadata.Node{
-        "server":  {FieldMeta: editor.FieldMeta{Description: "HTTP server configuration.", Required: true}},
-        "logging": {FieldMeta: editor.FieldMeta{Description: "Application logging configuration."}},
+func (Config) Metadata() map[string]any {
+    return map[string]any{
+        "server":  map[string]any{"description": "HTTP server configuration.", "required": true},
+        "logging": map[string]any{"description": "Application logging configuration."},
     }
 }
 
 src, err := metadata.New(Config{})
 if err != nil {
-    log.Fatal(err) // unknown field name, schema mismatch, etc.
+    log.Fatal(err) // unknown key, unknown field name, schema mismatch, etc.
 }
 ```
 
-`metadata.Node` embeds `editor.FieldMeta` for description, type label, default, required flag, allowed values (`OneOf`), and example snippet. The `Type` field is auto-filled from the Go type if left empty.
+The keys are the lowercased `editor.FieldMeta` field names - description, type label, default, required flag, allowed values (`oneof`), example snippet. `type` is auto-filled from the Go type when omitted. A key that matches no field is a startup error naming it. See [Metadata and Hints](METADATA-AND-HINTS.md) for the full list.
 
 For structs from third-party packages that cannot implement `Metadata()`, use `metadata.NewFromTree` and pass the full tree manually. See [Metadata and Hints](METADATA-AND-HINTS.md) for details.
 
@@ -137,16 +137,16 @@ type LoggingConfig struct {
 }
 
 // Metadata — you declare the semantics:
-func (LoggingConfig) Metadata() map[string]*metadata.Node {
-    return map[string]*metadata.Node{
-        "level": {FieldMeta: editor.FieldMeta{
-            Description: "Minimum log severity to emit.",
-            Required:    true,
-            OneOf:       []string{"debug", "info", "warn", "error"},
-        }},
-        "file": {FieldMeta: editor.FieldMeta{
-            Description: "Path to the log file. Empty disables file output.",
-        }},
+func (LoggingConfig) Metadata() map[string]any {
+    return map[string]any{
+        "level": map[string]any{
+            "description": "Minimum log severity to emit.",
+            "required":    true,
+            "oneof":       []string{"debug", "info", "warn", "error"},
+        },
+        "file": map[string]any{
+            "description": "Path to the log file. Empty disables file output.",
+        },
     }
 }
 ```
@@ -234,52 +234,40 @@ Wire it in via `Config.Presets`. For presets shipped as embedded files, see [Pre
 
 ## 6. Add documentation commands (optional)
 
-`docgenerator` generates reference artifacts from your struct and metadata - the same information shown in the hint panel. Every output is opt-in: you get exactly what you ask for.
+[docgen](https://github.com/lucasassuncao/docgen) generates reference artifacts from your struct and metadata - the same information shown in the hint panel. It is a separate module: it reads the same `Metadata()` method, and neither package imports the other.
 
 ```go
-import "github.com/lucasassuncao/yedit/docgenerator"
+import "github.com/lucasassuncao/docgen"
 
-files, err := docgenerator.Generate(
-    []docgenerator.Entry{{Config: Config{}, SplitStructs: true}},
-    docgenerator.WithMetadata(src),
-    docgenerator.WithMarkdown("docs/reference"),
-    docgenerator.WithJSONSchema("docs/schema"),
-    docgenerator.WithIndex("docs/reference"),
+files, err := docgen.Generate(
+    []docgen.Entry{{Config: Config{}, SplitStructs: true}},
+    docgen.WithMarkdown("docs/reference"),
+    docgen.WithJSONSchema("docs/schema"),
+    docgen.WithIndex("docs/reference"),
 )
 if err != nil {
     log.Fatal(err)
 }
 ```
 
-`WithMetadata` is optional when your struct implements `MetadataProvider` - the source is composed automatically.
-
-Wire this as a subcommand in your CLI so users can run `myapp generate-docs`. See [Doc Generation](DOC-GENERATION.md) for the full API (including preset example pages and the JSON Schema details) and `examples/test/main.go` for a complete cobra integration.
+Wire this as a subcommand in your CLI so users can run `myapp generate-docs`. See [Doc Generation](DOC-GENERATION.md).
 
 ---
 
 ## Recursive types
 
-For self-referential structs (e.g. a filter that contains `Any []Filter`), use shared pointers in the metadata tree to avoid duplicating definitions:
+A self-referential struct (a filter that contains `Any []Filter`) declares its fields once. `metadata.New` recognises the type on the way back down and reuses the same subtree, so there is nothing to repeat:
 
 ```go
-// Phase 1: create the shared node.
-anyNode := &metadata.Node{
-    FieldMeta: editor.FieldMeta{Description: "OR logic: match at least one sub-filter."},
+func (Filter) Metadata() map[string]any {
+    return map[string]any{
+        "regex": map[string]any{"description": "RE2 regex matched against the filename."},
+        "any":   map[string]any{"description": "OR logic: match at least one sub-filter."},
+    }
 }
-
-// Phase 2: build children map, then back-assign to close the cycle.
-filterChildren := map[string]*metadata.Node{
-    "regex": {FieldMeta: editor.FieldMeta{Description: "RE2 regex matched against the filename."}},
-    "any":   anyNode,
-}
-anyNode.Children = filterChildren
-
-src, err := metadata.NewFromTree(&Config{}, map[string]*metadata.Node{
-    "filters": {Children: filterChildren},
-})
 ```
 
-Both `metadata.New` and `metadata.NewFromTree` are cycle-aware and handle shared pointers correctly.
+`Metadata()` returns a plain map, so it cannot contain a cycle. It does not need to: composition supplies the recursion. When you assemble a tree by hand with `metadata.NewFromTree`, shared `*Node` pointers still work and are still cycle-aware.
 
 ---
 

@@ -133,7 +133,7 @@ myTheme := theme.Theme{
 
 ## Resolving colors outside the editor
 
-`theme.ResolveColors(t)` merges a `Theme` down to a concrete `Colors` value without importing `editor` - useful when building a companion TUI (e.g. `docgenerator`'s doc browser) that should match the host app's theme:
+`theme.ResolveColors(t)` merges a `Theme` down to a concrete `Colors` value without importing `editor` - useful when building a companion TUI that should match the host app's theme:
 
 ```go
 colors := theme.ResolveColors(myTheme)

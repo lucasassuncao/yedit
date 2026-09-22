@@ -304,7 +304,7 @@ type DrillOut struct{}
 <a name="FieldMeta"></a>
 ## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L20>)
 
-These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
+These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type FieldMeta = spec.FieldMeta
@@ -313,7 +313,7 @@ type FieldMeta = spec.FieldMeta
 <a name="Format"></a>
 ## type [Format](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L23>)
 
-These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
+These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type Format = spec.Format
@@ -331,7 +331,7 @@ FormatCustom builds an app\-specific format. See spec.FormatCustom.
 <a name="MetadataFunc"></a>
 ## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L22>)
 
-These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
+These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type MetadataFunc = spec.MetadataFunc
@@ -340,7 +340,7 @@ type MetadataFunc = spec.MetadataFunc
 <a name="MetadataSource"></a>
 ## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L21>)
 
-These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
+These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type MetadataSource = spec.MetadataSource
@@ -500,7 +500,7 @@ type Undo struct{}
 <a name="ValidationInput"></a>
 ## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L25>)
 
-These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
+These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type ValidationInput = spec.ValidationInput
@@ -518,7 +518,7 @@ NewValidationInput parses raw once and bundles it with blocks for a validation r
 <a name="Validator"></a>
 ## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L26>)
 
-These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
+These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type Validator = spec.Validator
@@ -527,7 +527,7 @@ type Validator = spec.Validator
 <a name="ValidatorFunc"></a>
 ## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L27>)
 
-These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
+These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type ValidatorFunc = spec.ValidatorFunc
@@ -536,7 +536,7 @@ type ValidatorFunc = spec.ValidatorFunc
 <a name="Violation"></a>
 ## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L24>)
 
-These names live in yedit/spec so metadata, docgenerator, validate, and third\-party rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
+These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
 ```go
 type Violation = spec.Violation

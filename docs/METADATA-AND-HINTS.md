@@ -42,9 +42,56 @@ type FieldMeta struct {
 
 Set only the fields that are meaningful for the field being described. Zero values declare nothing.
 
+### Keeping the compiler in the loop
+
+A map literal is not checked: `"descriptoin"` compiles and fails at startup
+instead. Declare your own struct with yaml tags and the entries go back to being
+compiler-checked, while `Metadata()` still returns a plain map:
+
+```go
+// your package - imports nothing
+type meta struct {
+    Description string   `yaml:"description,omitempty"`
+    Required    bool     `yaml:"required,omitempty"`
+    Default     string   `yaml:"default,omitempty"`
+    OneOf       []string `yaml:"oneof,omitempty"`
+}
+
+func (ServerConfig) Metadata() map[string]any {
+    return map[string]any{
+        "host": meta{Description: "Address the server binds to.", Default: "localhost"},
+        "port": meta{Description: "TCP port to listen on.", Default: "8080"},
+    }
+}
+```
+
+Declare only the keys you use. `omitempty` keeps zero fields out of the
+decoded tree.
+
+### Key names in `Metadata()`
+
+A `Metadata()` entry names the same fields in lowercase:
+
+| key | Go field | type |
+|---|---|---|
+| `description`, `type`, `default`, `example` | Description, Type, Default, Example | string |
+| `required`, `unique`, `multiline`, `prechecked` | Required, Unique, Multiline, PreChecked | bool |
+| `oneof`, `notoneof` | OneOf, NotOneOf | []string |
+| `min`, `max`, `pattern`, `deprecated`, `snippet` | Min, Max, Pattern, Deprecated, Snippet | string |
+| `mincount`, `maxcount`, `minlength`, `maxlength` | MinCount, MaxCount, MinLength, MaxLength | int |
+| `formats` | Formats | []string, by format name (`"url"`, `"directory"`) |
+| `presentation` | Presentation | `"flat"`, `"inline"`, `"overlay"` |
+| `children` | Children | map, for nesting the parent must declare itself |
+
+A format name must have been registered by `spec.FormatCustom`, which every
+built-in format and any app-specific one does at package init. An unknown name
+is a startup error.
+
 ## metadata.New (recommended)
 
-Use when the root struct is yours and can implement `MetadataProvider`. Each struct declares its own direct fields via `Metadata()`; nested structs that also implement `MetadataProvider` have their `Children` populated automatically. Full coverage is enforced: adding a yaml-tagged field to the struct without updating `Metadata()` is a startup error.
+Use when the root struct is yours and can implement `MetadataProvider`. Each struct declares its own direct fields via `Metadata()`; nested structs that also implement `MetadataProvider` have their children populated automatically. Full coverage is enforced: adding a yaml-tagged field to the struct without updating `Metadata()` is a startup error.
+
+`Metadata()` returns a plain `map[string]any`, not a package type, so the same method can also feed a documentation generator without either package importing the other. The keys are the lowercased `FieldMeta` field names; a key that matches none is a startup error naming it.
 
 ```go
 import (
@@ -53,30 +100,30 @@ import (
 )
 
 // Each struct declares only its own direct fields.
-func (ServerConfig) Metadata() map[string]*metadata.Node {
-    return map[string]*metadata.Node{
-        "host": {FieldMeta: editor.FieldMeta{
-            Description: "Address the server binds to.",
-            Default:     "localhost",
-            Example:     "host: 0.0.0.0",
-        }},
-        "port": {FieldMeta: editor.FieldMeta{
-            Description: "TCP port to listen on.",
-            Default:     "8080",
-            Example:     "port: 8080",
-        }},
+func (ServerConfig) Metadata() map[string]any {
+    return map[string]any{
+        "host": map[string]any{
+            "description": "Address the server binds to.",
+            "default":     "localhost",
+            "example":     "host: 0.0.0.0",
+        },
+        "port": map[string]any{
+            "description": "TCP port to listen on.",
+            "default":     "8080",
+            "example":     "port: 8080",
+        },
     }
 }
 
-// Root struct lists its top-level blocks; Children for nested structs that
+// Root struct lists its top-level blocks; children for nested structs that
 // implement MetadataProvider are populated automatically.
-func (Config) Metadata() map[string]*metadata.Node {
-    return map[string]*metadata.Node{
-        "server": {FieldMeta: editor.FieldMeta{
-            Description: "HTTP server configuration.",
-            Required:    true,
-        }},
-        // no Children needed - ServerConfig.Metadata() is composed automatically
+func (Config) Metadata() map[string]any {
+    return map[string]any{
+        "server": map[string]any{
+            "description": "HTTP server configuration.",
+            "required":    true,
+        },
+        // no children needed - ServerConfig.Metadata() is composed automatically
     }
 }
 
@@ -147,7 +194,20 @@ editor.Run(editor.Config{
 
 ## Recursive types
 
-For self-referential structs (e.g. a `Filter` that contains `Any []Filter`), use shared pointers and two-phase initialization to avoid infinite recursion:
+With `metadata.New`, a self-referential struct (a `Filter` that contains `Any []Filter`) declares its fields once and nothing more. `New` recognises the type when it comes round again and reuses the same subtree:
+
+```go
+func (Filter) Metadata() map[string]any {
+    return map[string]any{
+        "regex": map[string]any{"description": "RE2 regex matched against the filename."},
+        "any":   map[string]any{"description": "OR logic: match at least one sub-filter."},
+    }
+}
+```
+
+A `Metadata()` map cannot contain a cycle, and does not need to.
+
+With `metadata.NewFromTree`, where you assemble the tree yourself, use shared pointers and two-phase initialization instead - a Go map literal cannot reference itself during construction:
 
 ```go
 // Phase 1: create the shared node.
@@ -167,7 +227,7 @@ src, err := metadata.NewFromTree(&Config{}, map[string]*metadata.Node{
 })
 ```
 
-A Go map literal cannot reference itself during construction, so this two-phase pattern is required. Both `NewFromTree` and `New` are cycle-aware and handle shared pointers correctly.
+Both paths are cycle-aware.
 
 ## Type labels
 

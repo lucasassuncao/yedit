@@ -12,7 +12,6 @@
 //   - editor:       two-panel bubbletea TUI that ties the pieces together
 //   - presets:      Source interface + struct-backed helpers (ForField, Combine) for per-field YAML snippets
 //   - viewer:       read-only TUI to browse a preset Source
-//   - docgenerator: markdown docs generated from a schema + MetadataSource, with a TUI browser
 //   - theme:        palette and layout primitives (header, panels, two-column layout)
 //   - alert:        modal alert/confirm component shared by the TUIs
 //   - yamlnode:     query and navigation helpers over yaml.v3 node trees

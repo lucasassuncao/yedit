@@ -34,41 +34,37 @@ type config struct {
 	Labels     map[string]int `yaml:"labels"`
 }
 
-func (filter) Metadata() map[string]*metadata.Node {
-	anyNode := &metadata.Node{FieldMeta: spec.FieldMeta{Description: "OR"}}
-	children := map[string]*metadata.Node{
-		"regex":   {FieldMeta: spec.FieldMeta{Description: "regex"}},
-		"min-age": {FieldMeta: spec.FieldMeta{Min: "0s", Max: "87600h"}},
-		"any":     anyNode,
-	}
-	anyNode.Children = children
-	return children
-}
-
-func (source) Metadata() map[string]*metadata.Node {
-	return map[string]*metadata.Node{
-		"path":       {FieldMeta: spec.FieldMeta{Required: true}},
-		"extensions": {FieldMeta: spec.FieldMeta{MinCount: 1, Unique: true}},
-		"filter": {
-			FieldMeta: spec.FieldMeta{},
-			Children:  filter{}.Metadata(), // explicit: filter is recursive
-		},
+// filter is recursive: "any" is itself a list of filters. New composes that
+// through its own type, so the declaration names the field and stops.
+func (filter) Metadata() map[string]any {
+	return map[string]any{
+		"regex":   map[string]any{"description": "regex"},
+		"min-age": map[string]any{"min": "0s", "max": "87600h"},
+		"any":     map[string]any{"description": "OR"},
 	}
 }
 
-func (category) Metadata() map[string]*metadata.Node {
-	return map[string]*metadata.Node{
-		"name":   {FieldMeta: spec.FieldMeta{Required: true}},
-		"source": {FieldMeta: spec.FieldMeta{}},
-		// no Children: source implements MetadataProvider, composed automatically by New
+func (source) Metadata() map[string]any {
+	return map[string]any{
+		"path":       map[string]any{"required": true},
+		"extensions": map[string]any{"mincount": 1, "unique": true},
+		"filter":     map[string]any{},
 	}
 }
 
-func (config) Metadata() map[string]*metadata.Node {
-	return map[string]*metadata.Node{
-		"output":     {FieldMeta: spec.FieldMeta{OneOf: []string{"console", "file"}}},
-		"categories": {FieldMeta: spec.FieldMeta{Required: true}},
-		"labels":     {FieldMeta: spec.FieldMeta{}},
+func (category) Metadata() map[string]any {
+	return map[string]any{
+		"name": map[string]any{"required": true},
+		// no children: source declares its own, composed automatically by New
+		"source": map[string]any{},
+	}
+}
+
+func (config) Metadata() map[string]any {
+	return map[string]any{
+		"output":     map[string]any{"oneof": []string{"console", "file"}},
+		"categories": map[string]any{"required": true},
+		"labels":     map[string]any{},
 	}
 }
 
@@ -221,10 +217,10 @@ type inlineProviderRoot struct {
 	Output             string `yaml:"output"`
 }
 
-func (inlineProviderRoot) Metadata() map[string]*metadata.Node {
-	return map[string]*metadata.Node{
-		"output": {},
-		"filter": {},
+func (inlineProviderRoot) Metadata() map[string]any {
+	return map[string]any{
+		"output": map[string]any{},
+		"filter": map[string]any{},
 	}
 }
 
@@ -243,10 +239,8 @@ type innerWithMeta struct {
 	Regex string `yaml:"regex"`
 }
 
-func (innerWithMeta) Metadata() map[string]*metadata.Node {
-	return map[string]*metadata.Node{
-		"regex": {FieldMeta: spec.FieldMeta{Description: "re"}},
-	}
+func (innerWithMeta) Metadata() map[string]any {
+	return map[string]any{"regex": map[string]any{"description": "re"}}
 }
 
 // wrapper does not implement MetadataProvider; its node's Children are set
@@ -259,11 +253,9 @@ type explicitRoot struct {
 	Wrap wrapper `yaml:"wrap"`
 }
 
-func (explicitRoot) Metadata() map[string]*metadata.Node {
-	return map[string]*metadata.Node{
-		"wrap": {Children: map[string]*metadata.Node{
-			"inner": {},
-		}},
+func (explicitRoot) Metadata() map[string]any {
+	return map[string]any{
+		"wrap": map[string]any{"children": map[string]any{"inner": map[string]any{}}},
 	}
 }
 
@@ -317,11 +309,11 @@ type memoRoot struct {
 	Inner innerWithMeta `yaml:"inner"`
 }
 
-var memoRootTree = map[string]*metadata.Node{
-	"inner": {},
+var memoRootTree = map[string]any{
+	"inner": map[string]any{},
 }
 
-func (memoRoot) Metadata() map[string]*metadata.Node { return memoRootTree }
+func (memoRoot) Metadata() map[string]any { return memoRootTree }
 
 func TestNew_doesNotMutateMemoizedMetadata(t *testing.T) {
 	is := assert.New(t)
@@ -329,8 +321,7 @@ func TestNew_doesNotMutateMemoizedMetadata(t *testing.T) {
 	src, err := metadata.New(memoRoot{})
 	must.NoError(err, "New")
 	is.Equal("re", src.FieldMeta("inner", "regex").Description, "composition still works")
-	is.Nil(memoRootTree["inner"].Children, "memoized Metadata() result must not be written")
-	is.Empty(memoRootTree["inner"].Type, "memoized Metadata() result must not be written")
+	is.Empty(memoRootTree["inner"], "memoized Metadata() result must not be written")
 }
 
 // ── shared node under differently typed fields ────────────────────────────────

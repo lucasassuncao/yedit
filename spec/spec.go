@@ -1,12 +1,11 @@
 // Package spec holds the vocabulary shared by everything that describes a
-// configuration field: the editor, the validation rules, the metadata tree, and
-// the documentation generator.
+// configuration field: the editor, the validation rules, and the metadata tree.
 //
 // These types used to live in the editor package, which meant that any consumer
 // wanting to name a FieldMeta or implement a Validator had to import the whole
 // TUI - roughly 35 packages of bubbletea, glamour, and Markdown machinery - for
-// a handful of struct definitions. Keeping them here lets metadata,
-// docgenerator, validate, and third-party rules depend on the vocabulary alone.
+// a handful of struct definitions. Keeping them here lets metadata, validate,
+// and third-party rules depend on the vocabulary alone.
 //
 // spec deliberately imports only document, schema, and yamlnode, all of which
 // are leaves. It must never import editor or validate.
@@ -23,57 +22,51 @@ import (
 // ─── Field metadata ──────────────────────────────────────────────────────────
 
 // FieldMeta carries a single field's metadata: displayed in the Hint/Example
-// panel and enforced by the FromMetadata validator family. Fields at their zero
-// value declare nothing - no panel line, no enforcement.
-// MetadataSource is the sole authority: yedit never auto-populates any FieldMeta
-// field from struct tags. If no MetadataSource is configured, the hint panel
-// shows only a generated example.
+// panel and enforced by the FromMetadata validator family. A zero field
+// declares nothing; yedit never derives any of this from struct tags.
 type FieldMeta struct {
-	Description string
-	Type        string   // human-readable Go type: "string", "bool", "int", "[]string", "duration", "object", etc.
-	Required    bool     // enforced by RequiredFromMetadata
-	Default     string   // display only - no enforcement rule exists for defaults
-	OneOf       []string // enforced by OneOfFromMetadata
-	Example     string   // YAML snippet shown verbatim in the Example section
+	Description string   `yaml:"description"`
+	Type        string   `yaml:"type"`     // human-readable Go type: "string", "bool", "int", "[]string", "duration", "object", etc.
+	Required    bool     `yaml:"required"` // enforced by RequiredFromMetadata
+	Default     string   `yaml:"default"`  // display only - no enforcement rule exists for defaults
+	OneOf       []string `yaml:"oneof"`    // enforced by OneOfFromMetadata
+	Example     string   `yaml:"example"`  // YAML snippet shown verbatim in the Example section
 
 	// Value constraints, enforced by the FromMetadata validator family.
-	Min, Max string // RangeFromMetadata - number, duration, or size strings (ValueInRange semantics)
-	Pattern  string // PatternFromMetadata - RE2 regular expression (ValueMatches semantics)
+	Min     string `yaml:"min"`     // RangeFromMetadata - number, duration, or size strings (ValueInRange semantics)
+	Max     string `yaml:"max"`     // RangeFromMetadata
+	Pattern string `yaml:"pattern"` // PatternFromMetadata - RE2 regular expression (ValueMatches semantics)
 	// Collection constraints. MinCount/MaxCount both zero means no rule;
 	// MinCount > 0 with MaxCount == 0 means "at least MinCount, no upper bound".
-	MinCount, MaxCount int  // CountFromMetadata (CountRange semantics)
-	Unique             bool // UniqueFromMetadata - scalar list items must not repeat
+	MinCount int  `yaml:"mincount"` // CountFromMetadata (CountRange semantics)
+	MaxCount int  `yaml:"maxcount"` // CountFromMetadata
+	Unique   bool `yaml:"unique"`   // UniqueFromMetadata - scalar list items must not repeat
 	// Deprecation: non-empty marks the field deprecated; the value is the
 	// migration hint shown to the user (DeprecatedFromMetadata).
-	Deprecated string
+	Deprecated string `yaml:"deprecated"`
 
-	// Formats lists the acceptable string formats for this field.
-	// FormatFromMetadata validates the field's value against each format
-	// using OR semantics: valid if any format's validator returns true.
-	// Empty means no format rule. Use FormatCustom for app-specific formats.
-	Formats []Format
+	// FormatFromMetadata accepts a value matching any one of these. Empty means
+	// no rule. Use FormatCustom for app-specific formats.
+	Formats []Format `yaml:"formats"`
 	// MinLength and MaxLength constrain string length in Unicode code points.
 	// 0 means no rule. Enforced by LengthFromMetadata.
-	MinLength int
-	MaxLength int
+	MinLength int `yaml:"minlength"`
+	MaxLength int `yaml:"maxlength"`
 	// NotOneOf is a case-sensitive denylist. Enforced by NotOneOfFromMetadata.
 	// Skipped when empty or when the field value is empty.
-	NotOneOf []string
-	// Presentation overrides how the field's children are shown in the tree panel.
-	// PresentationOverlay: field opens in a dedicated overlay editor (drill-in).
-	// PresentationInline: children are expanded inline in the tree.
-	// PresentationFlat: field is shown as a leaf with no children.
-	// Zero value (PresentationDefault) derives behavior from Kind.
-	Presentation schema.Presentation
+	NotOneOf []string `yaml:"notoneof"`
+	// Presentation overrides how children are shown in the tree panel: overlay
+	// (drill-in), inline, or flat (leaf). Zero derives it from Kind.
+	Presentation schema.Presentation `yaml:"presentation"`
 	// Multiline is display-only: sets Type to "multiline string" when Type is
 	// empty, and auto-generates a block-scalar example when Example is empty.
 	// Does not change editor behavior.
-	Multiline bool
+	Multiline bool `yaml:"multiline"`
 	// Snippet is the YAML inserted when the field is toggled on in the tree
 	// panel. Falls back to "<fieldName>: \n" when empty.
-	Snippet string
+	Snippet string `yaml:"snippet"`
 	// PreChecked marks the field as checked when a new (empty) block is opened.
-	PreChecked bool
+	PreChecked bool `yaml:"prechecked"`
 }
 
 // MetadataSource provides per-field metadata for the Hint/Example panel and

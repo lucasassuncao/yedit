@@ -6,7 +6,6 @@
 //	go run ./examples/test                 # open the editor (seeds demo.yaml on first run)
 //	go run ./examples/test --config path.yaml
 //	go run ./examples/test --theme grape
-//	go run ./examples/test generate-docs   # write docs/ markdown files
 //
 // # Schema
 //
@@ -31,7 +30,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/lucasassuncao/yedit/docgenerator"
 	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/metadata"
 	"github.com/lucasassuncao/yedit/presets"
@@ -45,10 +43,10 @@ type PoolConfig struct {
 	MaxSize int `yaml:"max-size"`
 }
 
-func (PoolConfig) Metadata() map[string]*metadata.Node {
-	return map[string]*metadata.Node{
-		"min-size": {FieldMeta: editor.FieldMeta{Description: "Minimum pool size.", Default: "2"}},
-		"max-size": {FieldMeta: editor.FieldMeta{Description: "Maximum pool size.", Default: "10"}},
+func (PoolConfig) Metadata() map[string]any {
+	return map[string]any{
+		"min-size": map[string]any{"description": "Minimum pool size.", "default": "2"},
+		"max-size": map[string]any{"description": "Maximum pool size.", "default": "10"},
 	}
 }
 
@@ -58,11 +56,11 @@ type ServerConfig struct {
 	Pool PoolConfig `yaml:"pool"`
 }
 
-func (ServerConfig) Metadata() map[string]*metadata.Node {
-	return map[string]*metadata.Node{
-		"host": {FieldMeta: editor.FieldMeta{Description: "Address to bind.", Default: "localhost"}},
-		"port": {FieldMeta: editor.FieldMeta{Description: "Port to listen on.", Default: "8080"}},
-		// no Children needed - PoolConfig.Metadata() is composed automatically
+func (ServerConfig) Metadata() map[string]any {
+	return map[string]any{
+		"host": map[string]any{"description": "Address to bind.", "default": "localhost"},
+		"port": map[string]any{"description": "Port to listen on.", "default": "8080"},
+		// no children needed - PoolConfig.Metadata() is composed automatically
 	}
 }
 
@@ -71,10 +69,10 @@ type Worker struct {
 	Concurrency int    `yaml:"concurrency"`
 }
 
-func (Worker) Metadata() map[string]*metadata.Node {
-	return map[string]*metadata.Node{
-		"name":        {FieldMeta: editor.FieldMeta{Description: "Worker name.", Required: true}},
-		"concurrency": {FieldMeta: editor.FieldMeta{Description: "Number of concurrent jobs.", Default: "1"}},
+func (Worker) Metadata() map[string]any {
+	return map[string]any{
+		"name":        map[string]any{"description": "Worker name.", "required": true},
+		"concurrency": map[string]any{"description": "Number of concurrent jobs.", "default": "1"},
 	}
 }
 
@@ -85,12 +83,12 @@ type Config struct {
 	Workers []Worker     `yaml:"workers"`
 }
 
-func (Config) Metadata() map[string]*metadata.Node {
-	return map[string]*metadata.Node{
-		"app-name": {FieldMeta: editor.FieldMeta{Description: "Application display name.", Required: true}},
-		"debug":    {FieldMeta: editor.FieldMeta{Description: "Enable debug logging.", Default: "false"}},
-		"server":   {FieldMeta: editor.FieldMeta{Description: "HTTP server configuration."}},
-		"workers":  {FieldMeta: editor.FieldMeta{Description: "Background worker pools."}},
+func (Config) Metadata() map[string]any {
+	return map[string]any{
+		"app-name": map[string]any{"description": "Application display name.", "required": true},
+		"debug":    map[string]any{"description": "Enable debug logging.", "default": "false"},
+		"server":   map[string]any{"description": "HTTP server configuration."},
+		"workers":  map[string]any{"description": "Background worker pools."},
 	}
 }
 
@@ -129,7 +127,6 @@ func appTheme(name string) theme.Theme {
 
 func main() {
 	root := buildEditCmd()
-	root.AddCommand(buildGenerateDocsCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -190,24 +187,3 @@ func buildEditCmd() *cobra.Command {
 	return cmd
 }
 
-func buildGenerateDocsCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "generate-docs",
-		Short:  "Write markdown documentation and a JSON Schema to docs/",
-		Hidden: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			_, err := docgenerator.Generate(
-				[]docgenerator.Entry{{Config: Config{}}},
-				docgenerator.WithMetadata(testMetadata),
-				docgenerator.WithMarkdown("docs"),
-				docgenerator.WithJSONSchema("docs"),
-				docgenerator.WithIndex("docs"),
-			)
-			if err != nil {
-				return err
-			}
-			fmt.Println("documentation written to docs/")
-			return nil
-		},
-	}
-}

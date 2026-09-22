@@ -6,11 +6,14 @@
 package metadata
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"strings"
 
 	"github.com/lucasassuncao/yedit/schema"
+	"gopkg.in/yaml.v3"
+
 	"github.com/lucasassuncao/yedit/spec"
 )
 
@@ -19,19 +22,15 @@ import (
 // filter whose "any"/"all" children are filters again) without duplicating
 // definitions - NewFromTree handles the cycle.
 type Node struct {
-	spec.FieldMeta
-	Children map[string]*Node
+	spec.FieldMeta `yaml:",inline"`
+	Children       map[string]*Node `yaml:"children"`
 }
 
-// Provider is implemented by any struct that declares its own field metadata.
-// Each struct returns only its direct fields - Children for fields whose types
-// also implement Provider are composed automatically by New.
-//
-// It answers a different question from schema.Provider: that one declares what
-// fields exist (structure, for types reflection cannot read); this one declares
-// what they mean (descriptions, defaults, constraints).
+// Provider is implemented by a struct declaring its own field metadata, direct
+// fields only; New composes the rest. A plain map, so a doc generator reads the
+// same method without importing this package. spec.FieldMeta lists the keys.
 type Provider interface {
-	Metadata() map[string]*Node
+	Metadata() map[string]any
 }
 
 // MetadataProvider is the previous name for Provider, kept as an alias so
@@ -118,9 +117,12 @@ func New(v any) (spec.MetadataSource, error) {
 	if !ok {
 		return nil, fmt.Errorf("metadata: %T does not implement MetadataProvider", v)
 	}
-	// Step 2: seed the tree from the root's own Metadata(). Clone it so
-	// composition never mutates the caller's (possibly memoized) map.
-	tree := cloneTree(p.Metadata(), map[*Node]*Node{})
+	// Step 2: seed the tree from the root's own Metadata(). Decoding yields a
+	// fresh tree, so composition never touches the caller's map.
+	tree, err := DecodeTree(p.Metadata())
+	if err != nil {
+		return nil, fmt.Errorf("metadata: %T: %w", v, err)
+	}
 	// Step 3: unwrap pointer so reflect.Type always refers to a struct.
 	baseType := reflect.TypeOf(v)
 	for baseType.Kind() == reflect.Pointer {
@@ -183,23 +185,18 @@ func composeTree(t reflect.Type, nodes map[string]*Node, cache map[reflect.Type]
 		return nil
 	}
 	for i := 0; i < elem.NumField(); i++ {
-		// Step 1: resolve yaml name for this struct field.
 		f := elem.Field(i)
-		tag := f.Tag.Get("yaml")
-		if tag == "-" {
+		yamlName, inline, skip := structFieldYAML(f)
+		if skip {
 			continue
 		}
-		yamlName := strings.SplitN(tag, ",", 2)[0]
-		if yamlName == "" && strings.Contains(tag, "inline") {
+		if inline {
 			// Inline embeds promote their fields to this level; resolve them
 			// against the same nodes map.
 			if err := composeTree(f.Type, nodes, cache, visited); err != nil {
 				return err
 			}
 			continue
-		}
-		if yamlName == "" {
-			yamlName = strings.ToLower(f.Name)
 		}
 		// Step 2: find the matching node in the parent's metadata tree.
 		node, ok := nodes[yamlName]
@@ -219,51 +216,51 @@ func composeTree(t reflect.Type, nodes map[string]*Node, cache map[reflect.Type]
 			}
 			continue
 		}
-		// Step 5: only compose fields whose type declares its own metadata.
-		if !ft.Implements(metadataProviderType) && !reflect.PointerTo(ft).Implements(metadataProviderType) {
-			continue
-		}
-		// Step 6: cycle guard - reuse the cached tree for recursive types.
-		if childTree, seen := cache[ft]; seen {
-			node.Children = childTree
-			continue
-		}
-		// Steps 7-8: obtain the child tree, cache it before recursing, then attach.
-		prov := reflect.New(ft).Interface().(MetadataProvider)
-		childTree := cloneTree(prov.Metadata(), map[*Node]*Node{})
-		cache[ft] = childTree
-		if err := composeTree(ft, childTree, cache, visited); err != nil {
+		// Steps 5-8: compose child tree from MetadataProvider.
+		if err := composeChildTree(ft, node, cache, visited); err != nil {
 			return err
 		}
-		node.Children = childTree
 	}
 	return nil
 }
 
-// cloneTree deep-copies a Node tree. The memo preserves shared pointers and
-// cycles within one clone operation, so recursive trees stay finite.
-func cloneTree(nodes map[string]*Node, memo map[*Node]*Node) map[string]*Node {
-	if nodes == nil {
-		return nil
+func structFieldYAML(f reflect.StructField) (name string, inline bool, skip bool) {
+	tag := f.Tag.Get("yaml")
+	if tag == "-" {
+		return "", false, true
 	}
-	out := make(map[string]*Node, len(nodes))
-	for name, n := range nodes {
-		out[name] = cloneNode(n, memo)
+	name = strings.SplitN(tag, ",", 2)[0]
+	if name == "" && strings.Contains(tag, "inline") {
+		return "", true, false
 	}
-	return out
+	if name == "" {
+		name = strings.ToLower(f.Name)
+	}
+	return name, false, false
 }
 
-func cloneNode(n *Node, memo map[*Node]*Node) *Node {
-	if n == nil {
+func composeChildTree(ft reflect.Type, node *Node, cache map[reflect.Type]map[string]*Node, visited map[*Node]bool) error {
+	// Step 5: only compose fields whose type declares its own metadata.
+	if !ft.Implements(metadataProviderType) && !reflect.PointerTo(ft).Implements(metadataProviderType) {
 		return nil
 	}
-	if c, ok := memo[n]; ok {
-		return c
+	// Step 6: cycle guard - reuse the cached tree for recursive types.
+	if childTree, seen := cache[ft]; seen {
+		node.Children = childTree
+		return nil
 	}
-	c := &Node{FieldMeta: n.FieldMeta}
-	memo[n] = c
-	c.Children = cloneTree(n.Children, memo)
-	return c
+	// Steps 7-8: obtain the child tree, cache it before recursing, then attach.
+	prov := reflect.New(ft).Interface().(MetadataProvider)
+	childTree, err := DecodeTree(prov.Metadata())
+	if err != nil {
+		return fmt.Errorf("metadata: %s: %w", ft.Name(), err)
+	}
+	cache[ft] = childTree
+	if err := composeTree(ft, childTree, cache, visited); err != nil {
+		return err
+	}
+	node.Children = childTree
+	return nil
 }
 
 // metadataSource implements spec.MetadataSource backed by a Node tree.
@@ -360,14 +357,10 @@ func elemType(t reflect.Type) reflect.Type {
 	return t
 }
 
-var providerType = reflect.TypeOf((*schema.Provider)(nil)).Elem()
-
-// isProvider reports whether t opts into schema.Provider - its metadata children
+// isProvider reports whether t declares its own shape through Metadata - its children
 // describe the provided defs, not struct fields, so they cannot be verified
 // by reflection.
-func isProvider(t reflect.Type) bool {
-	return t.Implements(providerType) || reflect.PointerTo(t).Implements(providerType)
-}
+func isProvider(t reflect.Type) bool { return schema.DeclaresShape(t) }
 
 // fieldTypeByYAML finds the Go type of the field with yaml tag yamlName in
 // struct type t, descending into yaml:",inline" embeds whose fields yaml.v3
@@ -432,4 +425,24 @@ func typeLabel(t reflect.Type) string {
 	default:
 		return t.Kind().String()
 	}
+}
+
+// DecodeTree turns the plain map a Provider returns into a Node tree. It routes
+// through yaml so the FieldMeta tags do the mapping, and rejects keys that match
+// no field: a typo must not become silently dead metadata.
+func DecodeTree(raw map[string]any) (map[string]*Node, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	b, err := yaml.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+	var tree map[string]*Node
+	dec := yaml.NewDecoder(bytes.NewReader(b))
+	dec.KnownFields(true)
+	if err := dec.Decode(&tree); err != nil {
+		return nil, err
+	}
+	return tree, nil
 }
