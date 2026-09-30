@@ -14,17 +14,24 @@ import (
 // validated (e.g. customizations.vscode.settings has no fixed schema).
 func KnownChildren(fields []FieldDef) map[string]map[string]bool {
 	out := make(map[string]map[string]bool, len(fields))
-	walkChildren(out, "", fields)
+	walkChildren(out, map[subtree]map[string]bool{}, "", fields)
 	return out
 }
 
-func walkChildren(out map[string]map[string]bool, prefix string, fields []FieldDef) {
+// walkChildren registers every path under prefix. Discover shares subtrees, so
+// sets is keyed by the subtree's backing array and length, and every path that
+// reaches the same subtree gets the same read-only set.
+func walkChildren(out map[string]map[string]bool, sets map[subtree]map[string]bool, prefix string, fields []FieldDef) {
 	if len(fields) == 0 {
 		return
 	}
-	allowed := make(map[string]bool, len(fields))
-	for _, f := range fields {
-		allowed[f.YAMLName] = true
+	allowed, ok := sets[subtree{&fields[0], len(fields)}]
+	if !ok {
+		allowed = make(map[string]bool, len(fields))
+		for _, f := range fields {
+			allowed[f.YAMLName] = true
+		}
+		sets[subtree{&fields[0], len(fields)}] = allowed
 	}
 	out[prefix] = allowed
 	for _, f := range fields {
@@ -38,7 +45,7 @@ func walkChildren(out map[string]map[string]bool, prefix string, fields []FieldD
 		if prefix != "" {
 			path = prefix + "." + f.YAMLName
 		}
-		walkChildren(out, path, f.Children)
+		walkChildren(out, sets, path, f.Children)
 	}
 }
 
@@ -118,4 +125,10 @@ func asMap(v any) (map[any]any, bool) {
 		return out, true
 	}
 	return nil, false
+}
+
+// subtree identifies a Children slice by where it lives, not by its contents.
+type subtree struct {
+	first *FieldDef
+	n     int
 }

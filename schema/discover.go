@@ -4,7 +4,9 @@ import (
 	"encoding"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
@@ -55,15 +57,52 @@ func Discover(v any, recursionLimit ...int) []FieldDef {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
-	return discoverFields(t, 0, make(map[reflect.Type]int), limit)
+	return discoverFields(t, 0, newWalker(limit))
 }
 
-func discoverFields(t reflect.Type, depth int, seen map[reflect.Type]int, limit int) []FieldDef {
-	if seen[t] > limit || depth > 20 || t.Kind() != reflect.Struct {
+// walker is one Discover call's state. A subtree depends only on its type, its
+// depth and how often each type occurs above it, so memo builds it once per
+// such state and every position in that state shares it: a self-referential
+// type costs its distinct states, not every path through it.
+type walker struct {
+	seen  map[reflect.Type]int
+	limit int
+	ids   map[reflect.Type]int
+	memo  map[string][]FieldDef
+}
+
+func newWalker(limit int) *walker {
+	return &walker{seen: map[reflect.Type]int{}, limit: limit, ids: map[reflect.Type]int{}, memo: map[string][]FieldDef{}}
+}
+
+// key names the state a subtree of t is built in.
+func (w *walker) key(t reflect.Type, depth int) string {
+	id := func(t reflect.Type) string {
+		if _, ok := w.ids[t]; !ok {
+			w.ids[t] = len(w.ids)
+		}
+		return strconv.Itoa(w.ids[t])
+	}
+	counts := make([]string, 0, len(w.seen))
+	for st, n := range w.seen {
+		if n > 0 {
+			counts = append(counts, id(st)+":"+strconv.Itoa(n))
+		}
+	}
+	slices.Sort(counts)
+	return id(t) + "@" + strconv.Itoa(depth) + "|" + strings.Join(counts, ",")
+}
+
+func discoverFields(t reflect.Type, depth int, w *walker) []FieldDef {
+	if w.seen[t] > w.limit || depth > 20 || t.Kind() != reflect.Struct {
 		return nil
 	}
-	seen[t]++
-	defer func() { seen[t]-- }()
+	key := w.key(t, depth)
+	if out, ok := w.memo[key]; ok {
+		return out
+	}
+	w.seen[t]++
+	defer func() { w.seen[t]-- }()
 
 	var out []FieldDef
 	for i := 0; i < t.NumField(); i++ {
@@ -76,7 +115,7 @@ func discoverFields(t reflect.Type, depth int, seen map[reflect.Type]int, limit 
 			// explicit yaml:",inline" tag (the promoted exported fields are
 			// reachable); a bare unexported embed panics at Marshal time.
 			if f.Anonymous && inline {
-				out = append(out, embedFields(f, depth, seen, limit)...)
+				out = append(out, embedFields(f, depth, w)...)
 			}
 			continue
 		}
@@ -84,7 +123,7 @@ func discoverFields(t reflect.Type, depth int, seen map[reflect.Type]int, limit 
 			continue
 		}
 		if inline {
-			out = append(out, embedFields(f, depth, seen, limit)...)
+			out = append(out, embedFields(f, depth, w)...)
 			continue
 		}
 		if yamlName == "" {
@@ -100,14 +139,18 @@ func discoverFields(t reflect.Type, depth int, seen map[reflect.Type]int, limit 
 			continue
 		}
 		info := buildFieldDef(f, yamlName, yamlTag)
-		fillFieldChildren(&info, f, depth, seen, limit)
+		fillFieldChildren(&info, f, depth, w)
 		out = append(out, info)
 	}
+	// Clipped so an append by a consumer reallocates instead of writing into
+	// the array every sharer of this subtree sees.
+	out = slices.Clip(out)
+	w.memo[key] = out
 	return out
 }
 
 // embedFields promotes the exported fields of an anonymous or inline struct embed.
-func embedFields(f reflect.StructField, depth int, seen map[reflect.Type]int, limit int) []FieldDef {
+func embedFields(f reflect.StructField, depth int, w *walker) []FieldDef {
 	ft := f.Type
 	for ft.Kind() == reflect.Pointer {
 		ft = ft.Elem()
@@ -115,7 +158,7 @@ func embedFields(f reflect.StructField, depth int, seen map[reflect.Type]int, li
 	if ft.Kind() != reflect.Struct {
 		return nil
 	}
-	return discoverFields(ft, depth+1, seen, limit)
+	return discoverFields(ft, depth+1, w)
 }
 
 // buildFieldDef constructs a FieldDef from a struct field's yaml tag.
@@ -151,7 +194,7 @@ func buildFieldDef(f reflect.StructField, yamlName, yamlTag string) FieldDef {
 
 // fillFieldChildren populates info.Kind and info.Children via provider check,
 // marshaler check, or recursive struct descent.
-func fillFieldChildren(info *FieldDef, f reflect.StructField, depth int, seen map[reflect.Type]int, limit int) {
+func fillFieldChildren(info *FieldDef, f reflect.StructField, depth int, w *walker) {
 	if children := providerChildren(f.Type); children != nil {
 		info.Kind = KindVariant
 		info.Children = children
@@ -165,7 +208,7 @@ func fillFieldChildren(info *FieldDef, f reflect.StructField, depth int, seen ma
 		// TypeName is assigned before descending, so a field whose expansion is
 		// cut short by the recursion limit still reports its type.
 		info.TypeName = nested.Name()
-		info.Children = discoverFields(nested, depth+1, seen, limit)
+		info.Children = discoverFields(nested, depth+1, w)
 	}
 }
 
@@ -182,10 +225,24 @@ func isMarshalerType(t reflect.Type) bool {
 		reflect.PointerTo(t).Implements(textMarshalerType)
 }
 
+// shapeCache holds providerChildren per type: decoding goes through a yaml
+// round trip, and a recursive schema visits the same type many times.
+var shapeCache sync.Map // reflect.Type -> []FieldDef
+
 // providerChildren returns the fields a type declares through Metadata, or nil
 // when it declares none. A declaration is recognised by "kind": metadata
 // without it describes what fields mean, not which exist.
 func providerChildren(t reflect.Type) []FieldDef {
+	if cached, ok := shapeCache.Load(t); ok {
+		return slices.Clone(cached.([]FieldDef))
+	}
+	children := decodeProviderChildren(t)
+	shapeCache.Store(t, children)
+	return slices.Clone(children)
+}
+
+// decodeProviderChildren is providerChildren without the cache.
+func decodeProviderChildren(t reflect.Type) []FieldDef {
 	// Unwrap wrappers until stable so map[string]*T, map[string][]T, []*T,
 	// and other combinations all reach the element type T.
 	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Map || t.Kind() == reflect.Array {

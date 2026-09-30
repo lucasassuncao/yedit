@@ -1,92 +1,127 @@
 # VHS demo tape - https://github.com/charmbracelet/vhs
 #
-# Regenerate (the vhs container has no Go toolchain, so build the example first):
+# Written for Windows: with vhs, ttyd and ffmpeg on the PATH, record from the
+# repo root (Output resolves against the working directory):
 #
-#   bash:
-#     CGO_ENABLED=0 GOOS=linux go build -o demo-app ./examples/test
-#     docker run --rm -v "$PWD:/vhs" ghcr.io/charmbracelet/vhs demo.tape
-#     rm demo-app
+#   vhs demo.tape
 #
-#   PowerShell:
-#     $env:GOOS = "linux"; $env:CGO_ENABLED = "0"
-#     go build -o demo-app ./examples/test
-#     Remove-Item env:GOOS, env:CGO_ENABLED
-#     docker run --rm -v "${PWD}:/vhs" ghcr.io/charmbracelet/vhs demo.tape
-#     Remove-Item demo-app
+# The tape builds demo.exe off camera and deletes it when done.
 #
-# Drives examples/test through a small editing session: toggle the hint panel,
-# drill into the server block, apply a preset, save, validate, and quit. The
-# example re-creates demo.yaml on first run, so the tape starts from a clean
-# seed and removes the file afterwards. Each screen transition is guarded by
-# Wait+Screen so the keystrokes cannot desync.
+# A tour of cmd/demo: the block list and its hints, a block's field tree,
+# a preset applied from its preview, the [N] list navigator, two-level undo,
+# validation, the save confirmation, and the key help. The demo re-creates
+# demo.yaml on first run, so the tape starts from a clean seed and removes the
+# file afterwards. Screen changes are guarded by Wait+Screen so the keystrokes
+# cannot run ahead of the editor.
 
 Output docs/demo.gif
 
-Set Shell "bash"
+Require ttyd
+Require ffmpeg
+
+Set Shell "powershell"
 Set FontSize 16
 Set Width 1200
 Set Height 700
+Set Padding 20
+Set Theme "Catppuccin Mocha"
 Set TypingSpeed 80ms
-Set WaitTimeout 60s
+Set WaitTimeout 30s
+Set Framerate 20
 
-# Fresh seed + launch (hidden: startup is not part of the demo).
+# Build, fresh seed + launch (hidden: startup is not part of the demo).
 Hide
-Type "rm -f demo.yaml && ./demo-app"
+# A NO_COLOR inherited from the parent shell would record in monochrome.
+Type "Remove-Item Env:NO_COLOR -ErrorAction SilentlyContinue"
+Enter
+Wait
+Type "go build -o demo.exe ./cmd/demo"
+Enter
+Wait
+Type "Remove-Item demo.yaml -ErrorAction SilentlyContinue; clear; .\demo.exe"
 Enter
 Wait+Screen /Blocks/
 Show
 
+# The block list: the hint panel follows the cursor.
+Sleep 2s
+Down
+Sleep 1.2s
+Down
 Sleep 1.5s
 
-# Hint/Example panel for the selected key.
-Type "h"
-Sleep 2s
-
-# Walk down to the server block (app-name, debug, server, workers).
+# Open the server block: its fields as a tree, with a nested struct.
+Enter
+Wait+Screen /Fields/
+Sleep 1.5s
 Down 2
+Sleep 0.8s
+Right
 Sleep 1.5s
 
-# Open the server block.
-Enter
-Wait+Screen /Field/
-Sleep 2s
-
-# Browse its fields and apply the "production" preset.
-Down
-Sleep 1.5s
+# Apply a preset from its preview.
 Type "p"
-Wait+Screen /production/
+Wait+Screen /Available Presets/
 Sleep 1.5s
 Down
-Sleep 1s
+Sleep 2s
 Enter
+Wait+Screen /Uncommitted changes/
 Sleep 2s
 
-# Commit the block (ctrl+s in the editor returns to the list)...
+# Commit the block back into the document.
 Ctrl+S
 Wait+Screen /not saved yet/
-Sleep 1.5s
+Sleep 2s
 
-# ...then save the file (ctrl+s from the list), confirm, and validate.
-Ctrl+S
-Wait+Screen /Save changes\?/
-Sleep 1.5s
-Type "y"
-Wait+Screen /Saved to/
-Sleep 1.5s
+# A list opens in the [N] navigator: one row per entry.
+Down
 Enter
+Wait+Screen /add new/
+Sleep 1.5s
+Right
+Sleep 2s
+Escape
+Wait+Screen /Blocks/
 Sleep 1s
+
+# Undo the whole server commit from the list, then redo it.
+Ctrl+U
+Sleep 2s
+Ctrl+Y
+Sleep 2s
+
+# Validate, then save through the confirmation.
 Ctrl+L
 Wait+Screen /Validation passed/
+Sleep 2.5s
+Enter
+Sleep 1s
+Ctrl+S
+Wait+Screen /Save changes/
+Sleep 1.5s
+Right
+Sleep 1s
+Left
+Sleep 1s
+Enter
+Wait+Screen /Saved to/
 Sleep 2s
 Enter
+Sleep 1s
+
+# Every key, one keystroke away.
+Type "?"
+Sleep 3s
+Escape
 Sleep 1s
 
 # Quit.
-Escape
-Sleep 1.5s
+Type "q"
+Sleep 1s
 
-# Cleanup the generated seed.
+# Cleanup the generated seed and the binary.
 Hide
-Type "rm -f demo.yaml"
+Type "Remove-Item demo.yaml, demo.exe"
 Enter
+Wait

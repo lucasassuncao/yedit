@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"github.com/lucasassuncao/bezel/draw"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,7 +12,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/lucasassuncao/yedit/animation"
+	"github.com/lucasassuncao/bezel/animation"
 	"github.com/lucasassuncao/yedit/blocklist"
 )
 
@@ -37,10 +38,11 @@ func newHintModel(t *testing.T, dur time.Duration) model {
 	return updated.(model)
 }
 
-// pressHint sends the hint-toggle key through the real Update path, which is
-// where the animation tick loop is started.
+// pressHint sends the hint-toggle key through the real Update path, then the
+// message its action sends, which is where the animation tick loop is started.
 func pressHint(m model) (model, tea.Cmd) {
 	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'h', Text: "h"})
+	updated, cmd = updated.Update(cmd())
 	return updated.(model), cmd
 }
 
@@ -100,7 +102,8 @@ func TestToggleHintsAnimatesAndSettles(t *testing.T) {
 	h := m.hintPanelH()
 	time.Sleep(2 * animation.Frame)
 	is.Equal(h, m.hintPanelH(), "the drawn height is stable between frames")
-	is.Equal(m.innerH-2-h, m.previewPanelH(), "the two panels split the column exactly")
+	preview := draw.InnerRect(m.relayoutHeights().sh.Rect("preview"))
+	is.Equal(m.innerH()-2-h, preview.H, "the two panels split the column exactly")
 
 	// Drive frames until the tween lands, exactly as the runtime would.
 	deadline := time.Now().Add(2 * time.Second)
@@ -114,7 +117,7 @@ func TestToggleHintsAnimatesAndSettles(t *testing.T) {
 	is.Nil(cmd, "the final frame stops rescheduling itself")
 	is.Equal(0, m.hintPanelH(), "the panel settles fully closed")
 	is.False(m.hintVisible(), "the settled panel is gone")
-	is.Equal(m.innerH, m.preview.Height(), "the preview reclaims the whole column")
+	is.Equal(m.innerH(), m.preview.Height(), "the preview reclaims the whole column")
 }
 
 // TestHintAnimKeepsLegendBarAnchored is the regression test for the legend bar
@@ -170,7 +173,8 @@ func TestZeroHeightHintPanelIsNotDrawn(t *testing.T) {
 	is.True(m.hintAnim.Active(), "the tween is still in flight")
 	is.Equal(0, m.hintPanelH(), "the eased height has reached zero")
 	is.False(m.hintVisible(), "a zero-height hint panel must not be drawn")
-	is.Equal(m.innerH, m.previewViewportH(), "the preview takes the whole column instead")
+	preview := draw.InnerRect(m.relayoutHeights().sh.Rect("preview"))
+	is.Equal(m.innerH(), preview.H, "the preview takes the whole column instead")
 }
 
 // viewLines counts the rendered rows of a view.
@@ -245,7 +249,7 @@ func TestBlockEditorHintAnimates(t *testing.T) {
 	must.Positive(shownH, "the block editor's hint panel starts open")
 	editorH := top.editorH()
 
-	be, cmd := top.Update(tea.KeyPressMsg{Code: 'h', Text: "h"})
+	be, cmd := pressBEAction(t, *top, tea.KeyPressMsg{Code: 'h', Text: "h"})
 	must.NotNil(cmd, "toggling with animation on spawns a tick loop")
 	must.True(be.hintAnim.Active(), "a tween is in flight")
 	is.False(be.showHint, "the flag flips immediately")
@@ -276,7 +280,7 @@ func TestBlockEditorHintToggleInstantWithoutAnimation(t *testing.T) {
 	top := m.topBE()
 	must.NotNil(top, "block editor must be open")
 
-	be, cmd := top.Update(tea.KeyPressMsg{Code: 'h', Text: "h"})
+	be, cmd := pressBEAction(t, *top, tea.KeyPressMsg{Code: 'h', Text: "h"})
 	is.Nil(cmd, "no tick loop is spawned when animation is off")
 	is.False(be.hintAnim.Active(), "no tween is started when animation is off")
 	is.Equal(0, be.hintH(), "the panel closes immediately")

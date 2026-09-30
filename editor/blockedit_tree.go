@@ -6,7 +6,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"gopkg.in/yaml.v3"
 
-	"github.com/lucasassuncao/yedit/alert"
 	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/yamledit"
 	"github.com/lucasassuncao/yedit/yamlnode"
@@ -46,7 +45,11 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 	prevSeqIdx := be.tree.NearestSeqItem()
 	prevNodeIdx := be.tree.CurrentNodeIdx()
 
-	tree, action := be.tree.Update(msg)
+	km, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return be, nil
+	}
+	tree, action := be.tree.Update(km)
 	be.tree = tree
 	if be.tree.CurrentNodeIdx() != prevNodeIdx {
 		// The hint panel now describes a different field; show it from the top.
@@ -93,7 +96,7 @@ func (be blockEditState) handleTreeToggleDispatch() blockEditState {
 		// Revert the visual toggle while waiting for the user to confirm.
 		be.tree = be.tree.WithNodeMutated(idx, func(n *fieldtree.Node) { n.Checked = true })
 		capturedIdx := idx
-		al := alert.NewConfirm(
+		al := be.confirm(
 			"Remove field?",
 			fmt.Sprintf("Remove %q? Its content will be lost.", node.Label),
 			func() tea.Msg { return pendingRemoveMsg{nodeIdx: capturedIdx} },
@@ -115,7 +118,7 @@ func (be blockEditState) handleTreeDeleteDispatch() blockEditState {
 		return be.dispatch(DeleteEntry{SeqIdx: seqIdx})
 	}
 	label := be.tree.Nodes[idx].Label
-	al := alert.NewConfirm(
+	al := be.confirm(
 		"Remove entry?",
 		fmt.Sprintf("Remove %q? Its content will be lost.", label),
 		func() tea.Msg { return pendingEntryDeleteMsg{seqIdx: seqIdx} },

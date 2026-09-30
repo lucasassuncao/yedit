@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lucasassuncao/bezel/theme"
 	"github.com/lucasassuncao/yedit/spec"
-	"github.com/lucasassuncao/yedit/theme"
 )
 
 // Render formats a FieldMeta into the Hint/Example panel body. example is
@@ -15,7 +15,7 @@ import (
 // when meta.Example is empty. An all-zero FieldMeta renders the empty string,
 // which callers use to fall back to a "no metadata" placeholder.
 func Render(th theme.Resolved, meta spec.FieldMeta, example string) string {
-	label := func(s string) string { return th.HintKey.Render(s) }
+	label := func(s string) string { return th.Legend.Key.Render(s) }
 
 	var lines []string
 	field := func(name, value string) {

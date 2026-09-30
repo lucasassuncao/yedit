@@ -85,4 +85,4 @@ editor.Run(editor.Config{
 
 ## Full example
 
-See `examples/test/main.go` for a complete, runnable example that exercises presets, metadata, and validators together.
+See `cmd/demo/main.go` for a complete, runnable example that exercises presets, metadata, and validators together.

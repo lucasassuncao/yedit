@@ -3,6 +3,7 @@ package editor
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"gopkg.in/yaml.v3"
@@ -252,7 +253,7 @@ func (m model) handleOpenItem(it blocklist.Item) (tea.Model, tea.Cmd) {
 	if it.Unknown {
 		knownByPath = nil
 	}
-	be := newBlockEdit(m.cfg, blockSpec{key: it.Key, defs: children, kind: kind, def: fieldDefByName(m.schemaTree, it.Key), content: initial, knownByPath: knownByPath}, m.width, m.height)
+	be := newBlockEdit(m.cfg, blockSpec{key: it.Key, defs: children, kind: kind, def: fieldDefByName(m.schemaTree, it.Key), content: initial, knownByPath: knownByPath}, m.width, m.height).withTheme(m.theme)
 	be.isEdit = it.Existing
 	be.focus = nil // top-level editor edits the whole block
 	m.blockEdits = []blockEditState{be}
@@ -321,9 +322,10 @@ func (m model) handleOpenChild(msg openChildMsg) (tea.Model, tea.Cmd) {
 	// prefix holds only schema field names.
 	metaPrefix := yamledit.FocusToStringPath(childFocus)
 	defs := applyPresentation(msg.defs, m.cfg.Metadata, m.editBlockKey, metaPrefix)
-	be := newBlockEdit(m.cfg, blockSpec{key: msg.key, defs: defs, kind: msg.kind, content: content, knownByPath: nil}, m.width, m.height)
+	be := newBlockEdit(m.cfg, blockSpec{key: msg.key, defs: defs, kind: msg.kind, content: content, knownByPath: nil}, m.width, m.height).withTheme(m.theme)
 	be.isEdit = true
 	be.focus = childFocus
+	be.metaBlock, be.metaPrefix = m.editBlockKey, strings.Join(metaPrefix, ".")
 
 	m.blockEdits = append(m.blockEdits, be)
 	m = m.enterBlockEdit()

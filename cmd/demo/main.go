@@ -1,11 +1,9 @@
-// Command test is a small, self-contained yedit example used both for manual
-// testing and for recording the demo GIFs under examples/.
+// Command demo is the small editor docs/demo.gif is recorded from, and the one
+// the README's Quick Demo shows. Run it from the yedit root:
 //
-// Run from the yedit root:
-//
-//	go run ./examples/test                 # open the editor (seeds demo.yaml on first run)
-//	go run ./examples/test --config path.yaml
-//	go run ./examples/test --theme grape
+//	go run ./cmd/demo                   # edits demo.yaml, seeded on first run
+//	go run ./cmd/demo -config path.yaml
+//	go run ./cmd/demo -theme grape
 //
 // # Schema
 //
@@ -24,16 +22,15 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"io/fs"
 	"os"
 
-	"github.com/spf13/cobra"
-
+	"github.com/lucasassuncao/bezel/theme"
 	"github.com/lucasassuncao/yedit/editor"
 	"github.com/lucasassuncao/yedit/metadata"
 	"github.com/lucasassuncao/yedit/presets"
-	"github.com/lucasassuncao/yedit/theme"
 )
 
 // ── Schema ────────────────────────────────────────────────────────────────────
@@ -116,74 +113,63 @@ func serverPresetsMap() map[string]ServerConfig {
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 func appTheme(name string) theme.Theme {
-	all := theme.All()
-	if t, ok := all[name]; ok {
+	if t, ok := theme.All()[name]; ok {
 		return theme.Theme{Base: &t}
 	}
-	return theme.Theme{} // default dark
+	return theme.Theme{}
 }
 
-// ── Commands ──────────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 func main() {
-	root := buildEditCmd()
-	if err := root.Execute(); err != nil {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func buildEditCmd() *cobra.Command {
-	var themeName, configPath string
-	var noSaveConfirm, noDeleteConfirm, noValidate bool
+func run() error {
+	configPath := flag.String("config", "", "YAML file to edit (default: demo.yaml, seeded on first run)")
+	themeName := flag.String("theme", "plain", "theme preset (-theme grape, -theme sonic, …)")
+	noSaveConfirm := flag.Bool("no-save-confirm", false, "skip save confirmation dialog")
+	noDeleteConfirm := flag.Bool("no-delete-confirm", false, "skip delete confirmation dialog")
+	noValidate := flag.Bool("no-validate", false, "allow saving with validation errors")
+	flag.Parse()
 
-	cmd := &cobra.Command{
-		Use:   "test",
-		Short: "yedit test - a small example editor used for demos",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			path := configPath
-			if path == "" {
-				path = "demo.yaml"
-				if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-					if err := os.WriteFile(path, []byte(seedYAML), 0600); err != nil {
-						return err
-					}
-				}
-			}
-
-			res, err := editor.Run(editor.Config{
-				Theme:  appTheme(themeName),
-				Path:   path,
-				Schema: &Config{},
-				Title:  "yedit test",
-
-				NoSaveConfirm:    noSaveConfirm,
-				NoDeleteConfirm:  noDeleteConfirm,
-				NoValidateOnSave: noValidate,
-
-				EnableHints: true,
-
-				BlockPresets: testPresets,
-				Metadata:     testMetadata,
-
-				Validators: []editor.Validator{
-					editor.RequiredFromMetadata(),
-				},
-			})
-			if err != nil {
+	path := *configPath
+	if path == "" {
+		path = "demo.yaml"
+		if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+			if err := os.WriteFile(path, []byte(seedYAML), 0o600); err != nil {
 				return err
 			}
-			if res.Saved {
-				fmt.Println("changes saved to", path)
-			}
-			return nil
-		},
+		}
 	}
 
-	cmd.Flags().StringVarP(&configPath, "config", "c", "", "YAML file to edit (default: demo.yaml, seeded on first run)")
-	cmd.Flags().StringVar(&themeName, "theme", "plain", "theme preset (--theme grape, --theme sonic, …)")
-	cmd.Flags().BoolVar(&noSaveConfirm, "no-save-confirm", false, "skip save confirmation dialog")
-	cmd.Flags().BoolVar(&noDeleteConfirm, "no-delete-confirm", false, "skip delete confirmation dialog")
-	cmd.Flags().BoolVar(&noValidate, "no-validate", false, "allow saving with validation errors")
-	return cmd
-}
+	res, err := editor.Run(editor.Config{
+		Theme:  appTheme(*themeName),
+		Path:   path,
+		Schema: &Config{},
+		Title:  "yedit demo",
 
+		NoSaveConfirm:    *noSaveConfirm,
+		NoDeleteConfirm:  *noDeleteConfirm,
+		NoValidateOnSave: *noValidate,
+
+		EnableHints: true,
+
+		BlockPresets: testPresets,
+		Metadata:     testMetadata,
+
+		Validators: []editor.Validator{
+			editor.RequiredFromMetadata(),
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if res.Saved {
+		fmt.Println("changes saved to", path)
+	}
+	return nil
+}

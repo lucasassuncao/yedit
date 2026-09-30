@@ -4,22 +4,23 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
-	"charm.land/lipgloss/v2"
 	"gopkg.in/yaml.v3"
 
-	"github.com/lucasassuncao/yedit/alert"
-	"github.com/lucasassuncao/yedit/animation"
+	"github.com/lucasassuncao/bezel/animation"
+	"github.com/lucasassuncao/bezel/browser"
+	"github.com/lucasassuncao/bezel/draw"
+	"github.com/lucasassuncao/bezel/layout"
+	"github.com/lucasassuncao/bezel/overlay"
+	"github.com/lucasassuncao/bezel/shell"
+	"github.com/lucasassuncao/bezel/textbox"
+	"github.com/lucasassuncao/bezel/theme"
 	"github.com/lucasassuncao/yedit/fieldtree"
-	"github.com/lucasassuncao/yedit/legend"
-	"github.com/lucasassuncao/yedit/presetbrowser"
 	"github.com/lucasassuncao/yedit/render"
 	"github.com/lucasassuncao/yedit/schema"
-	"github.com/lucasassuncao/yedit/theme"
 	"github.com/lucasassuncao/yedit/yamledit"
 	"github.com/lucasassuncao/yedit/yamlnode"
 
@@ -107,25 +108,25 @@ type blockEditState struct {
 	// nil for the top-level editor, otherwise the indexed path to the drilled-into
 	// node. Content is flushed back into editRoot here on navigation/commit.
 	focus []yamledit.PathSeg
+	// metaBlock and metaPrefix address a drilled-in editor in the metadata tree,
+	// which is keyed by the root block; empty for the top-level editor.
+	metaBlock, metaPrefix string
 
 	width, height int
-	listW, rightW int
+	// sh is the chrome: size, layout, status row, legend and the confirm overlay.
+	sh shell.Shell
 
 	editorErr     editorError
 	statusMsg     string // neutral feedback (e.g. "Undone."); cleared on next edit action
 	currentPreset string
 
-	mode                blockEditMode
-	preset              presetbrowser.Model
-	confirmAlert        alert.Model
-	confirmAlertVisible bool
+	mode   blockEditMode
+	preset browser.Model
 
-	undoStack   []blockEditUndoSnap // undo history; each mutating op pushes a snapshot
-	redoStack   []blockEditUndoSnap // redo history; populated by restoreUndo, discarded on new mutations
-	actionLog   []BlockAction       // in-memory log for debug and replay
-	theme       theme.Resolved
-	help        help.Model
-	legendLines int // lines consumed by the legend bar; updated on resize and init
+	undoStack []blockEditUndoSnap // undo history; each mutating op pushes a snapshot
+	redoStack []blockEditUndoSnap // redo history; populated by restoreUndo, discarded on new mutations
+	actionLog []BlockAction       // in-memory log for debug and replay
+	theme     theme.Resolved
 }
 
 // blockOwnDef returns the block's own field definition, synthesizing a minimal
@@ -150,12 +151,11 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 		currentPreset: "custom",
 		width:         w,
 		height:        h,
-		theme:         theme.Resolve(cfg.Theme),
+		theme:         theme.Resolve(cfg.Theme, true),
 		showHint:      cfg.EnableHints,
 	}
-	be.help = legend.NewHelp(be.theme)
-	be.help.SetWidth(w - 1)
-	_, be.legendLines = legend.Render(be.help, be.currentKeyMap(), w-1)
+	be.sh = shell.New(shell.Config{Layout: blockLayout(0), Theme: be.theme, Title: cfg.Title, LegendLines: cfg.LegendLines})
+	be.sh, _, _ = be.sh.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	be = be.relayout()
 
 	be.tree = fieldtree.New(spec.kind, spec.defs, spec.content, be.innerH())
@@ -237,45 +237,64 @@ func (be blockEditState) computeDirty() bool {
 	return yamledit.NormalizeBlockContent(be.key, be.yamlEditor.Value()) != be.committedYAML
 }
 
+// withTheme swaps the styles once the terminal has said whether it is dark.
+func (be blockEditState) withTheme(rt theme.Resolved) blockEditState {
+	be.theme = rt
+	be.sh = be.sh.SetTheme(rt)
+	be.yamlEditor = textbox.Restyle(be.yamlEditor, rt)
+	return be
+}
+
 func (be blockEditState) newYAMLEditor(content string) textarea.Model {
-	ta := textarea.New()
-	ta.ShowLineNumbers = false
-	// A custom prompt replaces the built-in line-number gutter so it matches the
-	// Preview panel's "%4d │ " gutter (numberPreviewLines) exactly.
-	rt := be.theme
-	ta.SetPromptFunc(render.PreviewGutterWidth, func(info textarea.PromptInfo) string {
-		return rt.HintDim.Render(fmt.Sprintf("%4d │ ", info.LineNumber+1))
-	})
-	// The library's MaxHeight default of 99 silently caps both the viewport and
-	// the number of logical lines the buffer accepts, truncating YAML blocks
-	// longer than 99 lines. We manage height via SetHeight, so disable the cap.
-	ta.MaxHeight = 0
-	ta.SetWidth(be.rightW - 2)
+	// The gutter matches the Preview panel's, and the height is the layout's.
+	ta := textbox.New(be.theme)
+	ta.SetWidth(be.rightW())
 	ta.SetHeight(be.editorH() - 1)
-	ta.CharLimit = 0
 	ta.Blur()
 	if content != "" {
-		ta.SetValue(strings.ReplaceAll(content, "\r\n", "\n"))
+		textbox.SetText(&ta, content)
 	}
 	return ta
 }
 
+// blockLayout is the editor screen: the field tree on the left, the YAML
+// editor or preview on the right with the hint panel under it when open.
+func blockLayout(hintH int) layout.Node {
+	right := layout.Node(layout.Fill("editor"))
+	if hintH > 0 {
+		right = layout.Rows(layout.Fill("editor"), layout.Fixed("hint", layout.Lines(hintH+2)).Info())
+	}
+	return layout.Columns(listColumn("fields"), right)
+}
+
+func presetLayout() layout.Node {
+	return layout.Columns(listColumn("presets"), layout.Fill("preview"))
+}
+
+func (be blockEditState) currentLayout() layout.Node {
+	if be.mode == modePresetBrowser {
+		return presetLayout()
+	}
+	return blockLayout(be.hintH())
+}
+
+// relayout re-resolves the shell for the current mode and hint height and
+// rebuilds the preview renderer for the width it placed the editor at.
 func (be blockEditState) relayout() blockEditState {
-	be.listW, be.rightW = theme.TwoColumnWidths(be.width)
-	be.previewRenderer = render.NewPreviewRenderer(be.rightW - 2 - render.PreviewGutterWidth)
+	be.sh = be.sh.SetLayout(be.currentLayout()).SetActions(be.actions()...)
+	be.previewRenderer = render.NewPreviewRenderer(max(1, be.rightW()-draw.GutterWidth))
 	return be
 }
 
-func (be blockEditState) innerH() int {
-	legendLines := be.legendLines
-	if legendLines < 1 {
-		legendLines = 1
+// innerH is the content height of the left panel, shared by every pane on
+// the screen. rightW is the content width of the editor column.
+func (be blockEditState) innerH() int { return draw.InnerRect(be.sh.Rect("fields")).H }
+
+func (be blockEditState) rightW() int {
+	if be.mode == modePresetBrowser {
+		return draw.InnerRect(be.sh.Rect("preview")).W
 	}
-	h := be.height - headerLines - feedbackLines - legendLines - 2
-	if h < 1 {
-		h = 1
-	}
-	return h
+	return draw.InnerRect(be.sh.Rect("editor")).W
 }
 
 // hintVisible reports whether the hint panel is drawn. It stays true
@@ -318,16 +337,13 @@ func (be blockEditState) hintH() int {
 	return be.hintTargetH()
 }
 
-// editorH returns the content height of the top-right panel (editor/preview).
+// editorH returns the content height of the top-right panel (editor/preview):
+// what is left after the hint panel took its share.
 func (be blockEditState) editorH() int {
 	if !be.hintVisible() {
 		return be.innerH()
 	}
-	h := be.innerH() - 2 - be.hintH()
-	if h < 0 {
-		h = 0
-	}
-	return h
+	return max(be.innerH()-2-be.hintH(), 0)
 }
 
 // startHintAnim eases the hint panel from its current drawn height towards the
@@ -349,11 +365,15 @@ func (be blockEditState) Init() tea.Cmd { return textarea.Blink }
 
 // enterConfirmAlert is the single entry point for the confirm modal, so every
 // dialog opens the same way.
-func (be blockEditState) enterConfirmAlert(al alert.Model) blockEditState {
-	be.confirmAlert = al
-	be.confirmAlertVisible = true
+func (be blockEditState) enterConfirmAlert(o overlay.Overlay) blockEditState {
+	be.sh = be.sh.Push(o)
 	be.mode = modeConfirming
 	return be
+}
+
+// confirm builds the block editor's yes/no modal, running onYes when accepted.
+func (be blockEditState) confirm(title, message string, onYes tea.Cmd) overlay.Overlay {
+	return overlay.NewConfirm(title, message, onYes, be.theme.Modal, be.theme.Legend)
 }
 
 // Update is the blockEditState message router used by unit tests. At runtime
@@ -365,13 +385,20 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	// dismisses, so it crosses the mode boundary and is handled up front.
 	if m, ok := msg.(pendingRemoveMsg); ok {
 		be.mode = modeEditing
-		be.confirmAlertVisible = false
 		return be.dispatch(ToggleField{NodeIdx: m.nodeIdx, Checked: false}), nil
 	}
 	if m, ok := msg.(pendingEntryDeleteMsg); ok {
 		be.mode = modeEditing
-		be.confirmAlertVisible = false
 		return be.dispatch(DeleteEntry{SeqIdx: m.seqIdx}), nil
+	}
+	// The confirm's own close arrives beside the pending message above, in
+	// either order, so the overlay is popped regardless of mode.
+	if _, ok := msg.(overlay.CloseMsg); ok {
+		be.sh, _, _ = be.sh.Update(msg)
+		if be.mode == modeConfirming {
+			be.mode = modeEditing
+		}
+		return be, nil
 	}
 
 	// Animation frames advance regardless of mode, so they precede the mode
@@ -384,10 +411,9 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	if m, ok := msg.(tea.WindowSizeMsg); ok {
 		be.width = m.Width
 		be.height = m.Height
-		be.help.SetWidth(be.width - 1)
-		_, be.legendLines = legend.Render(be.help, be.currentKeyMap(), be.width-1)
+		be.sh, _, _ = be.sh.Update(m)
 		be = be.relayout()
-		be.yamlEditor.SetWidth(be.rightW - 2)
+		be.yamlEditor.SetWidth(be.rightW())
 		be.yamlEditor.SetHeight(be.editorH() - 1)
 		be.tree.Height = be.innerH()
 		return be, nil
@@ -404,11 +430,6 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 }
 
 func (be blockEditState) updateConfirming(msg tea.Msg) (blockEditState, tea.Cmd) {
-	if _, ok := msg.(alert.DismissedMsg); ok {
-		be.mode = modeEditing
-		be.confirmAlertVisible = false
-		return be, nil
-	}
 	if km, ok := msg.(tea.KeyMsg); ok {
 		// Global shortcuts stay live under the overlay so Ctrl+S / Ctrl+L never
 		// appear to be unavailable.
@@ -418,48 +439,61 @@ func (be blockEditState) updateConfirming(msg tea.Msg) (blockEditState, tea.Cmd)
 		case key.Matches(km, keys.CtrlLValid):
 			return be, func() tea.Msg { return validateRequestedMsg{} }
 		}
-		al, cmd := be.confirmAlert.Update(km)
-		be.confirmAlert = al
+		var cmd tea.Cmd
+		be.sh, _, cmd = be.sh.Update(km)
 		return be, cmd
 	}
 	return be, nil
 }
 
 func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.Cmd) {
-	km, ok := msg.(tea.KeyMsg)
+	km, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return be, nil
 	}
-	pb, action, name := be.preset.Update(km, be.isCollectionNav())
-	be.preset = pb
-	switch action {
-	case presetbrowser.Applied:
-		if be.cfg.BlockPresets != nil {
-			y, err := be.cfg.BlockPresets.PresetYAML(be.key, name)
-			if err != nil {
-				be.editorErr = editorError{kind: errPreset, message: fmt.Sprintf("preset error: %v", err)}
-			} else {
-				be = be.dispatch(ApplyPreset{Name: name, Content: y})
-			}
-		}
-	case presetbrowser.Appended:
-		if be.cfg.BlockPresets != nil {
-			y, err := be.cfg.BlockPresets.PresetYAML(be.key, name)
-			if err != nil {
-				be.editorErr = editorError{kind: errPreset, message: fmt.Sprintf("preset error: %v", err)}
-			} else {
-				be = be.dispatch(AppendPreset{Name: name, Content: y})
-			}
-		}
-	case presetbrowser.None:
-		return be, nil
+	// Append is yedit's own key, for collection blocks only; the browser
+	// answers for the rest.
+	if key.Matches(km, keys.AAppend) && !be.preset.PreviewFocus && be.isCollectionNav() {
+		return be.presetChosen(AppendPreset{Name: be.preset.Selected().Label}), nil
 	}
-	// presetbrowser.Dismissed, presetbrowser.Applied, presetbrowser.Appended all close the browser.
-	be.mode = modeEditing
+	var action browser.Action
+	be.preset, action = be.preset.Update(km)
+	switch action {
+	case browser.Chosen:
+		return be.presetChosen(ApplyPreset{Name: be.preset.Selected().Label}), nil
+	case browser.Dismissed:
+		be.mode = modeEditing
+		return be.relayout(), nil
+	}
 	return be, nil
 }
 
+// presetChosen resolves the chosen preset's YAML, dispatches act with it and
+// closes the browser.
+func (be blockEditState) presetChosen(act BlockAction) blockEditState {
+	be.mode = modeEditing
+	be = be.relayout()
+	name := be.preset.Selected().Label
+	y, err := be.cfg.BlockPresets.PresetYAML(be.key, name)
+	if err != nil {
+		be.editorErr = editorError{kind: errPreset, message: fmt.Sprintf("preset error: %v", err)}
+		return be
+	}
+	switch a := act.(type) {
+	case ApplyPreset:
+		a.Content = y
+		return be.dispatch(a)
+	case AppendPreset:
+		a.Content = y
+		return be.dispatch(a)
+	}
+	return be
+}
+
 func (be blockEditState) updateEditing(msg tea.Msg) (blockEditState, tea.Cmd) {
+	if next, cmd, ok := be.handleActionMsg(msg); ok {
+		return next, cmd
+	}
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
 		if be.active == blockEditPanelYAML {
@@ -478,7 +512,7 @@ func (be blockEditState) updateEditing(msg tea.Msg) (blockEditState, tea.Cmd) {
 func (be blockEditState) updateNonKeyBuffer(msg tea.Msg) (blockEditState, tea.Cmd) {
 	prev := be.yamlEditor.Value()
 	var cmd tea.Cmd
-	be.yamlEditor, cmd = be.yamlEditor.Update(msg)
+	be.yamlEditor, cmd = textbox.Update(be.yamlEditor, msg)
 	if be.yamlEditor.Value() == prev {
 		return be, cmd
 	}
@@ -492,21 +526,83 @@ func (be blockEditState) updateNonKeyBuffer(msg tea.Msg) (blockEditState, tea.Cm
 	return be, cmd
 }
 
-// handleHintKey handles ctrl+h (toggle hint focus) and navigation when the hint
-// panel is focused. Returns (state, true) when it consumed the key.
-func (be blockEditState) handleHintKey(msg tea.KeyMsg) (blockEditState, bool) {
-	if key.Matches(msg, keys.CtrlHHint) && be.cfg.EnableHints && be.showHint {
+// handleActionMsg runs what the block editor's actions sent. Returns false
+// for any other message.
+func (be blockEditState) handleActionMsg(msg tea.Msg) (blockEditState, tea.Cmd, bool) {
+	switch msg := msg.(type) {
+	case shell.FocusMsg:
+		return be.focusPanel(msg).relayout(), nil, true
+	case beBackMsg:
+		next, cmd := be.back()
+		return next, cmd, true
+	case beUndoMsg:
+		if len(be.undoStack) == 0 {
+			be.statusMsg = "Nothing to undo."
+			return be, nil, true
+		}
+		return be.dispatch(Undo{}), nil, true
+	case beRedoMsg:
+		if len(be.redoStack) == 0 {
+			be.statusMsg = "Nothing to redo."
+			return be, nil, true
+		}
+		return be.dispatch(Redo{}), nil, true
+	case beToggleHintMsg:
+		next, cmd := be.toggleHint()
+		return next, cmd, true
+	case beFocusHintMsg:
 		if be.active == blockEditPanelHint {
 			be.active = be.prevActive
 		} else {
 			be.prevActive = be.active
 			be.active = blockEditPanelHint
 		}
-		return be, true
+		return be.relayout(), nil, true
+	case bePresetMsg:
+		return be.openPresetPicker(), nil, true
 	}
-	if be.active != blockEditPanelHint {
-		return be, false
+	return be, nil, false
+}
+
+// back is esc. A nested editor goes up one level and the model flushes the
+// edits into the canonical tree, so nothing is lost; only leaving the block
+// entirely asks before discarding.
+func (be blockEditState) back() (blockEditState, tea.Cmd) {
+	if len(be.focus) > 0 {
+		return be, func() tea.Msg { return drillOutMsg{} }
 	}
+	if be.dirty {
+		al := be.confirm(
+			"Discard changes?",
+			"Uncommitted changes will be lost.",
+			func() tea.Msg { return blockEditDiscardedMsg{discarded: true} },
+		)
+		return be.enterConfirmAlert(al), nil
+	}
+	return be, func() tea.Msg { return blockEditDiscardedMsg{discarded: false} }
+}
+
+// toggleHint shows or hides the hint panel, mirroring the root list view.
+func (be blockEditState) toggleHint() (blockEditState, tea.Cmd) {
+	// Sample the on-screen height before flipping the flag: mid-flight it is
+	// neither 0 nor the settled target.
+	from := be.hintH()
+	be.showHint = !be.showHint
+	if !be.showHint && be.active == blockEditPanelHint {
+		be.active = be.prevActive
+	}
+	be, tick := be.startHintAnim(from)
+	// editorH() changed with showHint, and the textarea's own height is only
+	// set at creation/resize.
+	be.yamlEditor.SetHeight(be.editorH() - 1)
+	if tick {
+		return be, hintAnimTick(true)
+	}
+	return be, nil
+}
+
+// scrollHint moves the focused hint panel; every other key stops there.
+func (be blockEditState) scrollHint(msg tea.KeyMsg) blockEditState {
 	switch {
 	case key.Matches(msg, keys.Up):
 		if be.hintScroll > 0 {
@@ -523,92 +619,27 @@ func (be blockEditState) handleHintKey(msg tea.KeyMsg) (blockEditState, bool) {
 		if be.hintScroll < maxScroll {
 			be.hintScroll++
 		}
-	case key.Matches(msg, keys.Tab, keys.CtrlHHint):
-		be.active = be.prevActive
 	}
-	return be, true
+	return be
 }
 
 func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
-	if key.Matches(msg, keys.Esc) {
-		// Nested editor: Esc goes up one level and the model flushes the edits into
-		// the canonical tree. Nothing is lost, so no discard prompt - that only
-		// guards leaving the block edit entirely.
-		if len(be.focus) > 0 {
-			return be, func() tea.Msg { return drillOutMsg{} }
+	// The shell runs this screen's actions; a Help that opened its overlay
+	// puts the editor in the mode that closes it.
+	if km, ok := msg.(tea.KeyPressMsg); ok {
+		if sh, handled, cmd := be.sh.SetFocus(be.activePane()).SetActions(be.actions()...).Update(km); handled {
+			be.sh = sh
+			if sh.HasOverlay() {
+				be.mode = modeConfirming
+			}
+			return be, cmd
 		}
-		// Top-level editor: leaving abandons work not yet committed to the doc.
-		if be.dirty {
-			al := alert.NewConfirm(
-				"Discard changes?",
-				"Uncommitted changes will be lost.",
-				func() tea.Msg { return blockEditDiscardedMsg{discarded: true} },
-			)
-			return be.enterConfirmAlert(al), nil
-		}
-		return be, func() tea.Msg { return blockEditDiscardedMsg{discarded: false} }
 	}
 
-	// Ctrl+S commits the editor stack into the document. That needs model access,
-	// so the block layer requests it as a message the root Update handles.
-	if key.Matches(msg, keys.CtrlSSaveCh) {
-		return be, func() tea.Msg { return commitRequestedMsg{} }
-	}
-	// Ctrl+L triggers doc-level validation (available in every mode).
-	if key.Matches(msg, keys.CtrlLValid) {
-		return be, func() tea.Msg { return validateRequestedMsg{} }
-	}
-
-	// Ctrl+U / Ctrl+Y: block-level undo/redo. Empty stacks only report status.
-	if key.Matches(msg, keys.CtrlUUndo) {
-		if len(be.undoStack) == 0 {
-			be.statusMsg = "Nothing to undo."
-			return be, nil
-		}
-		return be.dispatch(Undo{}), nil
-	}
-	if key.Matches(msg, keys.CtrlYRedo) {
-		if len(be.redoStack) == 0 {
-			be.statusMsg = "Nothing to redo."
-			return be, nil
-		}
-		return be.dispatch(Redo{}), nil
-	}
-
-	// H toggles the hint panel, mirroring the root list view. Checked before
-	// handleHintKey, which otherwise captures every key while the hint panel has
-	// focus, and skipped on the YAML panel so typing "h" still inserts it.
-	if key.Matches(msg, keys.Hint) && be.cfg.EnableHints && be.active != blockEditPanelYAML {
-		// Sample the on-screen height before flipping the flag: mid-flight it is
-		// neither 0 nor the settled target.
-		from := be.hintH()
-		be.showHint = !be.showHint
-		if !be.showHint && be.active == blockEditPanelHint {
-			be.active = be.prevActive
-		}
-		be, tick := be.startHintAnim(from)
-		// editorH() changed with showHint, and the textarea's own height is only
-		// set at creation/resize.
-		be.yamlEditor.SetHeight(be.editorH() - 1)
-		if tick {
-			return be, hintAnimTick(true)
-		}
-		return be, nil
-	}
-
-	// Ctrl+H toggles hint focus; when focused it also captures navigation.
-	if be2, handled := be.handleHintKey(msg); handled {
-		return be2, nil
-	}
-
-	if key.Matches(msg, keys.Tab) {
-		return be.switchPanel(), nil
-	}
-
-	if be.active == blockEditPanelTree {
-		if key.Matches(msg, keys.Preset) {
-			return be.openPresetPicker(), nil
-		}
+	switch be.active {
+	case blockEditPanelHint:
+		return be.scrollHint(msg), nil
+	case blockEditPanelTree:
 		return be.updateTreePanel(msg)
 	}
 
@@ -702,14 +733,14 @@ func (be blockEditState) resyncTreeFromYAML() fieldtree.Model {
 	return fieldtree.SyncCheckedFromNode(be.tree, &be.node)
 }
 
-// snippetsFn looks up FieldMeta.Snippet scoped to be.key, or nil when no
+// snippetsFn looks up FieldMeta.Snippet scoped to this editor, or nil when no
 // MetadataSource is configured.
 func (be blockEditState) snippetsFn() func(string) string {
 	if be.cfg.Metadata == nil {
 		return nil
 	}
 	return func(fieldName string) string {
-		return be.cfg.Metadata.FieldMeta(be.key, fieldName).Snippet
+		return be.fieldMeta(fieldName).Snippet
 	}
 }
 
@@ -726,7 +757,7 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 		if n.Kind != fieldtree.KindField || n.Depth != 0 || n.Checked {
 			continue
 		}
-		meta := be.cfg.Metadata.FieldMeta(be.key, n.Label)
+		meta := be.fieldMeta(n.Label)
 		if meta.PreChecked {
 			be.node = *fieldtree.ToggleNodeField(&be.node, ctx, n, true)
 			changed = true
@@ -776,15 +807,32 @@ func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 	return be
 }
 
-func (be blockEditState) switchPanel() blockEditState {
-	if be.active == blockEditPanelTree {
-		// Checkpoint before YAML editing so manual changes are undoable.
-		be = be.saveUndo()
+// activePane names the shell leaf of the active panel.
+func (be blockEditState) activePane() string {
+	switch be.active {
+	case blockEditPanelYAML:
+		return "editor"
+	case blockEditPanelHint:
+		return "hint"
+	}
+	return "fields"
+}
+
+// focusPanel runs what the shell's focus move means here: the YAML editor
+// holds the cursor while focused and checkpoints undo on the way in.
+func (be blockEditState) focusPanel(msg shell.FocusMsg) blockEditState {
+	if msg.From == "editor" {
+		be.yamlEditor.Blur()
+	}
+	switch msg.To {
+	case "editor":
+		if msg.From != "hint" { // back from the hint the same YAML session goes on
+			be = be.saveUndo()
+		}
 		be.active = blockEditPanelYAML
 		be.yamlEditor.Focus()
-	} else {
+	case "fields":
 		be.active = blockEditPanelTree
-		be.yamlEditor.Blur()
 	}
 	return be
 }
@@ -842,76 +890,66 @@ func (be blockEditState) commit() (blockEditState, *yaml.Node, bool) {
 
 // View renders the block editor. parentSegs is the breadcrumb path from all
 // ancestor editors in the stack, computed by model.blockBreadcrumbPrefix().
+// View draws the editor screen through its shell. The shell copy takes the
+// frame's subtitle, legend, status and focus; nothing is written back.
 func (be blockEditState) View(parentSegs []string) string {
+	sh := be.sh.SetSubtitle(be.breadcrumb(parentSegs)).SetLayout(be.currentLayout()).SetActions(be.actions()...)
 	if be.mode == modePresetBrowser {
-		return be.presetView(parentSegs)
+		return be.presetView(sh)
+	}
+	if text, isErr := be.feedbackLine(); text != "" {
+		level := shell.Info
+		if isErr {
+			level = shell.Error
+		}
+		sh, _ = sh.SetStatus(text, level, 0)
 	}
 
-	header := be.breadcrumbHeader(parentSegs)
-
-	treeActive := be.active == blockEditPanelTree
-	leftTitle, leftContent := "Fields", be.tree.View(be.theme)
+	fieldsTitle := "Fields"
 	if be.tree.IsEmpty() {
-		leftTitle, leftContent = "Field", be.fieldItemView()
+		fieldsTitle = "Field"
 	}
-	leftPanel := theme.RenderTitledPanelWith(leftTitle, theme.Size{W: be.listW, H: be.innerH() + 2}, treeActive, leftContent, be.theme.Colors)
-
-	yamlActive := be.active == blockEditPanelYAML
-	var topTitle, topContent string
-	if !yamlActive {
-		topTitle = "Preview"
-		// The preview follows the tree selection; rendered preview lines map ~1:1
-		// to YAML lines.
-		preview := numberPreviewLines(render.PreviewYAML(be.yamlEditor.Value(), be.previewRenderer), be.theme)
-		topContent = scrollLinesTo(preview, be.editorH(), be.previewScroll)
-	} else {
-		topTitle = "Editing YAML"
-		topContent = render.ClampLines(be.yamlEditor.View(), be.editorH())
+	editorTitle, focus := "Preview", "fields"
+	switch be.active {
+	case blockEditPanelYAML:
+		editorTitle, focus = "Editing YAML", "editor"
+	case blockEditPanelHint:
+		focus = "hint"
 	}
-	topPanel := theme.RenderTitledPanelWith(topTitle, theme.Size{W: be.rightW, H: be.editorH() + 2}, yamlActive, topContent, be.theme.Colors)
 
-	rightPanel := topPanel
+	panes := map[string]shell.Pane{
+		"fields": {Title: fieldsTitle, Body: func(layout.Rect) string {
+			if be.tree.IsEmpty() {
+				return be.fieldItemView()
+			}
+			return be.tree.View(be.theme)
+		}},
+		"editor": {Title: editorTitle, Body: func(r layout.Rect) string {
+			if be.active == blockEditPanelYAML {
+				return be.yamlEditor.View()
+			}
+			// The preview follows the tree selection; rendered preview lines
+			// map ~1:1 to YAML lines.
+			preview := draw.NumberLines(render.PreviewYAML(be.yamlEditor.Value(), be.previewRenderer), be.theme.Muted)
+			return draw.ScrollTo(preview, r.H, be.previewScroll)
+		}},
+	}
 	if be.hintVisible() {
-		hintActive := be.active == blockEditPanelHint
-		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: be.rightW, H: be.hintH() + 2}, hintActive, be.scrolledHintContent(), be.theme.Colors)
-		rightPanel = lipgloss.JoinVertical(lipgloss.Left, topPanel, hintPanel)
+		panes["hint"] = shell.Pane{Title: "Hint/Example", Body: func(layout.Rect) string { return be.scrolledHintContent() }}
 	}
-
-	feedback := be.feedbackLine()
-	legendBar := legend.HelpLine(be.width, be.help, be.currentKeyMap())
-
-	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legendBar})
-	if be.height > 0 {
-		out = render.ClampLines(out, be.height)
-	}
-	if be.confirmAlertVisible {
-		out = theme.CompositeCenter(be.confirmAlert.Box(), out)
-	}
-	return out
+	return sh.SetFocus(focus).View(panes)
 }
 
-func (be blockEditState) presetView(parentSegs []string) string {
-	header := be.breadcrumbHeader(parentSegs)
-
-	leftPanel := theme.RenderTitledPanelWith("Available Presets", theme.Size{W: be.listW, H: be.innerH() + 2}, !be.preset.PreviewFocus, be.preset.ListView(be.theme), be.theme.Colors)
-	rightPanel := theme.RenderTitledPanelWith("Preset Preview", theme.Size{W: be.rightW, H: be.innerH() + 2}, be.preset.PreviewFocus, be.preset.PreviewView(be.innerH()), be.theme.Colors)
-
-	var presetKM help.KeyMap
-	switch {
-	case be.preset.PreviewFocus:
-		presetKM = legend.PresetPreview{}
-	case be.isCollectionNav():
-		presetKM = legend.PresetListCollection{}
-	default:
-		presetKM = legend.PresetListScalar{}
+func (be blockEditState) presetView(sh shell.Shell) string {
+	focus := "presets"
+	if be.preset.PreviewFocus {
+		focus = "preview"
 	}
-	legendBar := legend.HelpLine(be.width, be.help, presetKM)
-
-	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Legend: legendBar})
-	if be.height > 0 {
-		out = render.ClampLines(out, be.height)
+	panes := map[string]shell.Pane{
+		"presets": {Title: "Available Presets", Body: func(r layout.Rect) string { return be.preset.ListView(be.theme, r.H) }},
+		"preview": {Title: "Preset Preview", Body: func(r layout.Rect) string { return be.preset.PreviewView(r.H) }},
 	}
-	return out
+	return sh.SetFocus(focus).View(panes)
 }
 
 // validateSnippetText checks that text is valid YAML.

@@ -1,6 +1,9 @@
 // Package yedit provides reusable building blocks for TUI editors over
 // structured YAML files.
 //
+// It is only a library, with no standalone binary: a program uses it to build
+// a schema-aware editor for its own config into itself.
+//
 // The library is composed of independent sub-packages:
 //
 //   - schema:       reflection over the client's Go structs (yaml tags only)
@@ -12,10 +15,16 @@
 //   - editor:       two-panel bubbletea TUI that ties the pieces together
 //   - presets:      Source interface + struct-backed helpers (ForField, Combine) for per-field YAML snippets
 //   - viewer:       read-only TUI to browse a preset Source
-//   - theme:        palette and layout primitives (header, panels, two-column layout)
-//   - alert:        modal alert/confirm component shared by the TUIs
+//   - keys:         the bindings the list, tree and browser match against
+//   - blocklist:    the root list, projected onto bezel/list
+//   - fieldtree:    the block editor's field tree, projected onto bezel/tree
 //   - yamlnode:     query and navigation helpers over yaml.v3 node trees
 //   - render:       small shared rendering helpers (glamour YAML fence)
+//   - trace:        JSONL session recorder behind editor.Config.Trace.Dump
+//
+// The chrome - theme, panels, header, legend, status, modals - and the generic
+// widgets (list, tree, browser, animation) come from
+// github.com/lucasassuncao/bezel; import bezel/theme to pick a theme.
 //
 // yedit is intentionally headless of any specific YAML schema. Clients pass
 // a pointer to their own annotated struct and (optionally) a preset Source;

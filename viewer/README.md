@@ -21,7 +21,7 @@ Package viewer is a read\-only TUI that browses the presets exposed by a presets
 
 
 <a name="Run"></a>
-## func [Run](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L197>)
+## func [Run](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L188>)
 
 ```go
 func Run(src presets.Source) error
@@ -30,9 +30,9 @@ func Run(src presets.Source) error
 Run starts the viewer TUI as a blocking call.
 
 <a name="Model"></a>
-## type [Model](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L25-L39>)
+## type [Model](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L25-L35>)
 
-Model is the Bubble Tea root for the viewer TUI.
+Model is the Bubble Tea root for the viewer TUI: a browser over the fields, and once one is opened, a browser over its presets.
 
 ```go
 type Model struct {
@@ -41,7 +41,7 @@ type Model struct {
 ```
 
 <a name="NewModel"></a>
-### func [NewModel](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L42>)
+### func [NewModel](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L38>)
 
 ```go
 func NewModel(src presets.Source) Model
@@ -50,16 +50,16 @@ func NewModel(src presets.Source) Model
 NewModel constructs the TUI from a presets.Source.
 
 <a name="Model.Init"></a>
-### func \(\*Model\) [Init](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L56>)
+### func \(\*Model\) [Init](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L55>)
 
 ```go
 func (m *Model) Init() tea.Cmd
 ```
 
-
+Init asks the terminal for its background so the theme can match it.
 
 <a name="Model.Update"></a>
-### func \(\*Model\) [Update](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L58>)
+### func \(\*Model\) [Update](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L57>)
 
 ```go
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
@@ -68,7 +68,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd)
 
 
 <a name="Model.View"></a>
-### func \(\*Model\) [View](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L157>)
+### func \(\*Model\) [View](<https://github.com/lucasassuncao/yedit/blob/main/viewer/model.go#L156>)
 
 ```go
 func (m *Model) View() tea.View

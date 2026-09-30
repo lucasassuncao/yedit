@@ -19,7 +19,7 @@ type MetadataSource interface {
 - `blockKey` - the top-level YAML key (e.g. `"server"`).
 - `fieldPath` - dot-separated path within the block (e.g. `"pool.timeout"`), or `""` for the block-level entry.
 
-`MetadataSource` is the sole authority for all hint display data and `FromMetadata` validator constraints. yamltui does not derive metadata from struct tags.
+`MetadataSource` is the sole authority for all hint display data and `FromMetadata` validator constraints. yedit does not derive metadata from struct tags.
 
 ## FieldMeta
 
@@ -246,7 +246,7 @@ Both paths are cycle-aware.
 | struct          | `"object"`       |
 | `interface{}`   | `"any"`          |
 
-yamltui displays the `Type` label as-is; any string meaningful to your users is valid.
+yedit displays the `Type` label as-is; any string meaningful to your users is valid.
 
 ## Animating the panel
 
@@ -287,4 +287,4 @@ editor sits idle.
 
 ## Full example
 
-See `examples/test/main.go` for a complete, runnable example that exercises presets, metadata, and validators together.
+See `cmd/demo/main.go` for a complete, runnable example that exercises presets, metadata, and validators together.

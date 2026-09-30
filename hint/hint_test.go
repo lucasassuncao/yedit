@@ -5,14 +5,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/lucasassuncao/bezel/theme"
 	"github.com/lucasassuncao/yedit/hint"
 	"github.com/lucasassuncao/yedit/spec"
-	"github.com/lucasassuncao/yedit/theme"
 )
 
 // Type shows only when set, Required only when true.
 func TestRender_typeAndRequiredBehavior(t *testing.T) {
-	th := theme.Resolve(theme.Theme{})
+	th := theme.Resolve(theme.Theme{}, true)
 
 	t.Run("type shown when set", func(t *testing.T) {
 		is := assert.New(t)
@@ -44,7 +44,7 @@ func TestRender_typeAndRequiredBehavior(t *testing.T) {
 // Constraint fields render when set and stay absent on a zero FieldMeta.
 func TestRender_constraints(t *testing.T) {
 	is := assert.New(t)
-	th := theme.Resolve(theme.Theme{})
+	th := theme.Resolve(theme.Theme{}, true)
 	out := hint.Render(th, spec.FieldMeta{
 		Min: "1s", Max: "168h",
 		Pattern:    `^\d+$`,

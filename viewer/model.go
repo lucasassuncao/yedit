@@ -6,156 +6,156 @@ package viewer
 import (
 	"fmt"
 
-	"charm.land/bubbles/v2/viewport"
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
 
+	"github.com/lucasassuncao/bezel/browser"
+	"github.com/lucasassuncao/bezel/draw"
+	"github.com/lucasassuncao/bezel/layout"
+	"github.com/lucasassuncao/bezel/overlay"
+	"github.com/lucasassuncao/bezel/shell"
+	"github.com/lucasassuncao/bezel/theme"
 	"github.com/lucasassuncao/yedit/presets"
-	"github.com/lucasassuncao/yedit/theme"
+	"github.com/lucasassuncao/yedit/render"
 )
 
-type pane int
-
-const (
-	paneList pane = iota
-	paneViewport
-)
-
-// Model is the Bubble Tea root for the viewer TUI.
+// Model is the Bubble Tea root for the viewer TUI: a browser over the fields,
+// and once one is opened, a browser over its presets.
 type Model struct {
 	src    presets.Source
 	fields []string
-	list   listModel
+	field  string // the field whose presets are listed; "" while browsing fields
 
-	width  int
-	height int
-	listW  int
-	vpW    int
-
-	active pane
-
+	b        browser.Model
+	keys     browser.Keys
+	sh       shell.Shell
+	th       theme.Resolved
 	renderer *glamour.TermRenderer
-	vp       viewport.Model
 }
 
 // NewModel constructs the TUI from a presets.Source.
 func NewModel(src presets.Source) Model {
-	fields := src.ListFields()
-	presetsByField := make(map[string][]string, len(fields))
-	for _, f := range fields {
-		presetsByField[f] = src.ListPresets(f)
-	}
-	return Model{
-		src:    src,
-		fields: fields,
-		list:   newListModel(fields, presetsByField),
-		active: paneList,
-	}
+	th := theme.Resolve(theme.ThemePlain, true)
+	m := Model{src: src, fields: src.ListFields(), th: th}
+	m.sh = shell.New(shell.Config{
+		Layout: layout.Columns(layout.Fixed("fields", layout.Ratio(1, 3), layout.Min(30), layout.Max(60)), layout.Fill("body")),
+		Theme:  th,
+		Title:  "yedit", Subtitle: "presets",
+	})
+	// ← and → walk the two levels the way esc and enter do.
+	m.keys = browser.DefaultKeys()
+	m.keys.Enter = key.NewBinding(key.WithKeys("enter", "right"))
+	m.keys.Esc = key.NewBinding(key.WithKeys("esc", "left"))
+	m.b = browser.New(m.fieldItems(), "").WithKeys(m.keys)
+	return m
 }
 
-func (m *Model) Init() tea.Cmd { return nil }
+// Init asks the terminal for its background so the theme can match it.
+func (m *Model) Init() tea.Cmd { return tea.RequestBackgroundColor }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		m.sh, _, _ = m.sh.Update(msg)
 		m.relayout()
-		m.refreshRendered()
 		return m, nil
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
+	case tea.BackgroundColorMsg:
+		m.th = theme.Resolve(theme.ThemePlain, msg.IsDark())
+		m.sh = m.sh.SetTheme(m.th)
+		return m, nil
+	case overlay.CloseMsg, overlay.PushMsg:
+		var cmd tea.Cmd
+		m.sh, _, cmd = m.sh.Update(msg)
+		return m, cmd
+	case tea.KeyPressMsg:
+		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
-		case "tab":
-			if m.active == paneList {
-				m.active = paneViewport
-			} else {
-				m.active = paneList
-			}
-			return m, nil
-		case "up":
-			if m.active == paneList {
-				m.list.MoveUp()
-				m.refreshRendered()
-			} else {
-				m.vp.ScrollUp(1)
-			}
-			return m, nil
-		case "down":
-			if m.active == paneList {
-				m.list.MoveDown()
-				m.refreshRendered()
-			} else {
-				m.vp.ScrollDown(1)
-			}
-			return m, nil
-		case "pgup":
-			if m.active == paneViewport {
-				m.vp.ScrollUp(m.vp.Height() / 2)
-			}
-			return m, nil
-		case "pgdown":
-			if m.active == paneViewport {
-				m.vp.ScrollDown(m.vp.Height() / 2)
-			}
-			return m, nil
-		case "enter", "right":
-			if m.active == paneList {
-				if m.list.Mode() == modeFields {
-					m.list.DrillIn()
-					m.refreshRendered()
-				}
-			}
-			return m, nil
-		case "esc", "left":
-			if m.active == paneList {
-				if m.list.Mode() == modePresets {
-					m.list.Back()
-					m.refreshRendered()
-				}
-			}
-			return m, nil
 		}
+		// The shell runs help and quit and, while the help is open, takes every key.
+		if sh, handled, cmd := m.sh.SetActions(m.actions()...).Update(msg); handled {
+			m.sh = sh
+			return m, cmd
+		}
+		var action browser.Action
+		m.b, action = m.b.Update(msg)
+		switch {
+		case action == browser.Chosen && m.field == "":
+			m.field = m.b.Selected().Label
+			m.b = m.b.SetItems(m.presetItems(m.field))
+		case action == browser.Dismissed && m.field != "":
+			// Back to the fields, cursor on the one just left.
+			current := m.field
+			m.field = ""
+			m.b = browser.New(m.fieldItems(), current).WithKeys(m.keys)
+			m.relayout()
+		}
+		m.sh = m.sh.SetActions(m.actions()...)
+		return m, nil
 	}
 	return m, nil
 }
 
 func (m *Model) relayout() {
-	m.listW, m.vpW = theme.TwoColumnWidths(m.width)
-	innerH := m.height - 5 // 1 header + 2 status + 2 panel borders
-	if innerH < 3 {
-		innerH = 3
-	}
-	m.list.SetSize(m.listW-2, innerH)
-
-	m.vp.SetWidth(m.vpW - 2)
-	m.vp.SetHeight(innerH)
-
-	if r, err := glamour.NewTermRenderer(
-		glamour.WithStylePath("dark"),
-		glamour.WithWordWrap(m.vpW-2),
-	); err == nil {
+	m.sh = m.sh.SetActions(m.actions()...)
+	body := draw.InnerRect(m.sh.Rect("body"))
+	m.b = m.b.SetPreviewHeight(body.H)
+	if r, err := glamour.NewTermRenderer(glamour.WithStylePath("dark"), glamour.WithWordWrap(body.W)); err == nil {
 		m.renderer = r
 	}
 }
 
-func (m *Model) refreshRendered() {
-	field, preset := m.list.Selected()
-	yaml := ""
-	if preset != "" {
-		if y, err := m.src.PresetYAML(field, preset); err == nil {
-			yaml = y
-		} else {
-			yaml = "# error: " + err.Error()
-		}
+// fieldItems lists the fields, each previewing its first preset.
+func (m *Model) fieldItems() []browser.Item {
+	items := make([]browser.Item, 0, len(m.fields))
+	for _, f := range m.fields {
+		items = append(items, browser.Item{Label: f, Detail: func() string {
+			if ps := m.src.ListPresets(f); len(ps) > 0 {
+				return m.rendered(f, ps[0])
+			}
+			return ""
+		}})
 	}
-	m.vp.SetContent(renderYAML(yaml, m.renderer))
-	m.vp.GotoTop()
+	return items
+}
+
+func (m *Model) presetItems(field string) []browser.Item {
+	names := m.src.ListPresets(field)
+	items := make([]browser.Item, 0, len(names))
+	for _, n := range names {
+		items = append(items, browser.Item{Label: n, Detail: func() string { return m.rendered(field, n) }})
+	}
+	return items
+}
+
+// rendered is a preset's YAML through glamour, or the error in its place.
+func (m *Model) rendered(field, preset string) string {
+	y, err := m.src.PresetYAML(field, preset)
+	if err != nil {
+		y = "# error: " + err.Error()
+	}
+	return render.YAMLFence(y, m.renderer)
+}
+
+// actions is the keys for where the user is: the fields, a field's presets,
+// or the document pane. The browser handles every key but help and quit.
+func (m *Model) actions() []shell.Action {
+	out := []shell.Action{shell.Help(), shell.ChangePane(shell.DisplayOnly())}
+	shown := func(label, desc string, keys ...string) shell.Action {
+		return shell.Custom(label, desc, nil, shell.WithKey(keys...), shell.DisplayOnly())
+	}
+	switch {
+	case m.b.PreviewFocus:
+		return append(out, shell.Scroll(), shell.Quit(), shown("pgup/pgdn", "half-page", "pgup", "pgdown"), shown("esc", "back to list", "esc"))
+	case m.field != "":
+		return append(out, shell.Move(), shell.Quit(), shown("esc/←", "back to fields", "esc", "left"))
+	}
+	return append(out, shell.Move(), shell.Quit(), shown("enter/→", "open", "enter", "right"))
 }
 
 func (m *Model) View() tea.View {
-	if m.width == 0 {
+	w, _ := m.sh.Size()
+	if w == 0 {
 		v := tea.NewView("Loading...")
 		v.AltScreen = true
 		return v
@@ -166,28 +166,19 @@ func (m *Model) View() tea.View {
 		return v
 	}
 
-	field, preset := m.list.Selected()
-	rightTitle := "Preset"
-	if field != "" && preset != "" {
-		rightTitle = fmt.Sprintf("%s · %s", field, preset)
+	listTitle, bodyTitle := "Fields", "Preset"
+	if m.field != "" {
+		listTitle = "Presets · " + m.field
+		bodyTitle = fmt.Sprintf("%s · %s", m.field, m.b.Selected().Label)
 	}
-
-	innerH := m.height - 5
-	if innerH < 3 {
-		innerH = 3
+	focus := "fields"
+	if m.b.PreviewFocus {
+		focus = "body"
 	}
-
-	leftPanel := theme.RenderTitledPanel("Fields", theme.Size{W: m.listW, H: innerH + 2}, m.active == paneList, m.list.View())
-	rightPanel := theme.RenderTitledPanel(rightTitle, theme.Size{W: m.vpW, H: innerH + 2}, m.active == paneViewport, m.vp.View())
-
-	legendText := "[↑/↓] navigate • [Enter/→] open • [Esc/←] back • [Tab] panel • [q] quit"
-	if m.active == paneViewport {
-		legendText = "[↑/↓] scroll • [PgUp/PgDn] half-page • [Tab] panel • [q] quit"
-	} else if m.list.Mode() == modePresets {
-		legendText = "[↑/↓] navigate • [Esc/←] back to fields • [Tab] panel • [q] quit"
-	}
-	header := theme.RenderHeader("yedit", "presets", "", m.width)
-	content := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: "", Legend: theme.StatusBar.Render(legendText)})
+	content := m.sh.SetActions(m.actions()...).SetFocus(focus).View(map[string]shell.Pane{
+		"fields": {Title: listTitle, Body: func(r layout.Rect) string { return m.b.ListView(m.th, r.H) }},
+		"body":   {Title: bodyTitle, Body: func(r layout.Rect) string { return m.b.PreviewView(r.H) }},
+	})
 	v := tea.NewView(content)
 	v.AltScreen = true
 	return v

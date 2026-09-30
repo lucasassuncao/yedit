@@ -55,7 +55,7 @@ Each line of the file is one JSON object. Field order in the file is `ts, seq, s
 - **`"key"`** - a raw keystroke. Only `tea.KeyMsg` messages get this scope (see `"msg"` below for everything else); most cursor movement is a `"key"` event with no corresponding `"block"`/`"model"` line, since it doesn't mutate anything.
 - **`"block"`** - a [`BlockAction`](../editor/actions.go) dispatched inside a block editor (`ToggleField`, `SyncYAML`, `AddEntry`, `DeleteEntry`, `NavigateEntry`, `ApplyPreset`, `AppendPreset`, `Undo`, `Redo`). Captured via `OnAction`, which fires from the single block-level dispatch gateway, so every block mutation is guaranteed to appear.
 - **`"model"`** - a [`ModelAction`](../editor/actions.go) dispatched at the document level (`DrillIn`, `DrillOut`, `DeleteBlock`, `Save`, `Reload`, `ToggleHints`, `ApplyDocPreset`, …). Captured via `OnModelAction`.
-- **`"msg"`** - every other `tea.Msg` the program receives, captured via `OnMsg` at the single top-level `model.Update` entry point. This is the catch-all: several real user-triggered transitions - opening a block from the root list, Ctrl+S commit/save, confirming a delete/reload/doc-preset dialog, dismissing an alert, running validation - are handled directly in `model.Update`'s switch instead of going through `model.dispatch(ModelAction)`, so they have no `"model"`-scope representation. `"msg"` closes that gap: it fires for literally everything except four known noise sources, none of which reflects user input: `cursor.BlinkMsg` (the textarea's continuous blink tick), `cursor.initialBlinkMsg` (fires once whenever a textarea gains focus), `cursor.blinkCanceled` (fires on every keystroke typed into a textarea - typing cancels the pending blink), and yedit's own `clearStatusMsg` (a status-bar decay timer).
+- **`"msg"`** - every other `tea.Msg` the program receives, captured via `OnMsg` at the single top-level `model.Update` entry point. This is the catch-all: several real user-triggered transitions - opening a block from the root list, Ctrl+S commit/save, confirming a delete/reload/doc-preset dialog, dismissing an alert, running validation - are handled directly in `model.Update`'s switch instead of going through `model.dispatch(ModelAction)`, so they have no `"model"`-scope representation. `"msg"` closes that gap: it fires for literally everything except four known noise sources, none of which reflects user input: `cursor.BlinkMsg` (the textarea's continuous blink tick), `cursor.initialBlinkMsg` (fires once whenever a textarea gains focus), `cursor.blinkCanceled` (fires on every keystroke typed into a textarea - typing cancels the pending blink), and the shell's own status decay timer (`shell.statusExpiredMsg`).
 
 ### Location strings
 
@@ -67,7 +67,7 @@ Each line of the file is one JSON object. Field order in the file is `ts, seq, s
 | `preview` | Read-only preview pane. |
 | `alert` | A confirmation/alert dialog is showing. |
 | `docPreset` | Whole-document preset picker is open. |
-| `block:<key>:<panel>:<mode>` | Inside a block editor. `<panel>` is `tree`, `yaml`, or `hint`; `<mode>` is `editing`, `presetBrowser`, or `confirming`. |
+| `block:<key>:<panel>:<mode>` | Inside a block editor. `<panel>` is `tree`, `yaml`, or `hint`; `<mode>` is `editing`, `presetbrowser`, or `confirming`. |
 
 Example: `block:categories:tree:editing` means the cursor is in the tree panel of the `categories` block, in normal editing mode (not the preset picker or a confirm dialog).
 
@@ -75,10 +75,10 @@ Example: `block:categories:tree:editing` means the cursor is in the tree panel o
 
 `Config.Trace.Dump` is designed for 100% coverage - every message the editor's `Update` loop ever receives is recorded, because `OnMsg` fires unconditionally on the first line of `model.Update`, before any routing happens. Concretely this means, on top of the `"key"`/`"block"`/`"model"` events:
 
-- Opening a block from the root list (`openItemMsg`) - `ModelAction` has an `OpenBlock{Key}` type for this, but that path is never actually dispatched through `model.dispatch`; it shows up as `scope:"msg"`, `type:"editor.openItemMsg"` instead.
+- Opening a block from the root list (`blocklist.OpenItemMsg`) - `ModelAction` has an `OpenBlock{Key}` type for this, but that path is never actually dispatched through `model.dispatch`; it shows up as `scope:"msg"`, `type:"blocklist.OpenItemMsg"` instead.
 - Ctrl+S commit/save (`commitRequestedMsg`, `doSaveMsg`, `saveResultMsg`).
 - Confirming "Remove block?" / "Reload from disk?" / "Apply document preset?" dialogs (the confirmation itself flows through `model.dispatch` and appears as `"model"`; the message that *shows* the dialog does not, and appears as `"msg"`).
-- Dismissing any alert (`alert.DismissedMsg`).
+- Dismissing any alert (`overlay.CloseMsg`).
 - Ctrl+L validate (`validateRequestedMsg`).
 - TAB (pane switch) and the preset picker were already fully covered before this: TAB is an ordinary `tea.KeyMsg`, and selecting a preset dispatches `ApplyPreset`/`AppendPreset` as a `"block"` event: `"msg"` scope mainly closes gaps at the document/model level, not inside the block editor.
 

@@ -1,11 +1,27 @@
 package viewer
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/stretchr/testify/require"
+
+	"github.com/lucasassuncao/bezel/bezeltest"
 )
+
+type stubSource struct{}
+
+func (stubSource) ListFields() []string { return []string{"image", "volumes"} }
+func (stubSource) ListPresets(f string) []string {
+	if f == "image" {
+		return []string{"alpine", "debian"}
+	}
+	return []string{"data"}
+}
+func (stubSource) PresetYAML(f, n string) (string, error) { return f + ": " + n + "\n", nil }
 
 // tallSource returns a preset far taller than any test viewport so the right
 // pane has something to scroll.
@@ -14,78 +30,80 @@ type tallSource struct{}
 func (tallSource) ListFields() []string        { return []string{"alpha", "beta"} }
 func (tallSource) ListPresets(string) []string { return []string{"base"} }
 func (tallSource) PresetYAML(f, n string) (string, error) {
-	return strings.Repeat("key: value\n", 100), nil
-}
-
-func key(s string) tea.KeyMsg {
-	switch s {
-	case "tab":
-		return tea.KeyPressMsg{Code: tea.KeyTab}
-	case "up":
-		return tea.KeyPressMsg{Code: tea.KeyUp}
-	case "down":
-		return tea.KeyPressMsg{Code: tea.KeyDown}
-	case "pgdn":
-		return tea.KeyPressMsg{Code: tea.KeyPgDown}
+	var b strings.Builder
+	for i := range 100 {
+		fmt.Fprintf(&b, "key%d: value\n", i)
 	}
-	return tea.KeyPressMsg{Text: s, Code: []rune(s)[0]}
+	return b.String(), nil
 }
 
-func newTallModel(t *testing.T) *Model {
+type emptySource struct{}
+
+func (emptySource) ListFields() []string                      { return nil }
+func (emptySource) ListPresets(string) []string               { return nil }
+func (emptySource) PresetYAML(string, string) (string, error) { return "", nil }
+
+func newModel(t *testing.T, src interface {
+	ListFields() []string
+	ListPresets(string) []string
+	PresetYAML(string, string) (string, error)
+}) *Model {
 	t.Helper()
-	m := NewModel(tallSource{})
+	m := NewModel(src)
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	return &m
 }
 
-func TestViewportPaneScrolls(t *testing.T) {
-	m := newTallModel(t)
-	m.Update(key("tab")) // focus the right pane
-	if m.active != paneViewport {
-		t.Fatal("tab should focus the viewport pane")
-	}
+func TestDrillIntoAFieldAndBack(t *testing.T) {
+	m := newModel(t, stubSource{})
+	require.Equal(t, "image", m.b.Selected().Label)
+	require.Contains(t, ansi.Strip(m.View().Content), "Fields")
 
-	m.Update(key("down"))
-	if m.vp.YOffset() != 1 {
-		t.Errorf("YOffset after down = %d, want 1", m.vp.YOffset())
-	}
+	m.Update(bezeltest.Key("enter"))
+	require.Equal(t, "image", m.field)
+	require.Equal(t, "alpine", m.b.Selected().Label)
+	require.Contains(t, ansi.Strip(m.View().Content), "Presets · image")
 
-	m.Update(key("pgdn"))
-	if m.vp.YOffset() <= 1 {
-		t.Errorf("YOffset after pgdn = %d, want > 1", m.vp.YOffset())
-	}
+	m.Update(bezeltest.Key("down"))
+	require.Equal(t, "debian", m.b.Selected().Label)
 
-	m.Update(key("up"))
-	after := m.vp.YOffset()
-	m.Update(key("up"))
-	if m.vp.YOffset() >= after && after > 0 {
-		t.Errorf("up did not scroll back (offset %d -> %d)", after, m.vp.YOffset())
-	}
+	m.Update(bezeltest.Key("left"))
+	require.Equal(t, "", m.field)
+	require.Equal(t, "image", m.b.Selected().Label, "back lands on the field just left")
 }
 
-func TestViewportScrollResetsOnSelectionChange(t *testing.T) {
-	m := newTallModel(t)
-	m.Update(key("tab"))
-	m.Update(key("pgdn"))
-	if m.vp.YOffset() == 0 {
-		t.Fatal("precondition: viewport should be scrolled")
-	}
+func TestPreviewPaneScrollsOnlyWhenFocused(t *testing.T) {
+	m := newModel(t, tallSource{})
+	top := m.b.PreviewView(5)
+	m.Update(bezeltest.Key("down")) // list has focus: moves the cursor, not the preview
+	require.Equal(t, top, m.b.PreviewView(5))
 
-	m.Update(key("tab"))  // back to the list
-	m.Update(key("down")) // select another field
-	if m.vp.YOffset() != 0 {
-		t.Errorf("YOffset after selection change = %d, want 0", m.vp.YOffset())
-	}
+	m.Update(bezeltest.Key("tab"))
+	require.True(t, m.b.PreviewFocus)
+	m.Update(bezeltest.Key("down"))
+	require.NotEqual(t, top, m.b.PreviewView(5))
+	m.Update(bezeltest.Key("pgdown"))
+	m.Update(bezeltest.Key("tab"))
+	m.Update(bezeltest.Key("up")) // selection change resets the scroll
+	require.Equal(t, top, m.b.PreviewView(5))
 }
 
-func TestListPaneIgnoresViewportKeysWhenUnfocused(t *testing.T) {
-	m := newTallModel(t)
-	m.Update(key("down")) // list focused: moves the field cursor
-	f, _ := m.list.Selected()
-	if f != "beta" {
-		t.Errorf("field after down = %q, want beta", f)
-	}
-	if m.vp.YOffset() != 0 {
-		t.Errorf("viewport scrolled while list focused: YOffset = %d", m.vp.YOffset())
-	}
+func TestEmptySourceRendersAMessage(t *testing.T) {
+	m := newModel(t, emptySource{})
+	require.Contains(t, m.View().Content, "No presets available.")
+}
+
+func TestHelpIsShownOpensAndCloses(t *testing.T) {
+	m := NewModel(stubSource{})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	rows := strings.Split(ansi.Strip(m.View().Content), "\n")
+	require.Contains(t, rows[len(rows)-1], "[?] help")
+
+	m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+	require.True(t, m.sh.HasOverlay(), "? opens the help")
+
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	require.NotNil(t, cmd)
+	m.Update(cmd())
+	require.False(t, m.sh.HasOverlay(), "esc closes it")
 }

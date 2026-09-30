@@ -5,13 +5,14 @@ import (
 
 	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/hint"
+	"github.com/lucasassuncao/yedit/spec"
 )
 
 // fieldItemView renders the left panel of a tree-less block as a single
 // non-toggleable row naming the field. There is nothing to navigate, so the row
 // is just an anchor; the metadata lives in the Hint/Example panel.
 func (be blockEditState) fieldItemView() string {
-	return be.theme.ExistingItem.Render(" ▸ " + be.key)
+	return be.theme.Success.Render(" ▸ " + be.key)
 }
 
 // scrolledHintContent clips the hint content to hintH() lines starting at
@@ -47,17 +48,17 @@ func (be blockEditState) hintContent() string {
 	}
 	idx := be.tree.CurrentNodeIdx()
 	if idx < 0 {
-		return be.theme.HintDim.Render("  select a field to see hints")
+		return be.theme.Muted.Render("  select a field to see hints")
 	}
 	node := be.tree.Nodes[idx]
 
 	switch node.Kind {
 	case fieldtree.KindUnknown:
-		return be.theme.UnknownItem.Render("⚠ unknown key - not declared in the schema\n remove it before saving")
+		return be.theme.Danger.Render("⚠ unknown key - not declared in the schema\n remove it before saving")
 	case fieldtree.KindField:
 		// handled below
 	default:
-		return be.theme.HintDim.Render("  select a field to see hints")
+		return be.theme.Muted.Render("  select a field to see hints")
 	}
 
 	fieldPath := strings.Join(node.YAMLPath, ".")
@@ -67,13 +68,26 @@ func (be blockEditState) hintContent() string {
 	return be.fieldHintFor(fieldPath)
 }
 
+// fieldMeta looks fieldPath up from the root block: a drilled-in editor's key
+// is the nested field's name, which the metadata tree does not index.
+func (be blockEditState) fieldMeta(fieldPath string) spec.FieldMeta {
+	if be.metaBlock == "" {
+		return be.cfg.Metadata.FieldMeta(be.key, fieldPath)
+	}
+	path := be.metaPrefix
+	if fieldPath != "" {
+		path += "." + fieldPath
+	}
+	return be.cfg.Metadata.FieldMeta(be.metaBlock, path)
+}
+
 // fieldHintFor builds the hint text for the field at fieldPath, a dot-joined
 // path from the block root (e.g. "source.path").
 func (be blockEditState) fieldHintFor(fieldPath string) string {
 	if be.cfg.Metadata == nil {
-		return be.theme.HintDim.Render("  Config.Metadata is not set - no metadata source configured")
+		return be.theme.Muted.Render("  Config.Metadata is not set - no metadata source configured")
 	}
-	meta := be.cfg.Metadata.FieldMeta(be.key, fieldPath)
+	meta := be.fieldMeta(fieldPath)
 	ex := meta.Example
 	if ex == "" && meta.Multiline {
 		// An empty fieldPath means the block's own metadata, so fall back to the
@@ -90,5 +104,5 @@ func (be blockEditState) fieldHintFor(fieldPath string) string {
 	if out := hint.Render(be.theme, meta, ex); out != "" {
 		return out
 	}
-	return be.theme.HintDim.Render("  no metadata declared for this field")
+	return be.theme.Muted.Render("  no metadata declared for this field")
 }

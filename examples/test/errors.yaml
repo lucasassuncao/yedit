@@ -1,9 +1,0 @@
-debug: false
-server:
-  host: localhost
-  port: 8080
-  pool:
-    min-size: 2
-    max-size: 10
-workers:
-  - concurrency: 3

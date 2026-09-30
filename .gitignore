@@ -33,18 +33,11 @@ Thumbs.db
 Desktop.ini
 
 .claude
-
+/docs/superpowers
 tmp/
 tmp/*
-# Cross-compiled binary used by demo.tape
-demo-app
+# Binary demo.tape builds and deletes; left behind if a recording is interrupted
+/demo.exe
 
-# Binaries from running `go build` inside examples/*/ without -o
-examples/*/test
-examples/*/test.exe
-
-# Throwaway working copies created by examples/*/demo.tape recordings
-examples/*/session.yaml
-
-# examples/test's auto-seeded default config (regenerated on first run)
-examples/test/demo.yaml
+# cmd/demo's auto-seeded default config (regenerated on first run)
+/demo.yaml

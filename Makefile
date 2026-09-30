@@ -120,13 +120,9 @@ govulncheck: $(GOVULNCHECK) ## Report vulnerabilities reachable from this code
 	@echo "Checking for reachable vulnerabilities..."
 	@$(GOVULNCHECK) ./...
 
-# examples/ is excluded because it is a separate module with its own go.mod:
-# its dependencies are the demo app's, not this library's, and a stale test.exe
-# left there would put whatever it was built against into the report. What
-# consumers inherit is the tree ./go.mod declares, and nothing else.
 sbom: $(SYFT) ## Generate a CycloneDX SBOM of the dependency tree
 	@echo "Generating SBOM..."
-	@$(SYFT) . --source-name $(MODULE_NAME) --exclude './.gobin/**' --exclude './examples/**' -o cyclonedx-json=$(SBOM_FILE)
+	@$(SYFT) . --source-name $(MODULE_NAME) --exclude './.gobin/**' -o cyclonedx-json=$(SBOM_FILE)
 
 vuln: $(GRYPE) sbom ## Scan the SBOM for known vulnerabilities with grype
 	@echo "Scanning for vulnerabilities..."
@@ -147,11 +143,11 @@ docs: $(GOMARKDOC) ## Generate documentation with gomarkdoc
 		./schema/... \
 		./presets/... \
 		./viewer/... \
-		./theme/... \
+		./metadata/... \
+		./trace/... \
 		./spec/... \
 		./validate/... \
-		./report/... \
-		./internal/...
+		./report/...
 
 tag: ## Create and push an annotated git tag (usage: make tag VERSION=v1.2.3)
 ifndef VERSION

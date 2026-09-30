@@ -13,6 +13,7 @@ import (
 
 	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/spec"
 	"github.com/lucasassuncao/yedit/yamledit"
 
 	"github.com/lucasassuncao/yedit/blocklist"
@@ -340,10 +341,9 @@ func TestEscKeyFromSeqNavInsideMapNav(t *testing.T) {
 	must.Len(m.blockEdits, 2, "stack depth after drilling into B")
 	must.True(m.topBE().isSeqNav(), "B editor should be a seq navigator")
 
-	// Send the actual ESC key — updateKey must emit drillOutMsg as a cmd
+	// Send the actual ESC key — its action must emit drillOutMsg as a cmd
 	// (not drillOutMsg directly) because len(be.focus) > 0.
-	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m = updated.(model)
+	m, cmd := pressAction(t, m, tea.KeyPressMsg{Code: tea.KeyEsc})
 	must.Len(m.blockEdits, 2, "after ESC key: stack not yet popped (cmd pending)")
 	must.NotNil(cmd, "ESC in a nested editor must return a non-nil cmd (drillOutMsg)")
 
@@ -402,8 +402,7 @@ func TestDrillOutFromEmptyParent(t *testing.T) {
 	must.Len(m.blockEdits, 2, "stack depth after drilling into servers")
 
 	// ESC from the child editor must pop back to gateway, not abort.
-	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m = updated.(model)
+	m, cmd := pressAction(t, m, tea.KeyPressMsg{Code: tea.KeyEsc})
 	must.NotNil(cmd, "ESC in nested editor must return drillOutMsg cmd")
 	msg := cmd()
 	_, ok := msg.(drillOutMsg)
@@ -495,8 +494,7 @@ func TestDrillOutFromEmptyList(t *testing.T) {
 	must.Len(m.blockEdits, 2)
 
 	// Drill back out immediately.
-	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m = updated.(model)
+	m, cmd := pressAction(t, m, tea.KeyPressMsg{Code: tea.KeyEsc})
 	must.NotNil(cmd)
 	updated, _ = m.Update(cmd())
 	m = updated.(model)
@@ -819,4 +817,104 @@ func TestDrillOutCascadePreservesParentFocus(t *testing.T) {
 	must.Equal("a", m.topBE().key)
 	must.Equal(errNone, m.topBE().editorErr.kind, "drill-out lost the parent focus: %s", m.topBE().editorErr.message)
 	must.NotNil(yamledit.NodeAt(m.editRoot, m.topBE().focus), "parent focus node must survive the prune")
+}
+
+// TestPresentationReachesDrilledLevels pins where metadata Presentation lands:
+// on the fields the opened block shows inline, and on the fields of a list the
+// user drills into, looked up by that list's own schema path.
+func TestPresentationReachesDrilledLevels(t *testing.T) {
+	type optsProbe struct {
+		X string `yaml:"x,omitempty"`
+	}
+	type filtProbe struct {
+		Any  []filtProbe `yaml:"any,omitempty"`
+		Opts optsProbe   `yaml:"opts,omitempty"`
+	}
+	type catProbe struct {
+		Name   string    `yaml:"name,omitempty"`
+		Filter filtProbe `yaml:"filter,omitempty"`
+	}
+	type rootProbe struct {
+		Cats []catProbe `yaml:"cats,omitempty"`
+	}
+
+	must := require.New(t)
+	path := filepath.Join(t.TempDir(), "p.yaml")
+	must.NoError(os.WriteFile(path, []byte("cats:\n  - name: a\n    filter:\n      any:\n        - opts:\n            x: \"1\"\n"), 0o600))
+
+	overlay := map[string]bool{"filter.opts": true, "filter.any.opts": true}
+	meta := MetadataFunc(func(_, fieldPath string) FieldMeta {
+		if overlay[fieldPath] {
+			return FieldMeta{Presentation: schema.PresentationOverlay}
+		}
+		return FieldMeta{}
+	})
+	m, err := newModel(Config{Path: path, Schema: &rootProbe{}, Metadata: meta, SchemaRecursionDepth: 3})
+	must.NoError(err)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "cats", Existing: true}})
+	m = updated.(model)
+	must.Len(m.blockEdits, 1)
+
+	node := func(be blockEditState, label string) fieldtree.Node {
+		for _, n := range be.tree.Nodes {
+			if n.Label == label {
+				return n
+			}
+		}
+		t.Fatalf("no %q node in the tree", label)
+		return fieldtree.Node{}
+	}
+	must.True(node(m.blockEdits[0], "opts").Openable, "filter.opts is declared overlay")
+	anyNode := node(m.blockEdits[0], "any")
+
+	updated, _ = m.Update(openChildMsg{
+		key:     "any",
+		defs:    anyNode.Def.Children,
+		kind:    anyNode.Def.Kind,
+		relSegs: []yamledit.PathSeg{yamledit.SegIdx(0), yamledit.SegKey("filter"), yamledit.SegKey("any")},
+	})
+	m = updated.(model)
+	must.Len(m.blockEdits, 2)
+	must.True(node(m.blockEdits[1], "opts").Openable, "filter.any.opts is declared overlay")
+}
+
+// A drilled-in editor's key is the nested field's name, but metadata is keyed
+// by the root block: hints must be looked up by block plus the child's path.
+func TestDrillInHintUsesRootBlockPath(t *testing.T) {
+	type ceProbe struct {
+		HTTPRoutes map[string]struct {
+			Host string `yaml:"host,omitempty"`
+		} `yaml:"httproutes,omitempty"`
+	}
+	type rootProbe struct {
+		Yedit *ceProbe `yaml:"yedit,omitempty"`
+	}
+	must := require.New(t)
+	path := filepath.Join(t.TempDir(), "w.yaml")
+	must.NoError(os.WriteFile(path, []byte("yedit:\n  httproutes:\n    web:\n      host: example.com\n"), 0o600))
+	var block, field string
+	meta := spec.MetadataFunc(func(b, f string) spec.FieldMeta {
+		block, field = b, f
+		return spec.FieldMeta{Description: "the route's host"}
+	})
+	m, err := newModel(Config{Path: path, Schema: &rootProbe{}, Metadata: meta})
+	must.NoError(err, "newModel")
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+	updated, _ = m.Update(blocklist.OpenItemMsg{Item: blocklist.Item{Key: "yedit", Existing: true}})
+	m = updated.(model)
+	updated, _ = m.Update(openChildMsg{
+		key:     "httproutes",
+		defs:    []schema.FieldDef{{YAMLName: "host", Kind: schema.KindPrimitive}},
+		kind:    schema.KindDictionary,
+		relSegs: []yamledit.PathSeg{yamledit.SegKey("httproutes")},
+	})
+	m = updated.(model)
+	must.Len(m.blockEdits, 2)
+
+	must.Contains(m.topBE().fieldHintFor("host"), "the route's host")
+	must.Equal("yedit", block)
+	must.Equal("httproutes.host", field)
 }

@@ -10,7 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/lucasassuncao/yedit/alert"
+	"github.com/lucasassuncao/bezel/overlay"
 
 	"github.com/lucasassuncao/yedit/blocklist"
 )
@@ -71,8 +71,7 @@ func TestPreviewIsReadOnly(t *testing.T) {
 	m = updated.(model)
 
 	// Enter the read-only preview pane via Tab.
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	m = updated.(model)
+	m, _ = pressAction(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 	must.Equal(panePreview, m.mode, "expected panePreview after Tab")
 
 	before := string(m.doc.Raw())
@@ -181,12 +180,12 @@ f: 6
 // checkScreenInvariant asserts the two screen invariants that the enter* helpers
 // are meant to guarantee:
 //
-//	m.alert != nil        ⟺  m.mode == paneAlert
+//	m.sh.HasOverlay()      ⟺  m.mode == paneAlert
 //	len(m.blockEdits) > 0  ⟺  m.mode == paneBlockEdit
 func checkScreenInvariant(t *testing.T, m model, where string) {
 	t.Helper()
-	if m.alertVisible != (m.mode == paneAlert) {
-		t.Errorf("%s: alert/mode invariant broken: alertVisible=%v mode=%d", where, m.alertVisible, m.mode)
+	if m.sh.HasOverlay() != (m.mode == paneAlert) {
+		t.Errorf("%s: alert/mode invariant broken: overlay=%v mode=%d", where, m.sh.HasOverlay(), m.mode)
 	}
 	if (len(m.blockEdits) > 0) != (m.mode == paneBlockEdit) {
 		t.Errorf("%s: blockEdits/mode invariant broken: len=%d mode=%d", where, len(m.blockEdits), m.mode)
@@ -220,21 +219,18 @@ func TestScreenInvariantAcrossTransitions(t *testing.T) {
 	checkScreenInvariant(t, m, "after discard")
 
 	// list → preview → list
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	m = updated.(model)
+	m, _ = pressAction(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 	checkScreenInvariant(t, m, "after tab to preview")
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	m = updated.(model)
+	m, _ = pressAction(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 	checkScreenInvariant(t, m, "after tab back to list")
 
 	// list → alert (save confirm) → list (dismiss)
-	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
-	m = updated.(model)
+	m, _ = pressAction(t, m, tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	checkScreenInvariant(t, m, "after ctrl+s save confirm")
 	if m.mode != paneAlert {
 		t.Fatalf("expected paneAlert after ctrl+s from list, got %d", m.mode)
 	}
-	updated, _ = m.Update(alert.DismissedMsg{})
+	updated, _ = m.Update(overlay.CloseMsg{})
 	m = updated.(model)
 	checkScreenInvariant(t, m, "after alert dismiss")
 }
@@ -266,14 +262,12 @@ func TestRootHintPanelToggle(t *testing.T) {
 	is.Contains(view, "object", "hint should show the selected field's type (server → object)")
 
 	// "h" hides the panel.
-	updated, _ = m.Update(tea.KeyPressMsg{Text: "h", Code: 'h'})
-	m = updated.(model)
+	m, _ = pressAction(t, m, tea.KeyPressMsg{Text: "h", Code: 'h'})
 	must.False(m.showHint, "pressing h should hide the hint panel")
 	is.NotContains(m.viewContent(), "Hint/Example", "hint panel should be hidden after pressing h")
 
 	// "h" again shows it.
-	updated, _ = m.Update(tea.KeyPressMsg{Text: "h", Code: 'h'})
-	m = updated.(model)
+	m, _ = pressAction(t, m, tea.KeyPressMsg{Text: "h", Code: 'h'})
 	must.True(m.showHint, "pressing h again should re-enable the hint panel")
 	is.Contains(m.viewContent(), "Hint/Example", "hint panel should be visible after toggling back on")
 }
@@ -292,9 +286,7 @@ func TestReloadFromDisk(t *testing.T) {
 
 	// Clean document: ctrl+r dispatches an async reload cmd; execute it.
 	must.NoError(os.WriteFile(path, []byte("server:\n  host: b\n"), 0o600))
-	var reloadCmd tea.Cmd
-	updated, reloadCmd = m.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
-	m = updated.(model)
+	m, reloadCmd := pressAction(t, m, tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
 	must.Equal(paneList, m.mode, "clean reload should not prompt")
 	if reloadCmd != nil {
 		updated, _ = m.Update(reloadCmd())
@@ -306,18 +298,20 @@ func TestReloadFromDisk(t *testing.T) {
 	m.doc, err = m.doc.Insert("extra: 1\n")
 	must.NoError(err, "Insert")
 	must.NoError(os.WriteFile(path, []byte("server:\n  host: c\n"), 0o600))
-	updated, _ = m.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
-	m = updated.(model)
+	m, _ = pressAction(t, m, tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
 	must.Equal(paneAlert, m.mode, "dirty reload should prompt")
 	updated, cmd := m.Update(tea.KeyPressMsg{Text: "y", Code: 'y'})
 	m = updated.(model)
 	must.NotNil(cmd, "confirming the alert should produce a command")
-	// cmd() fires confirmedReloadMsg → execReload returns cmdReload
-	updated, reloadCmd = m.Update(cmd())
-	m = updated.(model)
-	if reloadCmd != nil {
-		updated, _ = m.Update(reloadCmd())
+	// The confirm batches confirmedReloadMsg with its own close; execReload
+	// then returns cmdReload.
+	for _, msg := range drainBatch(cmd()) {
+		updated, reloadCmd = m.Update(msg)
 		m = updated.(model)
+		if reloadCmd != nil {
+			updated, _ = m.Update(reloadCmd())
+			m = updated.(model)
+		}
 	}
 	must.Equal(paneList, m.mode, "expected list after confirmed reload")
 	is.Contains(string(m.doc.Raw()), "host: c", "reload did not replace local state")
@@ -352,27 +346,6 @@ func TestFilterAcceptsJK(t *testing.T) {
 	sel := m.list.SelectedItem()
 	must.NotNil(sel, "selected item should not be nil after filter+enter")
 	is.Equal("unknown-key", sel.Key, "filter+enter should select unknown-key")
-}
-
-// TestStickyErrorSurvivesStaleClearTick guards the status policy: an error set
-// via withStickyError must bump statusSeq so a clear tick scheduled by an
-// earlier transient withStatus cannot wipe the error when it fires.
-func TestStickyErrorSurvivesStaleClearTick(t *testing.T) {
-	is := assert.New(t)
-	must := require.New(t)
-	m, err := newModel(Config{
-		Path:   filepath.Join(t.TempDir(), "probe.yaml"),
-		Schema: &sizeProbeConfig{},
-	})
-	must.NoError(err, "newModel")
-
-	m, _ = m.withStatus("transient")
-	staleSeq := m.statusSeq
-	m = m.withStickyError("disk exploded")
-
-	updated, _ := m.Update(clearStatusMsg{seq: staleSeq})
-	m = updated.(model)
-	is.Equal("disk exploded", m.statusMsg, "stale clear tick must not wipe a sticky error")
 }
 
 // TestValidateKeysSeesUncommittedEditorContent is the regression test for the
@@ -458,4 +431,147 @@ func TestValidateKeysBlocksOnUnparseableEditor(t *testing.T) {
 	is.False(validatorRan, "validators must not run against the stale document")
 	is.Equal(paneBlockEdit, m.mode, "editor stays open so the user can fix the buffer")
 	is.NotEqual(errNone, m.topBE().editorErr.kind, "the editor's feedback line must carry the error")
+}
+
+// drainBatch runs a tea.BatchMsg the way the runtime would and returns the
+// messages it produced; a plain message is returned as is.
+func drainBatch(msg tea.Msg) []tea.Msg {
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return []tea.Msg{msg}
+	}
+	var out []tea.Msg
+	for _, c := range batch {
+		if c != nil {
+			out = append(out, c())
+		}
+	}
+	return out
+}
+
+// Config.LegendLines is handed to every screen's shell, so a one-row legend
+// gives the panes the row back on the list and in a block editor alike.
+func TestLegendLinesReachesEveryScreen(t *testing.T) {
+	must := require.New(t)
+	path := filepath.Join(t.TempDir(), "legend.yaml")
+	must.NoError(os.WriteFile(path, []byte("server:\n  host: a\n"), 0o600))
+	two, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}})
+	must.NoError(err)
+	one, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}, LegendLines: 1})
+	must.NoError(err)
+	size := tea.WindowSizeMsg{Width: 100, Height: 30}
+	u, _ := two.Update(size)
+	two = u.(model)
+	u, _ = one.Update(size)
+	one = u.(model)
+	must.Equal(two.innerH()+1, one.innerH(), "root list gains the legend row")
+
+	be2 := newBlockEdit(two.cfg, blockSpec{key: "server"}, 100, 30)
+	be1 := newBlockEdit(one.cfg, blockSpec{key: "server"}, 100, 30)
+	must.Equal(be2.innerH()+1, be1.innerH(), "block editor gains the legend row")
+}
+
+// Esc closes the help overlay like any other dialog, and the editor has to
+// leave its alert mode with it: otherwise the overlay is gone but every key
+// still goes to the empty stack and the app no longer answers.
+func TestEscOnHelpReturnsToTheList(t *testing.T) {
+	must := require.New(t)
+	m := newHintModel(t, 0)
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+	m = updated.(model)
+	must.True(m.sh.HasOverlay(), "? opens the help")
+
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = updated.(model)
+	if cmd != nil {
+		for _, msg := range drainBatch(cmd()) {
+			updated, _ = m.Update(msg)
+			m = updated.(model)
+		}
+	}
+	must.False(m.sh.HasOverlay(), "esc closes the help")
+	must.Equal(paneList, m.mode, "the editor is back on the list and answers keys again")
+}
+
+// The help says "esc closes", so only its own keys close it: a stray key
+// while reading it must not take it away.
+func TestHelpIgnoresOtherKeys(t *testing.T) {
+	must := require.New(t)
+	m := newHintModel(t, 0)
+	updated, _ := m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+	m = updated.(model)
+	for _, k := range []tea.KeyPressMsg{{Code: 'x', Text: "x"}, {Code: tea.KeyDown}, {Code: 'j', Text: "j"}} {
+		updated, cmd := m.Update(k)
+		m = updated.(model)
+		if cmd != nil {
+			for _, msg := range drainBatch(cmd()) {
+				updated, _ = m.Update(msg)
+				m = updated.(model)
+			}
+		}
+		must.True(m.sh.HasOverlay(), "%s must not close the help", k.String())
+	}
+}
+
+// On the root list q quits and esc does nothing: esc only ever goes back.
+func TestQQuitsFromTheListAndEscDoesNot(t *testing.T) {
+	must := require.New(t)
+	m := newHintModel(t, 0)
+
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if cmd != nil {
+		for _, msg := range drainBatch(cmd()) {
+			_, isQuit := msg.(tea.QuitMsg)
+			must.False(isQuit, "esc must not quit")
+		}
+	}
+
+	_, cmd = pressAction(t, m, tea.KeyPressMsg{Code: 'q', Text: "q"})
+	must.NotNil(cmd)
+	must.IsType(tea.QuitMsg{}, cmd())
+}
+
+// Only q quits the list screen; esc only goes back, and there is nowhere
+// to go back to from here.
+func TestEscDoesNotQuitList(t *testing.T) {
+	must := require.New(t)
+	m, err := newModel(Config{Path: filepath.Join(t.TempDir(), "probe.yaml"), Schema: &sizeProbeConfig{}})
+	must.NoError(err, "newModel")
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = updated.(model)
+	if cmd != nil {
+		must.NotEqual(tea.QuitMsg{}, cmd(), "esc quit the editor")
+	}
+	must.Equal(paneList, m.mode)
+}
+
+// Leaving the preset picker must restore the list screen's layout, or the
+// list pane has no rect and the preview takes the whole body.
+func TestDismissDocPresetsRestoresListPane(t *testing.T) {
+	must := require.New(t)
+	m, err := newModel(Config{
+		Path:        filepath.Join(t.TempDir(), "probe.yaml"),
+		Schema:      &sizeProbeConfig{},
+		DocPresets:  stubPresets{data: map[string]string{"/basic": "server:\n  host: a\n"}},
+		EnableHints: true,
+	})
+	must.NoError(err, "newModel")
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(model)
+	hintBefore, listBefore := m.sh.Rect("hint"), m.sh.Rect("list")
+	must.Positive(hintBefore.H, "hint should be open before the picker")
+
+	updated, _ = m.Update(openDocPresetsMsg{})
+	m = updated.(model)
+	must.Equal(paneDocPreset, m.mode)
+
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = updated.(model)
+	must.Equal(paneList, m.mode)
+	must.Equal(listBefore, m.sh.Rect("list"), "list pane lost its rect")
+	must.Equal(hintBefore, m.sh.Rect("hint"), "hint pane did not come back")
 }

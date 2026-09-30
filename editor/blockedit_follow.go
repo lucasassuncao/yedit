@@ -1,14 +1,9 @@
 package editor
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/yamledit"
 	"gopkg.in/yaml.v3"
-
-	"github.com/lucasassuncao/yedit/theme"
 )
 
 // mappingKeyLine walks m (a MappingNode) along path and returns the 1-based
@@ -127,34 +122,3 @@ func (be blockEditState) withEditorCursorAt(line int) blockEditState {
 // viewportSyncMsg is a no-op message: the textarea's Update mutates nothing
 // for unknown message types but always ends by repositioning its viewport.
 type viewportSyncMsg struct{}
-
-// scrollLinesTo returns a window of at most height lines from s that keeps
-// targetLine (1-based) visible, roughly centered. targetLine < 1 yields the
-// top window, matching render.ClampLines.
-func scrollLinesTo(s string, height, targetLine int) string {
-	if height <= 0 {
-		return ""
-	}
-	lines := strings.Split(s, "\n")
-	if len(lines) <= height {
-		return s
-	}
-	offset := targetLine - 1 - height/2
-	if offset > len(lines)-height {
-		offset = len(lines) - height
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	return strings.Join(lines[offset:offset+height], "\n")
-}
-
-// numberPreviewLines prefixes each line with a fixed-width gutter matching the
-// root preview's. Must run before scrollLinesTo so numbers stay absolute.
-func numberPreviewLines(s string, rt theme.Resolved) string {
-	lines := strings.Split(s, "\n")
-	for i, line := range lines {
-		lines[i] = rt.HintDim.Render(fmt.Sprintf("%4d │ ", i+1)) + line
-	}
-	return strings.Join(lines, "\n")
-}

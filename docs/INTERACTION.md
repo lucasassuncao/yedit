@@ -1,6 +1,6 @@
 # Interaction model
 
-The block editor's left panel is a tree (`tree.go`). Every keypress goes through `tree.Update`, which returns a `treeAction`; the `blockEditState` then reacts to that action. The behavior is a function of **what the cursor is on** crossed with **which key was pressed**.
+The block editor's left panel is a tree (package `fieldtree`). Every keypress goes through `fieldtree.Model.Update`, which returns a `fieldtree.Action`; the `blockEditState` then reacts to that action. The behavior is a function of **what the cursor is on** crossed with **which key was pressed**.
 
 ## Cursor targets
 
@@ -14,7 +14,7 @@ How the four schema `Kind`s (plus structure and state) appear as tree rows:
 | - | **seqItem** (a collection entry) | collapsed, expanded |
 | - | **addNew** (`[+ add new]` row) | - |
 
-`openable` lists and maps behave identically at the tree layer; the difference is only in the apply layer (`applyToggleToSeqItem` vs `applyToggleToMapEntry`).
+`openable` lists and maps behave identically at the tree layer; the difference is only in the apply layer (`toggleEntryField`, which addresses a list entry by index and a map entry by key).
 
 ## Action matrix (11 targets × 6 keys = 66 cells)
 

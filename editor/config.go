@@ -7,10 +7,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucasassuncao/bezel/theme"
 	"github.com/lucasassuncao/yedit/document"
 	"github.com/lucasassuncao/yedit/presets"
 	"github.com/lucasassuncao/yedit/spec"
-	"github.com/lucasassuncao/yedit/theme"
 )
 
 // These names live in yedit/spec so metadata, validate, and outside rules can
@@ -94,18 +94,19 @@ type Config struct {
 	Schema               any            // non-nil struct pointer, typed as any because the editor uses reflection (e.g. &MyConfig{})
 	Title                string         // label shown in the TUI header
 	BlockPresets         presets.Source // optional; nil disables the preset picker inside block editors
-	DocPresets           presets.Source // optional; when set, p on the root list opens a whole-document template picker
+	DocPresets           presets.Source // optional; when set, p on the root list opens a whole-document preset picker
 	EnableHints          bool           // show the Hint/Example panel; warns when Metadata is unset
 	Metadata             MetadataSource // field metadata shown in the hint panel and enforced by the FromMetadata validators
 	Validators           []Validator    // rules evaluated before every save and on the validate shortcut
 	Hidden               []string       // top-level keys to omit from the UI entirely
 	PassthroughKeys      []string       // top-level keys preserved as-is: hidden from all sections and exempt from unknown-key validation
-	Theme                theme.Theme    // zero-value resolves to ThemePlain
+	Theme                theme.Theme    // zero-value resolves to ThemeDefault, adaptive to the terminal background
 	NoDeleteConfirm      bool           // skip the "Remove block?" dialog; deletion is still undoable via ctrl+u
 	NoValidateOnSave     bool           // allow saving despite validator errors; a warning alert is shown but does not block
 	NoSaveConfirm        bool           // skip the "Save changes?" dialog; warning confirms are still shown
 	SavePath             string         // write here instead of Path, which is still used for loading
 	SchemaRecursionDepth int            // extra levels a self-referential type expands; 0 uses the default (1)
 	AnimationDuration    time.Duration  // when > 0, the Hint/Example panel eases open and closed over this duration; 0 keeps the toggle instant and emits no timer messages
+	LegendLines          int            // rows the key legend may take: 1 for a compact footer, 2 (default when 0) to show more keys before "+N in [?]"
 	Trace                Trace          // session-observability hooks and the built-in Dump recorder
 }

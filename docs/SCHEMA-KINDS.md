@@ -1,6 +1,6 @@
 # Schema Kinds Reference
 
-How Go types map to yamltui editor behavior, with complete code examples.
+How Go types map to yedit editor behavior, with complete code examples.
 
 ---
 
@@ -48,7 +48,7 @@ version: "0.1.0"
 **Notes:**
 - `time.Duration` is stored as a plain string (`"30s"`, `"2m30s"`) - YAML does not have a duration type
 - Pointer variants (`*string`, `*int`, `*bool`) behave identically; nil = field absent from the file
-- Field metadata (required, defaults, allowed values, ranges) is declared through the `MetadataSource` (`FieldMeta`), not struct tags - see the `yamltui/metadata` package. Enum-like fields are plain strings whose `FieldMeta.OneOf` lists the allowed values, shown in the hint panel and enforced by `editor.OneOfFromMetadata()`.
+- Field metadata (required, defaults, allowed values, ranges) is declared through the `MetadataSource` (`FieldMeta`), not struct tags - see the `yedit/metadata` package. Enum-like fields are plain strings whose `FieldMeta.OneOf` lists the allowed values, shown in the hint panel and enforced by `editor.OneOfFromMetadata()`.
 
 ---
 
@@ -88,29 +88,16 @@ database:
 
 **Editor behavior:**
 - Left panel shows all fields in ADDED (present) / AVAILABLE (absent) sections
-- Toggling a field OFF removes it from the YAML; toggling ON inserts it (using `FieldSnippets` if configured)
+- Toggling a field OFF removes it from the YAML; toggling ON inserts its `snippet` if one is declared
 - Nested structs (`pool`) appear as expandable nodes in the tree (→ to expand)
 
-**FieldSnippets** - YAML inserted when a field is toggled ON:
+**Snippets and pre-checked fields** are per-field metadata. `snippet` is the YAML inserted when the field is toggled ON (default `<field>: `), and `prechecked` toggles the field ON when a **new** block is opened:
 ```go
-editor.Config{
-    FieldSnippets: editor.FieldSnippetMap{
-        "database": {
-            "driver":    "  driver: postgres\n",
-            "dsn":       "  dsn: \"postgres://localhost/mydb\"\n",
-            // multi-field snippet - all sub-fields are inserted at once:
-            "pool":      "  pool:\n    min-size: 2\n    max-size: 10\n    timeout: 30\n",
-        },
-    },
-}
-```
-
-**PreCheckedFields** - fields toggled ON automatically when opening a **new** block:
-```go
-editor.Config{
-    PreCheckedFields: editor.CheckedFieldMap{
-        "database": {"driver", "dsn"},
-    },
+func (DatabaseConfig) Metadata() map[string]any {
+    return map[string]any{
+        "driver": map[string]any{"snippet": "driver: postgres", "prechecked": true},
+        "dsn":    map[string]any{"snippet": `dsn: "postgres://localhost/mydb"`, "prechecked": true},
+    }
 }
 ```
 
@@ -366,14 +353,14 @@ timeout:
 
 ## Struct tags reference
 
-| Tag | Effect in yamltui |
+| Tag | Effect in yedit |
 |---|---|
 | `yaml:"name"` | YAML key used in the file and displayed in the editor |
 | `yaml:"-"` | Field excluded from discovery (never shown) |
 | `yaml:"name,omitempty"` | Sets `FieldDef.OmitEmpty = true`; zero value not written to disk |
 | `yaml:"name,flow"` | Sets `FieldDef.Flow = true`; serialised inline (e.g. `[a, b, c]`) |
 
-The `yaml` tag is the only tag yamltui reads. Field metadata - description, required, defaults, allowed values, ranges, patterns - is declared through the `MetadataSource` (`editor.FieldMeta`), typically built with the `yamltui/metadata` package, and enforced by the FromMetadata validator family (see `docs/VALIDATORS.md`).
+The `yaml` tag is the only tag yedit reads. Field metadata - description, required, defaults, allowed values, ranges, patterns - is declared through the `MetadataSource` (`editor.FieldMeta`), typically built with the `yedit/metadata` package, and enforced by the FromMetadata validator family (see `docs/VALIDATORS.md`).
 
 ---
 
@@ -391,7 +378,7 @@ map[string]string     → KindDictionary + no child defs → YAML pane   ✗
 map[string]any        → KindDictionary + no child defs → YAML pane   ✗
 ```
 
-yamltui uses `reflect` to discover children. `map` types have no fixed keys at the type level, so no child defs can be derived - regardless of the value type.
+yedit uses `reflect` to discover children. `map` types have no fixed keys at the type level, so no child defs can be derived - regardless of the value type.
 
 ---
 
@@ -448,7 +435,7 @@ Unexported anonymous embeds are also promoted (their exported fields surface at 
 
 ## Types that serialise as scalars (yaml.Marshaler / encoding.TextMarshaler)
 
-If a struct type implements `yaml.Marshaler` or `encoding.TextMarshaler`, yamltui classifies it as `KindPrimitive` and **does not** expose its internal struct fields in the editor. The user edits the serialised form (e.g. `"#1e1e2e"` for a color type, `"192.168.1.1"` for an IP type):
+If a struct type implements `yaml.Marshaler` or `encoding.TextMarshaler`, yedit classifies it as `KindPrimitive` and **does not** expose its internal struct fields in the editor. The user edits the serialised form (e.g. `"#1e1e2e"` for a color type, `"192.168.1.1"` for an IP type):
 
 ```go
 type Color struct{ R, G, B uint8 }

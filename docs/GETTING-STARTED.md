@@ -1,12 +1,12 @@
 # Getting Started
 
-This guide walks you through the full integration path: define your config struct, attach metadata, run the editor, add validators, add presets, and wire up documentation commands.
+yedit is a library, not a tool: you build its editor into your own program, so there is nothing to install besides the Go module. This guide walks you through the full integration path: define your config struct, attach metadata, run the editor, add validators, add presets, and wire up documentation commands.
 
 ---
 
 ## 1. Define the config struct
 
-yamltui drives the editor from a Go struct using `yaml` tags. No other annotations are needed.
+yedit drives the editor from a Go struct using `yaml` tags. No other annotations are needed.
 
 ```go
 type Config struct {
@@ -118,7 +118,7 @@ if res.Saved {
 }
 ```
 
-`editor.Run` blocks until the user exits (Esc or Ctrl+C). It returns `RunResult.Saved = true` when the user wrote changes to disk.
+`editor.Run` blocks until the user exits (q or Ctrl+C). It returns `RunResult.Saved = true` when the user wrote changes to disk.
 
 ### Schema vs Metadata
 
@@ -162,8 +162,8 @@ func (LoggingConfig) Metadata() map[string]any {
 | `Title` | Header text shown in the TUI |
 | `Hidden` | Field YAML names to hide from the UI (preserved on save) |
 | `PassthroughKeys` | Top-level keys preserved silently without validation |
-| `PreCheckedFields` | Fields toggled ON automatically when opening a new block |
-| `FieldSnippets` | YAML inserted when a field is toggled ON |
+
+What a field inserts when toggled on, and whether it starts checked in a new block, are per-field metadata: `snippet` and `prechecked` in `Metadata()` (`FieldMeta.Snippet`, `FieldMeta.PreChecked`).
 
 ---
 

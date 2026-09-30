@@ -8,34 +8,100 @@
 import "github.com/lucasassuncao/yedit/metadata"
 ```
 
-Package metadata provides a tree\-based implementation of editor.MetadataSource. Declare each field's editor.FieldMeta in a Node tree keyed by yaml names, then call Build to validate the tree against the schema struct and obtain the MetadataSource consumed by editor.Config.Hints and the FromHints validator family.
+Package metadata provides a tree\-based implementation of spec.MetadataSource. Declare each field's spec.FieldMeta in a Node tree keyed by yaml names, then call Build to validate the tree against the schema struct and obtain the MetadataSource consumed by editor.Config.Metadata and the FromMetadata validator family.
 
 ## Index
 
-- [func Build\(schemaPtr any, tree map\[string\]\*Node\) \(editor.MetadataSource, error\)](<#Build>)
+- [func DecodeTree\(raw map\[string\]any\) \(map\[string\]\*Node, error\)](<#DecodeTree>)
+- [func New\(v any\) \(spec.MetadataSource, error\)](<#New>)
+- [func NewFromTree\(schemaPtr any, tree map\[string\]\*Node\) \(spec.MetadataSource, error\)](<#NewFromTree>)
+- [type MetadataProvider](<#MetadataProvider>)
 - [type Node](<#Node>)
+- [type Provider](<#Provider>)
 
 
-<a name="Build"></a>
-## func [Build](<https://github.com/lucasassuncao/yedit/blob/main/metadata/metadata.go#L35>)
+<a name="DecodeTree"></a>
+## func [DecodeTree](<https://github.com/lucasassuncao/yedit/blob/main/metadata/metadata.go#L433>)
 
 ```go
-func Build(schemaPtr any, tree map[string]*Node) (editor.MetadataSource, error)
+func DecodeTree(raw map[string]any) (map[string]*Node, error)
 ```
 
-Build validates tree against the schema struct \(the same pointer handed to editor.Config.Schema\), fills each node's FieldMeta.Type from the Go type \(explicitly set Type values are kept\), and returns the MetadataSource.
+DecodeTree turns the plain map a Provider returns into a Node tree. It routes through yaml so the FieldMeta tags do the mapping, and rejects keys that match no field: a typo must not become silently dead metadata.
 
-A tree key with no matching yaml\-tagged field is an error naming the full offending path, so typos and renames surface at startup instead of becoming silently dead metadata. Children declared under types reflection cannot see into \(interfaces, schema.Provider unions\) are not validated.
+<a name="New"></a>
+## func [New](<https://github.com/lucasassuncao/yedit/blob/main/metadata/metadata.go#L114>)
+
+```go
+func New(v any) (spec.MetadataSource, error)
+```
+
+New composes the metadata tree from v, which must implement MetadataProvider. For each field whose type also implements MetadataProvider, Children are populated automatically via reflection. Nodes with Children already set are not overridden \(explicit wins\). Fields with no metadata node are silently accepted and receive default \(empty\) FieldMeta values.
+
+Use NewFromTree instead when the root struct is from a third\-party package and cannot implement MetadataProvider.
+
+How it works:
+
+1. Assert that v implements MetadataProvider. The root struct must declare its own top\-level fields via Metadata\(\) \- there is no way to auto\-discover them without a starting point.
+
+2. Call v.Metadata\(\) to obtain the root tree. At this stage the tree contains only the nodes the root struct declared; nested structs have no Children yet.
+
+3. Unwrap pointer indirection from the concrete type so reflection over struct fields works uniformly regardless of whether v was passed as T or \*T.
+
+4. Run composeTree to auto\-populate Children for every node whose field type implements MetadataProvider. See composeTree for the full algorithm.
+
+5. Delegate to NewFromTree to validate tree keys against the schema struct and fill in each node's Type label from the Go type.
+
+<a name="NewFromTree"></a>
+## func [NewFromTree](<https://github.com/lucasassuncao/yedit/blob/main/metadata/metadata.go#L67>)
+
+```go
+func NewFromTree(schemaPtr any, tree map[string]*Node) (spec.MetadataSource, error)
+```
+
+NewFromTree validates tree against the schema struct \(the same pointer handed to editor.Config.Schema\), fills each node's FieldMeta.Type from the Go type \(explicitly set Type values are kept\), and returns the MetadataSource.
+
+When to use NewFromTree vs New:
+
+- Use New when the root struct is yours and implements MetadataProvider. It builds the tree automatically by calling Metadata\(\) on each nested struct that also implements the interface.
+
+- Use NewFromTree when the root struct is from a third\-party package and cannot implement MetadataProvider. You assemble the Node tree manually and pass it alongside the struct pointer.
+
+New calls NewFromTree internally as its final step \- after composing the tree via reflection it delegates validation and Type inference here.
+
+Validation: a tree key with no matching yaml\-tagged field in the struct is an error naming the full offending path \(e.g. "categories.sourc"\), so typos and renames surface at startup instead of becoming silently dead metadata. Children declared under types reflection cannot see into \(interfaces, schema.Provider unions\) are not validated. Nil nodes anywhere in the tree are an error.
+
+The caller's tree is never modified: the returned source is backed by a deep copy, so memoized Metadata\(\) results and caller\-assembled maps stay pristine.
+
+<a name="MetadataProvider"></a>
+## type [MetadataProvider](<https://github.com/lucasassuncao/yedit/blob/main/metadata/metadata.go#L38>)
+
+MetadataProvider is the previous name for Provider, kept as an alias so existing implementations keep compiling.
+
+```go
+type MetadataProvider = Provider
+```
 
 <a name="Node"></a>
-## type [Node](<https://github.com/lucasassuncao/yedit/blob/main/metadata/metadata.go#L22-L25>)
+## type [Node](<https://github.com/lucasassuncao/yedit/blob/main/metadata/metadata.go#L24-L27>)
 
-Node is one field's metadata plus its children, keyed by yaml name. Use shared pointers in Children to model recursive schema types \(e.g. a filter whose "any"/"all" children are filters again\) without duplicating definitions - Build handles the cycle.
+Node is one field's metadata plus its children, keyed by yaml name. Use shared pointers in Children to model recursive schema types \(e.g. a filter whose "any"/"all" children are filters again\) without duplicating definitions \- NewFromTree handles the cycle.
 
 ```go
 type Node struct {
-    editor.FieldMeta
-    Children map[string]*Node
+    spec.FieldMeta `yaml:",inline"`
+    Children       map[string]*Node `yaml:"children"`
+}
+```
+
+<a name="Provider"></a>
+## type [Provider](<https://github.com/lucasassuncao/yedit/blob/main/metadata/metadata.go#L32-L34>)
+
+Provider is implemented by a struct declaring its own field metadata, direct fields only; New composes the rest. A plain map, so a doc generator reads the same method without importing this package. spec.FieldMeta lists the keys.
+
+```go
+type Provider interface {
+    Metadata() map[string]any
 }
 ```
 

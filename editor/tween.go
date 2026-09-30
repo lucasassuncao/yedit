@@ -5,7 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/lucasassuncao/yedit/animation"
+	"github.com/lucasassuncao/bezel/animation"
 )
 
 // hintAnimTickMsg advances an in-flight hint panel animation. block marks a

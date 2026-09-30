@@ -6,7 +6,7 @@ This document explains how to configure `Config.Theme` in `editor.Config`.
 
 ## Built-in themes
 
-`theme.All()` returns every built-in preset keyed by name - useful for a `--theme` CLI flag or a `--list-themes` command:
+Themes live in `github.com/lucasassuncao/bezel/theme`. `theme.All()` returns every built-in preset keyed by name - useful for a `--theme` CLI flag or a `--list-themes` command:
 
 ```go
 for name, t := range theme.All() {
@@ -31,7 +31,7 @@ for name, t := range theme.All() {
 | `sonic` | `tails` | `knuckles` | `shadow` |
 | `amyrose` | `cream` | `rouge` | `eggman` |
 
-`plain` (`theme.ThemePlain`) is the default when `Config.Theme` is left at its zero value. It uses only ANSI 16-color codes (`"4"`, `"6"`, `"8"`, `"2"`, `"1"`) instead of hex/256-color values, for terminals with limited color support.
+`default` (`theme.ThemeDefault`) is what a zero `Config.Theme` resolves to: an adaptive palette with one value per role for light terminals and one for dark ones, picked from the terminal's answer when the editor starts. `plain` (`theme.ThemePlain`) uses only ANSI 16-color codes (`"4"`, `"6"`, `"8"`, `"2"`, `"1"`) instead of hex/256-color values, for terminals with limited color support.
 
 Note: the Super Mario character is `theme.ThemePrincessPeach` / `"princesspeach"`, not `"peach"` - that name is already taken by the fruit preset.
 
@@ -55,7 +55,7 @@ for _, cat := range theme.Categories() {
 `themebrowser.BrowseInTerminal(t ...theme.Theme)` renders an inline (not full-screen) scrollable table (`↑`/`↓` to navigate, `q`/`esc`/`ctrl+c` to quit) listing every built-in theme name next to its `theme.Categories()` category. Wire it directly to a host CLI's `--list-themes` flag instead of printing plain text:
 
 ```go
-import "github.com/lucasassuncao/yedit/themebrowser"
+import "github.com/lucasassuncao/bezel/themebrowser"
 
 themebrowser.BrowseInTerminal()
 ```
@@ -73,28 +73,32 @@ A `Theme` is a three-layer appearance configuration:
 
 ```go
 type Theme struct {
-    Base   *Theme // optional preset to inherit from (nil → ThemePlain)
+    Base   *Theme // optional preset to inherit from (nil → the adaptive default)
     Colors Colors // per-field overrides applied on top of Base.Colors
     Styles Styles // lipgloss overrides applied on top of derived defaults
 }
 
 type Colors struct {
-    ActiveBorderColor   string // focused panel borders, section labels, hint key text
-    SelectionColor      string // selected cursor item, active panel title
-    InactiveBorderColor string // unfocused panel borders, status bar text
-    AvailableItemColor  string // items not yet added to the document, secondary text
-    ExistingItemColor   string // items already present in the YAML document
-    ErrorColor          string // validation errors, unknown keys
+    Accent    string // focused borders, section headings, legend keys
+    Selection string // the cursor row, the focused panel's title
+    Border    string // unfocused borders, status and hint text
+    Dim       string // secondary text, items not yet in the document
+    Text      string // body text
+    Success   string // items present in the document
+    Warning   string // drafts, soft failures
+    Danger    string // validation errors, unknown keys
+    Info      string // counts, badges
+    OnAccent  string // text drawn on a filled background
 }
 
 type Styles struct {
-    CursorLine *lipgloss.Style
-    HintText   *lipgloss.Style
-    ErrorText  *lipgloss.Style
+    Cursor *lipgloss.Style
+    Muted  *lipgloss.Style
+    Danger *lipgloss.Style
 }
 ```
 
-Each `Colors` field accepts a hex value (`"#7C3AED"`), an ANSI 256-color code (`"63"`), or a named terminal color. An empty string means "inherit from `Base`" during resolution.
+Each `Colors` field accepts a hex value (`"#7C3AED"`) or an ANSI 256-color code (`"63"`). An empty string means "inherit from `Base`", then the adaptive default, which has one value for a light terminal and one for a dark one. The editor asks the terminal which it is when it starts.
 
 ## Custom theme via partial override
 
@@ -104,7 +108,7 @@ Start from a built-in preset and override only what you need:
 myTheme := theme.Theme{
     Base: &theme.ThemeGrape,
     Colors: theme.Colors{
-        SelectionColor: "#FFB86C", // orange instead of Grape's default
+        Selection: "#FFB86C", // orange instead of Grape's default
     },
 }
 
@@ -116,29 +120,29 @@ editor.Run(editor.Config{
 
 ## Custom theme from scratch
 
-Set every `Colors` field directly, with no `Base` (falls back to `ThemePlain` for any field left empty):
+Set every `Colors` field directly, with no `Base` (any field left empty falls back to the adaptive default):
 
 ```go
 myTheme := theme.Theme{
     Colors: theme.Colors{
-        ActiveBorderColor:   "#00FF00",
-        SelectionColor:      "#FFFF00",
-        InactiveBorderColor: "#888888",
-        AvailableItemColor:  "#666666",
-        ExistingItemColor:   "#00FFFF",
-        ErrorColor:          "#FF0000",
+        Accent:    "#00FF00",
+        Selection: "#FFFF00",
+        Border:    "#888888",
+        Dim:       "#666666",
+        Success:   "#00FFFF",
+        Danger:    "#FF0000",
     },
 }
 ```
 
 ## Resolving colors outside the editor
 
-`theme.ResolveColors(t)` merges a `Theme` down to a concrete `Colors` value without importing `editor` - useful when building a companion TUI that should match the host app's theme:
+`theme.ResolveColors(t, dark)` merges a `Theme` down to a concrete `Colors` value without importing `editor` - useful when building a companion TUI that should match the host app's theme:
 
 ```go
-colors := theme.ResolveColors(myTheme)
+colors := theme.ResolveColors(myTheme, theme.DarkTerminal())
 ```
 
 ## Low-color terminals
 
-There is no `NO_COLOR` switch. Use `ThemePlain` (the default) for terminals with limited color support: it is built entirely from ANSI 16-color codes rather than hex or 256-color values, so the terminal's own palette controls how it renders.
+There is no `NO_COLOR` switch. Use `ThemePlain` for terminals with limited color support: it is built entirely from ANSI 16-color codes rather than hex or 256-color values, so the terminal's own palette controls how it renders.

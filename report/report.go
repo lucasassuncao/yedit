@@ -21,8 +21,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/lucasassuncao/bezel/theme"
 	"github.com/lucasassuncao/yedit/spec"
-	"github.com/lucasassuncao/yedit/theme"
 )
 
 // Options tunes the reporters. The zero value is valid: full detail, default

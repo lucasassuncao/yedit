@@ -6,6 +6,8 @@ import (
 	"runtime/debug"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/lucasassuncao/yedit/trace"
 )
 
 // Result reports the outcome of an editor session.
@@ -44,13 +46,13 @@ func RunContext(ctx context.Context, cfg Config) (res Result, err error) {
 	}()
 
 	if cfg.Trace.Dump {
-		dumper, dumpErr := newDumpWriter(cfg.Trace.DumpPath)
+		dumper, dumpErr := trace.New(cfg.Trace.DumpPath)
 		if dumpErr != nil {
 			return Result{}, fmt.Errorf("yedit: creating session dump file: %w", dumpErr)
 		}
-		defer dumper.close()
+		defer dumper.Close()
 		wireDump(&cfg, dumper)
-		res.DumpPath = dumper.path()
+		res.DumpPath = dumper.Path()
 	}
 
 	m, err := newModel(cfg)

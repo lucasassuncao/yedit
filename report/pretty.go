@@ -7,8 +7,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/lucasassuncao/bezel/theme"
 	"github.com/lucasassuncao/yedit/spec"
-	"github.com/lucasassuncao/yedit/theme"
 )
 
 // styles are the report's own lipgloss styles.
@@ -29,14 +29,14 @@ type styles struct {
 }
 
 func newStyles(t theme.Theme) styles {
-	rt := theme.Resolve(t)
+	rt := theme.Resolve(t, true) // a report may go to a file: no terminal to ask
 	return styles{
-		section:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(rt.Colors.ActiveBorderColor)),
-		connector: lipgloss.NewStyle().Foreground(lipgloss.Color(rt.Colors.InactiveBorderColor)),
-		path:      lipgloss.NewStyle().Foreground(lipgloss.Color(rt.Colors.SelectionColor)),
-		errorText: lipgloss.NewStyle().Foreground(theme.Danger),
-		warnText:  lipgloss.NewStyle().Foreground(theme.Warning),
-		okText:    lipgloss.NewStyle().Foreground(theme.Success),
+		section:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(rt.Colors.Accent)),
+		connector: lipgloss.NewStyle().Foreground(lipgloss.Color(rt.Colors.Border)),
+		path:      lipgloss.NewStyle().Foreground(lipgloss.Color(rt.Colors.Selection)),
+		errorText: rt.Danger,
+		warnText:  rt.Warning,
+		okText:    rt.Success,
 		count:     lipgloss.NewStyle().Bold(true),
 	}
 }

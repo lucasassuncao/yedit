@@ -6,7 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/lucasassuncao/yedit/alert"
+	"github.com/lucasassuncao/bezel/overlay"
+	"github.com/lucasassuncao/bezel/shell"
 	"github.com/lucasassuncao/yedit/document"
 	"github.com/lucasassuncao/yedit/render"
 	"github.com/lucasassuncao/yedit/schema"
@@ -34,28 +35,19 @@ func (m model) redo() (tea.Model, tea.Cmd) {
 
 const statusMsgDuration = 4 * time.Second
 
-// withStatus sets statusMsg and schedules a tick to clear it after statusMsgDuration.
-// The tick carries the current statusSeq; if a newer message has been set by the
-// time the tick fires, the seq will not match and the clear is a no-op.
+// withStatus shows transient feedback on the status row; the shell clears it
+// after statusMsgDuration unless a newer message replaced it first.
 func (m model) withStatus(msg string) (model, tea.Cmd) {
-	m.statusSeq++
-	m.statusMsg = msg
-	seq := m.statusSeq
-	return m, tea.Tick(statusMsgDuration, func(time.Time) tea.Msg {
-		return clearStatusMsg{seq: seq}
-	})
+	var cmd tea.Cmd
+	m.sh, cmd = m.sh.SetStatus(msg, shell.Info, statusMsgDuration)
+	return m, cmd
 }
 
 // withStickyError sets an error status that persists until the next status
-// change - used for errors the user must not miss. Bumping statusSeq
-// invalidates any clear tick scheduled by an earlier withStatus, so a
-// transient message's timer cannot wipe the error early. Routine feedback
-// goes through withStatus instead. Only for messages shown on the root
-// status line (list/preview); while a block editor is open its own feedback
-// line is the visible channel - use withTopBEError there.
+// change - for errors the user must not miss. Only for the root status row;
+// while a block editor is open use withTopBEError.
 func (m model) withStickyError(msg string) model {
-	m.statusSeq++
-	m.statusMsg = msg
+	m.sh, _ = m.sh.SetStatus(msg, shell.Error, 0)
 	return m
 }
 
@@ -95,7 +87,7 @@ func (m model) save() (tea.Model, tea.Cmd) {
 		maxLines = 6
 	}
 	if len(errs) > 0 && !m.cfg.NoValidateOnSave {
-		return m.showAlert("Cannot save - fix errors first", render.Violations(errs, maxLines), alert.KindError)
+		return m.showAlert("Cannot save - fix errors first", render.Violations(errs, maxLines), overlay.Danger)
 	}
 	doSave := func() tea.Msg { return doSaveMsg{} }
 	// An external edit since open is a substantive data-loss risk - always confirm
@@ -166,7 +158,7 @@ func (m model) validateKeys() (tea.Model, tea.Cmd) {
 		}
 		var err error
 		if doc, err = m.docWithEditorContent(); err != nil {
-			return m.showAlert("Validation failed", fmt.Sprintf("Could not apply editor content: %v", err), alert.KindError)
+			return m.showAlert("Validation failed", fmt.Sprintf("Could not apply editor content: %v", err), overlay.Danger)
 		}
 	}
 	maxLines := m.height - 12
@@ -174,7 +166,7 @@ func (m model) validateKeys() (tea.Model, tea.Cmd) {
 		maxLines = 6
 	}
 	if errs := m.collectErrors(doc); len(errs) > 0 {
-		return m.showAlert("Validation errors", render.Violations(errs, maxLines), alert.KindError)
+		return m.showAlert("Validation errors", render.Violations(errs, maxLines), overlay.Danger)
 	}
-	return m.showAlert("Validation passed", "All keys are valid and no conflicts were found.", alert.KindSuccess)
+	return m.showAlert("Validation passed", "All keys are valid and no conflicts were found.", overlay.Success)
 }

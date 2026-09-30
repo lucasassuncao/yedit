@@ -2,24 +2,25 @@ package editor
 
 import (
 	"fmt"
+	"github.com/lucasassuncao/yedit/fieldtree"
 	"strings"
 
-	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
-	"charm.land/lipgloss/v2"
 	"gopkg.in/yaml.v3"
 
-	"github.com/lucasassuncao/yedit/alert"
-	"github.com/lucasassuncao/yedit/animation"
+	"github.com/lucasassuncao/bezel/animation"
+	"github.com/lucasassuncao/bezel/browser"
+	"github.com/lucasassuncao/bezel/draw"
+	"github.com/lucasassuncao/bezel/layout"
+	"github.com/lucasassuncao/bezel/overlay"
+	"github.com/lucasassuncao/bezel/shell"
+	"github.com/lucasassuncao/bezel/theme"
 	"github.com/lucasassuncao/yedit/document"
-	"github.com/lucasassuncao/yedit/legend"
-	"github.com/lucasassuncao/yedit/presetbrowser"
 	"github.com/lucasassuncao/yedit/render"
 	"github.com/lucasassuncao/yedit/schema"
-	"github.com/lucasassuncao/yedit/theme"
 	"github.com/lucasassuncao/yedit/validate"
 
 	"github.com/lucasassuncao/yedit/keys"
@@ -35,11 +36,12 @@ const (
 	paneBlockEdit
 	paneAlert
 	paneDocPreset
+	paneHint // the Hint/Example panel has the keys, to scroll it
 )
 
 // model is the root bubbletea model. The mode field names the active pane, and
-// alert/blockEdits hold that pane's data: alert is set iff mode == paneAlert,
-// blockEdits non-empty iff mode == paneBlockEdit.
+// the shell's overlay/blockEdits hold that pane's data: an overlay is open iff
+// mode == paneAlert, blockEdits non-empty iff mode == paneBlockEdit.
 type model struct {
 	cfg             Config
 	doc             document.Document
@@ -62,19 +64,18 @@ type model struct {
 	// parts stay live nodes, so nested edits cannot corrupt them by splicing.
 	editRoot     *yaml.Node
 	editBlockKey string // top-level YAML key of editRoot
-	alert        alert.Model
-	alertVisible bool
-	docPreset    presetbrowser.Model
+	docPreset    browser.Model
 	theme        theme.Resolved
-	help         help.Model
+	// sh is the chrome: size, layout, status row, legend and the alert overlay.
+	sh shell.Shell
 
-	mode                         pane
-	showHint                     bool            // split the right column to show the Hint/Example panel
-	hintAnim                     animation.Tween // in-flight hint transition; inactive unless Config.AnimationDuration is set
-	saved                        bool            // at least one save succeeded this session; reported via Result
-	statusMsg                    string
-	statusSeq                    uint // incremented per status, to cancel stale clear ticks
-	width, height, listW, innerH int
+	mode          pane
+	showHint      bool            // split the right column to show the Hint/Example panel
+	hintAnim      animation.Tween // in-flight hint transition; inactive unless Config.AnimationDuration is set
+	hintScroll    int             // first hint line shown while mode == paneHint
+	hintFrom      pane            // the pane paneHint gives the keys back to
+	saved         bool            // at least one save succeeded this session; reported via Result
+	width, height int
 }
 
 // newModel constructs the root model from a Config. A path that does not exist
@@ -102,13 +103,12 @@ func newModel(cfg Config) (model, error) {
 		passthrough[k] = true
 	}
 
-	list := blocklist.New(knownOrder, doc.Blocks(), passthrough, 0)
+	rt := theme.Resolve(cfg.Theme, true) // re-resolved when the terminal answers Init
+	list := blocklist.New(knownOrder, doc.Blocks(), passthrough, 0, rt)
 
 	preview := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
 	preview.SetContent(render.PreviewYAML(string(doc.Raw()), nil))
-
-	rt := theme.Resolve(cfg.Theme)
-	preview.LeftGutterFunc = render.PreviewGutter(rt)
+	preview.LeftGutterFunc = draw.ViewportGutter(rt.Muted)
 	return model{
 		cfg:             cfg,
 		doc:             doc,
@@ -121,8 +121,15 @@ func newModel(cfg Config) (model, error) {
 		preview:  preview,
 		showHint: cfg.EnableHints,
 		theme:    rt,
-		help:     legend.NewHelp(rt),
-	}, nil
+		sh:       shell.New(shell.Config{Layout: rootLayout(0), Theme: rt, Title: cfg.Title, LegendLines: cfg.LegendLines}),
+	}.withActions(), nil
+}
+
+// withActions stores the current screen's actions on the shell: the legend
+// rows count against the body, so the layout needs them too.
+func (m model) withActions() model {
+	m.sh = m.sh.SetActions(m.actions()...)
+	return m
 }
 
 // A model-level alert can appear over the list or over an active block editor,
@@ -132,7 +139,7 @@ func newModel(cfg Config) (model, error) {
 // handleDismissedAlert.
 func (m model) enterList() model {
 	m.mode = paneList
-	m.alertVisible = false
+	m.sh = m.sh.Pop()
 	m.blockEdits = nil
 	m.editRoot = nil
 	m.editBlockKey = ""
@@ -142,7 +149,7 @@ func (m model) enterList() model {
 // enterPreview focuses the read-only preview pane.
 func (m model) enterPreview() model {
 	m.mode = panePreview
-	m.alertVisible = false
+	m.sh = m.sh.Pop()
 	return m
 }
 
@@ -150,48 +157,32 @@ func (m model) enterPreview() model {
 // have pushed onto m.blockEdits first.
 func (m model) enterBlockEdit() model {
 	m.mode = paneBlockEdit
-	m.alertVisible = false
+	m.sh = m.sh.Pop()
 	return m
 }
 
-// enterAlert shows a modal alert over the current (list) screen.
-func (m model) enterAlert(al alert.Model) model {
+// enterAlert shows a modal over the current (list) screen.
+func (m model) enterAlert(o overlay.Overlay) model {
 	m.mode = paneAlert
-	m.alert = al
-	m.alertVisible = true
+	m.sh = m.sh.Push(o)
 	return m
 }
 
-// enterDocPreset switches to the document-level template picker.
-func (m model) enterDocPreset(pb presetbrowser.Model) model {
+// enterDocPreset switches to the document-level preset picker.
+func (m model) enterDocPreset(pb browser.Model) model {
 	m.mode = paneDocPreset
 	m.docPreset = pb
-	m.alertVisible = false
-	return m
+	m.sh = m.sh.Pop()
+	return m.relayout()
 }
 
-func (m model) viewDocPreset() string {
-	header := renderHeader(m.cfg.Title, m.doc.Path(), m.doc.Dirty(), m.width, m.theme)
-
-	leftPanel := theme.RenderTitledPanelWith("Templates", theme.Size{W: m.listW, H: m.innerH + 2}, !m.docPreset.PreviewFocus, m.docPreset.ListView(m.theme), m.theme.Colors)
-
-	_, rightW := theme.TwoColumnWidths(m.width)
-	rightPanel := theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.innerH + 2}, m.docPreset.PreviewFocus, m.docPreset.PreviewView(m.innerH), m.theme.Colors)
-
-	feedback := legend.StatusLine(m.width, m.theme.Status, m.statusMsg)
-	var km help.KeyMap
-	if m.docPreset.PreviewFocus {
-		km = legend.DocPresetPreview{}
-	} else {
-		km = legend.DocPresetList{}
+// docPresetPanes is the preset picker screen: presets on the left, the
+// chosen one on the right.
+func (m model) docPresetPanes() map[string]shell.Pane {
+	return map[string]shell.Pane{
+		"presets": {Title: "Presets", Body: func(r layout.Rect) string { return m.docPreset.ListView(m.theme, r.H) }},
+		"preview": {Title: "Preview", Body: func(r layout.Rect) string { return m.docPreset.PreviewView(r.H) }},
 	}
-	legendBar := legend.HelpLine(m.width, m.help, km)
-
-	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legendBar})
-	if m.height > 0 {
-		out = render.ClampLines(out, m.height)
-	}
-	return out
 }
 
 // discoverSchema runs schema discovery for cfg (honouring SchemaRecursionDepth)
@@ -244,7 +235,10 @@ func applyPresentation(fields []schema.FieldDef, meta MetadataSource, blockKey s
 		if p := meta.FieldMeta(blockKey, strings.Join(childSegs, ".")).Presentation; p != schema.PresentationDefault {
 			f.Presentation = p
 		}
-		if len(f.Children) > 0 {
+		// Only what the tree draws inline is stamped now. A field opened in its
+		// own editor is stamped when it opens (handleOpenChild), by the same path,
+		// so a recursive schema is never walked past what is on screen.
+		if len(f.Children) > 0 && fieldtree.ExpandsInline(f) {
 			f.Children = applyPresentation(f.Children, meta, blockKey, childSegs)
 		}
 		out[i] = f
@@ -290,6 +284,8 @@ func (m model) traceLocation() string {
 		return "list"
 	case panePreview:
 		return "preview"
+	case paneHint:
+		return "hint"
 	case paneAlert:
 		return "alert"
 	case paneDocPreset:
@@ -309,7 +305,7 @@ func (m model) traceLocation() string {
 		modeName := "editing"
 		switch be.mode {
 		case modePresetBrowser:
-			modeName = "presetbrowser.Model"
+			modeName = "presetbrowser"
 		case modeConfirming:
 			modeName = "confirming"
 		}
@@ -319,7 +315,20 @@ func (m model) traceLocation() string {
 	}
 }
 
-func (m model) Init() tea.Cmd { return nil }
+// Init asks the terminal for its background so the theme can match it.
+func (m model) Init() tea.Cmd { return tea.RequestBackgroundColor }
+
+// withTheme swaps the styles in the root screen and every stacked block editor.
+func (m model) withTheme(rt theme.Resolved) model {
+	m.theme = rt
+	m.sh = m.sh.SetTheme(rt)
+	m.list = m.list.Rebuild(m.doc.Blocks(), rt)
+	m.preview.LeftGutterFunc = draw.ViewportGutter(rt.Muted)
+	for i := range m.blockEdits {
+		m.blockEdits[i] = m.blockEdits[i].withTheme(rt)
+	}
+	return m
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.cfg.Trace.OnMsg != nil {
@@ -328,6 +337,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.handleWindowSizeMsg(msg)
+	case tea.BackgroundColorMsg:
+		return m.withTheme(theme.Resolve(m.cfg.Theme, msg.IsDark())), nil
 	case blocklist.OpenItemMsg:
 		return m.handleOpenItem(msg.Item)
 	case openChildMsg:
@@ -350,39 +361,65 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleConfirmedDocPreset(msg)
 	case validateRequestedMsg:
 		return m.validateKeys()
-	case alert.DismissedMsg:
+	case overlay.CloseMsg:
 		return m.handleDismissedAlert(msg)
 	case doSaveMsg:
 		return m.dispatch(Save{})
 	case saveResultMsg:
-		if msg.err != nil {
-			return m.showAlert("Save failed", msg.err.Error(), alert.KindError)
-		}
-		// The save ran on a snapshot; apply only its persistence outcome so any
-		// edit made while the save was in flight is not clobbered.
-		m.doc = m.doc.MarkSaved(msg.doc)
-		m.saved = true
-		// syncView refreshes the list's dirty decorations (e.g. unsaved-changes
-		// indicator) immediately so they reflect the now-saved state.
-		m = m.syncView()
-		return m.showAlert("Saved", fmt.Sprintf("Saved to %s.", m.doc.Path()), alert.KindSuccess)
+		return m.handleSaveResult(msg)
 	case reloadResultMsg:
-		if msg.err != nil {
-			return m.showAlert("Reload failed", msg.err.Error(), alert.KindError)
-		}
-		m.doc = msg.doc
-		m = m.syncView()
-		return m.withStatus(fmt.Sprintf("Reloaded %s from disk.", m.doc.Path()))
-	case clearStatusMsg:
-		if msg.seq == m.statusSeq {
-			m.statusMsg = ""
-		}
-		return m, nil
+		return m.handleReloadResult(msg)
 	case hintAnimTickMsg:
 		return m.handleHintAnimTick(msg)
+	case previewBackMsg:
+		return m.focusRootPane(shell.FocusMsg{From: "preview", To: "list"})
+	case shell.FocusMsg:
+		if m.mode == paneBlockEdit {
+			return m.handlePaneBlockEdit(msg)
+		}
+		return m.focusRootPane(msg)
+	case quitRequestedMsg:
+		return m.quitOrConfirm()
+	case openDocPresetsMsg:
+		return m.openDocPresets()
+	case toggleHintsMsg:
+		return m.toggleHints()
+	case focusHintMsg:
+		return m.toggleHintFocus(), nil
+	case saveRequestedMsg:
+		return m.dispatch(CommitBlock{})
+	case docUndoMsg:
+		return m.dispatch(DocUndo{})
+	case docRedoMsg:
+		return m.dispatch(DocRedo{})
+	case reloadRequestedMsg:
+		return m.reload()
 	}
 
 	return m.handleModeUpdate(msg)
+}
+
+func (m model) handleSaveResult(msg saveResultMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		return m.showAlert("Save failed", msg.err.Error(), overlay.Danger)
+	}
+	// The save ran on a snapshot; apply only its persistence outcome so any
+	// edit made while the save was in flight is not clobbered.
+	m.doc = m.doc.MarkSaved(msg.doc)
+	m.saved = true
+	// syncView refreshes the list's dirty decorations (e.g. unsaved-changes
+	// indicator) immediately so they reflect the now-saved state.
+	m = m.syncView()
+	return m.showAlert("Saved", fmt.Sprintf("Saved to %s.", m.doc.Path()), overlay.Success)
+}
+
+func (m model) handleReloadResult(msg reloadResultMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		return m.showAlert("Reload failed", msg.err.Error(), overlay.Danger)
+	}
+	m.doc = msg.doc
+	m = m.syncView()
+	return m.withStatus(fmt.Sprintf("Reloaded %s from disk.", m.doc.Path()))
 }
 
 // handleConfirmedDocPreset replaces the document with the preset content after
@@ -398,18 +435,17 @@ func (m model) handleConfirmedDocPreset(msg confirmedDocPresetMsg) (tea.Model, t
 	return m.withStatus(fmt.Sprintf("Applied preset %q - ctrl+s to save.", msg.Name))
 }
 
-// handleDismissedAlert clears the active alert and returns to the appropriate screen. Routing depends on the current mode,
-// not on whether a block editor stack exists, because entering paneAlert preserves blockEdits for return?
-//
-//   - paneBlockEdit: the block editor's own confirm overlay (save/delete) is active; forward DismissedMsg to the block editor to clear it.
-//   - any other mode: a root-level alert (validation, etc.) was shown. If a block editor stack was preserved, restore it, otherwise return to the list.
-func (m model) handleDismissedAlert(msg alert.DismissedMsg) (tea.Model, tea.Cmd) {
+// handleDismissedAlert pops the overlay and returns to the screen under it.
+// In paneBlockEdit the modal belongs to the block editor's own shell, so the
+// message is forwarded there; otherwise a preserved editor stack is restored.
+func (m model) handleDismissedAlert(msg overlay.CloseMsg) (tea.Model, tea.Cmd) {
 	if m.mode == paneBlockEdit {
 		if top := m.topBE(); top != nil {
 			be, cmd := top.Update(msg)
 			return m.withTopBE(be), cmd
 		}
 	}
+	m.sh, _, _ = m.sh.Update(msg)
 	if len(m.blockEdits) > 0 {
 		m = m.enterBlockEdit()
 	} else {
@@ -434,14 +470,18 @@ func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if mo, cmd, handled := m.handleGlobalKey(key); handled {
 				return mo, cmd
 			}
-			al, cmd := m.alert.Update(key)
-			m.alert = al
+			var cmd tea.Cmd
+			m.sh, _, cmd = m.sh.Update(key)
 			return m, cmd
 		}
 	case paneBlockEdit:
 		return m.handlePaneBlockEdit(msg)
 	case panePreview:
 		return m.handlePreviewUpdate(msg)
+	case paneHint:
+		if key, ok := msg.(tea.KeyMsg); ok {
+			return m.handleHintKey(key)
+		}
 	case paneList:
 		if key, ok := msg.(tea.KeyMsg); ok {
 			return m.handleListKey(key)
@@ -486,7 +526,7 @@ func (m model) handlePreviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.width = msg.Width
 	m.height = msg.Height
-	m.help.SetWidth(m.width - 1)
+	m.sh, _, _ = m.sh.Update(msg)
 	m = m.relayout()
 	// relayout only sizes the root list/preview; forward the resize to every
 	// stacked sub-model so each editor's panels resize too.
@@ -533,13 +573,13 @@ func (m model) handleDelete(key string) (tea.Model, tea.Cmd) {
 	return m.withStatus(fmt.Sprintf("Removed %q (not saved yet).", key))
 }
 
-func (m model) showAlert(title, message string, kind alert.Kind) (tea.Model, tea.Cmd) {
-	m = m.enterAlert(alert.New(title, message, kind))
+func (m model) showAlert(title, message string, kind overlay.Kind) (tea.Model, tea.Cmd) {
+	m = m.enterAlert(overlay.NewAlert(kind, title, message, m.theme.ModalFor(kind), m.theme.Legend))
 	return m, nil
 }
 
 func (m model) showConfirmAlert(title, message string, confirmCmd tea.Cmd) (tea.Model, tea.Cmd) {
-	m = m.enterAlert(alert.NewConfirm(title, message, confirmCmd))
+	m = m.enterAlert(overlay.NewConfirm(title, message, confirmCmd, m.theme.Modal, m.theme.Legend))
 	return m, nil
 }
 
@@ -563,36 +603,30 @@ func (m model) viewContent() string {
 		}
 	}
 
+	info := m.doc.Path()
+	if m.doc.Dirty() {
+		info += " ● modified"
+	}
+	sh := m.sh.SetSubtitle(info).SetActions(m.actions()...)
+
 	if m.mode == paneDocPreset {
-		return m.viewDocPreset()
+		focus := "presets"
+		if m.docPreset.PreviewFocus {
+			focus = "preview"
+		}
+		return sh.SetFocus(focus).View(m.docPresetPanes())
 	}
 
-	previewFocused := m.mode == panePreview
-
-	header := renderHeader(m.cfg.Title, m.doc.Path(), m.doc.Dirty(), m.width, m.theme)
-
-	leftTitle := fmt.Sprintf("Blocks (%d/%d)", m.list.AddedCount(), m.list.KnownCount())
-	leftPanel := theme.RenderTitledPanelWith(leftTitle, theme.Size{W: m.listW, H: m.innerH + 2}, !previewFocused, m.list.View(m.theme), m.theme.Colors)
-
-	_, rightW := theme.TwoColumnWidths(m.width)
-	var rightPanel string
+	focus := m.rootPane()
+	panes := map[string]shell.Pane{
+		"list": {
+			Title: fmt.Sprintf("Blocks (%d/%d)", m.list.AddedCount(), m.list.KnownCount()),
+			Body:  func(layout.Rect) string { return m.list.View(m.theme) },
+		},
+		"preview": {Title: "Preview", Body: func(layout.Rect) string { return m.preview.View() }},
+	}
 	if m.hintVisible() {
-		previewPanel := theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.previewPanelH() + 2}, previewFocused, m.preview.View(), m.theme.Colors)
-		hintPanel := theme.RenderTitledPanelWith("Hint/Example", theme.Size{W: rightW, H: m.hintPanelH() + 2}, false, render.ClampLines(m.selectedHint(), m.hintPanelH()), m.theme.Colors)
-		rightPanel = lipgloss.JoinVertical(lipgloss.Left, previewPanel, hintPanel)
-	} else {
-		rightPanel = theme.RenderTitledPanelWith("Preview", theme.Size{W: rightW, H: m.innerH + 2}, previewFocused, m.preview.View(), m.theme.Colors)
+		panes["hint"] = shell.Pane{Title: "Hint/Example", Body: func(layout.Rect) string { return m.hintView() }}
 	}
-
-	feedback := legend.StatusLine(m.width, m.theme.Status, m.statusMsg)
-	legendBar := legend.HelpLine(m.width, m.help, listKeyMapFor(m, previewFocused))
-
-	out := theme.RenderTwoColumnView(theme.TwoColumnLayout{Header: header, Left: leftPanel, Right: rightPanel, Feedback: feedback, Legend: legendBar})
-	if m.height > 0 {
-		out = render.ClampLines(out, m.height)
-	}
-	if m.alertVisible {
-		out = theme.CompositeCenter(m.alert.Box(), out)
-	}
-	return out
+	return sh.SetFocus(focus).View(panes)
 }

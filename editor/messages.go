@@ -70,7 +70,3 @@ type confirmedDocPresetMsg struct {
 // validateRequestedMsg asks the model to run the doc-level validation pass,
 // mirroring commitRequestedMsg.
 type validateRequestedMsg struct{}
-
-// clearStatusMsg auto-clears the status bar. seq must match model.statusSeq: a
-// newer message increments it, so the stale tick becomes a no-op.
-type clearStatusMsg struct{ seq uint }

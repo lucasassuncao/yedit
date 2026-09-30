@@ -101,18 +101,6 @@ func TestWithEditorCursorAt(t *testing.T) {
 	is.Equal(be.yamlEditor.LineCount()-1, be.yamlEditor.Line(), "clamped at last line")
 }
 
-func TestScrollLinesTo(t *testing.T) {
-	is := assert.New(t)
-
-	s := "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8"
-
-	is.Equal(s, scrollLinesTo(s, 10, 4), "fits: unchanged")
-	is.Equal("l1\nl2\nl3", scrollLinesTo(s, 3, 0), "no target: top window")
-	is.Equal("l4\nl5\nl6", scrollLinesTo(s, 3, 5), "target centered")
-	is.Equal("l6\nl7\nl8", scrollLinesTo(s, 3, 8), "target at end: clamped")
-	is.Equal("", scrollLinesTo(s, 0, 5), "zero height")
-}
-
 // pressDown drives one down-arrow through the tree panel handler.
 func pressDown(be blockEditState) blockEditState {
 	be2, _ := be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyDown})

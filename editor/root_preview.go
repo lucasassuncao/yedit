@@ -3,22 +3,41 @@ package editor
 import (
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucasassuncao/bezel/shell"
 	"github.com/lucasassuncao/yedit/render"
 )
 
-func (m model) togglePreviewPane() (tea.Model, tea.Cmd) {
-	if m.mode == panePreview {
-		m = m.enterList()
-		m.statusMsg = ""
+// focusRootPane runs what the list screen's focus move means: the mode that
+// routes the keys follows the pane, and the preview explains its keys.
+func (m model) focusRootPane(msg shell.FocusMsg) (tea.Model, tea.Cmd) {
+	if m.mode != paneList && m.mode != panePreview {
 		return m, nil
 	}
-	m = m.enterPreview()
-	return m.withStatus("Viewing YAML - ↑/↓ scroll, Tab/Esc back to list.")
+	switch msg.To {
+	case "preview":
+		m = m.enterPreview()
+		return m.withStatus("Viewing YAML - ↑/↓ scroll, Tab/Esc back to list.")
+	case "list":
+		m = m.enterList()
+		m.sh = m.sh.ClearStatus()
+	}
+	return m, nil
+}
+
+// rootPane names the shell leaf the list screen's mode is focused on.
+func (m model) rootPane() string {
+	switch m.mode {
+	case panePreview:
+		return "preview"
+	case paneHint:
+		return "hint"
+	}
+	return "list"
 }
 
 func (m model) syncView() model {
 	m = m.refreshPreview()
-	m.list = m.list.Rebuild(m.doc.Blocks())
+	m.list = m.list.Rebuild(m.doc.Blocks(), m.theme)
 	m = m.scrollPreviewToSelected()
 	return m
 }

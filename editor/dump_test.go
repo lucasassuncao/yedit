@@ -3,9 +3,11 @@ package editor
 import (
 	"bufio"
 	"encoding/json"
+	"github.com/lucasassuncao/bezel/shell"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"charm.land/bubbles/v2/cursor"
 	tea "charm.land/bubbletea/v2"
@@ -13,12 +15,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lucasassuncao/yedit/schema"
+	"github.com/lucasassuncao/yedit/trace"
 
 	"github.com/lucasassuncao/yedit/blocklist"
 )
 
 // readDumpEvents reads the JSONL back into generic maps so tests can assert on
-// fields without depending on dumpEvent's internals.
+// fields without depending on the trace package's internals.
 func readDumpEvents(t *testing.T, path string) []map[string]any {
 	t.Helper()
 	f, err := os.Open(path)
@@ -42,7 +45,7 @@ func TestWireDump_CapturesKeyBlockAndModelEvents(t *testing.T) {
 	must := require.New(t)
 
 	path := filepath.Join(t.TempDir(), "trace.jsonl")
-	d, err := newDumpWriter(path)
+	d, err := trace.New(path)
 	must.NoError(err)
 
 	cfg := Config{}
@@ -51,7 +54,7 @@ func TestWireDump_CapturesKeyBlockAndModelEvents(t *testing.T) {
 	cfg.Trace.OnMsg("list", tea.KeyPressMsg{Code: tea.KeyEnter})
 	cfg.Trace.OnAction("server", ToggleField{NodeIdx: 2, Checked: true})
 	cfg.Trace.OnModelAction(DrillOut{})
-	must.NoError(d.close())
+	must.NoError(d.Close())
 
 	events := readDumpEvents(t, path)
 	must.Len(events, 3)
@@ -82,7 +85,7 @@ func TestWireDump_CapturesGapMessages(t *testing.T) {
 	must := require.New(t)
 
 	path := filepath.Join(t.TempDir(), "trace.jsonl")
-	d, err := newDumpWriter(path)
+	d, err := trace.New(path)
 	must.NoError(err)
 
 	cfg := Config{}
@@ -92,7 +95,7 @@ func TestWireDump_CapturesGapMessages(t *testing.T) {
 	cfg.Trace.OnMsg("block:server:tree:editing", commitRequestedMsg{})
 	cfg.Trace.OnMsg("list", confirmedDocPresetMsg{Name: "minimal", Content: "a: 1\n"})
 	cfg.Trace.OnMsg("block:server:tree:editing", validateRequestedMsg{})
-	must.NoError(d.close())
+	must.NoError(d.Close())
 
 	events := readDumpEvents(t, path)
 	must.Len(events, 4)
@@ -114,7 +117,7 @@ func TestWireDump_FiltersNoise(t *testing.T) {
 	must := require.New(t)
 
 	path := filepath.Join(t.TempDir(), "trace.jsonl")
-	d, err := newDumpWriter(path)
+	d, err := trace.New(path)
 	must.NoError(err)
 
 	cfg := Config{}
@@ -127,9 +130,12 @@ func TestWireDump_FiltersNoise(t *testing.T) {
 	cfg.Trace.OnMsg("block:server:tree:editing", cursor.BlinkMsg{})
 	cfg.Trace.OnMsg("block:server:tree:editing", cursor.Blink())     // unexported cursor.initialBlinkMsg
 	cfg.Trace.OnMsg("block:server:tree:editing", blinkCanceledCmd()) // unexported cursor.blinkCanceled
-	cfg.Trace.OnMsg("list", clearStatusMsg{})
+	// The status decay tick is the shell's own unexported message; a 1ms TTL
+	// hands one back from the command it schedules.
+	_, tick := shell.New(shell.Config{}).SetStatus("x", shell.Info, time.Millisecond)
+	cfg.Trace.OnMsg("list", tick())
 	cfg.Trace.OnMsg("list", tea.KeyPressMsg{Code: tea.KeyEnter}) // control: must still be recorded
-	must.NoError(d.close())
+	must.NoError(d.Close())
 
 	events := readDumpEvents(t, path)
 	must.Len(events, 1, "blink and clear-status ticks must not reach the trace")
@@ -142,7 +148,7 @@ func TestWireDump_PreservesExistingHooks(t *testing.T) {
 	must := require.New(t)
 
 	path := filepath.Join(t.TempDir(), "trace.jsonl")
-	d, err := newDumpWriter(path)
+	d, err := trace.New(path)
 	must.NoError(err)
 
 	var gotAction, gotModelAction, gotMsg bool
@@ -158,7 +164,7 @@ func TestWireDump_PreservesExistingHooks(t *testing.T) {
 	cfg.Trace.OnAction("server", AddEntry{})
 	cfg.Trace.OnModelAction(DrillOut{})
 	cfg.Trace.OnMsg("list", tea.KeyPressMsg{Code: tea.KeyEnter})
-	must.NoError(d.close())
+	must.NoError(d.Close())
 
 	must.True(gotAction)
 	must.True(gotModelAction)

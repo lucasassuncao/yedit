@@ -6,20 +6,20 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/lucasassuncao/yedit/presetbrowser"
+	"github.com/lucasassuncao/bezel/browser"
 	"github.com/lucasassuncao/yedit/yamledit"
 )
 
 // openPresetPicker enters preset-browser mode, a no-op when this block has no
 // presets.
 func (be blockEditState) openPresetPicker() blockEditState {
-	pb, ok := presetbrowser.New(be.cfg.BlockPresets, be.key, be.currentPreset)
-	if !ok {
+	items := presetItems(be.cfg.BlockPresets, be.key)
+	if len(items) == 0 {
 		return be
 	}
-	be.preset = pb
+	be.preset = browser.New(items, be.currentPreset)
 	be.mode = modePresetBrowser
-	return be
+	return be.relayout()
 }
 
 func (be blockEditState) applyPreset(name, y string) blockEditState {

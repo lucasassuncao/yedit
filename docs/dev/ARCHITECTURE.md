@@ -1,13 +1,13 @@
 # Architecture
 
-How the yamltui packages fit together and why they are split the way they are.
+How the yedit packages fit together and why they are split the way they are.
 
 ---
 
 ## Folder structure
 
 ```
-yamltui/
+yedit/
 ├── spec/               - shared vocabulary: FieldMeta, MetadataSource, Validator, Violation, Format
 ├── validate/           - the validation rules (Required, ValueOneOf, …FromMetadata, RunAll)
 ├── editor/             - public API: Config, Run, Wire; the bubbletea TUI
@@ -15,13 +15,17 @@ yamltui/
 ├── schema/             - schema.Discover: reflects a Go struct into a []FieldDef tree
 ├── document/           - raw YAML bytes, block list, undo/redo history
 ├── presets/            - ForField, Combine, Func: struct-backed and ad-hoc preset sources
-├── theme/              - color palette, layout helpers
+├── report/             - renders []spec.Violation for humans and for machines
 ├── viewer/             - read-only preset browser TUI
-├── themebrowser/       - inline table of the built-in themes
-├── alert/              - modal alert overlay (bubbletea component)
+├── trace/              - records a session to a JSONL file for bug reports
 ├── yamlnode/           - *yaml.Node helpers shared by editor sub-packages
+├── cmd/demo/           - the small editor the README demo is recorded from
 └── docs/               - reference documentation
 ```
+
+The theme, layout, panels, overlays and key legend come from
+[bezel](https://github.com/lucasassuncao/bezel); `editor.Config.Theme` is a
+bezel `theme.Theme`.
 
 ## Package map
 
@@ -70,7 +74,7 @@ The main entry point. `editor.Run` starts a bubbletea program that manages:
 - An **editor stack** - drill-in (Enter on a nested field) pushes a new `blockEditState` onto the stack; drill-out (Esc) pops it. The single `editRoot *yaml.Node` holds all edits until Ctrl+S commits them to `document.Document`.
 - A **hint panel** - shown when `EnableHints` is set; renders `FieldMeta` from `Config.Metadata` for the focused field.
 
-`editor.Config` is the integration surface. See `editor/config.go` for the full field list. For the state machine and message flow behind the list/editor/preset panes, see [Dispatch Flow](DISPATCH-FLOW.md).
+`editor.Config` is the integration surface. See `editor/config.go` for the full field list.
 
 ### MetadataSource
 
@@ -159,7 +163,7 @@ See [Doc Generation](../DOC-GENERATION.md).
 
 ## presets
 
-Three construction paths, each returning a `presets.Source` that the editor uses to populate the preset picker (Ctrl+P):
+Three construction paths, each returning a `presets.Source` that the editor uses to populate the preset picker (`p`):
 
 - **`ForField[T](presetMap)`** - the recommended path. Takes a `map[string]T` where each value is marshaled to YAML at runtime. Type-safe and diff-friendly since presets live as Go values next to the structs they configure.
 - **`Combine(sources...)`** - merges multiple `Source` values into one. Use to aggregate presets from several resource types into a single block preset picker.
@@ -171,7 +175,7 @@ See [Presets](../PRESETS.md) for configuration details.
 
 ## Two-level undo
 
-yamltui maintains two independent undo stacks:
+yedit maintains two independent undo stacks:
 
 | Level | Scope | Keys |
 |---|---|---|

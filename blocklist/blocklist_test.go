@@ -4,84 +4,92 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/lucasassuncao/bezel/bezeltest"
+	"github.com/lucasassuncao/bezel/theme"
+	"github.com/lucasassuncao/yedit/document"
 )
 
-// buildLM creates a Model with the given items and a small viewport.
-func buildLM(keys []string, height int) Model {
-	var items []Item
-	for _, k := range keys {
-		items = append(items, Item{Key: k})
+var th = theme.Resolve(theme.ThemePlain, true)
+
+// TestBuildItemsGroupsKeysBySection pins the four sections and their order.
+func TestBuildItemsGroupsKeysBySection(t *testing.T) {
+	is := assert.New(t)
+	existing := []document.Block{{Key: "b"}, {Key: "x"}, {Key: "p"}}
+	items := BuildItems([]string{"a", "b"}, existing, map[string]bool{"p": true})
+	var labels []string
+	for _, it := range items {
+		labels = append(labels, it.Key)
 	}
-	return Model{items: items, height: height}
+	is.Equal([]string{"ADDED", "b", "", "AVAILABLE", "a", "", "UNKNOWN", "x", "", "PASSTHROUGH", "p"}, labels)
+	is.True(items[7].Unknown && !items[7].Passthrough)
+	is.True(items[10].Unknown && items[10].Passthrough)
 }
 
-// TestFilterEnter_clampScrollApplied guards BUG-001: pressing enter in filter
-// mode must update lm.offset so the selected item is actually visible. Before
-// the fix, clampScroll() returned a new value that was discarded.
-func TestFilterEnter_clampScrollApplied(t *testing.T) {
+// TestEnterOpensKnownKeysAndDeleteAsksForExisting pins the two messages the
+// list emits and which rows may emit them.
+func TestEnterOpensKnownKeysAndDeleteAsksForExisting(t *testing.T) {
 	is := assert.New(t)
+	must := require.New(t)
+	lm := New([]string{"a", "b"}, []document.Block{{Key: "b"}, {Key: "zzz"}}, nil, 10, th)
+	must.Equal("b", lm.SelectedItem().Key, "cursor starts on the first added key")
 
-	// 10 items, viewport of 3 rows. Start in filter mode with fCursor on item[7].
-	keys := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}
-	lm := buildLM(keys, 3)
-	lm.filtering = true
-	lm.fCursor = 7 // "h" is at index 7 in the full list (no separators)
+	_, cmd := lm.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	must.NotNil(cmd)
+	is.Equal(OpenItemMsg{Item: Item{Key: "b", Existing: true}}, cmd())
 
-	lm, _ = lm.updateFilter(tea.KeyPressMsg{Code: tea.KeyEnter})
+	_, cmd = lm.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+	must.NotNil(cmd)
+	is.Equal(DeleteItemMsg{Key: "b"}, cmd())
 
-	is.False(lm.filtering, "filtering should be cleared after enter")
-	is.Equal(7, lm.cursor, "cursor should point to the selected item")
-	// With height=3 the visible window is rows [offset, offset+3). cursor=7
-	// must be inside that window, so offset must be >= 5.
-	is.GreaterOrEqual(lm.offset, 5, "offset must have been adjusted so the cursor is visible")
+	lm, _ = lm.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // "a", available
+	_, cmd = lm.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+	is.Nil(cmd, "an available key has nothing to delete")
+
+	lm, _ = lm.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // "zzz", unknown
+	must.Equal("zzz", lm.SelectedItem().Key)
+	_, cmd = lm.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	is.Nil(cmd, "an unknown key has no schema to open")
 }
 
-// TestFilterBackspace_removesWholeRune guards the filter against multibyte
-// input: backspace must drop the last rune, not the last byte, or a typed
-// "ç" would leave invalid UTF-8 behind and break matching.
-func TestFilterBackspace_removesWholeRune(t *testing.T) {
-	is := assert.New(t)
-
-	lm := buildLM([]string{"config"}, 3)
-	lm.filtering = true
-	lm.filter = "conç"
-
-	lm, _ = lm.updateFilter(tea.KeyPressMsg{Code: tea.KeyBackspace})
-
-	is.Equal("con", lm.filter, "backspace must remove the whole multibyte rune")
-}
-
-// TestListMoveCursorClampsAtBounds verifies the main list clamps at top/bottom
-// instead of wrapping around, matching the tree panel.
-func TestListMoveCursorClampsAtBounds(t *testing.T) {
-	is := assert.New(t)
-	lm := New([]string{"a", "b", "c"}, nil, nil, 10)
-	first := lm.cursor
-	lm = lm.moveCursor(-1) // already at the top - must not wrap to the bottom
-	is.Equal(first, lm.cursor, "moveCursor(-1) at top should clamp, not wrap")
-	for i := 0; i < len(lm.items); i++ {
-		lm = lm.moveCursor(1) // walk to the bottom; clamps once there
-	}
-	last := lm.cursor
-	lm = lm.moveCursor(1) // at the bottom - must not wrap to the top
-	is.Equal(last, lm.cursor, "moveCursor(+1) at bottom should clamp, not wrap")
-}
-
-// TestListFilterByTyping verifies the "/" filter narrows the list as the user types.
+// TestListFilterByTyping verifies the "/" filter narrows the list as the user
+// types, and that enter on the match opens it.
 func TestListFilterByTyping(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
-	lm := New([]string{"alpha", "beta", "gamma"}, nil, nil, 10)
+	lm := New([]string{"alpha", "beta", "gamma"}, nil, nil, 10, th)
 	must.False(lm.IsFiltering(), "should not start in filtering mode")
-	lm, _ = lm.Update(tea.KeyPressMsg{Text: "/", Code: '/'})
+	lm, _ = lm.Update(bezeltest.Key("/"))
 	must.True(lm.IsFiltering(), `"/" should enter filtering mode`)
 	for _, r := range "be" {
-		lm, _ = lm.Update(tea.KeyPressMsg{Text: string(r), Code: r})
+		lm, _ = lm.Update(bezeltest.Key(string(r)))
 	}
-	got := lm.filteredItems()
-	if is.Len(got, 1, `filter "be" should match exactly one item`) {
-		is.Equal("beta", got[0].Key, `filter "be" should match beta`)
-	}
+	is.Equal("be", lm.Filter())
+	must.NotNil(lm.SelectedItem())
+	is.Equal("beta", lm.SelectedItem().Key, `filter "be" should match beta`)
+
+	lm, cmd := lm.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	is.False(lm.IsFiltering())
+	must.NotNil(cmd)
+	is.Equal("beta", cmd().(OpenItemMsg).Item.Key)
+}
+
+// TestRebuildKeepsTheCursorAndCounts pins the counter and cursor after a
+// document change.
+func TestRebuildKeepsTheCursorAndCounts(t *testing.T) {
+	is := assert.New(t)
+	lm := New([]string{"a", "b", "c"}, []document.Block{{Key: "a"}}, nil, 10, th)
+	lm, _ = lm.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // "b", available
+	is.Equal(1, lm.AddedCount())
+	is.Equal(3, lm.KnownCount())
+
+	lm = lm.Rebuild([]document.Block{{Key: "a"}, {Key: "b"}}, th)
+	is.Equal(2, lm.AddedCount())
+	is.Equal("b", lm.SelectedItem().Key, "cursor follows the key across the rebuild")
+	is.Contains(ansi.Strip(lm.View(th)), "▶ ●  b")
+	is.Equal(Item{Key: "c"}, lm.ItemByKey("c"))
+	is.Equal(Item{Key: "ADDED"}, lm.ItemByKey("ADDED"), "a heading is not an item")
 }

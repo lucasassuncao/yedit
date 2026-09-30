@@ -11,6 +11,7 @@ import (
 
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
+	"github.com/lucasassuncao/bezel/shell"
 	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/yamledit"
@@ -746,13 +747,13 @@ func TestUndo_treelessRetypeAfterUndo(t *testing.T) {
 	}
 
 	typeRune('x')
-	be, _ = be.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+	be, _ = pressBEAction(t, be, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	must.Equal(baseline, be.yamlEditor.Value(), "first undo must restore the opening content")
 
 	typeRune('y')
 	is.Empty(be.redoStack, "a new edit after undo must discard the redo entry")
 
-	be, _ = be.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+	be, _ = pressBEAction(t, be, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	is.Equal("Undone.", be.statusMsg, "second undo must work after retyping")
 	is.Equal(baseline, be.yamlEditor.Value(), "second undo must restore the pre-retype content")
 }
@@ -765,43 +766,21 @@ func TestRestoreRedo_emptyStackIsNoOp(t *testing.T) {
 	is.Empty(got.redoStack, "restoreRedo on an empty stack should leave it empty")
 }
 
-// innerH() shrinks by one per extra legend line beyond the first.
-func TestInnerH_AdjustsForLegendLines(t *testing.T) {
-	base := blockEditState{width: 80, height: 30}
-
-	base.legendLines = 1
-	h1 := base.innerH()
-
-	base.legendLines = 2
-	h2 := base.innerH()
-	if h2 != h1-1 {
-		t.Errorf("legendLines=2 want innerH=%d, got %d", h1-1, h2)
-	}
-
-	base.legendLines = 3
-	h3 := base.innerH()
-	if h3 != h1-2 {
-		t.Errorf("legendLines=3 want innerH=%d, got %d", h1-2, h3)
-	}
-}
-
-// innerH never returns less than 1.
-func TestInnerH_MinimumOne(t *testing.T) {
-	be := blockEditState{width: 80, height: 4, legendLines: 10}
-	if h := be.innerH(); h < 1 {
-		t.Errorf("innerH must be at least 1, got %d", h)
-	}
-}
-
 // Repeated Tab switches with no edit between them push a single snapshot instead
 // of piling up identical ones.
+// The focus moves a real Tab makes between the fields and the YAML editor.
+var (
+	toEditor = shell.FocusMsg{From: "fields", To: "editor"}
+	toFields = shell.FocusMsg{From: "editor", To: "fields"}
+)
+
 func TestSaveUndoDeduplicatesSpeculativeCheckpoints(t *testing.T) {
 	must := require.New(t)
 	be := newBlockEdit(Config{}, structSpec(), 100, 40)
 
 	for range 3 {
-		be = be.switchPanel() // tree → yaml: checkpoint
-		be = be.switchPanel() // yaml → tree: no checkpoint
+		be = be.focusPanel(toEditor) // tree → yaml: checkpoint
+		be = be.focusPanel(toFields) // yaml → tree: no checkpoint
 	}
 
 	must.Len(be.undoStack, 1, "identical speculative checkpoints must be deduplicated")
@@ -826,7 +805,7 @@ func TestUndoAfterSpeculativeCheckpointRestoresInOnePress(t *testing.T) {
 	be = be.dispatch(ToggleField{NodeIdx: outputIdx, Checked: false})
 	must.NotContains(be.yamlEditor.Value(), "output:", "toggle should remove the field")
 
-	be = be.switchPanel() // speculative checkpoint at the post-toggle state
+	be = be.focusPanel(toEditor) // speculative checkpoint at the post-toggle state
 
 	be = be.restoreUndo()
 	is.Equal(want, be.yamlEditor.Value(), "one undo must restore the pre-toggle state")
@@ -840,7 +819,7 @@ func TestRestoreUndoWithOnlyNoopSnapshotsReportsNothing(t *testing.T) {
 	must := require.New(t)
 	be := newBlockEdit(Config{}, structSpec(), 100, 40)
 
-	be = be.switchPanel() // checkpoint identical to the live state
+	be = be.focusPanel(toEditor) // checkpoint identical to the live state
 	must.Len(be.undoStack, 1)
 
 	be = be.restoreUndo()
@@ -967,7 +946,7 @@ func TestHintScroll_ReachesEndOfLongContent(t *testing.T) {
 
 	down := tea.KeyPressMsg{Code: tea.KeyDown}
 	for range lines * 2 {
-		be, _ = be.handleHintKey(down)
+		be = be.scrollHint(down)
 	}
 	is.Equal(wantMax, be.hintScroll, "scroll must reach the last panel-full of the hint content")
 }
@@ -988,11 +967,11 @@ func TestHintToggle_HKeyShowsAndHides(t *testing.T) {
 	be.active = blockEditPanelTree // debug is tree-less and opens on the YAML panel; move off it to test the toggle
 
 	h := tea.KeyPressMsg{Text: "h", Code: 'h'}
-	be, _ = be.updateKey(h)
+	be, _ = pressBEAction(t, be, h)
 	must.False(be.showHint, "pressing h should hide the hint panel")
 	is.NotContains(be.View(nil), "Hint/Example", "hint panel should be hidden after pressing h")
 
-	be, _ = be.updateKey(h)
+	be, _ = pressBEAction(t, be, h)
 	must.True(be.showHint, "pressing h again should re-enable the hint panel")
 	is.Contains(be.View(nil), "Hint/Example", "hint panel should be visible after toggling back on")
 
@@ -1000,7 +979,7 @@ func TestHintToggle_HKeyShowsAndHides(t *testing.T) {
 	// that had it before.
 	be.prevActive = blockEditPanelTree
 	be.active = blockEditPanelHint
-	be, _ = be.updateKey(h)
+	be, _ = pressBEAction(t, be, h)
 	is.Equal(blockEditPanelTree, be.active, "hiding the focused hint panel should restore the previous focus")
 
 	// "h" typed into the YAML editor must insert the character, not toggle.
@@ -1146,7 +1125,7 @@ func TestPasteUndoRestoresBufferAndNode(t *testing.T) {
 		t.Skipf("clipboard unavailable: %v", err)
 	}
 	be := newBlockEdit(Config{}, structSpec(), 100, 40)
-	be = be.switchPanel() // focus the YAML panel (checkpoints, like a real Tab)
+	be = be.focusPanel(toEditor) // focus the YAML panel (checkpoints, like a real Tab)
 	prevBuf := be.yamlEditor.Value()
 	prevNode := yamledit.NodeToContent(be.key, &be.node)
 
