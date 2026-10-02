@@ -2,6 +2,7 @@ package editor
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/lucasassuncao/bezel/browser"
 	"github.com/lucasassuncao/yedit/presets"
@@ -21,7 +22,8 @@ func presetItems(source presets.Source, field string) []browser.Item {
 			if err != nil {
 				return fmt.Sprintf("# error: %v", err)
 			}
-			return y
+			// Applying normalizes too; a CR left here sends the cursor to column 0.
+			return strings.ReplaceAll(y, "\r\n", "\n")
 		}})
 	}
 	return items
