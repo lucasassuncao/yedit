@@ -8,8 +8,22 @@ import (
 
 // saveResultMsg carries the outcome of an async Save.
 type saveResultMsg struct {
-	doc document.Document
-	err error
+	doc  document.Document
+	err  error
+	then string // Save.Then, carried through so the action runs only after a write
+}
+
+// actionResultMsg carries the outcome of an Action's Run.
+type actionResultMsg struct {
+	help string
+	res  ActionResult
+	err  error
+}
+
+// actionExecDoneMsg reports that an Action's Exec program exited.
+type actionExecDoneMsg struct {
+	help string
+	err  error
 }
 
 // reloadResultMsg carries the outcome of an async Reload.

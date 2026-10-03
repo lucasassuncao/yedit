@@ -46,6 +46,47 @@ Every field of `editor.Config`, in one table. See the linked guide for each conc
 | `NoDeleteConfirm` | `bool` | Skip the "Remove block?" confirmation dialog; deletion is still undoable via Ctrl+U. See [Undo & Redo](UNDO.md). |
 | `NoSaveConfirm` | `bool` | Skip the "Save changes?" confirmation dialog; warning confirms (`NoValidateOnSave`) are still shown. |
 
+## Application actions
+
+| Field | Type | Description |
+|---|---|---|
+| `Actions` | `[]Action` | Application keys on the root list, shown in the legend next to `ctrl+s`. The application decides what each one does; the editor shows it, triggers it, saves first when asked, and reports the outcome. |
+
+An `Action` has:
+
+| Field | Type | Description |
+|---|---|---|
+| `Key` | `string` | The key that triggers it, e.g. `"ctrl+e"`. It must not shadow a built-in key. |
+| `Help` | `string` | The legend label, e.g. `"save & convert"`. |
+| `SaveFirst` | `bool` | Save through the same validation and confirmations as `ctrl+s` first. Nothing runs if the save does not happen: a cancelled confirmation or a validation error stops it. A clean document already on disk is not written again. |
+| `Run` | `func(ActionContext) (ActionResult, error)` | Runs in the background, with a spinner on the status row. A second action waits until it returns. |
+| `Exec` | `func(ActionContext) *exec.Cmd` | Hands the terminal to a program (an editor, a pager, a shell) until it exits. A clean document the program changed on disk is reloaded; with unsaved edits, the editor only says the file changed. `Exec` wins when both it and `Run` are set. |
+
+`ActionContext` carries `Path`, the file on disk (the one just written, with `SaveFirst`), and `Raw`, the document as the editor holds it, saved or not.
+
+`ActionResult` is what `Run` reports. `Message` alone is shown in an alert. With `Output` set, `Message` and `Output` open together in a scrollable pager instead, for a dry run, a diff or a log. An error is shown the same way, titled "<Help> failed", and keeps any `Output` the run produced.
+
+```go
+editor.Config{
+    // ...
+    Actions: []editor.Action{
+        {
+            Key: "ctrl+e", Help: "save & convert", SaveFirst: true,
+            Run: func(ctx editor.ActionContext) (editor.ActionResult, error) {
+                out, err := convert(ctx.Path)
+                return editor.ActionResult{Message: "Wrote " + out}, err
+            },
+        },
+        {
+            Key: "ctrl+o", Help: "open in $EDITOR",
+            Exec: func(ctx editor.ActionContext) *exec.Cmd {
+                return exec.Command(os.Getenv("EDITOR"), ctx.Path)
+            },
+        },
+    },
+}
+```
+
 ## Appearance
 
 | Field | Type | Description |

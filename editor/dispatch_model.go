@@ -39,7 +39,10 @@ func (m model) dispatch(a ModelAction) (tea.Model, tea.Cmd) {
 		return m.redo()
 
 	case Save:
-		return m.execSave()
+		return m.execSave(act.Then)
+
+	case RunAction:
+		return m.runAppAction(act.Key)
 
 	case Reload:
 		return m.execReload()

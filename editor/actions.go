@@ -71,10 +71,16 @@ type DrillIn struct {
 type DrillOut struct{}
 type DocUndo struct{}
 type DocRedo struct{}
-type Save struct{}
+type Save struct {
+	Then string // Key of the Config.Actions entry to run after the write; empty runs none
+}
 type Reload struct{}
 type ToggleHints struct{}
 type ApplyDocPreset struct{ Name, Content string }
+
+// RunAction runs the Config.Actions entry whose Key matches, saving first when
+// it asks to.
+type RunAction struct{ Key string }
 
 func (OpenBlock) modelAction()      {}
 func (CommitBlock) modelAction()    {}
@@ -87,3 +93,4 @@ func (Save) modelAction()           {}
 func (Reload) modelAction()         {}
 func (ToggleHints) modelAction()    {}
 func (ApplyDocPreset) modelAction() {}
+func (RunAction) modelAction()      {}

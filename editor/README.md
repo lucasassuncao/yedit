@@ -14,6 +14,9 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
+- [type Action](<#Action>)
+- [type ActionContext](<#ActionContext>)
+- [type ActionResult](<#ActionResult>)
 - [type AddEntry](<#AddEntry>)
 - [type AppendPreset](<#AppendPreset>)
 - [type ApplyDocPreset](<#ApplyDocPreset>)
@@ -40,6 +43,7 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 - [type Result](<#Result>)
   - [func Run\(cfg Config\) \(Result, error\)](<#Run>)
   - [func RunContext\(ctx context.Context, cfg Config\) \(res Result, err error\)](<#RunContext>)
+- [type RunAction](<#RunAction>)
 - [type Save](<#Save>)
 - [type SyncYAML](<#SyncYAML>)
 - [type ToggleField](<#ToggleField>)
@@ -152,6 +156,45 @@ var (
 var RunAll = validate.RunAll
 ```
 
+<a name="Action"></a>
+## type [Action](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L119-L125>)
+
+Action is an application key on the root list. The application decides what it does; the editor shows it in the legend, saves first when asked, and reports the outcome. Set Run or Exec; Exec wins when both are set.
+
+```go
+type Action struct {
+    Key       string                                    // the key that triggers it, e.g. "ctrl+e"; must not shadow a built-in key
+    Help      string                                    // legend label, e.g. "save & convert"
+    SaveFirst bool                                      // save through ctrl+s's validation and confirmations first; nothing runs unless the file is written
+    Run       func(ActionContext) (ActionResult, error) // runs in the background, with a spinner on the status row
+    Exec      func(ActionContext) *exec.Cmd             // hands the terminal to this program until it exits, then reloads a clean document it changed
+}
+```
+
+<a name="ActionContext"></a>
+## type [ActionContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L128-L131>)
+
+ActionContext is what an Action receives.
+
+```go
+type ActionContext struct {
+    Path string // the file on disk; with SaveFirst, the one just written
+    Raw  []byte // the document as the editor holds it, saved or not
+}
+```
+
+<a name="ActionResult"></a>
+## type [ActionResult](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L135-L138>)
+
+ActionResult is what Run reports: Message in an alert, or, when Output is set, Message above Output in a scrollable pager.
+
+```go
+type ActionResult struct {
+    Message string
+    Output  string
+}
+```
+
 <a name="AddEntry"></a>
 ## type [AddEntry](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L30>)
 
@@ -171,7 +214,7 @@ type AppendPreset struct{ Name, Content string }
 ```
 
 <a name="ApplyDocPreset"></a>
-## type [ApplyDocPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L77>)
+## type [ApplyDocPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L79>)
 
 
 
@@ -209,7 +252,7 @@ type CommitBlock struct{}
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L92-L112>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L93-L114>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -240,6 +283,7 @@ type Config struct {
     AnimationDuration    time.Duration  // when > 0, the Hint/Example panel eases open and closed over this duration; 0 keeps the toggle instant and emits no timer messages
     LegendLines          int            // rows the key legend may take: 1 for a compact footer, 2 (default when 0) to show more keys before "+N in [?]"
     Trace                Trace          // session-observability hooks and the built-in Dump recorder
+    Actions              []Action       // application keys on the root list, shown in the legend next to ctrl+s
 }
 ```
 
@@ -303,7 +347,7 @@ type DrillOut struct{}
 ```
 
 <a name="FieldMeta"></a>
-## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L20>)
+## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L21>)
 
 These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
@@ -312,7 +356,7 @@ type FieldMeta = spec.FieldMeta
 ```
 
 <a name="Format"></a>
-## type [Format](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L23>)
+## type [Format](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L24>)
 
 These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
@@ -321,7 +365,7 @@ type Format = spec.Format
 ```
 
 <a name="FormatCustom"></a>
-### func [FormatCustom](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L37>)
+### func [FormatCustom](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L38>)
 
 ```go
 func FormatCustom(name string, validate func(string) bool) Format
@@ -330,7 +374,7 @@ func FormatCustom(name string, validate func(string) bool) Format
 FormatCustom builds an app\-specific format. See spec.FormatCustom.
 
 <a name="MetadataFunc"></a>
-## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L22>)
+## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L23>)
 
 These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
@@ -339,7 +383,7 @@ type MetadataFunc = spec.MetadataFunc
 ```
 
 <a name="MetadataSource"></a>
-## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L21>)
+## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L22>)
 
 These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
@@ -386,7 +430,7 @@ type Redo struct{}
 ```
 
 <a name="Reload"></a>
-## type [Reload](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L75>)
+## type [Reload](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L77>)
 
 
 
@@ -432,13 +476,24 @@ func RunContext(ctx context.Context, cfg Config) (res Result, err error)
 
 RunContext is Run with a context: cancelling ctx shuts the editor down and makes RunContext return the context's error. Unsaved changes are discarded on cancellation, but Result.Saved still reports any save that completed before it.
 
+<a name="RunAction"></a>
+## type [RunAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L83>)
+
+RunAction runs the Config.Actions entry whose Key matches, saving first when it asks to.
+
+```go
+type RunAction struct{ Key string }
+```
+
 <a name="Save"></a>
-## type [Save](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L74>)
+## type [Save](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L74-L76>)
 
 
 
 ```go
-type Save struct{}
+type Save struct {
+    Then string // Key of the Config.Actions entry to run after the write; empty runs none
+}
 ```
 
 <a name="SyncYAML"></a>
@@ -466,7 +521,7 @@ type ToggleField struct {
 ```
 
 <a name="ToggleHints"></a>
-## type [ToggleHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L76>)
+## type [ToggleHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L78>)
 
 
 
@@ -475,7 +530,7 @@ type ToggleHints struct{}
 ```
 
 <a name="Trace"></a>
-## type [Trace](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L72-L78>)
+## type [Trace](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L73-L79>)
 
 Trace bundles the editor's session\-observability hooks and the built\-in Dump\-to\-JSONL recorder built on them. See docs/SESSION\-TRACING.md.
 
@@ -499,7 +554,7 @@ type Undo struct{}
 ```
 
 <a name="ValidationInput"></a>
-## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L25>)
+## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L26>)
 
 These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
@@ -508,7 +563,7 @@ type ValidationInput = spec.ValidationInput
 ```
 
 <a name="NewValidationInput"></a>
-### func [NewValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L66>)
+### func [NewValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L67>)
 
 ```go
 func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
@@ -517,7 +572,7 @@ func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
 NewValidationInput parses raw once and bundles it with blocks for a validation run. See spec.NewValidationInput.
 
 <a name="Validator"></a>
-## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L26>)
+## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L27>)
 
 These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
@@ -526,7 +581,7 @@ type Validator = spec.Validator
 ```
 
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L27>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L28>)
 
 These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 
@@ -535,7 +590,7 @@ type ValidatorFunc = spec.ValidatorFunc
 ```
 
 <a name="Violation"></a>
-## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L24>)
+## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L25>)
 
 These names live in yedit/spec so metadata, validate, and outside rules can describe a field without importing the TUI. They are aliases, not new types, so consumer code keeps compiling.
 

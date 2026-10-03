@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
@@ -363,10 +364,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.validateKeys()
 	case overlay.CloseMsg:
 		return m.handleDismissedAlert(msg)
-	case doSaveMsg:
-		return m.dispatch(Save{})
-	case saveResultMsg:
-		return m.handleSaveResult(msg)
+	case doSaveMsg, saveResultMsg, actionRequestedMsg, actionResultMsg, actionExecDoneMsg:
+		return m.handleSaveFlow(msg)
 	case reloadResultMsg:
 		return m.handleReloadResult(msg)
 	case hintAnimTickMsg:
@@ -399,6 +398,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m.handleModeUpdate(msg)
 }
 
+// handleSaveFlow routes the messages of a save and of the application Action
+// that may follow it, keeping Update under the complexity limit.
+func (m model) handleSaveFlow(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case doSaveMsg:
+		return m.dispatch(Save{Then: msg.then})
+	case saveResultMsg:
+		return m.handleSaveResult(msg)
+	case actionRequestedMsg:
+		return m.dispatch(RunAction{Key: msg.key})
+	case actionResultMsg:
+		return m.handleActionResult(msg)
+	case actionExecDoneMsg:
+		return m.handleActionExecDone(msg)
+	}
+	return m, nil
+}
+
 func (m model) handleSaveResult(msg saveResultMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		return m.showAlert("Save failed", msg.err.Error(), overlay.Danger)
@@ -410,6 +427,9 @@ func (m model) handleSaveResult(msg saveResultMsg) (tea.Model, tea.Cmd) {
 	// syncView refreshes the list's dirty decorations (e.g. unsaved-changes
 	// indicator) immediately so they reflect the now-saved state.
 	m = m.syncView()
+	if a, ok := m.action(msg.then); ok {
+		return m.startAction(a)
+	}
 	return m.showAlert("Saved", fmt.Sprintf("Saved to %s.", m.doc.Path()), overlay.Success)
 }
 
@@ -490,6 +510,12 @@ func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key, ok := msg.(tea.KeyMsg); ok {
 			return m.handleDocPresetKey(key)
 		}
+	}
+	// The spinner an Action's Run shows on the status row advances on its ticks.
+	if _, ok := msg.(spinner.TickMsg); ok {
+		var cmd tea.Cmd
+		m.sh, _, cmd = m.sh.Update(msg)
+		return m, cmd
 	}
 	return m, nil
 }

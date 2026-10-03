@@ -365,7 +365,7 @@ func (m model) saveAll() (tea.Model, tea.Cmd) {
 	if len(m.blockEdits) > 0 {
 		return m.commitAll()
 	}
-	return m.save()
+	return m.save("")
 }
 
 // commitAll commits the open editor stack into m.doc and returns to the list

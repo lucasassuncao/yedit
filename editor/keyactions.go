@@ -26,7 +26,18 @@ type (
 	beToggleHintMsg struct{}
 	beFocusHintMsg  struct{}
 	bePresetMsg     struct{}
+
+	actionRequestedMsg struct{ key string }
 )
+
+// appActionKeys are the application's Config.Actions, shown next to save.
+func (m model) appActionKeys() []shell.Action {
+	out := make([]shell.Action, 0, len(m.cfg.Actions))
+	for _, a := range m.cfg.Actions {
+		out = append(out, send(a.Key, a.Help, actionRequestedMsg{key: a.Key}, secondRow))
+	}
+	return out
+}
 
 // shown is a key a component handles itself: the legend prints it, the shell
 // leaves it to the list, tree or browser in focus.
@@ -71,12 +82,12 @@ func hintKeys(enabled, showing, toggle bool, focus, flip tea.Msg) []shell.Action
 	return out
 }
 
-// docKeys are the root screen's second row, less what depends on the pane.
-func docKeys(save, validate shell.Action) []shell.Action {
-	return []shell.Action{
-		save, send("ctrl+r", "reload", reloadRequestedMsg{}, secondRow),
-		send("ctrl+u", "undo", docUndoMsg{}, secondRow), send("ctrl+y", "redo", docRedoMsg{}, secondRow), validate,
-	}
+// docKeys are the root screen's second row, less what depends on the pane. The
+// application's actions follow save, which they extend.
+func docKeys(save, validate shell.Action, appActions []shell.Action) []shell.Action {
+	out := append([]shell.Action{save}, appActions...)
+	return append(out, send("ctrl+r", "reload", reloadRequestedMsg{}, secondRow),
+		send("ctrl+u", "undo", docUndoMsg{}, secondRow), send("ctrl+y", "redo", docRedoMsg{}, secondRow), validate)
 }
 
 // actions is the root screen's key set for where the user is.
@@ -97,7 +108,7 @@ func (m model) actions() []shell.Action {
 		out := []shell.Action{shell.ChangePane(shell.RunWith(shell.Send(focusHintMsg{}))), shell.Scroll()}
 		out = append(out, hints...)
 		out = append(out, send("esc", "back", focusHintMsg{}), quit(), shell.Help())
-		return append(out, docKeys(save, validate)...)
+		return append(out, docKeys(save, validate, m.appActionKeys())...)
 	case m.list.IsFiltering():
 		// "?" and "q" are typed into the filter here.
 		return []shell.Action{shell.Move(), shown("enter", "select"), shown("esc", "clear"), save, validate}
@@ -118,12 +129,14 @@ func (m model) actions() []shell.Action {
 	if len(presetItems(m.cfg.DocPresets, "")) > 0 {
 		out = append(out, send("p", "presets", openDocPresetsMsg{}, secondRow))
 	}
-	doc := docKeys(save, validate)
-	out = append(out, doc[:2]...)
+	appActions := m.appActionKeys()
+	doc := docKeys(save, validate, appActions)
+	head := 2 + len(appActions) // save, the app actions, reload
+	out = append(out, doc[:head]...)
 	if it != nil && it.Existing {
 		out = append(out, shownLater("ctrl+d", "delete"))
 	}
-	return append(out, doc[2:]...)
+	return append(out, doc[head:]...)
 }
 
 // browserActions is a preset picker's legend; the browser handles every key.

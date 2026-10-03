@@ -3,6 +3,7 @@
 package editor
 
 import (
+	"os/exec"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -109,4 +110,29 @@ type Config struct {
 	AnimationDuration    time.Duration  // when > 0, the Hint/Example panel eases open and closed over this duration; 0 keeps the toggle instant and emits no timer messages
 	LegendLines          int            // rows the key legend may take: 1 for a compact footer, 2 (default when 0) to show more keys before "+N in [?]"
 	Trace                Trace          // session-observability hooks and the built-in Dump recorder
+	Actions              []Action       // application keys on the root list, shown in the legend next to ctrl+s
+}
+
+// Action is an application key on the root list. The application decides what
+// it does; the editor shows it in the legend, saves first when asked, and
+// reports the outcome. Set Run or Exec; Exec wins when both are set.
+type Action struct {
+	Key       string                                    // the key that triggers it, e.g. "ctrl+e"; must not shadow a built-in key
+	Help      string                                    // legend label, e.g. "save & convert"
+	SaveFirst bool                                      // save through ctrl+s's validation and confirmations first; nothing runs unless the file is written
+	Run       func(ActionContext) (ActionResult, error) // runs in the background, with a spinner on the status row
+	Exec      func(ActionContext) *exec.Cmd             // hands the terminal to this program until it exits, then reloads a clean document it changed
+}
+
+// ActionContext is what an Action receives.
+type ActionContext struct {
+	Path string // the file on disk; with SaveFirst, the one just written
+	Raw  []byte // the document as the editor holds it, saved or not
+}
+
+// ActionResult is what Run reports: Message in an alert, or, when Output is
+// set, Message above Output in a scrollable pager.
+type ActionResult struct {
+	Message string
+	Output  string
 }
