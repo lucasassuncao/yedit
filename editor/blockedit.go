@@ -55,6 +55,7 @@ const (
 	modeEditing       blockEditMode = iota // editing tree/yaml panels
 	modePresetBrowser                      // preset picker overlay
 	modeConfirming                         // confirm alert overlay
+	modePicking                            // file picker overlay, for a PathField
 )
 
 // errKind classifies an editor error so blocking logic can be precise.
@@ -387,6 +388,10 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.mode = modeEditing
 		return be.dispatch(ToggleField{NodeIdx: m.nodeIdx, Checked: false}), nil
 	}
+	if m, ok := msg.(pathPickedMsg); ok {
+		be.mode = modeEditing
+		return be.pickedPath(m.abs), nil
+	}
 	if m, ok := msg.(pendingEntryDeleteMsg); ok {
 		be.mode = modeEditing
 		return be.dispatch(DeleteEntry{SeqIdx: m.seqIdx}), nil
@@ -395,7 +400,7 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	// either order, so the overlay is popped regardless of mode.
 	if _, ok := msg.(overlay.CloseMsg); ok {
 		be.sh, _, _ = be.sh.Update(msg)
-		if be.mode == modeConfirming {
+		if be.mode == modeConfirming || be.mode == modePicking {
 			be.mode = modeEditing
 		}
 		return be, nil
@@ -424,6 +429,8 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		return be.updateConfirming(msg)
 	case modePresetBrowser:
 		return be.updatePresetBrowser(msg)
+	case modePicking:
+		return be.updatePicking(msg)
 	default:
 		return be.updateEditing(msg)
 	}
@@ -560,6 +567,9 @@ func (be blockEditState) handleActionMsg(msg tea.Msg) (blockEditState, tea.Cmd, 
 		return be.relayout(), nil, true
 	case bePresetMsg:
 		return be.openPresetPicker(), nil, true
+	case bePickPathMsg:
+		next, cmd := be.openPathPicker()
+		return next, cmd, true
 	}
 	return be, nil, false
 }
@@ -638,6 +648,10 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 
 	switch be.active {
 	case blockEditPanelHint:
+		if key.Matches(msg, keys.CtrlHHint) {
+			be.active = be.prevActive
+			return be.relayout(), nil
+		}
 		return be.scrollHint(msg), nil
 	case blockEditPanelTree:
 		return be.updateTreePanel(msg)

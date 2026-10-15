@@ -31,9 +31,9 @@ for name, t := range theme.All() {
 | `sonic` | `tails` | `knuckles` | `shadow` |
 | `amyrose` | `cream` | `rouge` | `eggman` |
 
-`default` (`theme.ThemeDefault`) is what a zero `Config.Theme` resolves to: an adaptive palette with one value per role for light terminals and one for dark ones, picked from the terminal's answer when the editor starts. `plain` (`theme.ThemePlain`) uses only ANSI 16-color codes (`"4"`, `"6"`, `"8"`, `"2"`, `"1"`) instead of hex/256-color values, for terminals with limited color support.
+`default` (`theme.Default`) is what a zero `Config.Theme` resolves to: an adaptive palette with one value per role for light terminals and one for dark ones, picked from the terminal's answer when the editor starts. `plain` (`theme.Plain`) uses only ANSI 16-color codes (`"4"`, `"6"`, `"8"`, `"2"`, `"1"`) instead of hex/256-color values, for terminals with limited color support.
 
-Note: the Super Mario character is `theme.ThemePrincessPeach` / `"princesspeach"`, not `"peach"` - that name is already taken by the fruit preset.
+Note: the Super Mario character is `theme.PrincessPeach` / `"princesspeach"`, not `"peach"` - that name is already taken by the fruit preset.
 
 ### Grouped listing
 
@@ -63,7 +63,7 @@ themebrowser.BrowseInTerminal()
 ```go
 editor.Run(editor.Config{
     Schema: &MyConfig{},
-    Theme:  theme.ThemeGrape,
+    Theme:  theme.Grape,
 })
 ```
 
@@ -106,7 +106,7 @@ Start from a built-in preset and override only what you need:
 
 ```go
 myTheme := theme.Theme{
-    Base: &theme.ThemeGrape,
+    Base: &theme.Grape,
     Colors: theme.Colors{
         Selection: "#FFB86C", // orange instead of Grape's default
     },
@@ -145,4 +145,4 @@ colors := theme.ResolveColors(myTheme, theme.DarkTerminal())
 
 ## Low-color terminals
 
-There is no `NO_COLOR` switch. Use `ThemePlain` for terminals with limited color support: it is built entirely from ANSI 16-color codes rather than hex or 256-color values, so the terminal's own palette controls how it renders.
+There is no `NO_COLOR` switch. Use `theme.Plain` for terminals with limited color support: it is built entirely from ANSI 16-color codes rather than hex or 256-color values, so the terminal's own palette controls how it renders.

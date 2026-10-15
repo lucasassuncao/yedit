@@ -36,7 +36,7 @@ type Model struct {
 
 // NewModel constructs the TUI from a presets.Source.
 func NewModel(src presets.Source) Model {
-	th := theme.Resolve(theme.ThemePlain, true)
+	th := theme.Resolve(theme.Plain, true)
 	m := Model{src: src, fields: src.ListFields(), th: th}
 	m.sh = shell.New(shell.Config{
 		Layout: layout.Columns(layout.Fixed("fields", layout.Ratio(1, 3), layout.Min(30), layout.Max(60)), layout.Fill("body")),
@@ -61,7 +61,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.relayout()
 		return m, nil
 	case tea.BackgroundColorMsg:
-		m.th = theme.Resolve(theme.ThemePlain, msg.IsDark())
+		m.th = theme.Resolve(theme.Plain, msg.IsDark())
 		m.sh = m.sh.SetTheme(m.th)
 		return m, nil
 	case overlay.CloseMsg, overlay.PushMsg:

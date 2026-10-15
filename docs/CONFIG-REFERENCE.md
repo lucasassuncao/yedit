@@ -87,11 +87,45 @@ editor.Config{
 }
 ```
 
+## Path fields
+
+| Field | Type | Description |
+|---|---|---|
+| `PathFields` | `map[string]PathField` | Top-level keys that hold a path, or a list of paths. In their block editor, `ctrl+o` opens a file picker in the document's folder; the pick is set as the value of a scalar key, and in a list it replaces the entry under the YAML cursor or is appended. Each pick is one undo step. |
+
+A `PathField` has:
+
+| Field | Type | Description |
+|---|---|---|
+| `Types` | `[]string` | Extensions the pick may have, e.g. `".yaml"`. Other files stay listed, and the picker says why it refuses them. Empty allows any file. |
+| `Dirs` | `bool` | A directory may be picked as well as a file. |
+| `Format` | `func(abs, docPath string) (string, error)` | Shapes the pick before it is written. `abs` is the absolute pick; `docPath` is the absolute path the document is saved to (`SavePath` when set), so a relative path holds where the file lands. An error is shown and nothing is written. `nil` writes `abs`. |
+
+```go
+editor.Config{
+    // ...
+    PathFields: map[string]editor.PathField{
+        "import": {
+            Types: []string{".yaml", ".yml"},
+            Format: func(abs, docPath string) (string, error) {
+                rel, err := filepath.Rel(filepath.Dir(docPath), abs)
+                if err != nil {
+                    return abs, nil // another drive: no relative form
+                }
+                return "./" + filepath.ToSlash(rel), nil
+            },
+        },
+    },
+}
+```
+
+`ctrl+o` belongs to the block editor here, so it does not clash with an `Action` bound to `ctrl+o` on the root list.
+
 ## Appearance
 
 | Field | Type | Description |
 |---|---|---|
-| `Theme` | `theme.Theme` | Zero-value resolves to `ThemePlain`. See [Themes](THEMES.md). |
+| `Theme` | `theme.Theme` | Zero-value resolves to `Plain`. See [Themes](THEMES.md). |
 
 ## Session tracing
 

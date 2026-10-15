@@ -40,6 +40,8 @@ func (m model) handleHintKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return mo, cmd
 	}
 	switch {
+	case key.Matches(msg, keys.CtrlHHint):
+		return m.toggleHintFocus(), nil
 	case key.Matches(msg, keys.Up):
 		m.hintScroll = max(m.hintScroll-1, 0)
 	case key.Matches(msg, keys.Down):

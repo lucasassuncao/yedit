@@ -40,7 +40,8 @@ func (m model) handleHintAnimTick(msg hintAnimTickMsg) (tea.Model, tea.Cmd) {
 	if !m.hintAnim.Active() {
 		return m, nil
 	}
-	if m.hintAnim.Advance(time.Now()) {
+	var done bool
+	if m.hintAnim, done = m.hintAnim.Advance(time.Now()); done {
 		m.hintAnim = animation.Tween{}
 		// Settled: run the full relayout once so the preview renderer and its
 		// content are rebuilt for the final height.
@@ -54,8 +55,8 @@ func (be blockEditState) advanceHintAnim() (blockEditState, tea.Cmd) {
 	if !be.hintAnim.Active() {
 		return be, nil
 	}
-	done := be.hintAnim.Advance(time.Now())
-	if done {
+	var done bool
+	if be.hintAnim, done = be.hintAnim.Advance(time.Now()); done {
 		be.hintAnim = animation.Tween{}
 	}
 	// editorH shrinks and grows with the hint panel, and the textarea keeps its

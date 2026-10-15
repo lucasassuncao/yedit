@@ -91,26 +91,36 @@ type Trace struct {
 // sub-fields that start checked in a new block, and FieldMeta.Snippet is the YAML
 // inserted when a sub-field is toggled on, defaulting to "<fieldName>: \n".
 type Config struct {
-	Path                 string         // YAML file to load; also the default save target when SavePath is empty
-	Schema               any            // non-nil struct pointer, typed as any because the editor uses reflection (e.g. &MyConfig{})
-	Title                string         // label shown in the TUI header
-	BlockPresets         presets.Source // optional; nil disables the preset picker inside block editors
-	DocPresets           presets.Source // optional; when set, p on the root list opens a whole-document preset picker
-	EnableHints          bool           // show the Hint/Example panel; warns when Metadata is unset
-	Metadata             MetadataSource // field metadata shown in the hint panel and enforced by the FromMetadata validators
-	Validators           []Validator    // rules evaluated before every save and on the validate shortcut
-	Hidden               []string       // top-level keys to omit from the UI entirely
-	PassthroughKeys      []string       // top-level keys preserved as-is: hidden from all sections and exempt from unknown-key validation
-	Theme                theme.Theme    // zero-value resolves to ThemeDefault, adaptive to the terminal background
-	NoDeleteConfirm      bool           // skip the "Remove block?" dialog; deletion is still undoable via ctrl+u
-	NoValidateOnSave     bool           // allow saving despite validator errors; a warning alert is shown but does not block
-	NoSaveConfirm        bool           // skip the "Save changes?" dialog; warning confirms are still shown
-	SavePath             string         // write here instead of Path, which is still used for loading
-	SchemaRecursionDepth int            // extra levels a self-referential type expands; 0 uses the default (1)
-	AnimationDuration    time.Duration  // when > 0, the Hint/Example panel eases open and closed over this duration; 0 keeps the toggle instant and emits no timer messages
-	LegendLines          int            // rows the key legend may take: 1 for a compact footer, 2 (default when 0) to show more keys before "+N in [?]"
-	Trace                Trace          // session-observability hooks and the built-in Dump recorder
-	Actions              []Action       // application keys on the root list, shown in the legend next to ctrl+s
+	Path                 string               // YAML file to load; also the default save target when SavePath is empty
+	Schema               any                  // non-nil struct pointer, typed as any because the editor uses reflection (e.g. &MyConfig{})
+	Title                string               // label shown in the TUI header
+	BlockPresets         presets.Source       // optional; nil disables the preset picker inside block editors
+	DocPresets           presets.Source       // optional; when set, p on the root list opens a whole-document preset picker
+	EnableHints          bool                 // show the Hint/Example panel; warns when Metadata is unset
+	Metadata             MetadataSource       // field metadata shown in the hint panel and enforced by the FromMetadata validators
+	Validators           []Validator          // rules evaluated before every save and on the validate shortcut
+	Hidden               []string             // top-level keys to omit from the UI entirely
+	PassthroughKeys      []string             // top-level keys preserved as-is: hidden from all sections and exempt from unknown-key validation
+	Theme                theme.Theme          // zero-value resolves to theme.Default, adaptive to the terminal background
+	NoDeleteConfirm      bool                 // skip the "Remove block?" dialog; deletion is still undoable via ctrl+u
+	NoValidateOnSave     bool                 // allow saving despite validator errors; a warning alert is shown but does not block
+	NoSaveConfirm        bool                 // skip the "Save changes?" dialog; warning confirms are still shown
+	SavePath             string               // write here instead of Path, which is still used for loading
+	SchemaRecursionDepth int                  // extra levels a self-referential type expands; 0 uses the default (1)
+	AnimationDuration    time.Duration        // when > 0, the Hint/Example panel eases open and closed over this duration; 0 keeps the toggle instant and emits no timer messages
+	LegendLines          int                  // rows the key legend may take: 1 for a compact footer, 2 (default when 0) to show more keys before "+N in [?]"
+	Trace                Trace                // session-observability hooks and the built-in Dump recorder
+	Actions              []Action             // application keys on the root list, shown in the legend next to ctrl+s
+	PathFields           map[string]PathField // top-level keys holding a path or a list of paths: ctrl+o in their editor opens a file picker
+}
+
+// PathField is how a picked path is written into its key. The picker starts in
+// the document's folder; Format gets the absolute pick and the absolute path the
+// document will be saved to, and returns what to write. nil Format writes abs.
+type PathField struct {
+	Types  []string                                  // extensions the pick may have, e.g. ".yaml"; empty allows any file
+	Dirs   bool                                      // a directory may be picked as well as a file
+	Format func(abs, docPath string) (string, error) // shapes the pick; an error is shown and nothing is written
 }
 
 // Action is an application key on the root list. The application decides what

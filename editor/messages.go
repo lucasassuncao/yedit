@@ -58,6 +58,9 @@ type drillOutMsg struct{}
 // it is false and the last commit's status message is preserved.
 type blockEditDiscardedMsg struct{ discarded bool }
 
+// pathPickedMsg carries the absolute path the file picker chose.
+type pathPickedMsg struct{ abs string }
+
 // pendingRemoveMsg is dispatched by the "Remove field?" confirm alert when the
 // user chooses Yes. nodeIdx is the index into blockEditState.tree.Nodes.
 type pendingRemoveMsg struct{ nodeIdx int }

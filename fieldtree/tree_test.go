@@ -24,7 +24,8 @@ import (
 // Actions tree.Update handles: up, down, left, right, enter, ctrl+d.
 
 func mkTree(nodes []Node, cursorLabel string) Model {
-	tm := Model{Nodes: nodes, Height: 40}
+	var tm Model
+	tm.Nodes, tm.Height = nodes, 40
 	for vi, ni := range tm.VisibleNodes() {
 		if tm.Nodes[ni].Label == cursorLabel {
 			tm.Cursor = vi
@@ -173,7 +174,8 @@ func TestRestoreCursorToPathDoesNotMutateSharedNodes(t *testing.T) {
 		{Kind: KindField, YAMLPath: []string{"parent"}, Label: "parent", Depth: 0, IsLeaf: false},
 		{Kind: KindField, YAMLPath: []string{"parent", "child"}, Label: "child", Depth: 1, IsLeaf: true},
 	}
-	tm := Model{Nodes: shared, Height: 10}
+	var tm Model
+	tm.Nodes, tm.Height = shared, 10
 
 	got := tm.restoreCursorToPath([]string{"parent", "child"})
 

@@ -43,6 +43,13 @@ type ApplyPreset struct{ Name, Content string }
 // already-fetched YAML so dispatch stays pure.
 type AppendPreset struct{ Name, Content string }
 
+// PickPath writes a path from the file picker: the value of a scalar block,
+// or a list entry, replacing the one at Replace or appended when it is -1.
+type PickPath struct {
+	Value   string
+	Replace int
+}
+
 // Undo restores the previous block snapshot.
 type Undo struct{}
 
@@ -56,6 +63,7 @@ func (DeleteEntry) blockAction()   {}
 func (NavigateEntry) blockAction() {}
 func (ApplyPreset) blockAction()   {}
 func (AppendPreset) blockAction()  {}
+func (PickPath) blockAction()      {}
 func (Undo) blockAction()          {}
 func (Redo) blockAction()          {}
 

@@ -38,6 +38,8 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 - [type ModelAction](<#ModelAction>)
 - [type NavigateEntry](<#NavigateEntry>)
 - [type OpenBlock](<#OpenBlock>)
+- [type PathField](<#PathField>)
+- [type PickPath](<#PickPath>)
 - [type Redo](<#Redo>)
 - [type Reload](<#Reload>)
 - [type Result](<#Result>)
@@ -157,7 +159,7 @@ var RunAll = validate.RunAll
 ```
 
 <a name="Action"></a>
-## type [Action](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L119-L125>)
+## type [Action](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L129-L135>)
 
 Action is an application key on the root list. The application decides what it does; the editor shows it in the legend, saves first when asked, and reports the outcome. Set Run or Exec; Exec wins when both are set.
 
@@ -172,7 +174,7 @@ type Action struct {
 ```
 
 <a name="ActionContext"></a>
-## type [ActionContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L128-L131>)
+## type [ActionContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L138-L141>)
 
 ActionContext is what an Action receives.
 
@@ -184,7 +186,7 @@ type ActionContext struct {
 ```
 
 <a name="ActionResult"></a>
-## type [ActionResult](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L135-L138>)
+## type [ActionResult](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L145-L148>)
 
 ActionResult is what Run reports: Message in an alert, or, when Output is set, Message above Output in a scrollable pager.
 
@@ -214,7 +216,7 @@ type AppendPreset struct{ Name, Content string }
 ```
 
 <a name="ApplyDocPreset"></a>
-## type [ApplyDocPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L79>)
+## type [ApplyDocPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L87>)
 
 
 
@@ -243,7 +245,7 @@ type BlockAction interface {
 ```
 
 <a name="CommitBlock"></a>
-## type [CommitBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L63>)
+## type [CommitBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L71>)
 
 
 
@@ -252,7 +254,7 @@ type CommitBlock struct{}
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L93-L114>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L93-L115>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -264,31 +266,32 @@ Metadata populates each field's Hint/Example panel. FieldMeta values are used as
 
 ```go
 type Config struct {
-    Path                 string         // YAML file to load; also the default save target when SavePath is empty
-    Schema               any            // non-nil struct pointer, typed as any because the editor uses reflection (e.g. &MyConfig{})
-    Title                string         // label shown in the TUI header
-    BlockPresets         presets.Source // optional; nil disables the preset picker inside block editors
-    DocPresets           presets.Source // optional; when set, p on the root list opens a whole-document preset picker
-    EnableHints          bool           // show the Hint/Example panel; warns when Metadata is unset
-    Metadata             MetadataSource // field metadata shown in the hint panel and enforced by the FromMetadata validators
-    Validators           []Validator    // rules evaluated before every save and on the validate shortcut
-    Hidden               []string       // top-level keys to omit from the UI entirely
-    PassthroughKeys      []string       // top-level keys preserved as-is: hidden from all sections and exempt from unknown-key validation
-    Theme                theme.Theme    // zero-value resolves to ThemeDefault, adaptive to the terminal background
-    NoDeleteConfirm      bool           // skip the "Remove block?" dialog; deletion is still undoable via ctrl+u
-    NoValidateOnSave     bool           // allow saving despite validator errors; a warning alert is shown but does not block
-    NoSaveConfirm        bool           // skip the "Save changes?" dialog; warning confirms are still shown
-    SavePath             string         // write here instead of Path, which is still used for loading
-    SchemaRecursionDepth int            // extra levels a self-referential type expands; 0 uses the default (1)
-    AnimationDuration    time.Duration  // when > 0, the Hint/Example panel eases open and closed over this duration; 0 keeps the toggle instant and emits no timer messages
-    LegendLines          int            // rows the key legend may take: 1 for a compact footer, 2 (default when 0) to show more keys before "+N in [?]"
-    Trace                Trace          // session-observability hooks and the built-in Dump recorder
-    Actions              []Action       // application keys on the root list, shown in the legend next to ctrl+s
+    Path                 string               // YAML file to load; also the default save target when SavePath is empty
+    Schema               any                  // non-nil struct pointer, typed as any because the editor uses reflection (e.g. &MyConfig{})
+    Title                string               // label shown in the TUI header
+    BlockPresets         presets.Source       // optional; nil disables the preset picker inside block editors
+    DocPresets           presets.Source       // optional; when set, p on the root list opens a whole-document preset picker
+    EnableHints          bool                 // show the Hint/Example panel; warns when Metadata is unset
+    Metadata             MetadataSource       // field metadata shown in the hint panel and enforced by the FromMetadata validators
+    Validators           []Validator          // rules evaluated before every save and on the validate shortcut
+    Hidden               []string             // top-level keys to omit from the UI entirely
+    PassthroughKeys      []string             // top-level keys preserved as-is: hidden from all sections and exempt from unknown-key validation
+    Theme                theme.Theme          // zero-value resolves to theme.Default, adaptive to the terminal background
+    NoDeleteConfirm      bool                 // skip the "Remove block?" dialog; deletion is still undoable via ctrl+u
+    NoValidateOnSave     bool                 // allow saving despite validator errors; a warning alert is shown but does not block
+    NoSaveConfirm        bool                 // skip the "Save changes?" dialog; warning confirms are still shown
+    SavePath             string               // write here instead of Path, which is still used for loading
+    SchemaRecursionDepth int                  // extra levels a self-referential type expands; 0 uses the default (1)
+    AnimationDuration    time.Duration        // when > 0, the Hint/Example panel eases open and closed over this duration; 0 keeps the toggle instant and emits no timer messages
+    LegendLines          int                  // rows the key legend may take: 1 for a compact footer, 2 (default when 0) to show more keys before "+N in [?]"
+    Trace                Trace                // session-observability hooks and the built-in Dump recorder
+    Actions              []Action             // application keys on the root list, shown in the legend next to ctrl+s
+    PathFields           map[string]PathField // top-level keys holding a path or a list of paths: ctrl+o in their editor opens a file picker
 }
 ```
 
 <a name="DeleteBlock"></a>
-## type [DeleteBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L64>)
+## type [DeleteBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L72>)
 
 
 
@@ -306,7 +309,7 @@ type DeleteEntry struct{ SeqIdx int }
 ```
 
 <a name="DocRedo"></a>
-## type [DocRedo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L73>)
+## type [DocRedo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L81>)
 
 
 
@@ -315,7 +318,7 @@ type DocRedo struct{}
 ```
 
 <a name="DocUndo"></a>
-## type [DocUndo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L72>)
+## type [DocUndo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L80>)
 
 
 
@@ -324,7 +327,7 @@ type DocUndo struct{}
 ```
 
 <a name="DrillIn"></a>
-## type [DrillIn](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L65-L70>)
+## type [DrillIn](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L73-L78>)
 
 
 
@@ -338,7 +341,7 @@ type DrillIn struct {
 ```
 
 <a name="DrillOut"></a>
-## type [DrillOut](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L71>)
+## type [DrillOut](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L79>)
 
 
 
@@ -412,7 +415,7 @@ type NavigateEntry struct{ Idx int }
 ```
 
 <a name="OpenBlock"></a>
-## type [OpenBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L62>)
+## type [OpenBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L70>)
 
 
 
@@ -420,8 +423,33 @@ type NavigateEntry struct{ Idx int }
 type OpenBlock struct{ Key string }
 ```
 
+<a name="PathField"></a>
+## type [PathField](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L120-L124>)
+
+PathField is how a picked path is written into its key. The picker starts in the document's folder; Format gets the absolute pick and the absolute path the document will be saved to, and returns what to write. nil Format writes abs.
+
+```go
+type PathField struct {
+    Types  []string                                  // extensions the pick may have, e.g. ".yaml"; empty allows any file
+    Dirs   bool                                      // a directory may be picked as well as a file
+    Format func(abs, docPath string) (string, error) // shapes the pick; an error is shown and nothing is written
+}
+```
+
+<a name="PickPath"></a>
+## type [PickPath](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L48-L51>)
+
+PickPath writes a path from the file picker: the value of a scalar block, or a list entry, replacing the one at Replace or appended when it is \-1.
+
+```go
+type PickPath struct {
+    Value   string
+    Replace int
+}
+```
+
 <a name="Redo"></a>
-## type [Redo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L50>)
+## type [Redo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L57>)
 
 Redo re\-applies the most recently undone block snapshot.
 
@@ -430,7 +458,7 @@ type Redo struct{}
 ```
 
 <a name="Reload"></a>
-## type [Reload](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L77>)
+## type [Reload](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L85>)
 
 
 
@@ -477,7 +505,7 @@ func RunContext(ctx context.Context, cfg Config) (res Result, err error)
 RunContext is Run with a context: cancelling ctx shuts the editor down and makes RunContext return the context's error. Unsaved changes are discarded on cancellation, but Result.Saved still reports any save that completed before it.
 
 <a name="RunAction"></a>
-## type [RunAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L83>)
+## type [RunAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L91>)
 
 RunAction runs the Config.Actions entry whose Key matches, saving first when it asks to.
 
@@ -486,7 +514,7 @@ type RunAction struct{ Key string }
 ```
 
 <a name="Save"></a>
-## type [Save](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L74-L76>)
+## type [Save](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L82-L84>)
 
 
 
@@ -521,7 +549,7 @@ type ToggleField struct {
 ```
 
 <a name="ToggleHints"></a>
-## type [ToggleHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L78>)
+## type [ToggleHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L86>)
 
 
 
@@ -545,7 +573,7 @@ type Trace struct {
 ```
 
 <a name="Undo"></a>
-## type [Undo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L47>)
+## type [Undo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L54>)
 
 Undo restores the previous block snapshot.
 

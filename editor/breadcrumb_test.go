@@ -49,16 +49,12 @@ func TestBlockBreadcrumbPrefix_structChild(t *testing.T) {
 // keeps "[0]" and drops "extensions", the child's key.
 func TestBlockBreadcrumbPrefix_collectionChild(t *testing.T) {
 	// Simulate a collection editor whose cursor sits on a depth-1 openable field.
-	parent := blockEditState{
-		key: "workers",
-		tree: fieldtree.Model{
-			Nodes: []fieldtree.Node{
-				{Kind: fieldtree.KindSeqItem, Label: "[0]", YAMLPath: []string{"[0]"}, Depth: 0, Expanded: true},
-				{Kind: fieldtree.KindField, Label: "extensions", YAMLPath: []string{"[0]", "extensions"}, Depth: 1, IsLeaf: true, Openable: true},
-			},
-			Cursor: 1, // visible index of "extensions"
-		},
+	parent := blockEditState{key: "workers"}
+	parent.tree.Nodes = []fieldtree.Node{
+		{Kind: fieldtree.KindSeqItem, Label: "[0]", YAMLPath: []string{"[0]"}, Depth: 0, Expanded: true},
+		{Kind: fieldtree.KindField, Label: "extensions", YAMLPath: []string{"[0]", "extensions"}, Depth: 1, IsLeaf: true, Openable: true},
 	}
+	parent.tree.Cursor = 1 // visible index of "extensions"
 	child := blockEditState{key: "extensions"}
 
 	m := model{blockEdits: []blockEditState{parent, child}}

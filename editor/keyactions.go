@@ -26,6 +26,7 @@ type (
 	beToggleHintMsg struct{}
 	beFocusHintMsg  struct{}
 	bePresetMsg     struct{}
+	bePickPathMsg   struct{}
 
 	actionRequestedMsg struct{ key string }
 )
@@ -104,11 +105,12 @@ func (m model) actions() []shell.Action {
 			save, validate,
 		}
 	case m.mode == paneHint:
-		// tab and esc both give the keys back to the pane they came from.
-		out := []shell.Action{shell.ChangePane(shell.RunWith(shell.Send(focusHintMsg{}))), shell.Scroll()}
-		out = append(out, hints...)
-		out = append(out, send("esc", "back", focusHintMsg{}), quit(), shell.Help())
-		return append(out, docKeys(save, validate, m.appActionKeys())...)
+		// tab and esc both give the keys back to the pane they came from. The
+		// hint is for reading, so the document keys and ctrl+h are not offered.
+		return []shell.Action{
+			shell.ChangePane(shell.RunWith(shell.Send(focusHintMsg{}))), shell.Scroll(),
+			send("h", "hide hint", toggleHintsMsg{}), send("esc", "back", focusHintMsg{}), quit(), shell.Help(),
+		}
 	case m.list.IsFiltering():
 		// "?" and "q" are typed into the filter here.
 		return []shell.Action{shell.Move(), shown("enter", "select"), shown("esc", "clear"), save, validate}
@@ -158,13 +160,19 @@ func (be blockEditState) actions() []shell.Action {
 		return browserActions(be.preset.PreviewFocus, "apply")
 	}
 
+	if be.active == blockEditPanelHint {
+		// The hint is for reading: ctrl+h is how the reader got here, and esc
+		// goes back to the pane it came from instead of leaving the block.
+		return []shell.Action{
+			shell.ChangePane(), shell.Scroll(), send("h", "hide hint", beToggleHintMsg{}),
+			send("esc", "back", beFocusHintMsg{}), shell.Help(),
+		}
+	}
+
 	typing := be.active == blockEditPanelYAML
 	out := []shell.Action{shell.ChangePane()}
-	switch be.active {
-	case blockEditPanelTree:
+	if be.active == blockEditPanelTree {
 		out = append(out, shell.Move(), shown("→/←", "expand", "right", "left"))
-	case blockEditPanelHint:
-		out = append(out, shell.Scroll())
 	}
 	out = append(out, hintKeys(be.cfg.EnableHints, be.showHint, !typing, beFocusHintMsg{}, beToggleHintMsg{})...)
 	out = append(out, send("esc", "back", beBackMsg{}))
@@ -176,6 +184,9 @@ func (be blockEditState) actions() []shell.Action {
 		if be.cfg.BlockPresets != nil && len(be.cfg.BlockPresets.ListPresets(be.key)) > 0 {
 			out = append(out, send("p", "presets", bePresetMsg{}, secondRow))
 		}
+	}
+	if _, ok := be.pathField(); ok {
+		out = append(out, send("ctrl+o", "pick file", bePickPathMsg{}, secondRow))
 	}
 	out = append(out, send("ctrl+s", "save changes", commitRequestedMsg{}, secondRow))
 	if be.active == blockEditPanelTree {

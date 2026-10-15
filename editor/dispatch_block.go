@@ -76,6 +76,11 @@ func (be blockEditState) applyAction(a BlockAction) blockEditState {
 		be.statusMsg = ""
 		be = be.appendPreset(act.Name, act.Content)
 
+	case PickPath:
+		be.statusMsg = ""
+		be = be.saveUndo()
+		be = be.applyPick(act.Value, act.Replace)
+
 	case Undo:
 		// restoreUndo sets the status message itself, since only it knows whether a
 		// snapshot was restored or the stack held only no-op states.
