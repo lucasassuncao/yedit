@@ -42,6 +42,20 @@ type FieldMeta struct {
 
 Set only the fields that are meaningful for the field being described. Zero values declare nothing.
 
+### Picking a value from OneOf
+
+`OneOf` alone lists the allowed values in the hint and validates them; the user still types the value. Set `EnablePicker` beside it to also let the user pick one: with the cursor on that field in the block editor's tree, the legend offers `ctrl+o pick value`, which lists the values with the cursor on the current one, or on `Default` when the field is absent. The pick adds the field when needed and is one undo step.
+
+```go
+"conflict-strategy": meta{
+    OneOf:        []string{"rename", "skip", "overwrite"},
+    Default:      "rename",
+    EnablePicker: true,
+},
+```
+
+It applies to scalar fields, and to a block that is itself a scalar; without `OneOf` it is ignored.
+
 ### Keeping the compiler in the loop
 
 A map literal is not checked: `"descriptoin"` compiles and fails at startup
@@ -75,7 +89,7 @@ A `Metadata()` entry names the same fields in lowercase:
 | key | Go field | type |
 |---|---|---|
 | `description`, `type`, `default`, `example` | Description, Type, Default, Example | string |
-| `required`, `unique`, `multiline`, `prechecked` | Required, Unique, Multiline, PreChecked | bool |
+| `required`, `unique`, `multiline`, `prechecked`, `enablepicker` | Required, Unique, Multiline, PreChecked, EnablePicker | bool |
 | `oneof`, `notoneof` | OneOf, NotOneOf | []string |
 | `min`, `max`, `pattern`, `deprecated`, `snippet` | Min, Max, Pattern, Deprecated, Snippet | string |
 | `mincount`, `maxcount`, `minlength`, `maxlength` | MinCount, MaxCount, MinLength, MaxLength | int |

@@ -61,11 +61,16 @@ func (be blockEditState) hintContent() string {
 		return be.theme.Muted.Render("  select a field to see hints")
 	}
 
-	fieldPath := strings.Join(node.YAMLPath, ".")
+	return be.fieldHintFor(be.nodeFieldPath(node))
+}
+
+// nodeFieldPath is node's dot-joined path from the block root, the way the
+// metadata names it; a collection's entry label is not part of it.
+func (be blockEditState) nodeFieldPath(node fieldtree.Node) string {
 	if be.isCollectionNav() && len(node.YAMLPath) > 0 {
-		fieldPath = strings.Join(node.YAMLPath[1:], ".")
+		return strings.Join(node.YAMLPath[1:], ".")
 	}
-	return be.fieldHintFor(fieldPath)
+	return strings.Join(node.YAMLPath, ".")
 }
 
 // fieldMeta looks fieldPath up from the root block: a drilled-in editor's key

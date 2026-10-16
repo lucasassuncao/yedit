@@ -50,6 +50,13 @@ type PickPath struct {
 	Replace int
 }
 
+// PickValue writes a value from the value picker into the field at NodeIdx,
+// adding it when absent, or into a lone-scalar block when NodeIdx is -1.
+type PickValue struct {
+	NodeIdx int
+	Value   string
+}
+
 // Undo restores the previous block snapshot.
 type Undo struct{}
 
@@ -64,6 +71,7 @@ func (NavigateEntry) blockAction() {}
 func (ApplyPreset) blockAction()   {}
 func (AppendPreset) blockAction()  {}
 func (PickPath) blockAction()      {}
+func (PickValue) blockAction()     {}
 func (Undo) blockAction()          {}
 func (Redo) blockAction()          {}
 

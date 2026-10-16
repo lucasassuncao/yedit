@@ -15,9 +15,16 @@ import (
 // be.node. Reading the node rather than the text buffer keeps the check correct
 // while the buffer is mid-edit or invalid.
 func (be blockEditState) fieldHasContent(node fieldtree.Node) bool {
+	child := be.fieldValueNode(node)
+	return child != nil && yamledit.NodeHasContent(child)
+}
+
+// fieldValueNode is the value of the field at node.YAMLPath in be.node, or nil
+// when the field is not there.
+func (be blockEditState) fieldValueNode(node fieldtree.Node) *yaml.Node {
 	path := node.YAMLPath
 	if len(path) == 0 {
-		return false
+		return nil
 	}
 	// Collection editors search from the entry value mapping, so the first path
 	// segment (the entry label) is skipped.
@@ -26,7 +33,7 @@ func (be blockEditState) fieldHasContent(node fieldtree.Node) bool {
 	if be.isCollectionNav() {
 		entryVal := yamledit.EntryValueNode(&be.node, be.coll.isMap, be.coll.current)
 		if entryVal == nil {
-			return false
+			return nil
 		}
 		cur = entryVal
 		start = 1
@@ -34,11 +41,10 @@ func (be blockEditState) fieldHasContent(node fieldtree.Node) bool {
 	for j := start; j < len(path)-1; j++ {
 		cur = yamlnode.ChildByKey(cur, path[j])
 		if cur == nil {
-			return false
+			return nil
 		}
 	}
-	child := yamlnode.ChildByKey(cur, path[len(path)-1])
-	return child != nil && yamledit.NodeHasContent(child)
+	return yamlnode.ChildByKey(cur, path[len(path)-1])
 }
 
 func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cmd) {

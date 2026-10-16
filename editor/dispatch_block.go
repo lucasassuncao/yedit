@@ -81,6 +81,11 @@ func (be blockEditState) applyAction(a BlockAction) blockEditState {
 		be = be.saveUndo()
 		be = be.applyPick(act.Value, act.Replace)
 
+	case PickValue:
+		be.statusMsg = ""
+		be = be.saveUndo()
+		be = be.applyValue(act.NodeIdx, act.Value)
+
 	case Undo:
 		// restoreUndo sets the status message itself, since only it knows whether a
 		// snapshot was restored or the stack held only no-op states.

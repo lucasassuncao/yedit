@@ -40,6 +40,7 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 - [type OpenBlock](<#OpenBlock>)
 - [type PathField](<#PathField>)
 - [type PickPath](<#PickPath>)
+- [type PickValue](<#PickValue>)
 - [type Redo](<#Redo>)
 - [type Reload](<#Reload>)
 - [type Result](<#Result>)
@@ -216,7 +217,7 @@ type AppendPreset struct{ Name, Content string }
 ```
 
 <a name="ApplyDocPreset"></a>
-## type [ApplyDocPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L87>)
+## type [ApplyDocPreset](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L95>)
 
 
 
@@ -245,7 +246,7 @@ type BlockAction interface {
 ```
 
 <a name="CommitBlock"></a>
-## type [CommitBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L71>)
+## type [CommitBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L79>)
 
 
 
@@ -291,7 +292,7 @@ type Config struct {
 ```
 
 <a name="DeleteBlock"></a>
-## type [DeleteBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L72>)
+## type [DeleteBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L80>)
 
 
 
@@ -309,7 +310,7 @@ type DeleteEntry struct{ SeqIdx int }
 ```
 
 <a name="DocRedo"></a>
-## type [DocRedo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L81>)
+## type [DocRedo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L89>)
 
 
 
@@ -318,7 +319,7 @@ type DocRedo struct{}
 ```
 
 <a name="DocUndo"></a>
-## type [DocUndo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L80>)
+## type [DocUndo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L88>)
 
 
 
@@ -327,7 +328,7 @@ type DocUndo struct{}
 ```
 
 <a name="DrillIn"></a>
-## type [DrillIn](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L73-L78>)
+## type [DrillIn](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L81-L86>)
 
 
 
@@ -341,7 +342,7 @@ type DrillIn struct {
 ```
 
 <a name="DrillOut"></a>
-## type [DrillOut](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L79>)
+## type [DrillOut](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L87>)
 
 
 
@@ -415,7 +416,7 @@ type NavigateEntry struct{ Idx int }
 ```
 
 <a name="OpenBlock"></a>
-## type [OpenBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L70>)
+## type [OpenBlock](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L78>)
 
 
 
@@ -448,8 +449,20 @@ type PickPath struct {
 }
 ```
 
+<a name="PickValue"></a>
+## type [PickValue](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L55-L58>)
+
+PickValue writes a value from the value picker into the field at NodeIdx, adding it when absent, or into a lone\-scalar block when NodeIdx is \-1.
+
+```go
+type PickValue struct {
+    NodeIdx int
+    Value   string
+}
+```
+
 <a name="Redo"></a>
-## type [Redo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L57>)
+## type [Redo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L64>)
 
 Redo re\-applies the most recently undone block snapshot.
 
@@ -458,7 +471,7 @@ type Redo struct{}
 ```
 
 <a name="Reload"></a>
-## type [Reload](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L85>)
+## type [Reload](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L93>)
 
 
 
@@ -505,7 +518,7 @@ func RunContext(ctx context.Context, cfg Config) (res Result, err error)
 RunContext is Run with a context: cancelling ctx shuts the editor down and makes RunContext return the context's error. Unsaved changes are discarded on cancellation, but Result.Saved still reports any save that completed before it.
 
 <a name="RunAction"></a>
-## type [RunAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L91>)
+## type [RunAction](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L99>)
 
 RunAction runs the Config.Actions entry whose Key matches, saving first when it asks to.
 
@@ -514,7 +527,7 @@ type RunAction struct{ Key string }
 ```
 
 <a name="Save"></a>
-## type [Save](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L82-L84>)
+## type [Save](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L90-L92>)
 
 
 
@@ -549,7 +562,7 @@ type ToggleField struct {
 ```
 
 <a name="ToggleHints"></a>
-## type [ToggleHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L86>)
+## type [ToggleHints](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L94>)
 
 
 
@@ -573,7 +586,7 @@ type Trace struct {
 ```
 
 <a name="Undo"></a>
-## type [Undo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L54>)
+## type [Undo](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L61>)
 
 Undo restores the previous block snapshot.
 

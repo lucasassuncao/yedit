@@ -27,6 +27,7 @@ type (
 	beFocusHintMsg  struct{}
 	bePresetMsg     struct{}
 	bePickPathMsg   struct{}
+	bePickValueMsg  struct{}
 
 	actionRequestedMsg struct{ key string }
 )
@@ -187,6 +188,8 @@ func (be blockEditState) actions() []shell.Action {
 	}
 	if _, ok := be.pathField(); ok {
 		out = append(out, send("ctrl+o", "pick file", bePickPathMsg{}, secondRow))
+	} else if _, ok := be.valueChoice(); ok {
+		out = append(out, send("ctrl+o", "pick value", bePickValueMsg{}, secondRow))
 	}
 	out = append(out, send("ctrl+s", "save changes", commitRequestedMsg{}, secondRow))
 	if be.active == blockEditPanelTree {

@@ -13,7 +13,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/jedib0t/go-pretty/v6 v6.8.3
-	github.com/lucasassuncao/bezel v0.4.0
+	github.com/lucasassuncao/bezel v0.5.0
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -29,7 +29,7 @@ require (
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dlclark/regexp2/v2 v2.8.4 // indirect
+	github.com/dlclark/regexp2/v2 v2.9.0 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect

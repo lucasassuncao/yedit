@@ -61,6 +61,12 @@ type blockEditDiscardedMsg struct{ discarded bool }
 // pathPickedMsg carries the absolute path the file picker chose.
 type pathPickedMsg struct{ abs string }
 
+// valuePickedMsg carries the value the value picker chose for nodeIdx.
+type valuePickedMsg struct {
+	nodeIdx int
+	value   string
+}
+
 // pendingRemoveMsg is dispatched by the "Remove field?" confirm alert when the
 // user chooses Yes. nodeIdx is the index into blockEditState.tree.Nodes.
 type pendingRemoveMsg struct{ nodeIdx int }

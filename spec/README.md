@@ -210,7 +210,7 @@ var FormatUUID = FormatCustom("uuid", func(v string) bool {
 ```
 
 <a name="FieldMeta"></a>
-## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L27-L70>)
+## type [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L27-L73>)
 
 FieldMeta carries a single field's metadata: displayed in the Hint/Example panel and enforced by the FromMetadata validator family. A zero field declares nothing; yedit never derives any of this from struct tags.
 
@@ -258,6 +258,9 @@ type FieldMeta struct {
     Snippet string `yaml:"snippet"`
     // PreChecked marks the field as checked when a new (empty) block is opened.
     PreChecked bool `yaml:"prechecked"`
+    // EnablePicker lets ctrl+o pick a scalar's value from OneOf in the block
+    // editor, beside typing it. Ignored without OneOf.
+    EnablePicker bool `yaml:"enablepicker"`
 }
 ```
 
@@ -343,7 +346,7 @@ func (f *Format) UnmarshalYAML(n *yaml.Node) error
 UnmarshalYAML resolves a format declared by name. An unregistered name is an error: a format with no validator would silently enforce nothing.
 
 <a name="Group"></a>
-## type [Group](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L100>)
+## type [Group](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L103>)
 
 Group is the display\-grouping key for Violation. Violations sharing the same Group are merged under a single bullet in the error modal. It was unexported while it lived in the editor package; exporting it is what lets validation rules outside that package build a Violation.
 
@@ -362,7 +365,7 @@ const (
 ```
 
 <a name="MetadataFunc"></a>
-## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L89>)
+## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L92>)
 
 MetadataFunc adapts a plain function to the MetadataSource interface:
 
@@ -380,7 +383,7 @@ type MetadataFunc func(blockKey, fieldPath string) FieldMeta
 ```
 
 <a name="MetadataFunc.FieldMeta"></a>
-### func \(MetadataFunc\) [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L92>)
+### func \(MetadataFunc\) [FieldMeta](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L95>)
 
 ```go
 func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta
@@ -389,7 +392,7 @@ func (f MetadataFunc) FieldMeta(blockKey, fieldPath string) FieldMeta
 FieldMeta calls f.
 
 <a name="MetadataSource"></a>
-## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L77-L79>)
+## type [MetadataSource](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L80-L82>)
 
 MetadataSource provides per\-field metadata for the Hint/Example panel and the FromMetadata validator family. It is called with the top\-level block key and the field's dot\-joined path from the block root \(e.g. "source", "source.path"\). For top\-level block entries in the root list, fieldPath is empty \(""\). Returning a zero FieldMeta means "no override".
 
@@ -400,7 +403,7 @@ type MetadataSource interface {
 ```
 
 <a name="Severity"></a>
-## type [Severity](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L116>)
+## type [Severity](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L119>)
 
 Severity classifies how a Violation should be treated by the caller.
 
@@ -423,7 +426,7 @@ const (
 ```
 
 <a name="Severity.String"></a>
-### func \(Severity\) [String](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L127>)
+### func \(Severity\) [String](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L130>)
 
 ```go
 func (s Severity) String() string
@@ -432,7 +435,7 @@ func (s Severity) String() string
 String returns "error" or "warning".
 
 <a name="ValidationInput"></a>
-## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L154-L158>)
+## type [ValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L157-L161>)
 
 ValidationInput carries the document state inspected by validators. RunAll builds it once per run and shares it across all validators, so the document is parsed a single time instead of once per validator. Build one with NewValidationInput when invoking a validator directly.
 
@@ -445,7 +448,7 @@ type ValidationInput struct {
 ```
 
 <a name="NewValidationInput"></a>
-### func [NewValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L163>)
+### func [NewValidationInput](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L166>)
 
 ```go
 func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
@@ -454,7 +457,7 @@ func NewValidationInput(raw []byte, blocks []document.Block) ValidationInput
 NewValidationInput parses raw once and bundles it with blocks for a validation run. Root is nil when raw is not valid YAML; an empty document yields an empty mapping so unconditional checks still run.
 
 <a name="Validator"></a>
-## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L171-L173>)
+## type [Validator](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L174-L176>)
 
 Validator is a pluggable rule executed at validate/save time. It returns one Violation per problem it finds. Returning an empty slice \(or nil\) means "all good".
 
@@ -465,7 +468,7 @@ type Validator interface {
 ```
 
 <a name="ValidatorFunc"></a>
-## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L186>)
+## type [ValidatorFunc](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L189>)
 
 ValidatorFunc adapts a plain function to the Validator interface, letting callers register inline validators without defining a named type:
 
@@ -485,7 +488,7 @@ type ValidatorFunc func(in ValidationInput) []Violation
 ```
 
 <a name="ValidatorFunc.Validate"></a>
-### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L189>)
+### func \(ValidatorFunc\) [Validate](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L192>)
 
 ```go
 func (f ValidatorFunc) Validate(in ValidationInput) []Violation
@@ -494,7 +497,7 @@ func (f ValidatorFunc) Validate(in ValidationInput) []Violation
 Validate calls f.
 
 <a name="Violation"></a>
-## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L135-L140>)
+## type [Violation](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L138-L143>)
 
 Violation is a single rule violation reported by a Validator.
 
@@ -508,7 +511,7 @@ type Violation struct {
 ```
 
 <a name="Violation.String"></a>
-### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L143>)
+### func \(Violation\) [String](<https://github.com/lucasassuncao/yedit/blob/main/spec/spec.go#L146>)
 
 ```go
 func (v Violation) String() string

@@ -67,6 +67,9 @@ type FieldMeta struct {
 	Snippet string `yaml:"snippet"`
 	// PreChecked marks the field as checked when a new (empty) block is opened.
 	PreChecked bool `yaml:"prechecked"`
+	// EnablePicker lets ctrl+o pick a scalar's value from OneOf in the block
+	// editor, beside typing it. Ignored without OneOf.
+	EnablePicker bool `yaml:"enablepicker"`
 }
 
 // MetadataSource provides per-field metadata for the Hint/Example panel and

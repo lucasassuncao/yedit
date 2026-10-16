@@ -55,7 +55,7 @@ const (
 	modeEditing       blockEditMode = iota // editing tree/yaml panels
 	modePresetBrowser                      // preset picker overlay
 	modeConfirming                         // confirm alert overlay
-	modePicking                            // file picker overlay, for a PathField
+	modePicking                            // file or value picker overlay
 )
 
 // errKind classifies an editor error so blocking logic can be precise.
@@ -392,6 +392,10 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.mode = modeEditing
 		return be.pickedPath(m.abs), nil
 	}
+	if m, ok := msg.(valuePickedMsg); ok {
+		be.mode = modeEditing
+		return be.dispatch(PickValue{NodeIdx: m.nodeIdx, Value: m.value}).followTreeSelection(), nil
+	}
 	if m, ok := msg.(pendingEntryDeleteMsg); ok {
 		be.mode = modeEditing
 		return be.dispatch(DeleteEntry{SeqIdx: m.seqIdx}), nil
@@ -570,6 +574,8 @@ func (be blockEditState) handleActionMsg(msg tea.Msg) (blockEditState, tea.Cmd, 
 	case bePickPathMsg:
 		next, cmd := be.openPathPicker()
 		return next, cmd, true
+	case bePickValueMsg:
+		return be.openValuePicker(), nil, true
 	}
 	return be, nil, false
 }
