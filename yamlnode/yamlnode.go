@@ -4,7 +4,7 @@
 // than panicking.
 package yamlnode
 
-import "gopkg.in/yaml.v3"
+import "go.yaml.in/yaml/v3"
 
 // ChildByKey returns the value node mapped to key in a MappingNode, or nil.
 // Alias values are resolved to their anchor targets, and when the direct key

@@ -3,7 +3,7 @@ package editor
 import (
 	"reflect"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/yamledit"

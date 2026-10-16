@@ -10,7 +10,7 @@ import (
 	"io"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // Block represents a top-level YAML key with its line range (1-based).

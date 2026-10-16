@@ -3,7 +3,7 @@ package editor
 import (
 	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/yamledit"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // mappingKeyLine walks m (a MappingNode) along path and returns the 1-based

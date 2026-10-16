@@ -3,7 +3,7 @@ package yamledit
 import (
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // FindDuplicateMappingKey returns the dotted path of the first key repeated

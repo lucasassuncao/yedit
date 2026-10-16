@@ -3,7 +3,7 @@ package yamledit
 import (
 	"testing"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // be.coll.current legitimately holds -1 for an empty collection, and the map

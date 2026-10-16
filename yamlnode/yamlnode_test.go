@@ -3,7 +3,7 @@ package yamlnode
 import (
 	"testing"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 func mustRoot(t *testing.T, raw string) *yaml.Node {

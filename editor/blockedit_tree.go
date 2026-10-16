@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/yamledit"

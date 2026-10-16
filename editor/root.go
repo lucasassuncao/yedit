@@ -10,7 +10,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/lucasassuncao/bezel/animation"
 	"github.com/lucasassuncao/bezel/browser"

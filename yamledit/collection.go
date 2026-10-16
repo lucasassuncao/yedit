@@ -5,7 +5,7 @@ import (
 
 	"github.com/lucasassuncao/yedit/yamlnode"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // The node-based collection navigator. be.node - a SequenceNode for []Struct, a

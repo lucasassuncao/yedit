@@ -7,7 +7,7 @@ import (
 	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // dispatchTestBE returns a blockEditState for a struct block with two leaf fields.

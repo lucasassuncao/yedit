@@ -5,7 +5,7 @@ import (
 	"github.com/lucasassuncao/yedit/spec"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/lucasassuncao/yedit/yamlnode"
 )

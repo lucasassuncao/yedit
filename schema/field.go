@@ -6,7 +6,7 @@ package schema
 import (
 	"fmt"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // Presentation controls how a field's children are shown in the tree panel.

@@ -1,5 +1,5 @@
 // Package presets provides helpers for building a YAML preset source from Go
-// structs. Each struct value is marshaled via gopkg.in/yaml.v3 when a preset
+// structs. Each struct value is marshaled via go.yaml.in/yaml/v3 when a preset
 // is requested, so the embedding application never hand-writes YAML.
 //
 // See docs/PRESETS.md for the full usage guide and examples.
@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"sort"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // Source supplies YAML preset snippets keyed by (field, preset name). The
