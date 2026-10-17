@@ -600,12 +600,12 @@ func (m model) handleDelete(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m model) showAlert(title, message string, kind overlay.Kind) (tea.Model, tea.Cmd) {
-	m = m.enterAlert(overlay.NewAlert(kind, title, message, m.theme.ModalFor(kind), m.theme.Legend))
+	m = m.enterAlert(overlay.NewAlert(kind, title, message, m.theme))
 	return m, nil
 }
 
 func (m model) showConfirmAlert(title, message string, confirmCmd tea.Cmd) (tea.Model, tea.Cmd) {
-	m = m.enterAlert(overlay.NewConfirm(title, message, confirmCmd, m.theme.Modal, m.theme.Legend))
+	m = m.enterAlert(overlay.NewConfirm(title, message, confirmCmd, m.theme))
 	return m, nil
 }
 

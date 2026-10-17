@@ -374,7 +374,7 @@ func (be blockEditState) enterConfirmAlert(o overlay.Overlay) blockEditState {
 
 // confirm builds the block editor's yes/no modal, running onYes when accepted.
 func (be blockEditState) confirm(title, message string, onYes tea.Cmd) overlay.Overlay {
-	return overlay.NewConfirm(title, message, onYes, be.theme.Modal, be.theme.Legend)
+	return overlay.NewConfirm(title, message, onYes, be.theme)
 }
 
 // Update is the blockEditState message router used by unit tests. At runtime

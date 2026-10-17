@@ -82,8 +82,8 @@ func TestTheHintPanelLegendIsOneRow(t *testing.T) {
 	be.yamlEditor.Blur()
 
 	rows := strings.Split(legendRow(be.View(nil)), "\n")
-	require.Equal(t, "[tab] change pane  [↑/↓] scroll  [h] hide hint  [esc] back  [?] help", strings.TrimSpace(rows[1]))
-	require.NotContains(t, rows[0], "[ctrl+s]", "no second row of document keys")
+	require.Equal(t, "[tab] change pane  [↑/↓] scroll  [h] hide hint  [esc] back  [?] help", strings.TrimSpace(rows[0]))
+	require.Empty(t, strings.TrimSpace(rows[1]), "no second row of document keys")
 }
 
 // esc on the hint returns to the pane it came from: it must not leave the
@@ -123,8 +123,8 @@ func TestTheMainScreenHintLegendIsOneRow(t *testing.T) {
 	require.Equal(t, paneHint, m.mode)
 
 	rows := strings.Split(legendRow(m.viewContent()), "\n")
-	require.Equal(t, "[tab] change pane  [↑/↓] scroll  [h] hide hint  [esc] back  [q] quit  [?] help", strings.TrimSpace(rows[1]))
-	require.NotContains(t, rows[0], "[ctrl+s]", "no second row of document keys")
+	require.Equal(t, "[tab] change pane  [↑/↓] scroll  [h] hide hint  [esc] back  [q] quit  [?] help", strings.TrimSpace(rows[0]))
+	require.Empty(t, strings.TrimSpace(rows[1]), "no second row of document keys")
 }
 
 // On the YAML panel "?" is text: it must type, and the legend must not offer it.

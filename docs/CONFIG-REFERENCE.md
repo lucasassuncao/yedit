@@ -30,7 +30,7 @@ Every field of `editor.Config`, in one table. See the linked guide for each conc
 | `EnableHints` | `bool` | Show the Hint/Example panel; requires `Metadata` to be set (a warning is shown if it is not). |
 | `Metadata` | `MetadataSource` | Field metadata displayed in the hint panel and enforced by the `FromMetadata` validators. See [Metadata and Hints](METADATA-AND-HINTS.md). |
 | `AnimationDuration` | `time.Duration` | When `> 0`, the Hint/Example panel eases open and closed over this duration instead of snapping. `0` (the default) keeps the toggle instant and leaves the editor emitting no timer messages. See [Metadata and Hints](METADATA-AND-HINTS.md#animating-the-panel). |
-| `LegendLines` | `int` | Rows the key legend at the bottom may take. `1` gives a compact footer; `2` (the default when `0`) shows more keys before the rest is folded into `+N in [?]`. |
+| `LegendLines` | `int` | Rows the key legend at the bottom keeps, blank when it has fewer keys, so the panes never change size with focus. `1` gives a compact footer; `2` (the default when `0`) shows more keys before the rest is folded into `+N in [?]`. |
 
 ## Validation
 

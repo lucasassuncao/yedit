@@ -108,7 +108,7 @@ type Config struct {
 	SavePath             string               // write here instead of Path, which is still used for loading
 	SchemaRecursionDepth int                  // extra levels a self-referential type expands; 0 uses the default (1)
 	AnimationDuration    time.Duration        // when > 0, the Hint/Example panel eases open and closed over this duration; 0 keeps the toggle instant and emits no timer messages
-	LegendLines          int                  // rows the key legend may take: 1 for a compact footer, 2 (default when 0) to show more keys before "+N in [?]"
+	LegendLines          int                  // rows the key legend keeps, blank when unfilled: 1 for a compact footer, 2 (default when 0) to show more keys before "+N in [?]"
 	Trace                Trace                // session-observability hooks and the built-in Dump recorder
 	Actions              []Action             // application keys on the root list, shown in the legend next to ctrl+s
 	PathFields           map[string]PathField // top-level keys holding a path or a list of paths: ctrl+o in their editor opens a file picker

@@ -97,7 +97,7 @@ func TestHelpIsShownOpensAndCloses(t *testing.T) {
 	m := NewModel(stubSource{})
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	rows := strings.Split(ansi.Strip(m.View().Content), "\n")
-	require.Contains(t, rows[len(rows)-1], "[?] help")
+	require.Contains(t, rows[len(rows)-2], "[?] help", "the legend's first row; the second is blank")
 
 	m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
 	require.True(t, m.sh.HasOverlay(), "? opens the help")

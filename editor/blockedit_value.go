@@ -82,7 +82,7 @@ func (be blockEditState) openValuePicker() blockEditState {
 	onPick := func(i int) tea.Cmd {
 		return func() tea.Msg { return valuePickedMsg{nodeIdx: vc.nodeIdx, value: vc.options[i]} }
 	}
-	p := overlay.NewPick("Pick a value for "+vc.label, rows, nil, onPick, be.theme.Modal, be.theme.Legend).WithCursor(cursor)
+	p := overlay.NewPick("Pick a value for "+vc.label, rows, onPick, be.theme).WithCursor(cursor)
 	be.sh = be.sh.Push(p)
 	be.mode = modePicking
 	return be
