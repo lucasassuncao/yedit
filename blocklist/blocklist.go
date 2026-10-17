@@ -35,7 +35,7 @@ type Model struct {
 	knownKeys   []string // canonical order from the schema
 	passthrough map[string]bool
 	items       []Item
-	list        list.Model
+	list        list.Model[Item]
 }
 
 // IsFiltering reports whether the list is in text-filter mode (/ was pressed).
@@ -120,10 +120,10 @@ func BuildItems(knownKeys []string, existing []document.Block, passthrough map[s
 
 // rows projects items onto list rows: the mark says what the key is, the
 // style comes from the theme at render time.
-func rows(items []Item, th *theme.Resolved) []list.Row {
-	out := make([]list.Row, len(items))
+func rows(items []Item, th *theme.Resolved) []list.Row[Item] {
+	out := make([]list.Row[Item], len(items))
 	for i, it := range items {
-		r := list.Row{Label: it.Key, Section: it.Separator, Value: it}
+		r := list.Row[Item]{Label: it.Key, Section: it.Separator, Value: it}
 		switch {
 		case it.Separator:
 		case it.Passthrough:
@@ -190,7 +190,7 @@ func (lm Model) SelectedItem() *Item {
 	if r == nil {
 		return nil
 	}
-	it := r.Value.(Item)
+	it := r.Value
 	return &it
 }
 
