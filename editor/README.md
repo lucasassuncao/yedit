@@ -33,6 +33,7 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 - [type FieldMeta](<#FieldMeta>)
 - [type Format](<#Format>)
   - [func FormatCustom\(name string, validate func\(string\) bool\) Format](<#FormatCustom>)
+- [type FrontMsg](<#FrontMsg>)
 - [type MetadataFunc](<#MetadataFunc>)
 - [type MetadataSource](<#MetadataSource>)
 - [type ModelAction](<#ModelAction>)
@@ -41,6 +42,7 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
 - [type PathField](<#PathField>)
 - [type PickPath](<#PickPath>)
 - [type PickValue](<#PickValue>)
+- [type QuitMsg](<#QuitMsg>)
 - [type Redo](<#Redo>)
 - [type Reload](<#Reload>)
 - [type Result](<#Result>)
@@ -48,7 +50,10 @@ Package editor provides the bubbletea TUI for editing a YAML file driven by a st
   - [func RunContext\(ctx context.Context, cfg Config\) \(res Result, err error\)](<#RunContext>)
 - [type RunAction](<#RunAction>)
 - [type Save](<#Save>)
+- [type SaveMsg](<#SaveMsg>)
+- [type SavedMsg](<#SavedMsg>)
 - [type SyncYAML](<#SyncYAML>)
+- [type Tab](<#Tab>)
 - [type ToggleField](<#ToggleField>)
 - [type ToggleHints](<#ToggleHints>)
 - [type Trace](<#Trace>)
@@ -160,7 +165,7 @@ var RunAll = validate.RunAll
 ```
 
 <a name="Action"></a>
-## type [Action](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L129-L135>)
+## type [Action](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L131-L137>)
 
 Action is an application key on the root list. The application decides what it does; the editor shows it in the legend, saves first when asked, and reports the outcome. Set Run or Exec; Exec wins when both are set.
 
@@ -175,7 +180,7 @@ type Action struct {
 ```
 
 <a name="ActionContext"></a>
-## type [ActionContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L138-L141>)
+## type [ActionContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L140-L143>)
 
 ActionContext is what an Action receives.
 
@@ -187,7 +192,7 @@ type ActionContext struct {
 ```
 
 <a name="ActionResult"></a>
-## type [ActionResult](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L145-L148>)
+## type [ActionResult](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L147-L150>)
 
 ActionResult is what Run reports: Message in an alert, or, when Output is set, Message above Output in a scrollable pager.
 
@@ -255,7 +260,7 @@ type CommitBlock struct{}
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L93-L115>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L93-L117>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -287,6 +292,8 @@ type Config struct {
     LegendLines          int                  // rows the key legend keeps, blank when unfilled: 1 for a compact footer, 2 (default when 0) to show more keys before "+N in [?]"
     Trace                Trace                // session-observability hooks and the built-in Dump recorder
     Actions              []Action             // application keys on the root list, shown in the legend next to ctrl+s
+    Tabs                 []Tab                // application screens beside the editor's, in a strip ctrl+t steps through
+    FrontTab             string               // the Tabs entry, by Name, in front when the editor opens; "" or no match is the editor
     PathFields           map[string]PathField // top-level keys holding a path or a list of paths: ctrl+o in their editor opens a file picker
 }
 ```
@@ -377,6 +384,15 @@ func FormatCustom(name string, validate func(string) bool) Format
 
 FormatCustom builds an app\-specific format. See spec.FormatCustom.
 
+<a name="FrontMsg"></a>
+## type [FrontMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L39>)
+
+FrontMsg tells every screen which one is in front, "editor" or a tab's Name: at the start, and each time another comes in front.
+
+```go
+type FrontMsg struct{ Name string }
+```
+
 <a name="MetadataFunc"></a>
 ## type [MetadataFunc](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L23>)
 
@@ -425,7 +441,7 @@ type OpenBlock struct{ Key string }
 ```
 
 <a name="PathField"></a>
-## type [PathField](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L120-L124>)
+## type [PathField](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L122-L126>)
 
 PathField is how a picked path is written into its key. The picker starts in the document's folder; Format gets the absolute pick and the absolute path the document will be saved to, and returns what to write. nil Format writes abs.
 
@@ -459,6 +475,15 @@ type PickValue struct {
     NodeIdx int
     Value   string
 }
+```
+
+<a name="QuitMsg"></a>
+## type [QuitMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L35>)
+
+QuitMsg asks the editor to quit, as q does there: asking first when the document has unsaved changes or a tab is Busy.
+
+```go
+type QuitMsg struct{}
 ```
 
 <a name="Redo"></a>
@@ -537,6 +562,24 @@ type Save struct {
 }
 ```
 
+<a name="SaveMsg"></a>
+## type [SaveMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L28>)
+
+SaveMsg asks the editor to save the document as ctrl\+s does, in front, through the same checks and question. SavedMsg answers every tab once the file is written; a refused or failed save answers nothing.
+
+```go
+type SaveMsg struct{}
+```
+
+<a name="SavedMsg"></a>
+## type [SavedMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L31>)
+
+SavedMsg tells the tabs the document is on disk at Path, as a SaveMsg asked.
+
+```go
+type SavedMsg struct{ Path string }
+```
+
 <a name="SyncYAML"></a>
 ## type [SyncYAML](<https://github.com/lucasassuncao/yedit/blob/main/editor/actions.go#L24-L27>)
 
@@ -546,6 +589,21 @@ SyncYAML advances be.node from new YAML content \(parse\-gated\). Checkpoint sav
 type SyncYAML struct {
     Content    string
     Checkpoint bool
+}
+```
+
+<a name="Tab"></a>
+## type [Tab](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L17-L23>)
+
+Tab is an application screen beside the editor's. Every message reaches it, on screen or not, so work it starts goes on while the document is edited; keys, mouse and pastes reach only the screen in front.
+
+```go
+type Tab interface {
+    Name() string
+    Init() tea.Cmd
+    Update(tea.Msg) (Tab, tea.Cmd)
+    View() string // the whole screen, sized by the last WindowSizeMsg; the strip takes the end of its first row
+    Busy() string // what quitting now would cut short, "" when nothing
 }
 ```
 

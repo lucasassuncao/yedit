@@ -111,6 +111,8 @@ type Config struct {
 	LegendLines          int                  // rows the key legend keeps, blank when unfilled: 1 for a compact footer, 2 (default when 0) to show more keys before "+N in [?]"
 	Trace                Trace                // session-observability hooks and the built-in Dump recorder
 	Actions              []Action             // application keys on the root list, shown in the legend next to ctrl+s
+	Tabs                 []Tab                // application screens beside the editor's, in a strip ctrl+t steps through
+	FrontTab             string               // the Tabs entry, by Name, in front when the editor opens; "" or no match is the editor
 	PathFields           map[string]PathField // top-level keys holding a path or a list of paths: ctrl+o in their editor opens a file picker
 }
 

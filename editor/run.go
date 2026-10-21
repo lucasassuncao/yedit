@@ -55,14 +55,17 @@ func RunContext(ctx context.Context, cfg Config) (res Result, err error) {
 		res.DumpPath = dumper.Path()
 	}
 
-	m, err := newModel(cfg)
+	m, err := newRoot(cfg)
 	if err != nil {
 		return Result{}, err
 	}
 	p := tea.NewProgram(m, tea.WithContext(ctx))
 	final, err := p.Run()
-	if fm, ok := final.(model); ok {
+	switch fm := final.(type) {
+	case model:
 		res.Saved = fm.saved
+	case tabbedModel:
+		res.Saved = fm.editor.saved
 	}
 	return res, err
 }

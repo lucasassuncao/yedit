@@ -139,11 +139,17 @@ func (m model) runAppAction(key string) (tea.Model, tea.Cmd) {
 	if m.sh.IsBusy() {
 		return m.withStatus(a.Help + ": another action is still running.")
 	}
-	written := m.cfg.SavePath == "" || m.saved
-	if !a.SaveFirst || (!m.doc.Dirty() && written && !m.doc.ExternallyChanged()) {
+	if !a.SaveFirst || !m.needsSave() {
 		return m.startAction(a)
 	}
 	return m.save(key)
+}
+
+// needsSave reports whether the file differs from the document: edited, never
+// written to SavePath, or changed on disk since it was opened.
+func (m model) needsSave() bool {
+	written := m.cfg.SavePath == "" || m.saved
+	return m.doc.Dirty() || !written || m.doc.ExternallyChanged()
 }
 
 // startAction hands the document to a: Exec gets the terminal, Run runs in the

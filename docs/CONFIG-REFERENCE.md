@@ -87,6 +87,30 @@ editor.Config{
 }
 ```
 
+## Application tabs
+
+| Field | Type | Description |
+|---|---|---|
+| `Tabs` | `[]Tab` | Application screens beside the editor's. A strip at the end of the top row names them, `editor` first, and **ctrl+t** steps through them; short of room, its hint goes first and then the end of the screen's own header. Without tabs there is no strip and nothing changes. |
+| `FrontTab` | `string` | The tab, by `Name()`, in front when the editor opens. Empty, or a name no tab has, opens on the editor. |
+
+A `Tab` is a small Bubble Tea model:
+
+| Method | Description |
+|---|---|
+| `Name() string` | Its name in the strip. |
+| `Init() tea.Cmd` | Run once, with the editor's. |
+| `Update(tea.Msg) (Tab, tea.Cmd)` | Every message reaches every tab, shown or not, so work a tab started goes on while the document is edited. Keys, mouse and pastes reach only the screen in front. The `WindowSizeMsg` it gets is the whole terminal, and `editor.FrontMsg{Name}` says which screen is in front, at the start and on every change. |
+| `View() string` | Its whole screen, drawn only while it is in front. The strip takes the end of its first row, which is best kept for a header. |
+| `Busy() string` | What quitting now would cut short, or `""`. While any tab says something, quitting asks first and shows it. |
+
+A tab talks to the editor with messages its commands return:
+
+| Message | What the editor does |
+|---|---|
+| `editor.SaveMsg{}` | Comes in front and saves as **ctrl+s** does: the same validation and "Save changes?". Once the file is written, every tab gets `editor.SavedMsg{Path}` and the tab that asked comes back in front. A clean document already on disk answers at once. A refused, cancelled or failed save answers nothing; an open block editor holds edits the file does not have yet, so the editor asks to close it first. |
+| `editor.QuitMsg{}` | Comes in front and quits as **q** does, asking first when the document has unsaved changes or a tab is `Busy`. |
+
 ## Path fields
 
 | Field | Type | Description |

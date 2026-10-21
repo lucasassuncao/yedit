@@ -76,6 +76,7 @@ type model struct {
 	hintScroll    int             // first hint line shown while mode == paneHint
 	hintFrom      pane            // the pane paneHint gives the keys back to
 	saved         bool            // at least one save succeeded this session; reported via Result
+	busy          string          // what Config.Tabs say quitting would cut short; set before each message
 	width, height int
 }
 
@@ -430,6 +431,9 @@ func (m model) handleSaveResult(msg saveResultMsg) (tea.Model, tea.Cmd) {
 	if a, ok := m.action(msg.then); ok {
 		return m.startAction(a)
 	}
+	if msg.then == tabSave {
+		return m, nil // the tab that asked reports what follows
+	}
 	return m.showAlert("Saved", fmt.Sprintf("Saved to %s.", m.doc.Path()), overlay.Success)
 }
 
@@ -531,9 +535,15 @@ func (m model) quitOrConfirm() (tea.Model, tea.Cmd) {
 			break
 		}
 	}
-	if dirty {
+	switch {
+	case dirty && m.busy != "":
+		return m.showConfirmAlert("Quit without saving?",
+			"Unsaved changes will be lost.\n"+m.busy, tea.Quit)
+	case dirty:
 		return m.showConfirmAlert("Quit without saving?",
 			"Unsaved changes will be lost.", tea.Quit)
+	case m.busy != "":
+		return m.showConfirmAlert("Quit?", m.busy, tea.Quit)
 	}
 	return m, tea.Quit
 }
