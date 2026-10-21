@@ -11,6 +11,23 @@ type serverConfig struct {
 	Port int    `yaml:"port"`
 }
 
+// Presets land in the file as they are, so they use the 2-space indentation
+// yamledit writes edits with, not yaml.Marshal's 4.
+func TestForFieldIndentsWithTwoSpaces(t *testing.T) {
+	src := ForField("servers", map[string][]serverConfig{
+		"pair": {{Host: "a", Port: 1}, {Host: "b", Port: 2}},
+	})
+
+	out, err := src.PresetYAML("servers", "pair")
+	if err != nil {
+		t.Fatalf("PresetYAML(servers, pair) error = %v, want nil", err)
+	}
+	want := "servers:\n  - host: a\n    port: 1\n  - host: b\n    port: 2\n"
+	if out != want {
+		t.Errorf("PresetYAML(servers, pair) = %q, want %q", out, want)
+	}
+}
+
 func TestCombineFuncFallback(t *testing.T) {
 	src := Combine(
 		ForField("server", map[string]serverConfig{

@@ -28,7 +28,7 @@ See docs/PRESETS.md for the full usage guide and examples.
 
 
 <a name="FieldPresets"></a>
-## type [FieldPresets](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L43-L46>)
+## type [FieldPresets](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L44-L47>)
 
 FieldPresets is a single\-field Source returned by ForField.
 
@@ -39,7 +39,7 @@ type FieldPresets[T any] struct {
 ```
 
 <a name="ForField"></a>
-### func [ForField](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L38>)
+### func [ForField](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L39>)
 
 ```go
 func ForField[T any](field string, m map[string]T) *FieldPresets[T]
@@ -55,7 +55,7 @@ presets.ForField("server", map[string]ServerConfig{
 ```
 
 <a name="FieldPresets[T].ListFields"></a>
-### func \(\*FieldPresets\[T\]\) [ListFields](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L48>)
+### func \(\*FieldPresets\[T\]\) [ListFields](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L49>)
 
 ```go
 func (p *FieldPresets[T]) ListFields() []string
@@ -64,7 +64,7 @@ func (p *FieldPresets[T]) ListFields() []string
 
 
 <a name="FieldPresets[T].ListPresets"></a>
-### func \(\*FieldPresets\[T\]\) [ListPresets](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L50>)
+### func \(\*FieldPresets\[T\]\) [ListPresets](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L51>)
 
 ```go
 func (p *FieldPresets[T]) ListPresets(field string) []string
@@ -73,7 +73,7 @@ func (p *FieldPresets[T]) ListPresets(field string) []string
 
 
 <a name="FieldPresets[T].PresetYAML"></a>
-### func \(\*FieldPresets\[T\]\) [PresetYAML](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L62>)
+### func \(\*FieldPresets\[T\]\) [PresetYAML](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L63>)
 
 ```go
 func (p *FieldPresets[T]) PresetYAML(field, name string) (string, error)
@@ -82,7 +82,7 @@ func (p *FieldPresets[T]) PresetYAML(field, name string) (string, error)
 
 
 <a name="Func"></a>
-## type [Func](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L135>)
+## type [Func](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L142>)
 
 Func adapts a plain function to the Source interface for dynamic preset lookup without enumeration. ListFields and ListPresets return nil, so the preset picker will not appear; only direct \(field, name\) lookups work.
 
@@ -91,7 +91,7 @@ type Func func(field, name string) (string, error)
 ```
 
 <a name="Func.ListFields"></a>
-### func \(Func\) [ListFields](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L137>)
+### func \(Func\) [ListFields](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L144>)
 
 ```go
 func (f Func) ListFields() []string
@@ -100,7 +100,7 @@ func (f Func) ListFields() []string
 
 
 <a name="Func.ListPresets"></a>
-### func \(Func\) [ListPresets](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L138>)
+### func \(Func\) [ListPresets](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L145>)
 
 ```go
 func (f Func) ListPresets(_ string) []string
@@ -109,7 +109,7 @@ func (f Func) ListPresets(_ string) []string
 
 
 <a name="Func.PresetYAML"></a>
-### func \(Func\) [PresetYAML](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L139>)
+### func \(Func\) [PresetYAML](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L146>)
 
 ```go
 func (f Func) PresetYAML(field, name string) (string, error)
@@ -118,7 +118,7 @@ func (f Func) PresetYAML(field, name string) (string, error)
 
 
 <a name="Source"></a>
-## type [Source](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L18-L29>)
+## type [Source](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L19-L30>)
 
 Source supplies YAML preset snippets keyed by \(field, preset name\). The editor uses it to populate the preset picker and to seed the YAML editor when a block is opened.
 
@@ -138,7 +138,7 @@ type Source interface {
 ```
 
 <a name="Combine"></a>
-### func [Combine](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L81>)
+### func [Combine](<https://github.com/lucasassuncao/yedit/blob/main/presets/source.go#L88>)
 
 ```go
 func Combine(sources ...Source) Source

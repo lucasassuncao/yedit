@@ -8,6 +8,7 @@ package presets
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -67,11 +68,17 @@ func (p *FieldPresets[T]) PresetYAML(field, name string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("presets: unknown preset %q for field %q", name, field)
 	}
-	out, err := yaml.Marshal(map[string]any{field: val})
-	if err != nil {
+	// 2 spaces, as yamledit writes edits: a preset lands in the file as it is.
+	var out strings.Builder
+	enc := yaml.NewEncoder(&out)
+	enc.SetIndent(2)
+	if err := enc.Encode(map[string]any{field: val}); err != nil {
 		return "", err
 	}
-	return string(out), nil
+	if err := enc.Close(); err != nil {
+		return "", err
+	}
+	return out.String(), nil
 }
 
 // Combine merges multiple Sources into one. Fields are enumerated in
