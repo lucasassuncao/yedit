@@ -153,6 +153,88 @@ func TestPathFieldFormatsAgainstTheSaveTarget(t *testing.T) {
 	require.Equal(t, "import:\n  - ./a.yaml\n", be.yamlEditor.Value())
 }
 
+// In the navigator, a pick from the tree adds an entry and shows it.
+func TestPathFieldPickAddsAnEntryInTheNavigator(t *testing.T) {
+	docPath := pathConfFolder(t)
+	be := newBlockEdit(pathConfig(docPath), scalarListSpec("import:\n  - ./parts/a.yaml\n"), 100, 30)
+
+	be, _ = be.Update(pathPickedMsg{abs: filepath.Join(filepath.Dir(docPath), "parts", "b.yaml")})
+
+	require.Equal(t, []string{"./parts/a.yaml", "./parts/b.yaml"}, seqItemLabels(be))
+	require.Equal(t, 1, be.coll.current)
+	require.Equal(t, "import:\n  - ./parts/b.yaml\n", be.yamlEditor.Value())
+
+	be = be.dispatch(Undo{})
+	require.Equal(t, []string{"./parts/a.yaml"}, seqItemLabels(be), "a pick is one undo step")
+}
+
+// Editing an entry in the navigator, the pick replaces it.
+func TestPathFieldPickReplacesTheEntryBeingEdited(t *testing.T) {
+	docPath := pathConfFolder(t)
+	be := newBlockEdit(pathConfig(docPath), scalarListSpec("import:\n  - ./old.yaml\n"), 100, 30)
+	be.active = blockEditPanelYAML
+
+	be, _ = be.Update(pathPickedMsg{abs: filepath.Join(filepath.Dir(docPath), "parts", "b.yaml")})
+
+	require.Equal(t, []string{"./parts/b.yaml"}, seqItemLabels(be))
+	require.Equal(t, "import:\n  - ./parts/b.yaml\n", be.yamlEditor.Value())
+}
+
+// openingConfig is pathConfig whose import entries open; Open records what it got.
+func openingConfig(docPath string, got *[2]string, err error) Config {
+	cfg := pathConfig(docPath)
+	pf := cfg.PathFields["import"]
+	pf.Open = func(value, doc string) (Config, error) {
+		got[0], got[1] = value, doc
+		return Config{Path: value}, err
+	}
+	cfg.PathFields["import"] = pf
+	return cfg
+}
+
+// Enter on an entry asks to open the file it names, with the Config Open gives.
+func TestPathFieldEnterOpensTheEntry(t *testing.T) {
+	docPath := pathConfFolder(t)
+	var got [2]string
+	be := newBlockEdit(openingConfig(docPath, &got, nil), scalarListSpec("import:\n  - ./parts/a.yaml\n  - ./parts/b.yaml\n"), 100, 30)
+	be = pathKey(t, be, tea.KeyPressMsg{Code: tea.KeyDown})
+	var enter string
+	for _, a := range be.actions() {
+		if a.Entry().Help().Key == "enter" {
+			enter = a.Entry().Help().Desc
+		}
+	}
+	require.Equal(t, "open file", enter)
+
+	_, cmd := be.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	require.NotNil(t, cmd)
+	require.Equal(t, openFileMsg{cfg: Config{Path: "./parts/b.yaml"}}, cmd())
+	require.Equal(t, [2]string{"./parts/b.yaml", be.docPath()}, got)
+}
+
+// An Open error is shown in the block editor, and nothing opens.
+func TestPathFieldOpenErrorIsShown(t *testing.T) {
+	docPath := pathConfFolder(t)
+	var got [2]string
+	be := newBlockEdit(openingConfig(docPath, &got, os.ErrNotExist), scalarListSpec("import:\n  - ./gone.yaml\n"), 100, 30)
+
+	be, cmd := be.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	require.Nil(t, cmd)
+	require.Contains(t, be.editorErr.message, "./gone.yaml")
+}
+
+// A path list without Open keeps Enter as it was: nothing opens.
+func TestPathFieldEnterWithoutOpenDoesNothing(t *testing.T) {
+	docPath := pathConfFolder(t)
+	be := newBlockEdit(pathConfig(docPath), scalarListSpec("import:\n  - ./parts/a.yaml\n"), 100, 30)
+
+	_, cmd := be.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	require.Nil(t, cmd)
+}
+
 // A Format that cannot shape the pick leaves the block alone and says why.
 func TestPathFieldReportsAFormatError(t *testing.T) {
 	docPath := pathConfFolder(t)

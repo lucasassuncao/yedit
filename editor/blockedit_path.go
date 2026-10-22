@@ -10,6 +10,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/lucasassuncao/bezel/overlay"
+	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/yamledit"
 )
@@ -23,6 +24,38 @@ func (be blockEditState) pathField() (PathField, bool) {
 	}
 	scalarList := be.kind == schema.KindList && len(be.childDefs) == 0
 	return pf, scalarList || be.kind == schema.KindPrimitive
+}
+
+// openableEntry is the value of the entry under the tree's cursor when the
+// block's PathField can open it, or "" when it cannot.
+func (be blockEditState) openableEntry() string {
+	pf, ok := be.pathField()
+	if !ok || pf.Open == nil || !be.isScalarSeqNav() || be.active != blockEditPanelTree {
+		return ""
+	}
+	idx := be.tree.CurrentNodeIdx()
+	if idx < 0 || be.tree.Nodes[idx].Kind != fieldtree.KindSeqItem {
+		return ""
+	}
+	if item := yamledit.EntryValueNode(&be.node, false, be.tree.Nodes[idx].SeqIdx); item != nil {
+		return item.Value
+	}
+	return ""
+}
+
+// openEntry asks for the file the entry under the cursor names to be edited
+// in a tab of its own, or says why it cannot be.
+func (be blockEditState) openEntry() (blockEditState, tea.Cmd) {
+	value := be.openableEntry()
+	if value == "" {
+		return be, nil
+	}
+	cfg, err := be.cfg.PathFields[be.key].Open(value, be.docPath())
+	if err != nil {
+		be.editorErr = editorError{kind: errBlocked, message: fmt.Sprintf("cannot open %s: %v", value, err)}
+		return be, nil
+	}
+	return be, func() tea.Msg { return openFileMsg{cfg: cfg} }
 }
 
 // docPath is where the document will be written, absolute: a relative path in
@@ -85,6 +118,9 @@ func (be blockEditState) entryUnderCursor() int {
 	if be.active != blockEditPanelYAML || be.kind != schema.KindList || be.node.Kind != yaml.SequenceNode {
 		return -1
 	}
+	if be.isScalarSeqNav() {
+		return be.coll.current // the YAML panel holds the current entry alone
+	}
 	lines := strings.Split(be.yamlEditor.Value(), "\n")
 	row := be.yamlEditor.Line()
 	isItem := func(l string) bool { return strings.HasPrefix(strings.TrimLeft(l, " "), "- ") }
@@ -110,6 +146,9 @@ func (be blockEditState) entryUnderCursor() int {
 // list, replacing the one at replace or appended when replace is -1.
 func (be blockEditState) applyPick(value string, replace int) blockEditState {
 	scalar := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
+	if be.isScalarSeqNav() {
+		return be.pickEntry(scalar, replace)
+	}
 	if be.kind == schema.KindPrimitive {
 		be.node = *scalar
 	} else {
@@ -127,4 +166,27 @@ func (be blockEditState) applyPick(value string, replace int) blockEditState {
 	}
 	be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
 	return be
+}
+
+// pickEntry is applyPick for a list shown entry by entry: the pick replaces the
+// entry at replace, or becomes a new last entry, and is the entry then shown.
+func (be blockEditState) pickEntry(scalar *yaml.Node, replace int) blockEditState {
+	if replace < 0 {
+		// Keep what is typed in the current entry; text that does not parse stays
+		// in the buffer with its error, and nothing is added.
+		if be = be.flushCurrentEntry(); be.editorErr.kind == errParse {
+			return be
+		}
+	}
+	content := slices.Clone(be.node.Content)
+	if replace >= 0 && replace < len(content) {
+		content[replace] = scalar
+	} else {
+		content = append(content, scalar)
+		replace = len(content) - 1
+		be.tree = be.tree.WithNewSeqItem(nil, "")
+	}
+	be.node.Content = content
+	be.tree = be.collectionDeriveTree()
+	return be.loadEntry(replace)
 }

@@ -100,6 +100,7 @@ type blockEditState struct {
 	hintAnim        animation.Tween // in-flight show/hide transition for the hint panel; inactive unless Config.AnimationDuration is set
 	hintScroll      int             // scroll offset in hint panel when active == blockEditPanelHint
 	previewScroll   int             // 1-based YAML line the Preview keeps visible; 0 = top
+	tabbed          bool            // another screen is beside this one: the legend names ctrl+t
 
 	isEdit        bool   // false = add new block, true = edit existing
 	dirty         bool   // uncommitted changes since last ctrl+s
@@ -160,10 +161,14 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	be = be.relayout()
 
 	be.tree = fieldtree.New(spec.kind, spec.defs, spec.content, be.innerH())
+	if be.isScalarSeqNav() {
+		be.tree = fieldtree.NewScalarList(spec.content, be.innerH())
+	}
 
-	// Structured collections ([]Struct / map[string]Struct) keep their canonical
-	// entry list in be.node; the tree and per-entry editor are projected from it.
-	structured := (spec.kind == schema.KindList || spec.kind == schema.KindDictionary) && len(spec.defs) > 0
+	// Collections shown entry by entry ([]Struct, map[string]Struct, a top-level
+	// list of scalars) keep their canonical entry list in be.node; the tree and
+	// per-entry editor are projected from it.
+	structured := be.isCollectionNav()
 	if structured {
 		raw := spec.content
 		if raw == "" {
@@ -207,7 +212,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 
 	// If there is no tree to show, focus the YAML editor immediately. A map with
 	// child defs uses the navigator; a free-form map (no defs) stays raw YAML.
-	if len(spec.defs) == 0 || spec.kind == schema.KindPrimitive || (spec.kind == schema.KindDictionary && !structured) {
+	if !structured && (len(spec.defs) == 0 || spec.kind == schema.KindPrimitive || spec.kind == schema.KindDictionary) {
 		be.active = blockEditPanelYAML
 		be.yamlEditor.Focus()
 	}
@@ -698,7 +703,7 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 // place otherwise. Returns false when nothing changed.
 func (be blockEditState) syncParsedNode(content string) (blockEditState, bool) {
 	if be.isCollectionNav() {
-		kn, vn, ok := yamledit.ParseEntryFromView(content, be.coll.isMap)
+		kn, vn, ok := be.parseEntry(content)
 		if !ok {
 			return be, false
 		}

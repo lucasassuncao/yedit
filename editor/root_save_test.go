@@ -15,6 +15,54 @@ import (
 	"github.com/lucasassuncao/yedit/spec"
 )
 
+// saveConfirm opens server: host: localhost, lets edit change the document and
+// presses ctrl+s; it returns the screen with the save confirm on top.
+func saveConfirm(t *testing.T, showDiff bool, edit func(model) model) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "save.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("server:\n  host: localhost\n"), 0o600))
+	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}, ShowDiffOnSave: showDiff})
+	require.NoError(t, err)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = edit(updated.(model))
+	m, _ = pressAction(t, m, tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	return ansi.Strip(m.View().Content)
+}
+
+// changeHost edits the document so the save has something to show.
+func changeHost(t *testing.T) func(model) model {
+	return func(m model) model {
+		doc, err := m.doc.Replace("server", "server:\n  host: example.com\n")
+		require.NoError(t, err)
+		m.doc = doc
+		return m
+	}
+}
+
+func TestSaveConfirmShowsWhatChanges(t *testing.T) {
+	screen := saveConfirm(t, true, changeHost(t))
+
+	require.Contains(t, screen, "Save changes?")
+	require.Contains(t, screen, "-   host: localhost")
+	require.Contains(t, screen, "+   host: example.com")
+}
+
+func TestSaveConfirmSaysWhenNothingChanged(t *testing.T) {
+	screen := saveConfirm(t, true, func(m model) model { return m })
+
+	require.Contains(t, screen, "Save changes?")
+	require.Contains(t, screen, "No changes.")
+}
+
+// Without ShowDiffOnSave the confirm only names the file.
+func TestSaveConfirmWithoutDiffNamesTheFile(t *testing.T) {
+	screen := saveConfirm(t, false, changeHost(t))
+
+	require.Contains(t, screen, "Save changes?")
+	require.Contains(t, screen, "Save to ")
+	require.NotContains(t, screen, "+   host: example.com")
+}
+
 // actionModel opens a one-block document with the given actions.
 func actionModel(t *testing.T, actions []Action, validators ...Validator) (model, string) {
 	t.Helper()
@@ -215,12 +263,4 @@ func TestExecReportsAFailedProgram(t *testing.T) {
 
 	require.Equal(t, paneAlert, m.mode)
 	require.Contains(t, ansi.Strip(m.View().Content), "open in $EDITOR failed")
-}
-
-func TestActionsAreInTheLegendAndBoundToTheirKey(t *testing.T) {
-	m, _ := actionModel(t, []Action{{Key: "ctrl+e", Help: "save & convert", SaveFirst: true, Run: (&recorder{}).run}})
-
-	require.Contains(t, ansi.Strip(m.View().Content), "save & convert")
-	_, msgs := step(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
-	require.Equal(t, []tea.Msg{actionRequestedMsg{key: "ctrl+e"}}, msgs)
 }

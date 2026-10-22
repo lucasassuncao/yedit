@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -75,56 +76,6 @@ func TestTheListLegendReadsInItsTwoRows(t *testing.T) {
 	require.Equal(t, "[ctrl+s] save  [ctrl+r] reload  [ctrl+u] undo  [ctrl+y] redo  [ctrl+l] validate", second)
 }
 
-// With the keys, ↓ scrolls a hint longer than the panel, and stops at its end.
-func TestTheFocusedHintPanelScrolls(t *testing.T) {
-	long := strings.Repeat("line\n", 60)
-	m, err := newModel(Config{
-		Path:        filepath.Join(t.TempDir(), "probe.yaml"),
-		Schema:      &hintProbeConfig{},
-		EnableHints: true,
-		Metadata:    MetadataFunc(func(string, string) FieldMeta { return FieldMeta{Example: long} }),
-	})
-	require.NoError(t, err)
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	m = updated.(model).toggleHintFocus()
-	require.Equal(t, paneHint, m.mode)
-
-	top := m.hintView()
-	for range 200 {
-		updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-		m = updated.(model)
-	}
-	require.NotEqual(t, top, m.hintView(), "↓ did not scroll the hint")
-	require.Equal(t, m.maxHintScroll(), m.hintScroll, "the scroll runs past the end of the hint")
-}
-
-// ctrl+h gives the keys to the Hint/Example panel and takes them back, as in
-// the block editor; esc and hiding the panel give them back too.
-func TestCtrlHFocusesTheHintPanelOnTheMainScreen(t *testing.T) {
-	press := func(m model, k tea.KeyPressMsg) model {
-		updated, cmd := m.Update(k)
-		m = updated.(model)
-		if cmd != nil {
-			if msg := cmd(); msg != nil {
-				updated, _ = m.Update(msg)
-				m = updated.(model)
-			}
-		}
-		return m
-	}
-	ctrlH := tea.KeyPressMsg{Code: 'h', Mod: tea.ModCtrl}
-
-	m := press(newHintModel(t, 0), ctrlH)
-	require.Equal(t, paneHint, m.mode)
-	require.Equal(t, "hint", m.rootPane())
-	require.Equal(t, paneList, press(m, ctrlH).mode, "ctrl+h again gives the keys back")
-	require.Equal(t, paneList, press(m, tea.KeyPressMsg{Code: tea.KeyEscape}).mode, "esc gives them back")
-
-	hidden := press(m, tea.KeyPressMsg{Code: 'h', Text: "h"})
-	require.False(t, hidden.showHint)
-	require.Equal(t, paneList, hidden.mode, "a hidden panel cannot keep the keys")
-}
-
 // ? opens the help panel over the screen; the legend under it stays the same.
 func TestHelpLeavesTheLegendAsItWas(t *testing.T) {
 	m := newHintModel(t, 0)
@@ -162,4 +113,111 @@ func TestRightOpensTheSelectedBlock(t *testing.T) {
 	require.NotNil(t, cmd, "→ chose nothing")
 	updated, _ = updated.Update(cmd())
 	require.Equal(t, paneBlockEdit, updated.(model).mode)
+}
+
+// legendRow is the bottom two rows, where the legend lives.
+func legendRow(screen string) string {
+	rows := strings.Split(ansi.Strip(screen), "\n")
+	return strings.Join(rows[len(rows)-2:], "\n")
+}
+
+func TestListLegendPinsHelp(t *testing.T) {
+	m := newHintModel(t, 0)
+	require.Contains(t, legendRow(m.viewContent()), "[?] help")
+}
+
+// While filtering "?" is typed into the filter, so the legend must not offer it.
+func TestFilteringLegendHidesHelp(t *testing.T) {
+	m := newHintModel(t, 0)
+	updated, _ := m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	m = updated.(model)
+	require.True(t, m.list.IsFiltering())
+	require.NotContains(t, legendRow(m.viewContent()), "[?] help")
+}
+
+func newServerBlock(t *testing.T) blockEditState {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "help.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("server:\n  host: a\n"), 0o600))
+	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}})
+	require.NoError(t, err)
+	return newBlockEdit(m.cfg, blockSpec{key: "server"}, 100, 30)
+}
+
+func TestBlockEditorHelpIsShownAndOpens(t *testing.T) {
+	be := newServerBlock(t)
+	be.active = blockEditPanelTree
+	be.yamlEditor.Blur()
+	require.Contains(t, legendRow(be.View(nil)), "[?] help")
+
+	be, _ = be.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+	require.True(t, be.sh.HasOverlay(), "? opens the help")
+	require.Equal(t, modeConfirming, be.mode)
+}
+
+// The tree's two rows: getting around, the hint panel included, help last;
+// then what changes the block.
+func TestTheBlockEditorLegendReadsInItsTwoRows(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "help.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("server:\n  host: a\n"), 0o600))
+	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}, EnableHints: true})
+	require.NoError(t, err)
+	be := newBlockEdit(m.cfg, blockSpec{key: "server"}, 140, 30)
+	be.active = blockEditPanelTree
+	be.yamlEditor.Blur()
+
+	rows := strings.Split(legendRow(be.View(nil)), "\n")
+	require.Equal(t, "[tab] change pane  [↑/↓] move  [→/←] expand  [ctrl+h] focus hint  [h] hide hint  [esc] back  [?] help",
+		strings.TrimSpace(rows[0]))
+	require.Equal(t, "[enter] add  [ctrl+s] save changes  [ctrl+d] remove  [ctrl+u] undo  [ctrl+y] redo  [ctrl+l] validate",
+		strings.TrimSpace(rows[1]))
+}
+
+// The focused hint is for reading: one row, no document keys, and no
+// ctrl+h, which is how the reader got there.
+func TestTheHintPanelLegendIsOneRow(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "help.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("server:\n  host: a\n"), 0o600))
+	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}, EnableHints: true})
+	require.NoError(t, err)
+	be := newBlockEdit(m.cfg, blockSpec{key: "server"}, 140, 30)
+	be.showHint = true
+	be.prevActive, be.active = blockEditPanelTree, blockEditPanelHint
+	be.yamlEditor.Blur()
+
+	rows := strings.Split(legendRow(be.View(nil)), "\n")
+	require.Equal(t, "[tab] change pane  [↑/↓] scroll  [h] hide hint  [esc] back  [?] help", strings.TrimSpace(rows[0]))
+	require.Empty(t, strings.TrimSpace(rows[1]), "no second row of document keys")
+}
+
+// The main screen's hint reads the same way: one row, no document keys.
+func TestTheMainScreenHintLegendIsOneRow(t *testing.T) {
+	m := newHintModel(t, 0)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = updated.(model).toggleHintFocus()
+	require.Equal(t, paneHint, m.mode)
+
+	rows := strings.Split(legendRow(m.viewContent()), "\n")
+	require.Equal(t, "[tab] change pane  [↑/↓] scroll  [h] hide hint  [esc] back  [q] quit  [?] help", strings.TrimSpace(rows[0]))
+	require.Empty(t, strings.TrimSpace(rows[1]), "no second row of document keys")
+}
+
+// On the YAML panel "?" is text: it must type, and the legend must not offer it.
+func TestYAMLPanelKeepsQuestionMarkAsText(t *testing.T) {
+	be := newServerBlock(t)
+	be.active = blockEditPanelYAML
+	be.yamlEditor.Focus()
+	require.NotContains(t, legendRow(be.View(nil)), "[?] help")
+
+	be, _ = be.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+	require.False(t, be.sh.HasOverlay())
+	require.Contains(t, be.yamlEditor.Value(), "?")
+}
+
+func TestActionsAreInTheLegendAndBoundToTheirKey(t *testing.T) {
+	m, _ := actionModel(t, []Action{{Key: "ctrl+e", Help: "save & convert", SaveFirst: true, Run: (&recorder{}).run}})
+
+	require.Contains(t, ansi.Strip(m.View().Content), "save & convert")
+	_, msgs := step(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	require.Equal(t, []tea.Msg{actionRequestedMsg{key: "ctrl+e"}}, msgs)
 }

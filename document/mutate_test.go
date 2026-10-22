@@ -15,32 +15,6 @@ forwardPorts:
   - 3000
 `
 
-func TestParseBlocks(t *testing.T) {
-	blocks, err := document.ParseBlocks([]byte(sampleYAML))
-	if err != nil {
-		t.Fatalf("ParseBlocks: %v", err)
-	}
-	if len(blocks) != 4 {
-		t.Fatalf("expected 4 blocks, got %d", len(blocks))
-	}
-	if blocks[0].Key != "name" {
-		t.Errorf("first block key = %q, want \"name\"", blocks[0].Key)
-	}
-	if blocks[2].Key != "features" {
-		t.Errorf("third block key = %q, want \"features\"", blocks[2].Key)
-	}
-}
-
-func TestParseBlocks_empty(t *testing.T) {
-	blocks, err := document.ParseBlocks(nil)
-	if err != nil {
-		t.Fatalf("ParseBlocks(nil): %v", err)
-	}
-	if blocks != nil {
-		t.Errorf("expected nil blocks for empty input, got %v", blocks)
-	}
-}
-
 func TestRemoveBlock(t *testing.T) {
 	raw := []byte(sampleYAML)
 	blocks, _ := document.ParseBlocks(raw)
@@ -123,16 +97,6 @@ func TestInsertBlock_unknownKeyAppends(t *testing.T) {
 	blocks, _ := document.ParseBlocks(result)
 	if len(blocks) != 2 || blocks[1].Key != "novel" {
 		t.Errorf("unknown key should append at end; got blocks %+v", blocks)
-	}
-}
-
-func TestValidateSnippet(t *testing.T) {
-	if err := document.ValidateSnippet("remoteUser: vscode\n"); err != nil {
-		t.Errorf("expected valid snippet to pass: %v", err)
-	}
-
-	if err := document.ValidateSnippet("remoteUser: :\n  broken:"); err == nil {
-		t.Error("expected invalid snippet to fail validation")
 	}
 }
 

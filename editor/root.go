@@ -3,6 +3,7 @@ package editor
 import (
 	"fmt"
 	"github.com/lucasassuncao/yedit/fieldtree"
+	"path/filepath"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -78,6 +79,8 @@ type model struct {
 	saved         bool            // at least one save succeeded this session; reported via Result
 	busy          string          // what Config.Tabs say quitting would cut short; set before each message
 	width, height int
+	inFileTab     bool // opened from a PathField entry: esc closes it, and q is left to the main screen
+	tabbed        bool // another screen is beside this one: the legend names ctrl+t
 }
 
 // newModel constructs the root model from a Config. A path that does not exist
@@ -379,7 +382,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.focusRootPane(msg)
 	case quitRequestedMsg:
-		return m.quitOrConfirm()
+		return m.quitRequested()
+	case closeFileRequestedMsg:
+		return m.closeFileOrConfirm()
 	case openDocPresetsMsg:
 		return m.openDocPresets()
 	case toggleHintsMsg:
@@ -485,7 +490,7 @@ func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// as a plain key). Intercepting it here keeps the policy uniform instead of
 	// working only in the list view.
 	if km, ok := msg.(tea.KeyMsg); ok && key.Matches(km, keys.CtrlCQuit) {
-		return m.quitOrConfirm()
+		return m.quitRequested()
 	}
 	switch m.mode {
 	case paneAlert:
@@ -524,17 +529,44 @@ func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// quitOrConfirm quits immediately when nothing would be lost, otherwise asks
-// first. Uncommitted block-editor changes count as loss even while the
-// document itself is still clean.
-func (m model) quitOrConfirm() (tea.Model, tea.Cmd) {
-	dirty := m.doc.Dirty()
+// unsaved reports whether leaving now would lose changes: uncommitted
+// block-editor changes count even while the document itself is still clean.
+func (m model) unsaved() bool {
+	if m.doc.Dirty() {
+		return true
+	}
 	for _, be := range m.blockEdits {
 		if be.dirty {
-			dirty = true
-			break
+			return true
 		}
 	}
+	return false
+}
+
+// quitRequested is q, and ctrl+c anywhere: in a file tab it is the program's
+// quit, which asks once about every open file rather than this one first.
+func (m model) quitRequested() (tea.Model, tea.Cmd) {
+	if m.inFileTab {
+		return m, func() tea.Msg { return QuitMsg{} }
+	}
+	return m.quitOrConfirm()
+}
+
+// closeFileOrConfirm closes this file tab, asking first when that would lose
+// changes.
+func (m model) closeFileOrConfirm() (tea.Model, tea.Cmd) {
+	closeFile := func() tea.Msg { return closeFileMsg{} }
+	if m.unsaved() {
+		return m.showConfirmAlert("Close without saving?",
+			fmt.Sprintf("Unsaved changes to %s will be lost.", filepath.Base(m.doc.Path())), closeFile)
+	}
+	return m, closeFile
+}
+
+// quitOrConfirm quits immediately when nothing would be lost, otherwise asks
+// first.
+func (m model) quitOrConfirm() (tea.Model, tea.Cmd) {
+	dirty := m.unsaved()
 	switch {
 	case dirty && m.busy != "":
 		return m.showConfirmAlert("Quit without saving?",
@@ -635,7 +667,9 @@ func (m model) viewContent() string {
 
 	if m.mode == paneBlockEdit {
 		if top := m.topBE(); top != nil {
-			return top.View(m.blockBreadcrumbPrefix())
+			be := *top
+			be.tabbed = m.tabbed
+			return be.View(m.blockBreadcrumbPrefix())
 		}
 	}
 

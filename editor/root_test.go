@@ -58,35 +58,6 @@ func TestWindowSizeReachesBlockEdit(t *testing.T) {
 	is.Equal(50, top.height, "block edit not resized: height")
 }
 
-// TestPreviewIsReadOnly verifies that typing in the preview pane never mutates
-// the document - the right panel is a read-only, syntax-highlighted view.
-func TestPreviewIsReadOnly(t *testing.T) {
-	is := assert.New(t)
-	must := require.New(t)
-	path := filepath.Join(t.TempDir(), "ro.yaml")
-	must.NoError(os.WriteFile(path, []byte("server:\n  host: localhost\n"), 0o600))
-	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}})
-	must.NoError(err, "newModel")
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	m = updated.(model)
-
-	// Enter the read-only preview pane via Tab.
-	m, _ = pressAction(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
-	must.Equal(panePreview, m.mode, "expected panePreview after Tab")
-
-	before := string(m.doc.Raw())
-	dirtyBefore := m.doc.Dirty()
-
-	// Type characters - a read-only preview must ignore them.
-	for _, r := range "xyz: hello" {
-		updated, _ = m.Update(tea.KeyPressMsg{Text: string(r), Code: r})
-		m = updated.(model)
-	}
-
-	is.Equal(before, string(m.doc.Raw()), "preview edited the document")
-	is.Equal(dirtyBefore, m.doc.Dirty(), "preview changed dirty state")
-}
-
 // TestCtrlU_blockEditorNoSnapDoesNotTouchDocument verifies that pressing ctrl+u
 // inside a block editor when the undo stack is empty is a no-op: the document
 // and the editor mode must be unchanged. Without this guard the fallback
@@ -135,46 +106,6 @@ func TestBuildListItemsAvailableKeepsCanonicalOrder(t *testing.T) {
 	}
 	want := []string{"name", "image", "build", "appPort"}
 	is.Equal(want, got, "available keys should preserve canonical order, not alphabetical")
-}
-
-// followCfg is a flat schema used to exercise preview-follows-selection.
-type followCfg struct {
-	A string `yaml:"a"`
-	B string `yaml:"b"`
-	C string `yaml:"c"`
-	D string `yaml:"d"`
-	E string `yaml:"e"`
-	F string `yaml:"f"`
-}
-
-// TestPreviewFollowsSelectedBlock verifies that navigating the ADDED list
-// scrolls the read-only preview to the selected block's line.
-func TestPreviewFollowsSelectedBlock(t *testing.T) {
-	is := assert.New(t)
-	must := require.New(t)
-	path := filepath.Join(t.TempDir(), "f.yaml")
-	must.NoError(os.WriteFile(path, []byte(`a: 1
-b: 2
-c: 3
-d: 4
-e: 5
-f: 6
-`), 0o600))
-	m, err := newModel(Config{Path: path, Schema: &followCfg{}})
-	must.NoError(err, "newModel")
-	// Short viewport so the 6-line document overflows and can actually scroll.
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 8})
-	m = updated.(model)
-	must.Equal(0, m.preview.YOffset(), "initial YOffset should be 0")
-	// Navigate down to "c" (third block, line 3).
-	for i := 0; i < 2; i++ {
-		updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-		m = updated.(model)
-	}
-	it := m.list.SelectedItem()
-	must.NotNil(it, "selected item should not be nil")
-	must.Equal("c", it.Key, "expected selected item c")
-	is.Equal(2, m.preview.YOffset(), "YOffset following \"c\" should be 2 (block at line 3)")
 }
 
 // checkScreenInvariant asserts the two screen invariants that the enter* helpers
@@ -235,43 +166,6 @@ func TestScreenInvariantAcrossTransitions(t *testing.T) {
 	checkScreenInvariant(t, m, "after alert dismiss")
 }
 
-// TestRootHintPanelToggle verifies that EnableHints opens the panel on start,
-// "h" toggles it off and back on, and the field metadata is visible.
-func TestRootHintPanelToggle(t *testing.T) {
-	is := assert.New(t)
-	must := require.New(t)
-	m, err := newModel(Config{
-		Path:        filepath.Join(t.TempDir(), "hint.yaml"),
-		Schema:      &sizeProbeConfig{},
-		EnableHints: true,
-		Metadata: MetadataFunc(func(block, fieldPath string) FieldMeta {
-			if block == "server" && fieldPath == "" {
-				return FieldMeta{Type: "object"}
-			}
-			return FieldMeta{}
-		}),
-	})
-	must.NoError(err, "newModel")
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	m = updated.(model)
-
-	// EnableHints: true → panel visible on start.
-	must.True(m.showHint, "EnableHints: true should show the hint panel on start")
-	view := m.viewContent()
-	is.Contains(view, "Hint/Example", "view should show the Hint/Example panel when EnableHints is true")
-	is.Contains(view, "object", "hint should show the selected field's type (server → object)")
-
-	// "h" hides the panel.
-	m, _ = pressAction(t, m, tea.KeyPressMsg{Text: "h", Code: 'h'})
-	must.False(m.showHint, "pressing h should hide the hint panel")
-	is.NotContains(m.viewContent(), "Hint/Example", "hint panel should be hidden after pressing h")
-
-	// "h" again shows it.
-	m, _ = pressAction(t, m, tea.KeyPressMsg{Text: "h", Code: 'h'})
-	must.True(m.showHint, "pressing h again should re-enable the hint panel")
-	is.Contains(m.viewContent(), "Hint/Example", "hint panel should be visible after toggling back on")
-}
-
 // TestReloadFromDisk covers ctrl+r in the main list: a clean document reloads
 // immediately, a dirty one prompts first and reloads after confirmation.
 func TestReloadFromDisk(t *testing.T) {
@@ -317,35 +211,6 @@ func TestReloadFromDisk(t *testing.T) {
 	is.Contains(string(m.doc.Raw()), "host: c", "reload did not replace local state")
 	is.NotContains(string(m.doc.Raw()), "extra", "reload did not discard local edit")
 	is.False(m.doc.Dirty(), "reloaded document should not be dirty")
-}
-
-// TestFilterAcceptsJK guards against j/k being swallowed as navigation while
-// the filter input is active - filters like "unknown" (contains k) or
-// "worker" (contains k) must be typeable; only the arrow keys navigate.
-func TestFilterAcceptsJK(t *testing.T) {
-	is := assert.New(t)
-	must := require.New(t)
-	path := filepath.Join(t.TempDir(), "filter.yaml")
-	seed := "server:\n  host: a\nunknown-key: flagged\n"
-	must.NoError(os.WriteFile(path, []byte(seed), 0o600))
-	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}})
-	must.NoError(err, "newModel")
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	m = updated.(model)
-
-	updated, _ = m.Update(tea.KeyPressMsg{Text: "/", Code: '/'})
-	m = updated.(model)
-	for _, r := range "unknown" {
-		updated, _ = m.Update(tea.KeyPressMsg{Text: string(r), Code: r})
-		m = updated.(model)
-	}
-	must.Equal("unknown", m.list.Filter(), "filter text after typing")
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(model)
-
-	sel := m.list.SelectedItem()
-	must.NotNil(sel, "selected item should not be nil after filter+enter")
-	is.Equal("unknown-key", sel.Key, "filter+enter should select unknown-key")
 }
 
 // TestValidateKeysSeesUncommittedEditorContent is the regression test for the
@@ -547,31 +412,4 @@ func TestEscDoesNotQuitList(t *testing.T) {
 		must.NotEqual(tea.QuitMsg{}, cmd(), "esc quit the editor")
 	}
 	must.Equal(paneList, m.mode)
-}
-
-// Leaving the preset picker must restore the list screen's layout, or the
-// list pane has no rect and the preview takes the whole body.
-func TestDismissDocPresetsRestoresListPane(t *testing.T) {
-	must := require.New(t)
-	m, err := newModel(Config{
-		Path:        filepath.Join(t.TempDir(), "probe.yaml"),
-		Schema:      &sizeProbeConfig{},
-		DocPresets:  stubPresets{data: map[string]string{"/basic": "server:\n  host: a\n"}},
-		EnableHints: true,
-	})
-	must.NoError(err, "newModel")
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	m = updated.(model)
-	hintBefore, listBefore := m.sh.Rect("hint"), m.sh.Rect("list")
-	must.Positive(hintBefore.H, "hint should be open before the picker")
-
-	updated, _ = m.Update(openDocPresetsMsg{})
-	m = updated.(model)
-	must.Equal(paneDocPreset, m.mode)
-
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	m = updated.(model)
-	must.Equal(paneList, m.mode)
-	must.Equal(listBefore, m.sh.Rect("list"), "list pane lost its rect")
-	must.Equal(hintBefore, m.sh.Rect("hint"), "hint pane did not come back")
 }

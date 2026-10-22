@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	tea "charm.land/bubbletea/v2"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
@@ -427,4 +428,98 @@ func TestMatrix_ToggleConsequenceAcrossContexts(t *testing.T) {
 			is.NotContains(be.yamlEditor.Value(), tc.leaf+":", "[%s] toggle OFF did not remove %q", tc.name, tc.leaf)
 		})
 	}
+}
+
+func newStructEdit(t *testing.T, content string) blockEditState {
+	t.Helper()
+	return newBlockEdit(Config{}, blockSpec{
+		key: "cfg", defs: cfgStructDefs(), kind: schema.KindObject, content: content,
+	}, 120, 40)
+}
+
+// TestSOT_ToggleWhileBufferInvalid is the Classe A regression: with the YAML
+// buffer mid-edit and unparseable, toggling a field in the tree must still leave
+// tree and node in agreement and the buffer valid - the desync that motivated
+// the single-source-of-truth refactor.
+func TestSOT_ToggleWhileBufferInvalid(t *testing.T) {
+	be := newStructEdit(t, "cfg:\n")
+
+	// Simulate the user having typed invalid YAML (a tab indent) into the buffer.
+	// The parse gate leaves be.node at its last good state (an empty mapping).
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("cfg:\n  bad: [unclosed\n")
+	if validateSnippetText(be.yamlEditor.Value()) == nil {
+		t.Fatal("test setup: expected the crafted buffer to be invalid YAML")
+	}
+
+	// Toggle a field via the tree.
+	be.active = blockEditPanelTree
+	be = cursorToLabel(be, "output")
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if n, ok := nodeByLabel(be, "output"); !ok || !n.Checked {
+		t.Error("output should be checked after toggling it on")
+	}
+	if !keyExistsInNode(&be.node, []string{"output"}) {
+		t.Error("output key missing from canonical node after toggle")
+	}
+	assertTreeMatchesNode(t, be)
+}
+
+// TestSOT_ToggleSequenceConsistency drives a sequence of toggles (including a
+// deep nested leaf) and asserts the invariant holds after every step.
+func TestSOT_ToggleSequenceConsistency(t *testing.T) {
+	be := newStructEdit(t, "cfg:\n")
+	be = expandAll(be)
+
+	for _, label := range []string{"output", "regex", "path", "log-file"} {
+		be = cursorToLabel(be, label)
+		be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
+		be = expandAll(be)
+		assertTreeMatchesNode(t, be)
+	}
+
+	// Toggle two back off; invariant must still hold.
+	for _, label := range []string{"output", "regex"} {
+		be = cursorToLabel(be, label)
+		// ctrl+d on a filled leaf confirms; drive the pending removal directly.
+		idx := -1
+		for i, n := range be.tree.Nodes {
+			if n.Kind == fieldtree.KindField && n.Label == label {
+				idx = i
+				break
+			}
+		}
+		be = be.dispatch(ToggleField{NodeIdx: idx, Checked: false})
+		be = expandAll(be)
+		assertTreeMatchesNode(t, be)
+	}
+}
+
+// TestSOT_ToggleRoundTripNode toggling a deep leaf on then off returns the node
+// to an empty mapping (the nested ancestors are pruned), proving structural
+// round-trip stability.
+func TestSOT_ToggleRoundTripNode(t *testing.T) {
+	be := newStructEdit(t, "cfg:\n")
+	be = expandAll(be)
+
+	be = cursorToLabel(be, "regex")
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !keyExistsInNode(&be.node, []string{"source", "filter", "regex"}) {
+		t.Fatalf("regex not created:\n%s", be.yamlEditor.Value())
+	}
+
+	idx := -1
+	for i, n := range be.tree.Nodes {
+		if n.Kind == fieldtree.KindField && n.Label == "regex" {
+			idx = i
+			break
+		}
+	}
+	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: false})
+
+	if be.node.Kind == yaml.MappingNode && len(be.node.Content) != 0 {
+		t.Errorf("node not empty after round-trip:\n%s", be.yamlEditor.Value())
+	}
+	assertTreeMatchesNode(t, be)
 }

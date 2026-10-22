@@ -43,6 +43,10 @@ type openChildMsg struct {
 	relSegs []yamledit.PathSeg
 }
 
+// openFileMsg asks for another file to be edited in a tab of its own, with cfg:
+// an entry of a PathField that has Open.
+type openFileMsg struct{ cfg Config }
+
 // commitRequestedMsg asks the model to commit the editor stack into the
 // document. The block layer has no model access, so Ctrl+S requests it as a
 // message the root Update handles.

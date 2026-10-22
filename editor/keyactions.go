@@ -67,6 +67,15 @@ func shownLater(keys, desc string) shell.Action {
 // quit asks first when there are unsaved changes.
 func quit() shell.Action { return shell.Quit(shell.RunWith(shell.Send(quitRequestedMsg{}))) }
 
+// quitKeys is q, on the main screen only: a file tab closes with esc and
+// leaves quitting to the main screen.
+func (m model) quitKeys() []shell.Action {
+	if m.inFileTab {
+		return nil
+	}
+	return []shell.Action{quit()}
+}
+
 // hintKeys are the Hint/Example panel's two keys: focus it while it is shown,
 // and show or hide it, worded for its current state.
 func hintKeys(enabled, showing, toggle bool, focus, flip tea.Msg) []shell.Action {
@@ -92,31 +101,50 @@ func docKeys(save, validate shell.Action, appActions []shell.Action) []shell.Act
 		send("ctrl+u", "undo", docUndoMsg{}, secondRow), send("ctrl+y", "redo", docRedoMsg{}, secondRow), validate)
 }
 
+// withTabKey puts ctrl+t after lead when other screens are beside this one:
+// the tabs handle it before any screen sees it, whatever has the keys.
+func withTabKey(tabbed bool, lead, keys []shell.Action) []shell.Action {
+	out := append([]shell.Action(nil), lead...)
+	if tabbed {
+		out = append(out, shown(tabKey, "change tab"))
+	}
+	return append(out, keys...)
+}
+
 // actions is the root screen's key set for where the user is.
 func (m model) actions() []shell.Action {
+	lead, keys := m.screenActions()
+	return withTabKey(m.tabbed, lead, keys)
+}
+
+// screenActions is the keys for where the user is, and lead, the ones before
+// ctrl+t: esc, which closes a file tab from its block list.
+func (m model) screenActions() (lead, keys []shell.Action) {
 	save := send("ctrl+s", "save", saveRequestedMsg{}, secondRow)
 	validate := send("ctrl+l", "validate", validateRequestedMsg{}, secondRow)
 	hints := hintKeys(m.cfg.EnableHints, m.showHint, true, focusHintMsg{}, toggleHintsMsg{})
 	switch {
 	case m.mode == paneDocPreset:
-		return append(browserActions(m.docPreset.PreviewFocus, "apply"), save, validate)
+		return nil, append(browserActions(m.docPreset.PreviewFocus, "apply"), save, validate)
 	case m.mode == panePreview:
-		return []shell.Action{
-			shell.ChangePane(), shell.Scroll(), send("esc", "back", previewBackMsg{}), quit(), shell.Help(),
-			save, validate,
-		}
+		out := []shell.Action{shell.ChangePane(), shell.Scroll(), send("esc", "back", previewBackMsg{})}
+		return nil, append(append(out, m.quitKeys()...), shell.Help(), save, validate)
 	case m.mode == paneHint:
 		// tab and esc both give the keys back to the pane they came from. The
 		// hint is for reading, so the document keys and ctrl+h are not offered.
-		return []shell.Action{
+		out := []shell.Action{
 			shell.ChangePane(shell.RunWith(shell.Send(focusHintMsg{}))), shell.Scroll(),
-			send("h", "hide hint", toggleHintsMsg{}), send("esc", "back", focusHintMsg{}), quit(), shell.Help(),
+			send("h", "hide hint", toggleHintsMsg{}), send("esc", "back", focusHintMsg{}),
 		}
+		return nil, append(append(out, m.quitKeys()...), shell.Help())
 	case m.list.IsFiltering():
 		// "?" and "q" are typed into the filter here.
-		return []shell.Action{shell.Move(), shown("enter", "select"), shown("esc", "clear"), save, validate}
+		return nil, []shell.Action{shell.Move(), shown("enter", "select"), shown("esc", "clear"), save, validate}
 	}
 
+	if m.inFileTab {
+		lead = []shell.Action{send("esc", "close tab", closeFileRequestedMsg{})}
+	}
 	out := []shell.Action{shell.ChangePane(), shell.Move()}
 	it := m.list.SelectedItem()
 	switch {
@@ -128,7 +156,7 @@ func (m model) actions() []shell.Action {
 	}
 	out = append(out, shown("/", "filter"))
 	out = append(out, hints...)
-	out = append(out, quit(), shell.Help())
+	out = append(append(out, m.quitKeys()...), shell.Help())
 	if len(presetItems(m.cfg.DocPresets, "")) > 0 {
 		out = append(out, send("p", "presets", openDocPresetsMsg{}, secondRow))
 	}
@@ -139,7 +167,7 @@ func (m model) actions() []shell.Action {
 	if it != nil && it.Existing {
 		out = append(out, shownLater("ctrl+d", "delete"))
 	}
-	return append(out, doc[head:]...)
+	return lead, append(out, doc[head:]...)
 }
 
 // browserActions is a preset picker's legend; the browser handles every key.
@@ -154,6 +182,10 @@ func browserActions(previewFocus bool, enter string, extra ...shell.Action) []sh
 // actions is the block editor's key set: "?" and the letter keys only where
 // they are not typed into the YAML panel.
 func (be blockEditState) actions() []shell.Action {
+	return withTabKey(be.tabbed, nil, be.panelActions())
+}
+
+func (be blockEditState) panelActions() []shell.Action {
 	if be.mode == modePresetBrowser {
 		if be.isCollectionNav() {
 			return browserActions(be.preset.PreviewFocus, "replace", shown("a", "append"))
@@ -181,7 +213,11 @@ func (be blockEditState) actions() []shell.Action {
 		out = append(out, shell.Help())
 	}
 	if be.active == blockEditPanelTree {
-		out = append(out, shownLater("enter", "add"))
+		enter := "add"
+		if be.openableEntry() != "" {
+			enter = "open file"
+		}
+		out = append(out, shownLater("enter", enter))
 		if be.cfg.BlockPresets != nil && len(be.cfg.BlockPresets.ListPresets(be.key)) > 0 {
 			out = append(out, send("p", "presets", bePresetMsg{}, secondRow))
 		}

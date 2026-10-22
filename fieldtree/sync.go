@@ -239,7 +239,7 @@ func CollectionNodes(childDefs []schema.FieldDef, node *yaml.Node, isMap bool) [
 		label := yamledit.EntryLabel(node, isMap, i)
 		nodes = append(nodes, Node{
 			Kind: KindSeqItem, YAMLPath: []string{label}, Label: label,
-			Depth: 0, IsLeaf: false, Checked: true, SeqIdx: i,
+			Depth: 0, IsLeaf: len(childDefs) == 0, Checked: true, SeqIdx: i,
 		})
 		children := flattenDefsAsTree(childDefs, []string{label}, 1)
 		children = DeriveChecked(yamledit.EntryValueNode(node, isMap, i), children, true)

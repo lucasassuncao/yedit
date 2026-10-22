@@ -45,6 +45,7 @@ Every field of `editor.Config`, in one table. See the linked guide for each conc
 |---|---|---|
 | `NoDeleteConfirm` | `bool` | Skip the "Remove block?" confirmation dialog; deletion is still undoable via Ctrl+U. See [Undo & Redo](UNDO.md). |
 | `NoSaveConfirm` | `bool` | Skip the "Save changes?" confirmation dialog; warning confirms (`NoValidateOnSave`) are still shown. |
+| `ShowDiffOnSave` | `bool` | The "Save changes?" dialog shows the diff of what the save writes, scrollable, instead of only the file it saves to. No effect under `NoSaveConfirm`. |
 
 ## Application actions
 
@@ -91,7 +92,7 @@ editor.Config{
 
 | Field | Type | Description |
 |---|---|---|
-| `Tabs` | `[]Tab` | Application screens beside the editor's. A strip at the end of the top row names them, `editor` first, and **ctrl+t** steps through them; short of room, its hint goes first and then the end of the screen's own header. Without tabs there is no strip and nothing changes. |
+| `Tabs` | `[]Tab` | Application screens beside the editor's. A strip under the top row names them, the editor first by its file's name (`FrontMsg` still calls it `editor`), the one in front filled, and **ctrl+t** steps through them: the editor's legend names it, and the strip does while a tab is in front. The strip takes a row from every screen. Without tabs, or files opened through `PathField.Open`, there is no strip and nothing changes. |
 | `FrontTab` | `string` | The tab, by `Name()`, in front when the editor opens. Empty, or a name no tab has, opens on the editor. |
 
 A `Tab` is a small Bubble Tea model:
@@ -100,8 +101,8 @@ A `Tab` is a small Bubble Tea model:
 |---|---|
 | `Name() string` | Its name in the strip. |
 | `Init() tea.Cmd` | Run once, with the editor's. |
-| `Update(tea.Msg) (Tab, tea.Cmd)` | Every message reaches every tab, shown or not, so work a tab started goes on while the document is edited. Keys, mouse and pastes reach only the screen in front. The `WindowSizeMsg` it gets is the whole terminal, and `editor.FrontMsg{Name}` says which screen is in front, at the start and on every change. |
-| `View() string` | Its whole screen, drawn only while it is in front. The strip takes the end of its first row, which is best kept for a header. |
+| `Update(tea.Msg) (Tab, tea.Cmd)` | Every message reaches every tab, shown or not, so work a tab started goes on while the document is edited. Keys, mouse and pastes reach only the screen in front. The `WindowSizeMsg` it gets is the terminal less the strip's row, and `editor.FrontMsg{Name}` says which screen is in front, at the start and on every change. |
+| `View() string` | Its whole screen, drawn only while it is in front. The strip is drawn under its first row, which is best kept for a header. Its legend is its own: name **ctrl+t** there if it should show. |
 | `Busy() string` | What quitting now would cut short, or `""`. While any tab says something, quitting asks first and shows it. |
 
 A tab talks to the editor with messages its commands return:
@@ -124,6 +125,7 @@ A `PathField` has:
 | `Types` | `[]string` | Extensions the pick may have, e.g. `".yaml"`. Other files stay listed, and the picker says why it refuses them. Empty allows any file. |
 | `Dirs` | `bool` | A directory may be picked as well as a file. |
 | `Format` | `func(abs, docPath string) (string, error)` | Shapes the pick before it is written. `abs` is the absolute pick; `docPath` is the absolute path the document is saved to (`SavePath` when set), so a relative path holds where the file lands. An error is shown and nothing is written. `nil` writes `abs`. |
+| `Open` | `func(value, docPath string) (Config, error)` | Makes the entries of a top-level list open: **Enter** on an entry edits the file it names in a tab of its own, with the `Config` returned. `value` is the entry as written, `docPath` as for `Format`. Each file tab has its own undo, validation and save; **ctrl+t** steps through the open files, **esc** on a file's block list closes it and returns to the main screen (asking first when it has unsaved changes), and a file stays open until then. **q** quits only from the main screen; **ctrl+c** quits from anywhere. Both ask once about every edited file. Opening a file that is already open brings it to front. A file tab ignores the returned `Tabs` and `Actions`. An error is shown and nothing opens. |
 
 ```go
 editor.Config{

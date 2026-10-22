@@ -69,10 +69,11 @@ func TestTabsSwitchWithCtrlT(t *testing.T) {
 	m := tabsModel(t, Config{}, fakeTab{name: "download", got: &msgs})
 
 	out := screen(m)
-	strip, _, _ := strings.Cut(out, "\n")
-	assert.Contains(t, strip, " editor ")
+	strip := strings.Split(out, "\n")[1]
+	assert.Contains(t, strip, " tabs.yaml ", "the editor's tab is named by its file")
 	assert.Contains(t, strip, " download ")
-	assert.Contains(t, strip, "ctrl+t")
+	assert.NotContains(t, strip, "ctrl+t", "the editor's own legend names it")
+	assert.Contains(t, out, "[ctrl+t] change tab")
 	assert.Contains(t, out, "Blocks", "the editor is in front")
 	assert.NotContains(t, out, "TAB BODY")
 
@@ -97,40 +98,49 @@ func TestFrontTabOpensInFront(t *testing.T) {
 	assert.Equal(t, 0, m.active)
 }
 
-// The strip rides on the screen's own first row, so every screen has the
-// whole terminal and its rows are the terminal's.
-func TestTabsHaveTheWholeTerminal(t *testing.T) {
+// The strip takes a row of its own, so every screen is one row shorter and
+// the whole still fills the terminal.
+func TestTheStripTakesARowFromEveryScreen(t *testing.T) {
 	var msgs []tea.Msg
 	m := tabsModel(t, Config{}, fakeTab{name: "download", got: &msgs})
 
-	assert.Equal(t, []tea.WindowSizeMsg{{Width: 120, Height: 40}}, got[tea.WindowSizeMsg](msgs))
-	assert.Equal(t, 40, m.editor.height)
+	assert.Equal(t, []tea.WindowSizeMsg{{Width: 120, Height: 39}}, got[tea.WindowSizeMsg](msgs))
+	assert.Equal(t, 39, m.editor.height)
 	assert.Len(t, strings.Split(screen(m), "\n"), 40)
 }
 
-func TestTheStripTakesTheEndOfTheScreensFirstRow(t *testing.T) {
+// The strip sits under the screen's first row. An application tab's legend
+// is its own, so the strip names ctrl+t while one is in front.
+func TestTheStripSitsUnderTheScreensFirstRow(t *testing.T) {
 	var msgs []tea.Msg
 	m := tabsModel(t, Config{FrontTab: "download"}, fakeTab{name: "download", got: &msgs})
 
-	head, body, _ := strings.Cut(screen(m), "\n")
+	rows := strings.Split(screen(m), "\n")
 
-	assert.Regexp(t, `^TAB HEAD +editor   download  ctrl\+t switch$`, head)
-	assert.Equal(t, 120, ansi.StringWidth(head))
-	assert.True(t, strings.HasPrefix(body, "TAB BODY"), "the screen's other rows stay where they are")
+	assert.Equal(t, "TAB HEAD", rows[0])
+	assert.Regexp(t, `^ tabs\.yaml   download   ctrl\+t change tab +$`, rows[1])
+	assert.Equal(t, 120, ansi.StringWidth(rows[1]))
+	assert.Equal(t, "TAB BODY", rows[2], "the screen's other rows follow")
 }
 
-// Short of room, the hint goes first, then the end of the screen's text.
-func TestTheScreensHeaderGivesWayToTheStrip(t *testing.T) {
+// The tab in front is a filled block, which reads as selected at a glance.
+func TestTheTabInFrontIsFilled(t *testing.T) {
 	var msgs []tea.Msg
-	m := tabsModel(t, Config{FrontTab: "download"}, fakeTab{name: "download", got: &msgs})
+	m := tabsModel(t, Config{}, fakeTab{name: "download", got: &msgs})
 
-	m, _ = sendTabbed(m, tea.WindowSizeMsg{Width: 40, Height: 40})
-	head, _, _ := strings.Cut(screen(m), "\n")
-	assert.Regexp(t, `^TAB HEAD +editor   download $`, head)
+	st := m.tabStyle()
+	assert.NotEqual(t, st.Tab.GetBackground(), st.TabActive.GetBackground())
+	assert.True(t, st.TabActive.GetBold())
+}
 
-	m, _ = sendTabbed(m, tea.WindowSizeMsg{Width: 25, Height: 40})
-	head, _, _ = strings.Cut(screen(m), "\n")
-	assert.Equal(t, "TAB …  editor   download ", head)
+// The block editor's legend names ctrl+t too: the key works there as well.
+func TestTheBlockEditorLegendNamesCtrlT(t *testing.T) {
+	var msgs []tea.Msg
+	m := tabsModel(t, Config{}, fakeTab{name: "download", got: &msgs})
+
+	m, _ = sendTabbed(m, blocklist.OpenItemMsg{Item: blocklist.Item{Key: "server", Existing: true}})
+	require.Equal(t, paneBlockEdit, m.editor.mode)
+	assert.Contains(t, screen(m), "[ctrl+t] change tab")
 }
 
 func TestFrontMsgSaysWhichScreenIsInFront(t *testing.T) {

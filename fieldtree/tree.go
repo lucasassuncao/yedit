@@ -54,6 +54,7 @@ const (
 	ActionAddNew           // Enter on the KindAddNew row
 	ActionDeleted          // ctrl+d on a KindSeqItem row
 	ActionOpenChild        // Enter/→ on an openable map-of-struct field - drill in
+	ActionOpenEntry        // Enter on a value of a list of scalars - open what it names
 )
 
 // Model is the tree panel: the bezel tree over yedit's nodes (Nodes, Cursor,
@@ -82,6 +83,15 @@ func newModel(nodes []Node, h int) Model {
 	t := tree.New(nodes, h).WithKeys(tree.Keys{Up: keys.Up, Down: keys.Down, Left: keys.Left, Right: keys.Right})
 	t.EmptyMessage = "  (no fields)"
 	return Model{Model: t}
+}
+
+// NewScalarList builds the navigator for a list of scalars: one entry per value,
+// with no fields to expand, and [+ add new].
+func NewScalarList(content string, h int) Model {
+	tm := newModel(nil, h)
+	tm.isSeq = true
+	tm.Nodes = CollectionNodes(nil, yamledit.CollValueNode(content, false), false)
+	return tm
 }
 
 // New builds a Model for a block of the given kind from its schema defs, its
@@ -265,9 +275,9 @@ func (tm Model) WithNewSeqItem(defs []schema.FieldDef, label string) Model {
 		YAMLPath: []string{displayLabel},
 		Label:    displayLabel,
 		Depth:    0,
-		IsLeaf:   false,
+		IsLeaf:   len(defs) == 0, // a scalar entry has no fields to show
 		Checked:  true,
-		Expanded: true, // expand new items immediately so user sees the fields
+		Expanded: len(defs) > 0, // expand new items immediately so user sees the fields
 		SeqIdx:   newSeqIdx,
 	}
 	children := flattenDefsAsTree(defs, []string{displayLabel}, 1)
@@ -333,6 +343,10 @@ func (tm Model) handleEnter(vis []int) (Model, Action) {
 	switch nd.Kind {
 	case KindAddNew:
 		return tm, ActionAddNew
+	case KindSeqItem:
+		if nd.IsLeaf {
+			return tm, ActionOpenEntry
+		}
 	case KindField:
 		if nd.Openable {
 			return tm, ActionOpenChild
@@ -482,6 +496,9 @@ func nodeLine(nd Node, ni int, selected bool, th theme.Resolved, checkedDesc []b
 		arrow := "▶"
 		if nd.Expanded {
 			arrow = "▼"
+		}
+		if nd.IsLeaf {
+			arrow = " "
 		}
 		label := fmt.Sprintf("%s [%d] %s", arrow, nd.SeqIdx, nd.Label)
 		if selected {

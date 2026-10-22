@@ -176,6 +176,57 @@ func TestSeqBlockStillNavigates(t *testing.T) {
 	}
 }
 
+// scalarListSpec is a top-level list of strings with the definition the schema
+// gives it, the shape of movelooper's import.
+func scalarListSpec(content string) blockSpec {
+	return blockSpec{
+		key:     "import",
+		kind:    schema.KindList,
+		def:     schema.FieldDef{YAMLName: "import", Kind: schema.KindList, ElemScalar: "string"},
+		content: content,
+	}
+}
+
+func TestScalarListBlockListsEachValue(t *testing.T) {
+	be := newBlockEdit(Config{}, scalarListSpec("import:\n  - ./a.yaml\n  - ./b.yaml\n"), 100, 40)
+
+	require.True(t, be.isSeqNav(), "a list of strings uses the navigator")
+	assert.Equal(t, blockEditPanelTree, be.active)
+	assert.Equal(t, []string{"./a.yaml", "./b.yaml"}, seqItemLabels(be))
+	assert.Equal(t, "import:\n  - ./a.yaml\n", be.yamlEditor.Value())
+}
+
+func TestScalarListEntryEditsOneValue(t *testing.T) {
+	be := newBlockEdit(Config{}, scalarListSpec("import:\n  - ./a.yaml\n  - ./b.yaml\n"), 100, 40)
+
+	be.yamlEditor.SetValue("import:\n  - ./c.yaml\n")
+	be = be.flushCurrentEntry()
+	require.Equal(t, errNone, be.editorErr.kind, be.editorErr.message)
+
+	be, val, ok := be.commit()
+	require.True(t, ok, "commit failed; editorErr=%v", be.editorErr)
+	assert.Equal(t, "import:\n  - ./c.yaml\n  - ./b.yaml\n", yamledit.NodeToContent(be.key, val))
+}
+
+func TestScalarListEntryRejectsAMapping(t *testing.T) {
+	be := newBlockEdit(Config{}, scalarListSpec("import:\n  - ./a.yaml\n"), 100, 40)
+
+	be.yamlEditor.SetValue("import:\n  - path: ./c.yaml\n")
+	be = be.flushCurrentEntry()
+
+	assert.Equal(t, errParse, be.editorErr.kind)
+}
+
+func TestScalarListAddNewAppendsAnEntry(t *testing.T) {
+	be := newBlockEdit(Config{}, scalarListSpec("import:\n  - ./a.yaml\n"), 100, 40)
+
+	be = be.dispatch(AddEntry{})
+
+	assert.Equal(t, 2, yamledit.EntryCount(&be.node, false))
+	assert.Equal(t, 1, be.coll.current)
+	assert.Equal(t, errNone, be.editorErr.kind, be.editorErr.message)
+}
+
 // The shared resync path must not corrupt a sibling sequence item's checkmarks.
 func TestSeqBlockResyncNoContamination(t *testing.T) {
 	spec := blockSpec{
@@ -399,4 +450,82 @@ func TestEmptyMapKeyRefreshesTreeRow(t *testing.T) {
 	if len(labels) == 0 || labels[0] != `""` {
 		t.Errorf("labels = %v, want first = %q placeholder", labels, `""`)
 	}
+}
+
+// cursorToAddNew moves the tree cursor onto the "+ add new" row.
+func cursorToAddNew(be blockEditState) blockEditState {
+	for vi, ni := range be.tree.VisibleNodes() {
+		if be.tree.Nodes[ni].Kind == fieldtree.KindAddNew {
+			be.tree.Cursor = vi
+			break
+		}
+	}
+	return be
+}
+
+// TestSOT_CollectionToggleWhileBufferInvalid is the Classe A regression for the
+// collection navigator: toggling a field in an entry while its buffer is invalid
+// still leaves tree and node in agreement and produces valid YAML.
+func TestSOT_CollectionToggleWhileBufferInvalid(t *testing.T) {
+	be := newBlockEdit(Config{}, blockSpec{
+		key: "categories", defs: catDefs(), kind: schema.KindList,
+		content: `categories:
+  - name: a
+`,
+	}, 120, 40)
+	be = expandAll(be)
+
+	be.active = blockEditPanelYAML
+	be.yamlEditor.SetValue("categories:\n  - name: [bad\n")
+	if validateSnippetText(be.yamlEditor.Value()) == nil {
+		t.Fatal("test setup: expected invalid YAML")
+	}
+
+	be.active = blockEditPanelTree
+	be = cursorToLabel(be, "path")
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	entry := yamledit.EntryValueNode(&be.node, false, 0)
+	if !keyExistsInNode(entry, []string{"source", "path"}) {
+		t.Errorf("source.path not added to entry 0:\n%s", be.yamlEditor.Value())
+	}
+	if err := validateSnippetText(be.yamlEditor.Value()); err != nil {
+		t.Errorf("buffer invalid after toggle: %v", err)
+	}
+	assertCollTreeMatchesNode(t, be)
+}
+
+// TestSOT_CollectionAddDeleteConsistency drives add and delete and asserts the
+// node is the single source of truth for the entry list and labels (Classe B/D).
+func TestSOT_CollectionAddDeleteConsistency(t *testing.T) {
+	be := newBlockEdit(Config{NoDeleteConfirm: true}, blockSpec{
+		key: "categories", defs: catDefs(), kind: schema.KindList,
+		content: `categories:
+  - name: a
+  - name: b
+`,
+	}, 120, 40)
+
+	if got := yamledit.EntryCount(&be.node, false); got != 2 {
+		t.Fatalf("initial entry count = %d, want 2", got)
+	}
+	assertCollTreeMatchesNode(t, be)
+
+	// Add an entry via the [+ add new] row.
+	be = cursorToAddNew(be)
+	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if got := yamledit.EntryCount(&be.node, false); got != 3 {
+		t.Fatalf("after add, entry count = %d, want 3", got)
+	}
+	assertCollTreeMatchesNode(t, be)
+
+	// Delete the first entry.
+	be = be.dispatch(DeleteEntry{SeqIdx: 0})
+	if got := yamledit.EntryCount(&be.node, false); got != 2 {
+		t.Fatalf("after delete, entry count = %d, want 2", got)
+	}
+	if l := yamledit.EntryLabel(&be.node, false, 0); l != "b" {
+		t.Errorf("after deleting entry 0, first label = %q, want b", l)
+	}
+	assertCollTreeMatchesNode(t, be)
 }

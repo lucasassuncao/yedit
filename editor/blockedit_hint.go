@@ -40,10 +40,10 @@ func (be blockEditState) scrolledHintContent() string {
 }
 
 func (be blockEditState) hintContent() string {
-	// Tree-less blocks have no field nodes, so show the block's own metadata. The
-	// empty fieldPath makes this a block-level lookup, like the root list's hint
-	// panel; be.def.YAMLName would be misread as a child path and never resolve.
-	if be.tree.IsEmpty() {
+	// Tree-less blocks and lists of scalars have no field nodes, so show the
+	// block's own metadata. The empty fieldPath makes this a block-level lookup;
+	// be.def.YAMLName would be misread as a child path and never resolve.
+	if be.tree.IsEmpty() || be.isScalarSeqNav() {
 		return be.fieldHintFor("")
 	}
 	idx := be.tree.CurrentNodeIdx()

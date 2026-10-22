@@ -55,8 +55,8 @@ func EntryValueNode(node *yaml.Node, isMap bool, i int) *yaml.Node {
 	return node.Content[i]
 }
 
-// EntryLabel returns entry i's display label: the map key, or a sequence item's
-// "name" field, falling back to "item N".
+// EntryLabel returns entry i's display label: the map key, a scalar item's
+// value, or a sequence item's "name" field, falling back to "item N".
 func EntryLabel(node *yaml.Node, isMap bool, i int) string {
 	if isMap {
 		if i >= 0 && 2*i < len(node.Content) {
@@ -65,6 +65,9 @@ func EntryLabel(node *yaml.Node, isMap bool, i int) string {
 		return ""
 	}
 	if item := EntryValueNode(node, false, i); item != nil {
+		if item.Kind == yaml.ScalarNode && item.Value != "" {
+			return item.Value
+		}
 		if n := yamlnode.ChildByKey(item, "name"); n != nil && n.Value != "" {
 			return n.Value
 		}
@@ -122,6 +125,19 @@ func ParseEntryFromView(view string, isMap bool) (keyNode, valNode *yaml.Node, o
 		return nil, nil, false
 	}
 	return nil, item, true
+}
+
+// ParseScalarItemFromView is ParseEntryFromView for a list of scalars: the one
+// "- value" item of the single-entry editor. ok is false unless it is a scalar.
+func ParseScalarItemFromView(view string) (*yaml.Node, bool) {
+	blockVal := ValueNodeOfSnippet(view)
+	if blockVal == nil || blockVal.Kind != yaml.SequenceNode || len(blockVal.Content) == 0 {
+		return nil, false
+	}
+	if item := blockVal.Content[0]; item.Kind == yaml.ScalarNode {
+		return item, true
+	}
+	return nil, false
 }
 
 // SetEntry splices a parsed key/value back into the collection node at index i.

@@ -105,6 +105,7 @@ type Config struct {
 	NoDeleteConfirm      bool                 // skip the "Remove block?" dialog; deletion is still undoable via ctrl+u
 	NoValidateOnSave     bool                 // allow saving despite validator errors; a warning alert is shown but does not block
 	NoSaveConfirm        bool                 // skip the "Save changes?" dialog; warning confirms are still shown
+	ShowDiffOnSave       bool                 // the "Save changes?" dialog shows the diff of what the save writes
 	SavePath             string               // write here instead of Path, which is still used for loading
 	SchemaRecursionDepth int                  // extra levels a self-referential type expands; 0 uses the default (1)
 	AnimationDuration    time.Duration        // when > 0, the Hint/Example panel eases open and closed over this duration; 0 keeps the toggle instant and emits no timer messages
@@ -123,6 +124,9 @@ type PathField struct {
 	Types  []string                                  // extensions the pick may have, e.g. ".yaml"; empty allows any file
 	Dirs   bool                                      // a directory may be picked as well as a file
 	Format func(abs, docPath string) (string, error) // shapes the pick; an error is shown and nothing is written
+	// Open lets Enter on an entry of a top-level list edit the file it names in
+	// a tab of its own, with the Config it returns; an error is shown instead.
+	Open func(value, docPath string) (Config, error)
 }
 
 // Action is an application key on the root list. The application decides what

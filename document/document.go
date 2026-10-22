@@ -92,6 +92,9 @@ func (d Document) CanRedo() bool   { return len(d.future) > 0 }
 // can forget to update a flag.
 func (d Document) Dirty() bool { return !bytes.Equal(d.raw, d.loaded) }
 
+// Loaded is the content as it was last loaded or saved: what Dirty compares to.
+func (d Document) Loaded() []byte { return d.loaded }
+
 // SetPath overrides the path used by Save; Reload keeps re-reading the original
 // load path. The new path's on-disk state is recorded so ExternallyChanged
 // compares against the save destination instead of reporting a false positive.

@@ -69,6 +69,8 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 		be = be.handleTreeToggleDispatch()
 	case fieldtree.ActionAddNew:
 		be = be.dispatch(AddEntry{})
+	case fieldtree.ActionOpenEntry:
+		return be.openEntry()
 	case fieldtree.ActionDeleted:
 		be = be.handleTreeDeleteDispatch()
 	default:
@@ -228,7 +230,7 @@ func (be blockEditState) handleTreeAddNew() blockEditState {
 	be.editorErr = editorError{} // adding overrides an in-progress invalid entry
 	label := be.newEntryLabel()
 	be.tree = be.tree.WithNewSeqItem(be.childDefs, label)
-	kn, vn, ok := yamledit.ParseEntryFromView(be.key+":\n"+be.initialEntryContent(label), be.coll.isMap)
+	kn, vn, ok := be.parseEntry(be.key + ":\n" + be.initialEntryContent(label))
 	if !ok {
 		vn = &yaml.Node{Kind: yaml.MappingNode}
 		kn = &yaml.Node{Kind: yaml.ScalarNode, Value: label}

@@ -99,7 +99,7 @@ func (be blockEditState) flushAndLoadEntry(idx int) blockEditState {
 // the first child field so it matches the schema.
 func (be blockEditState) initialSeqItemContent(label string) string {
 	if len(be.childDefs) == 0 {
-		return "  - \n"
+		return "  - \"\"\n"
 	}
 	first := be.childDefs[0].YAMLName
 	if first == "name" {
@@ -108,9 +108,26 @@ func (be blockEditState) initialSeqItemContent(label string) string {
 	return "  - " + first + ": \"\"\n"
 }
 
-// isSeqNav reports whether this block is a structured sequence ([]Struct).
+// isSeqNav reports whether this block is a sequence shown entry by entry: a
+// structured one ([]Struct) or a top-level list of scalars.
 func (be blockEditState) isSeqNav() bool {
-	return be.kind == schema.KindList && len(be.childDefs) > 0
+	return be.kind == schema.KindList && (len(be.childDefs) > 0 || be.isScalarSeqNav())
+}
+
+// isScalarSeqNav reports whether this block is a top-level list of scalars
+// ([]string…). Nested editors carry no def, so they keep the whole-list editor.
+func (be blockEditState) isScalarSeqNav() bool {
+	return be.kind == schema.KindList && len(be.childDefs) == 0 && be.def.ElemScalar != ""
+}
+
+// parseEntry reads single-entry editor text back into the entry's nodes: a
+// scalar item for a list of scalars, a mapping for every other collection.
+func (be blockEditState) parseEntry(view string) (keyNode, valNode *yaml.Node, ok bool) {
+	if be.isScalarSeqNav() {
+		valNode, ok = yamledit.ParseScalarItemFromView(view)
+		return nil, valNode, ok
+	}
+	return yamledit.ParseEntryFromView(view, be.coll.isMap)
 }
 
 // isMapNav reports whether this block is a structured map (map[string]Struct).
@@ -157,7 +174,7 @@ func (be blockEditState) flushCurrentEntry() blockEditState {
 		be.editorErr = editorError{kind: errParse, message: "One entry per editor - use [+ add new] to create additional entries."}
 		return be
 	}
-	kn, vn, ok := yamledit.ParseEntryFromView(view, be.coll.isMap)
+	kn, vn, ok := be.parseEntry(view)
 	if !ok {
 		msg := "Invalid YAML - fix this entry before leaving it."
 		if !strings.HasPrefix(view, be.key+":") {

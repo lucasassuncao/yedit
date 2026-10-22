@@ -107,7 +107,13 @@ func (m model) save(then string) (tea.Model, tea.Cmd) {
 	if m.cfg.NoSaveConfirm {
 		return m, doSave
 	}
-	return m.showConfirmAlert("Save changes?", fmt.Sprintf("Save to %s?", m.doc.Path()), doSave)
+	if !m.cfg.ShowDiffOnSave {
+		return m.showConfirmAlert("Save changes?", fmt.Sprintf("Save to %s?", m.doc.Path()), doSave)
+	}
+	// The file on disk is still what was loaded (an external change returned
+	// above), so the diff against Loaded is exactly what the write changes.
+	m = m.enterAlert(newSaveReview(m.theme, m.doc.Path(), m.doc.Loaded(), m.doc.Raw(), doSave))
+	return m, nil
 }
 
 type doSaveMsg struct{ then string }

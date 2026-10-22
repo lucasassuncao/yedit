@@ -110,6 +110,16 @@ func TestDiscover_providerOverridesReflection(t *testing.T) {
 	}
 }
 
+// A caller that edits the fields it got back must not change what the next
+// caller of the same type sees.
+func TestDiscover_providerShapeCacheHandsOutCopies(t *testing.T) {
+	first := schema.Discover(&configWithUnion{})
+	require.Len(t, first, 1)
+	require.Len(t, first[0].Children, 2)
+	first[0].Children[0].YAMLName = "changed"
+	assert.Equal(t, "target", schema.Discover(&configWithUnion{})[0].Children[0].YAMLName)
+}
+
 type scalarConfig struct {
 	Str  string        `yaml:"str"`
 	Num  int           `yaml:"num"`

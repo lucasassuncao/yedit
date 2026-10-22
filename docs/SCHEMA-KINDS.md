@@ -12,7 +12,7 @@ How Go types map to yedit editor behavior, with complete code examples.
 | Implements `yaml.Marshaler` or `encoding.TextMarshaler` | `KindPrimitive` | YAML pane only - struct fields are NOT exposed |
 | `interface{}` / `any` | `KindAny` | YAML pane only - use `Provider` for a typed schema |
 | `SomeStruct` | `KindObject` | Tree with ADDED/AVAILABLE fields |
-| `[]string`, `[]int` (scalar slice) | `KindList` (no child defs) | YAML pane only |
+| `[]string`, `[]int` (scalar slice) | `KindList` (no child defs) | Top-level block: `[N]` navigator, one value per entry. Nested: YAML pane only |
 | `[]SomeStruct` | `KindList` with child defs | `[N]` navigator + field tree per entry |
 | `[]map[string]T` | `KindList` (no child defs) | YAML pane only |
 | `map[string]string`, `map[string]any` | `KindDictionary` (no child defs) | YAML pane only |
@@ -124,7 +124,7 @@ ports:
   - 443
 ```
 
-**Editor behavior:** YAML pane only. Tree left panel shows "(no fields)". User edits the raw YAML directly.
+**Editor behavior:** as a top-level block, the `[N]` navigator lists the values, each labelled by itself, with `[+ add new]` and ctrl+d to remove; the YAML pane edits the selected value alone, and the hint panel shows the block's own metadata. A path field's ctrl+o pick adds a new entry from the tree, or replaces the entry being edited in the YAML pane. Nested inside a struct, the list is edited as raw YAML in the YAML pane.
 
 **Flow style** (also valid, preserved by the editor):
 ```yaml
@@ -366,11 +366,12 @@ The `yaml` tag is the only tag yedit reads. Field metadata - description, requir
 
 ## The child-defs rule
 
-The `[N]` navigator activates **only** when the element/value type is a concrete struct:
+The `[N]` navigator activates when the element/value type is a concrete struct, and for a top-level list of scalars:
 
 ```
 []SomeStruct          → KindList + child defs        → [N] navigator ✓
-[]string              → KindList + no child defs      → YAML pane    ✗
+[]string (top level)  → KindList + no child defs      → [N] navigator ✓
+[]string (nested)     → KindList + no child defs      → YAML pane    ✗
 []map[string]T        → KindList + no child defs      → YAML pane    ✗
 
 map[string]SomeStruct → KindDictionary + child defs   → [N] navigator ✓

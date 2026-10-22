@@ -165,7 +165,7 @@ var RunAll = validate.RunAll
 ```
 
 <a name="Action"></a>
-## type [Action](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L131-L137>)
+## type [Action](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L135-L141>)
 
 Action is an application key on the root list. The application decides what it does; the editor shows it in the legend, saves first when asked, and reports the outcome. Set Run or Exec; Exec wins when both are set.
 
@@ -180,7 +180,7 @@ type Action struct {
 ```
 
 <a name="ActionContext"></a>
-## type [ActionContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L140-L143>)
+## type [ActionContext](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L144-L147>)
 
 ActionContext is what an Action receives.
 
@@ -192,7 +192,7 @@ type ActionContext struct {
 ```
 
 <a name="ActionResult"></a>
-## type [ActionResult](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L147-L150>)
+## type [ActionResult](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L151-L154>)
 
 ActionResult is what Run reports: Message in an alert, or, when Output is set, Message above Output in a scrollable pager.
 
@@ -260,7 +260,7 @@ type CommitBlock struct{}
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L93-L117>)
+## type [Config](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L93-L118>)
 
 Config bundles everything the editor needs from the embedding application.
 
@@ -286,6 +286,7 @@ type Config struct {
     NoDeleteConfirm      bool                 // skip the "Remove block?" dialog; deletion is still undoable via ctrl+u
     NoValidateOnSave     bool                 // allow saving despite validator errors; a warning alert is shown but does not block
     NoSaveConfirm        bool                 // skip the "Save changes?" dialog; warning confirms are still shown
+    ShowDiffOnSave       bool                 // the "Save changes?" dialog shows the diff of what the save writes
     SavePath             string               // write here instead of Path, which is still used for loading
     SchemaRecursionDepth int                  // extra levels a self-referential type expands; 0 uses the default (1)
     AnimationDuration    time.Duration        // when > 0, the Hint/Example panel eases open and closed over this duration; 0 keeps the toggle instant and emits no timer messages
@@ -385,7 +386,7 @@ func FormatCustom(name string, validate func(string) bool) Format
 FormatCustom builds an app\-specific format. See spec.FormatCustom.
 
 <a name="FrontMsg"></a>
-## type [FrontMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L39>)
+## type [FrontMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L42>)
 
 FrontMsg tells every screen which one is in front, "editor" or a tab's Name: at the start, and each time another comes in front.
 
@@ -441,7 +442,7 @@ type OpenBlock struct{ Key string }
 ```
 
 <a name="PathField"></a>
-## type [PathField](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L122-L126>)
+## type [PathField](<https://github.com/lucasassuncao/yedit/blob/main/editor/config.go#L123-L130>)
 
 PathField is how a picked path is written into its key. The picker starts in the document's folder; Format gets the absolute pick and the absolute path the document will be saved to, and returns what to write. nil Format writes abs.
 
@@ -450,6 +451,9 @@ type PathField struct {
     Types  []string                                  // extensions the pick may have, e.g. ".yaml"; empty allows any file
     Dirs   bool                                      // a directory may be picked as well as a file
     Format func(abs, docPath string) (string, error) // shapes the pick; an error is shown and nothing is written
+    // Open lets Enter on an entry of a top-level list edit the file it names in
+    // a tab of its own, with the Config it returns; an error is shown instead.
+    Open func(value, docPath string) (Config, error)
 }
 ```
 
@@ -478,7 +482,7 @@ type PickValue struct {
 ```
 
 <a name="QuitMsg"></a>
-## type [QuitMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L35>)
+## type [QuitMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L38>)
 
 QuitMsg asks the editor to quit, as q does there: asking first when the document has unsaved changes or a tab is Busy.
 
@@ -563,7 +567,7 @@ type Save struct {
 ```
 
 <a name="SaveMsg"></a>
-## type [SaveMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L28>)
+## type [SaveMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L31>)
 
 SaveMsg asks the editor to save the document as ctrl\+s does, in front, through the same checks and question. SavedMsg answers every tab once the file is written; a refused or failed save answers nothing.
 
@@ -572,7 +576,7 @@ type SaveMsg struct{}
 ```
 
 <a name="SavedMsg"></a>
-## type [SavedMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L31>)
+## type [SavedMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L34>)
 
 SavedMsg tells the tabs the document is on disk at Path, as a SaveMsg asked.
 
@@ -593,7 +597,7 @@ type SyncYAML struct {
 ```
 
 <a name="Tab"></a>
-## type [Tab](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L17-L23>)
+## type [Tab](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L20-L26>)
 
 Tab is an application screen beside the editor's. Every message reaches it, on screen or not, so work it starts goes on while the document is edited; keys, mouse and pastes reach only the screen in front.
 
@@ -602,7 +606,7 @@ type Tab interface {
     Name() string
     Init() tea.Cmd
     Update(tea.Msg) (Tab, tea.Cmd)
-    View() string // the whole screen, sized by the last WindowSizeMsg; the strip takes the end of its first row
+    View() string // the whole screen, sized by the last WindowSizeMsg; the strip is drawn under its first row
     Busy() string // what quitting now would cut short, "" when nothing
 }
 ```

@@ -3,11 +3,44 @@ package fieldtree
 import (
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/lucasassuncao/bezel/theme"
+	"github.com/lucasassuncao/yedit/schema"
 )
+
+// A list of scalars lists its values as entries with nothing to expand, and
+// the cursor's entry is the one the editor loads.
+func TestNewScalarListListsEachValue(t *testing.T) {
+	tm := NewScalarList("import:\n  - ./a.yaml\n  - ./b.yaml\n", 10)
+
+	require.Len(t, tm.Nodes, 3)
+	for _, n := range tm.Nodes[:2] {
+		assert.Equal(t, KindSeqItem, n.Kind)
+		assert.True(t, n.IsLeaf, "%s has no fields to expand", n.Label)
+	}
+	assert.Equal(t, KindAddNew, tm.Nodes[2].Kind)
+
+	tm, _ = tm.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	assert.Equal(t, 1, tm.NearestSeqItem())
+
+	view := ansi.Strip(tm.View(theme.Resolve(theme.Theme{}, true)))
+	assert.Contains(t, view, "[1] ./b.yaml")
+	assert.NotContains(t, view, "▶ [0]", "a leaf entry draws no expand arrow")
+}
+
+// Enter on a value of a list of scalars asks the editor to open it.
+func TestEnterOnAScalarEntryAsksToOpenIt(t *testing.T) {
+	tm := NewScalarList("import:\n  - ./a.yaml\n", 10)
+
+	_, act := tm.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	assert.Equal(t, ActionOpenEntry, act)
+}
 
 // This file exhaustively validates the tree interaction layer: every cursor-target
 // state crossed with every key tree.Update handles. The grid is 11 targets × 6
@@ -188,5 +221,43 @@ func TestRestoreCursorToPathDoesNotMutateSharedNodes(t *testing.T) {
 	}
 	if shared[0].Expanded {
 		t.Error("restoreCursorToPath mutated the shared input slice in place (copy-on-write violated)")
+	}
+}
+
+// An inline parent whose only content is a checked openable child must count as
+// having content, for both colouring and ctrl+d removal.
+func TestHasCheckedDescendantCountsOpenable(t *testing.T) {
+	nodes := []Node{
+		{Kind: KindField, Label: "filter", Depth: 1, IsLeaf: false},
+		{Kind: KindField, Label: "any", Depth: 2, IsLeaf: false, Openable: true, Checked: true},
+	}
+	if !hasCheckedDescendant(nodes, 0) {
+		t.Error("filter with a checked openable child should count as having content")
+	}
+}
+
+// An openable list-of-struct field is drilled into, not expanded inline, so it
+// must not spawn phantom child nodes.
+func TestOpenableListHasNoInlineChildren(t *testing.T) {
+	defs := []schema.FieldDef{
+		{YAMLName: "filter", Kind: schema.KindObject, Children: []schema.FieldDef{
+			{YAMLName: "any", Kind: schema.KindList, Children: []schema.FieldDef{
+				{YAMLName: "regex", Kind: schema.KindPrimitive},
+			}},
+		}},
+	}
+	nodes := flattenDefsAsTree(defs, nil, 0)
+	for _, n := range nodes {
+		if n.Label == "regex" {
+			t.Errorf("openable list spawned a phantom inline child %q", n.Label)
+		}
+		if n.Label == "any" {
+			if !n.Openable {
+				t.Error("any should be openable")
+			}
+			if !n.IsLeaf {
+				t.Error("openable list should be leaf-like in the tree (no inline children)")
+			}
+		}
 	}
 }
