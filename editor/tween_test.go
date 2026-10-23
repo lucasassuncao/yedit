@@ -97,7 +97,7 @@ func TestToggleHintsAnimatesAndSettles(t *testing.T) {
 	for m.hintAnim.Active() {
 		must.False(time.Now().After(deadline), "animation never settled")
 		var updated tea.Model
-		updated, cmd = m.handleHintAnimTick(hintAnimTickMsg{})
+		updated, cmd = m.handleHintAnimTick(hintAnimTickMsg{at: time.Now()})
 		m = updated.(model)
 	}
 
@@ -137,7 +137,7 @@ func TestHintAnimKeepsLegendBarAnchored(t *testing.T) {
 		deadline := time.Now().Add(2 * time.Second)
 		for m.hintAnim.Active() {
 			must.False(time.Now().After(deadline), phase+": animation never settled")
-			updated, _ = m.handleHintAnimTick(hintAnimTickMsg{})
+			updated, _ = m.handleHintAnimTick(hintAnimTickMsg{at: time.Now()})
 			m = updated.(model)
 			is.Equal(want, lastLine(m.viewContent()),
 				"%s: frame at hint height %d shifted the legend bar", phase, m.hintPanelH())
@@ -162,11 +162,11 @@ func TestHintAnimTickIsInertWhenIdle(t *testing.T) {
 	is := assert.New(t)
 	m := newHintModel(t, 0)
 
-	updated, cmd := m.handleHintAnimTick(hintAnimTickMsg{})
+	updated, cmd := m.handleHintAnimTick(hintAnimTickMsg{at: time.Now()})
 	is.Nil(cmd, "an idle root tick does not reschedule")
 	is.Equal(m.hintPanelH(), updated.(model).hintPanelH(), "an idle tick changes nothing")
 
-	updated, cmd = m.handleHintAnimTick(hintAnimTickMsg{block: true})
+	updated, cmd = m.handleHintAnimTick(hintAnimTickMsg{block: true, at: time.Now()})
 	is.Nil(cmd, "a block tick with no editor open does not reschedule")
 	is.Equal(paneList, updated.(model).mode, "a stray block tick does not change screens")
 }
@@ -191,7 +191,7 @@ func TestHintAnimFramesDoNotRebuildPreviewRenderer(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for m.hintAnim.Active() {
 		must.False(time.Now().After(deadline), "animation never settled")
-		updated, _ = m.handleHintAnimTick(hintAnimTickMsg{})
+		updated, _ = m.handleHintAnimTick(hintAnimTickMsg{at: time.Now()})
 		m = updated.(model)
 		if m.hintAnim.Active() {
 			is.Same(renderer, m.previewRenderer, "in-flight frames must reuse the renderer")
@@ -228,7 +228,7 @@ func TestBlockEditorHintAnimates(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for be.hintAnim.Active() {
 		must.False(time.Now().After(deadline), "animation never settled")
-		be, cmd = be.Update(hintAnimTickMsg{block: true})
+		be, cmd = be.Update(hintAnimTickMsg{block: true, at: time.Now()})
 	}
 
 	is.Nil(cmd, "the final frame stops rescheduling itself")
@@ -253,4 +253,19 @@ func TestBlockEditorHintToggleInstantWithoutAnimation(t *testing.T) {
 	is.Nil(cmd, "no tick loop is spawned when animation is off")
 	is.False(be.hintAnim.Active(), "no tween is started when animation is off")
 	is.Equal(0, be.hintH(), "the panel closes immediately")
+}
+
+// Time reaches the tween only through the frame: two frames an hour apart land
+// it at once, however little real time passed between them.
+func TestHintAnimReadsTimeFromTheFrame(t *testing.T) {
+	m := newHintModel(t, 60*time.Millisecond)
+	updated, _ := m.dispatch(ToggleHints{})
+	m = updated.(model)
+	require.True(t, m.hintAnim.Active())
+
+	at := time.Unix(1000, 0)
+	updated, _ = m.handleHintAnimTick(hintAnimTickMsg{at: at})
+	updated, cmd := updated.(model).handleHintAnimTick(hintAnimTickMsg{at: at.Add(time.Hour)})
+	assert.Nil(t, cmd)
+	assert.False(t, updated.(model).hintAnim.Active())
 }

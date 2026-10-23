@@ -410,8 +410,8 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	// Animation frames advance regardless of mode, so they precede the mode
 	// switch. At runtime handleHintAnimTick routes them here; this case keeps
 	// be.Update self-contained for tests that drive it directly.
-	if _, ok := msg.(hintAnimTickMsg); ok {
-		return be.advanceHintAnim()
+	if t, ok := msg.(hintAnimTickMsg); ok {
+		return be.advanceHintAnim(t.at)
 	}
 
 	if m, ok := msg.(tea.WindowSizeMsg); ok {
