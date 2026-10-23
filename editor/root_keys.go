@@ -37,7 +37,7 @@ func (m model) runAction(msg tea.KeyMsg) (model, tea.Cmd, bool) {
 	}
 	m.sh = sh
 	if sh.HasOverlay() {
-		m.mode = paneAlert
+		m = m.alertOver()
 	}
 	return m, cmd, true
 }

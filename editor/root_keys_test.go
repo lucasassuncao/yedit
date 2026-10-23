@@ -8,6 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/charmbracelet/x/ansi"
+	"github.com/lucasassuncao/bezel/overlay"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -94,4 +97,57 @@ func TestDismissDocPresetsRestoresListPane(t *testing.T) {
 	must.Equal(paneList, m.mode)
 	must.Equal(listBefore, m.sh.Rect("list"), "list pane lost its rect")
 	must.Equal(hintBefore, m.sh.Rect("hint"), "hint pane did not come back")
+}
+
+// An overlay opened from the preview or the hint leaves that pane framed while
+// it is up, and gives the keys back to it when it closes.
+func TestAnOverlayGivesTheKeysBackToThePaneUnderIt(t *testing.T) {
+	focus := map[string]func(*testing.T, model) model{
+		"preview": func(t *testing.T, m model) model {
+			m, _ = pressAction(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
+			return m
+		},
+		"hint": func(t *testing.T, m model) model {
+			updated, _ := m.Update(focusHintMsg{})
+			return updated.(model)
+		},
+	}
+	open := map[string]func(*testing.T, model) model{
+		"help": func(t *testing.T, m model) model {
+			updated, _ := m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+			return updated.(model)
+		},
+		"validate": func(t *testing.T, m model) model {
+			m, _ = pressAction(t, m, tea.KeyPressMsg{Code: 'l', Mod: tea.ModCtrl})
+			return m
+		},
+	}
+	for paneName, toPane := range focus {
+		for overlayName, toOverlay := range open {
+			if paneName == "hint" && overlayName == "validate" {
+				continue // the hint is for reading: it offers no document keys
+			}
+			t.Run(paneName+"/"+overlayName, func(t *testing.T) {
+				must := require.New(t)
+				m := toPane(t, newHintModel(t, 0))
+				want := m.mode
+				must.Equal(paneName, m.rootPane())
+
+				m = toOverlay(t, m)
+				must.True(m.sh.HasOverlay(), "the overlay is up")
+				must.Equal(paneName, m.rootPane(), "the pane keeps its frame under the overlay")
+				must.Contains(ansi.Strip(m.View().Content), "[esc] back", "the legend is still the %s's", paneName)
+
+				updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+				if cmd != nil {
+					if msg, ok := cmd().(overlay.CloseMsg); ok {
+						updated, _ = updated.Update(msg)
+					}
+				}
+				m = updated.(model)
+				must.False(m.sh.HasOverlay(), "esc closes the overlay")
+				must.Equal(want, m.mode, "the keys go back to the %s", paneName)
+			})
+		}
+	}
 }

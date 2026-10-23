@@ -75,6 +75,7 @@ type model struct {
 	hintAnim      animation.Tween // in-flight hint transition; inactive unless Config.AnimationDuration is set
 	hintScroll    int             // first hint line shown while mode == paneHint
 	hintFrom      pane            // the pane paneHint gives the keys back to
+	alertFrom     pane            // the pane paneAlert gives the keys back to
 	saved         bool            // at least one save succeeded this session; reported via Result
 	busy          string          // what Config.Tabs say quitting would cut short; set before each message
 	width, height int
@@ -165,11 +166,45 @@ func (m model) enterBlockEdit() model {
 	return m
 }
 
-// enterAlert shows a modal over the current (list) screen.
+// enterAlert shows a modal over the current screen.
 func (m model) enterAlert(o overlay.Overlay) model {
-	m.mode = paneAlert
 	m.sh = m.sh.Push(o)
+	return m.alertOver()
+}
+
+// alertOver puts the editor in alert mode over the open overlay. The preview
+// and the hint keep their frame and get the keys back; other screens, the list.
+func (m model) alertOver() model {
+	switch m.mode {
+	case paneAlert:
+	case panePreview, paneHint:
+		m.alertFrom = m.mode
+	default:
+		m.alertFrom = paneList
+	}
+	m.mode = paneAlert
 	return m
+}
+
+// leaveAlert gives the keys back to the root pane the alert opened over.
+func (m model) leaveAlert() model {
+	switch m.alertFrom {
+	case panePreview:
+		return m.enterPreview()
+	case paneHint:
+		m.mode = paneHint
+		m.sh = m.sh.Pop()
+		return m
+	}
+	return m.enterList()
+}
+
+// basePane is the screen the keys belong to, the one under an alert included.
+func (m model) basePane() pane {
+	if m.mode == paneAlert {
+		return m.alertFrom
+	}
+	return m.mode
 }
 
 // enterDocPreset switches to the document-level preset picker.
@@ -477,7 +512,7 @@ func (m model) handleDismissedAlert(msg overlay.CloseMsg) (tea.Model, tea.Cmd) {
 	if len(m.blockEdits) > 0 {
 		m = m.enterBlockEdit()
 	} else {
-		m = m.enterList()
+		m = m.leaveAlert()
 	}
 	return m, nil
 }

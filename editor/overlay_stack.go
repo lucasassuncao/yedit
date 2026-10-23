@@ -52,7 +52,8 @@ func (m model) withTopBEError(kind errKind, msg string) model {
 	return m.withTopBE(be)
 }
 
-// The enter* helpers in root.go are the only functions that assign m.mode. Each
+// The enter* helpers in root.go, with alertOver and leaveAlert, are the only
+// functions that assign m.mode outside the hint's own toggle. Each
 // sets the active pane together with the data that pane owns, so the invariants
 //
 //	alertVisible          ⟹  mode == paneAlert

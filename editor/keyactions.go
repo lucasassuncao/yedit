@@ -123,13 +123,13 @@ func (m model) screenActions() (lead, keys []shell.Action) {
 	save := send("ctrl+s", "save", saveRequestedMsg{}, secondRow)
 	validate := send("ctrl+l", "validate", validateRequestedMsg{}, secondRow)
 	hints := hintKeys(m.cfg.EnableHints, m.showHint, true, focusHintMsg{}, toggleHintsMsg{})
-	switch {
-	case m.mode == paneDocPreset:
+	switch base := m.basePane(); {
+	case base == paneDocPreset:
 		return nil, append(browserActions(m.docPreset.PreviewFocus, "apply"), save, validate)
-	case m.mode == panePreview:
+	case base == panePreview:
 		out := []shell.Action{shell.ChangePane(), shell.Scroll(), send("esc", "back", previewBackMsg{})}
 		return nil, append(append(out, m.quitKeys()...), shell.Help(), save, validate)
-	case m.mode == paneHint:
+	case base == paneHint:
 		// tab and esc both give the keys back to the pane they came from. The
 		// hint is for reading, so the document keys and ctrl+h are not offered.
 		out := []shell.Action{
