@@ -1,6 +1,9 @@
 package render
 
 import (
+	"fmt"
+	"runtime"
+	"strings"
 	"testing"
 
 	"charm.land/lipgloss/v2"
@@ -69,4 +72,35 @@ func TestDiffPaintsOnlyChangedRows(t *testing.T) {
 	assert.Equal(t, plain[1], got[1], "a kept row is not painted")
 	assert.NotEqual(t, plain[2], got[2], "a removed row is painted")
 	assert.NotEqual(t, plain[3], got[3], "an added row is painted")
+}
+
+// One line changed in a long file costs memory in proportion to the file, not
+// to its square: saving a big config must not run the editor out of memory.
+func TestDiffOfOneChangeInALongFileStaysSmall(t *testing.T) {
+	var sb strings.Builder
+	for i := range 20000 {
+		fmt.Fprintf(&sb, "line %d\n", i)
+	}
+	before := sb.String()
+	after := strings.Replace(before, "line 10000\n", "LINE 10000\n", 1)
+
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	start := ms.TotalAlloc
+	got := Diff([]byte(before), []byte(after), DiffStyles{})
+	runtime.ReadMemStats(&ms)
+
+	assert.Equal(t, []string{
+		"@@ -9999,5 +9999,5 @@",
+		" 9999  9999   line 9998 ", "10000 10000   line 9999 ", "10001       - line 10000",
+		"      10001 + LINE 10000", "10002 10002   line 10001", "10003 10003   line 10002",
+	}, got.Rows)
+	assert.Less(t, ms.TotalAlloc-start, uint64(64<<20), "a 20000-line table would be 3 GB")
+}
+
+// Lines alike at both ends stay kept; only what lies between them is diffed.
+func TestDiffOfARepeatedLineAddsOne(t *testing.T) {
+	got := Diff([]byte("a\na\n"), []byte("a\na\na\n"), DiffStyles{})
+
+	assert.Equal(t, []string{"@@ -1,2 +1,3 @@", "1 1   a", "2 2   a", "  3 + a"}, got.Rows)
 }

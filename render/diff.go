@@ -94,8 +94,33 @@ func splitLines(b []byte) []string {
 	return strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
 }
 
-// lineEdits walks a longest common subsequence of a and b, removals first.
+// lineEdits keeps the lines a and b share at both ends and diffs only what
+// lies between, so the table below is the size of the change, not the file.
 func lineEdits(a, b []string) []edit {
+	pre := 0
+	for pre < len(a) && pre < len(b) && a[pre] == b[pre] {
+		pre++
+	}
+	suf := 0
+	for suf < len(a)-pre && suf < len(b)-pre && a[len(a)-1-suf] == b[len(b)-1-suf] {
+		suf++
+	}
+	out := make([]edit, 0, len(a)+len(b)-pre-suf)
+	for i := range pre {
+		out = append(out, edit{' ', a[i], i, i})
+	}
+	for _, e := range lcsEdits(a[pre:len(a)-suf], b[pre:len(b)-suf]) {
+		out = append(out, edit{e.op, e.text, e.old + pre, e.new + pre})
+	}
+	for k := suf; k > 0; k-- {
+		i, j := len(a)-k, len(b)-k
+		out = append(out, edit{' ', a[i], i, j})
+	}
+	return out
+}
+
+// lcsEdits walks a longest common subsequence of a and b, removals first.
+func lcsEdits(a, b []string) []edit {
 	lcs := make([][]int, len(a)+1)
 	for i := range lcs {
 		lcs[i] = make([]int, len(b)+1)
