@@ -3,10 +3,10 @@ package editor
 import (
 	"fmt"
 
-	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/lucasassuncao/bezel/browser"
+	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/yedit/keys"
 )
 

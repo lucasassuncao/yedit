@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/theme"
 	"github.com/lucasassuncao/bezel/tree"
 	"github.com/lucasassuncao/yedit/keys"

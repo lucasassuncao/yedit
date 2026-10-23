@@ -184,12 +184,12 @@ func (be blockEditState) applyToggle(ctx yamledit.ToggleCtx, node fieldtree.Node
 		// Only rebuild the buffer when the toggle succeeded: on a parse error the
 		// buffer holds the invalid text, and overwriting it would mask the error.
 		if be.editorErr.kind == errNone {
-			be.yamlEditor.SetValue(yamledit.EntryViewYAML(&be.node, be.key, be.coll.isMap, be.coll.current))
+			be.yamlEditor = be.yamlEditor.SetValue(yamledit.EntryViewYAML(&be.node, be.key, be.coll.isMap, be.coll.current))
 		}
 		return be
 	}
 	be.node = *fieldtree.ToggleNodeField(&be.node, ctx, node, checked)
-	be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
+	be.yamlEditor = be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
 	return be
 }
 

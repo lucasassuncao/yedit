@@ -4,15 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/atotto/clipboard"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"go.yaml.in/yaml/v3"
 
 	"github.com/lucasassuncao/yedit/fieldtree"
+	"github.com/lucasassuncao/yedit/render"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/yamledit"
 	"github.com/lucasassuncao/yedit/yamlnode"
@@ -164,7 +163,7 @@ func TestCollectionNav_RawSetValueDoesNotMutateNode(t *testing.T) {
 	original := be.entryYAML(0)
 
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
+	be.yamlEditor = be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
 	be.dirty = true
 
 	must.Equal(original, be.entryYAML(0), "canonical node was mutated by a raw SetValue")
@@ -177,7 +176,7 @@ func TestCollectionNav_CommitFlushesAndSerializesAll(t *testing.T) {
 	be := newBlockEdit(Config{}, spec, 100, 40)
 
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
+	be.yamlEditor = be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
 	be.dirty = true
 
 	_, val, ok := be.commit()
@@ -197,7 +196,7 @@ func TestCollectionNav_DoubleCommitIdempotent(t *testing.T) {
 	be := newBlockEdit(Config{}, spec, 100, 40)
 
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
+	be.yamlEditor = be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
 	be.dirty = true
 
 	be, val1, ok := be.commit()
@@ -271,7 +270,7 @@ func TestResyncToleratesInvalidYAML_struct(t *testing.T) {
 
 	// Unterminated flow sequence - definitely invalid YAML.
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("configuration:\n  output: [unterminated\n")
+	be.yamlEditor = be.yamlEditor.SetValue("configuration:\n  output: [unterminated\n")
 
 	tm := be.resyncTreeFromYAML() // must not panic
 
@@ -296,7 +295,7 @@ func TestResyncToleratesInvalidYAML_collection(t *testing.T) {
 	nodeBefore := yamledit.NodeToContent(be.key, &be.node)
 
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("categories:\n  - name: [unterminated\n")
+	be.yamlEditor = be.yamlEditor.SetValue("categories:\n  - name: [unterminated\n")
 
 	tm := be.resyncTreeFromYAML() // must not panic
 
@@ -407,7 +406,7 @@ func TestCommit_RejectsExtraTopLevelKeys(t *testing.T) {
 	must := require.New(t)
 	be := newBlockEdit(Config{}, commitShapeSpec(), 100, 40)
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("server:\n  host: localhost\nlogging:\n  level: debug\n")
+	be.yamlEditor = be.yamlEditor.SetValue("server:\n  host: localhost\nlogging:\n  level: debug\n")
 
 	committed, val, ok := be.commit()
 	must.False(ok, "commit must reject a buffer with two top-level keys")
@@ -423,7 +422,7 @@ func TestCommit_RejectsRenamedTopLevelKey(t *testing.T) {
 	must := require.New(t)
 	be := newBlockEdit(Config{}, commitShapeSpec(), 100, 40)
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("cluster:\n  host: localhost\n")
+	be.yamlEditor = be.yamlEditor.SetValue("cluster:\n  host: localhost\n")
 
 	committed, val, ok := be.commit()
 	must.False(ok, "commit must reject a renamed top-level key")
@@ -440,7 +439,7 @@ func TestCommit_RejectsMissingHeader(t *testing.T) {
 	for _, buffer := range []string{"just a scalar", ""} {
 		be := newBlockEdit(Config{}, commitShapeSpec(), 100, 40)
 		be.active = blockEditPanelYAML
-		be.yamlEditor.SetValue(buffer)
+		be.yamlEditor = be.yamlEditor.SetValue(buffer)
 
 		committed, val, ok := be.commit()
 		must.False(ok, "commit must reject buffer %q", buffer)
@@ -457,7 +456,7 @@ func TestCommit_AcceptsWellFormedBlock(t *testing.T) {
 	must := require.New(t)
 	be := newBlockEdit(Config{}, commitShapeSpec(), 100, 40)
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("server:\n  host: example.org\n  port: 8080\n")
+	be.yamlEditor = be.yamlEditor.SetValue("server:\n  host: example.org\n  port: 8080\n")
 
 	committed, val, ok := be.commit()
 	must.True(ok, "commit failed; editorErr=%v", committed.editorErr)
@@ -787,11 +786,11 @@ func TestComputedDirty_CollectionRevertReadsClean(t *testing.T) {
 	original := be.yamlEditor.Value()
 
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
+	be.yamlEditor = be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
 	be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value(), Checkpoint: false})
 	must.True(be.dirty, "edited entry must read dirty")
 
-	be.yamlEditor.SetValue(original)
+	be.yamlEditor = be.yamlEditor.SetValue(original)
 	be = be.dispatch(SyncYAML{Content: original, Checkpoint: false})
 	is.False(be.dirty, "reverting the entry to its original content must read clean again")
 }
@@ -799,15 +798,12 @@ func TestComputedDirty_CollectionRevertReadsClean(t *testing.T) {
 // The paste path's undo checkpoint must pair the pre-paste buffer with the
 // pre-paste node; capturing the post-paste buffer left the pasted text behind.
 func TestPasteUndoRestoresBufferAndNode(t *testing.T) {
-	if err := clipboard.WriteAll("  extra: value\n"); err != nil {
-		t.Skipf("clipboard unavailable: %v", err)
-	}
 	be := newBlockEdit(Config{}, structSpec(), 100, 40)
 	be = be.focusPanel(toEditor) // focus the YAML panel (checkpoints, like a real Tab)
 	prevBuf := be.yamlEditor.Value()
 	prevNode := yamledit.NodeToContent(be.key, &be.node)
 
-	be2, _ := be.updateEditing(textarea.Paste())
+	be2, _ := be.updateEditing(tea.PasteMsg{Content: "  extra: value"})
 	if be2.yamlEditor.Value() == prevBuf {
 		t.Skip("paste message did not mutate the buffer")
 	}
@@ -819,4 +815,12 @@ func TestPasteUndoRestoresBufferAndNode(t *testing.T) {
 	if got := yamledit.NodeToContent(be3.key, &be3.node); got != prevNode {
 		t.Errorf("undo after paste left the node at %q, want pre-paste %q", got, prevNode)
 	}
+}
+
+// The YAML editor paints the text as the preview does while it is focused.
+func TestTheYAMLEditorIsHighlighted(t *testing.T) {
+	ed, _ := blockEditState{}.newYAMLEditor("name: x\n").Focus()
+	key := render.YAMLHighlight("name: x")[0][0]
+	require.Equal(t, 0, key.Start)
+	assert.Contains(t, ed.SetWidth(40).View(), key.Style.Render("name"))
 }

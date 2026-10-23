@@ -212,7 +212,7 @@ func (be blockEditState) loadEntry(idx int) blockEditState {
 	count := yamledit.EntryCount(&be.node, be.coll.isMap)
 	if count == 0 {
 		be.coll.current = -1
-		be.yamlEditor.SetValue(be.entryYAML(-1))
+		be.yamlEditor = be.yamlEditor.SetValue(be.entryYAML(-1))
 		return be
 	}
 	if idx < 0 {
@@ -222,7 +222,7 @@ func (be blockEditState) loadEntry(idx int) blockEditState {
 		idx = count - 1
 	}
 	be.coll.current = idx
-	be.yamlEditor.SetValue(be.entryYAML(idx))
+	be.yamlEditor = be.yamlEditor.SetValue(be.entryYAML(idx))
 	return be
 }
 

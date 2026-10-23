@@ -6,12 +6,12 @@ package viewer
 import (
 	"fmt"
 
-	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
 
 	"github.com/lucasassuncao/bezel/browser"
 	"github.com/lucasassuncao/bezel/draw"
+	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/layout"
 	"github.com/lucasassuncao/bezel/overlay"
 	"github.com/lucasassuncao/bezel/shell"

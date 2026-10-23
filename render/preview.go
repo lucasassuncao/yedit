@@ -13,7 +13,7 @@ import (
 // document and code-block left margins
 // stack to ~4 columns and the block prefix/suffix add blank lines, all wasteful
 // inside a panel that already has its own border. No margin is kept - the
-// gutter rendered alongside the content (draw.ViewportGutter, draw.NumberLines,
+// gutter rendered alongside the content (ViewportGutter, draw.NumberLines,
 // or the YAML editor's own line-number prompt) already ends in a space, so an
 // extra glamour margin would double that gap and misalign Preview against the
 // YAML editor. Returns nil on error, in which case PreviewYAML falls

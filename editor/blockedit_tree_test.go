@@ -447,7 +447,7 @@ func TestSOT_ToggleWhileBufferInvalid(t *testing.T) {
 	// Simulate the user having typed invalid YAML (a tab indent) into the buffer.
 	// The parse gate leaves be.node at its last good state (an empty mapping).
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("cfg:\n  bad: [unclosed\n")
+	be.yamlEditor = be.yamlEditor.SetValue("cfg:\n  bad: [unclosed\n")
 	if validateSnippetText(be.yamlEditor.Value()) == nil {
 		t.Fatal("test setup: expected the crafted buffer to be invalid YAML")
 	}

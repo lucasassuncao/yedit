@@ -4,7 +4,7 @@
 // declared per screen in editor/keyactions.go.
 package keys
 
-import "charm.land/bubbles/v2/key"
+import "github.com/lucasassuncao/bezel/key"
 
 // Physical keys, each declared exactly once.
 const (

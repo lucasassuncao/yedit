@@ -172,7 +172,7 @@ func TestNavigateBlocked_CursorSnapsBack(t *testing.T) {
 
 	// Corrupt the current entry's buffer, then navigate away via the tree
 	// panel (the real path: the cursor moves first, then the flush refuses).
-	be.yamlEditor.SetValue("categories:\n  - name: [broken\n")
+	be.yamlEditor = be.yamlEditor.SetValue("categories:\n  - name: [broken\n")
 	be = be.dispatch(SyncYAML{Content: be.yamlEditor.Value(), Checkpoint: false})
 	must.True(be.dirty, "an unparseable buffer must read dirty")
 

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -15,7 +14,7 @@ import (
 
 	"github.com/lucasassuncao/bezel/animation"
 	"github.com/lucasassuncao/bezel/browser"
-	"github.com/lucasassuncao/bezel/draw"
+	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/layout"
 	"github.com/lucasassuncao/bezel/overlay"
 	"github.com/lucasassuncao/bezel/shell"
@@ -113,7 +112,7 @@ func newModel(cfg Config) (model, error) {
 
 	preview := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
 	preview.SetContent(render.PreviewYAML(string(doc.Raw()), nil))
-	preview.LeftGutterFunc = draw.ViewportGutter(rt.Muted)
+	preview.LeftGutterFunc = render.ViewportGutter(rt.Muted)
 	return model{
 		cfg:             cfg,
 		doc:             doc,
@@ -328,7 +327,7 @@ func (m model) withTheme(rt theme.Resolved) model {
 	m.theme = rt
 	m.sh = m.sh.SetTheme(rt)
 	m.list = m.list.Rebuild(m.doc.Blocks(), rt)
-	m.preview.LeftGutterFunc = draw.ViewportGutter(rt.Muted)
+	m.preview.LeftGutterFunc = render.ViewportGutter(rt.Muted)
 	for i := range m.blockEdits {
 		m.blockEdits[i] = m.blockEdits[i].withTheme(rt)
 	}

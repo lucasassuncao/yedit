@@ -94,7 +94,7 @@ func (be blockEditState) applyValue(nodeIdx int, value string) blockEditState {
 	scalar := &yaml.Node{Kind: yaml.ScalarNode, Value: value}
 	if nodeIdx < 0 {
 		be.node = *scalar
-		be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
+		be.yamlEditor = be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
 		return be
 	}
 	if nodeIdx >= len(be.tree.Nodes) {
@@ -120,9 +120,9 @@ func (be blockEditState) applyValue(nodeIdx int, value string) blockEditState {
 	}
 	be.node = *root
 	if be.isCollectionNav() {
-		be.yamlEditor.SetValue(yamledit.EntryViewYAML(&be.node, be.key, be.coll.isMap, be.coll.current))
+		be.yamlEditor = be.yamlEditor.SetValue(yamledit.EntryViewYAML(&be.node, be.key, be.coll.isMap, be.coll.current))
 	} else {
-		be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
+		be.yamlEditor = be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
 	}
 	return be
 }

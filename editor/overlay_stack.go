@@ -143,7 +143,7 @@ func (be blockEditState) refreshCollectionFromNode(node *yaml.Node) blockEditSta
 		be.tree = be.tree.ClampCursor()
 		be.coll.current = reanchorCollCursor(&old, &be.node, isMap, be.coll.current)
 	}
-	be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
+	be.yamlEditor = be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
 	return be
 }
 
@@ -212,7 +212,7 @@ func (m model) refreshTopFromRoot() model {
 		be = be.refreshCollectionFromNode(node)
 	} else {
 		be.node = *yamlnode.CloneNode(node)
-		be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
+		be.yamlEditor = be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
 	}
 	be.tree = be.resyncTreeFromYAML()
 	be.dirty = be.computeDirty()

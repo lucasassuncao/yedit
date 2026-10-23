@@ -61,7 +61,7 @@ func (be blockEditState) advanceHintAnim() (blockEditState, tea.Cmd) {
 	}
 	// editorH shrinks and grows with the hint panel, and the textarea keeps its
 	// height until told otherwise, so it has to be resized on every frame.
-	be.yamlEditor.SetHeight(be.editorH() - 1)
+	be.yamlEditor = be.yamlEditor.SetHeight(be.editorH() - 1)
 	if done {
 		return be, nil
 	}

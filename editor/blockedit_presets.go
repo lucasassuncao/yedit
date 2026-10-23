@@ -40,7 +40,7 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 		return be.loadEntry(0)
 	}
 
-	be.yamlEditor.SetValue(y)
+	be.yamlEditor = be.yamlEditor.SetValue(y)
 	if v := yamledit.BlockValueNodeOrNil(y); v != nil {
 		be.node = *v
 	} else {

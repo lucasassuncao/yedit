@@ -243,7 +243,7 @@ func TestValidateKeysSeesUncommittedEditorContent(t *testing.T) {
 
 	// Edit the block without committing.
 	be := *m.topBE()
-	be.yamlEditor.SetValue("server:\n  host: new.com\n")
+	be.yamlEditor = be.yamlEditor.SetValue("server:\n  host: new.com\n")
 	be.dirty = true
 	m = m.withTopBE(be)
 
@@ -286,7 +286,7 @@ func TestValidateKeysBlocksOnUnparseableEditor(t *testing.T) {
 	m = updated.(model)
 
 	be := *m.topBE()
-	be.yamlEditor.SetValue("server:\n  host: [unclosed\n")
+	be.yamlEditor = be.yamlEditor.SetValue("server:\n  host: [unclosed\n")
 	be.dirty = true
 	m = m.withTopBE(be)
 

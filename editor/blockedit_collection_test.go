@@ -106,7 +106,7 @@ func TestMapBlockAddEntrySeedsCheckedField(t *testing.T) {
 // Renaming an entry's key in the YAML pane updates its left-panel label.
 func TestMapBlockRenameUpdatesTreeLabel(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
-	be.yamlEditor.SetValue(`portsAttributes:
+	be.yamlEditor = be.yamlEditor.SetValue(`portsAttributes:
   lucas:
     label: web
     onAutoForward: notify
@@ -199,7 +199,7 @@ func TestScalarListBlockListsEachValue(t *testing.T) {
 func TestScalarListEntryEditsOneValue(t *testing.T) {
 	be := newBlockEdit(Config{}, scalarListSpec("import:\n  - ./a.yaml\n  - ./b.yaml\n"), 100, 40)
 
-	be.yamlEditor.SetValue("import:\n  - ./c.yaml\n")
+	be.yamlEditor = be.yamlEditor.SetValue("import:\n  - ./c.yaml\n")
 	be = be.flushCurrentEntry()
 	require.Equal(t, errNone, be.editorErr.kind, be.editorErr.message)
 
@@ -211,7 +211,7 @@ func TestScalarListEntryEditsOneValue(t *testing.T) {
 func TestScalarListEntryRejectsAMapping(t *testing.T) {
 	be := newBlockEdit(Config{}, scalarListSpec("import:\n  - ./a.yaml\n"), 100, 40)
 
-	be.yamlEditor.SetValue("import:\n  - path: ./c.yaml\n")
+	be.yamlEditor = be.yamlEditor.SetValue("import:\n  - path: ./c.yaml\n")
 	be = be.flushCurrentEntry()
 
 	assert.Equal(t, errParse, be.editorErr.kind)
@@ -266,7 +266,7 @@ func TestFlushCurrentEntry_missingHeader_setsErrMsg(t *testing.T) {
 
 	// Simulate user deleting the "categories:" prefix.
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("  - name: alpha_edited\n") // no "categories:" header
+	be.yamlEditor = be.yamlEditor.SetValue("  - name: alpha_edited\n") // no "categories:" header
 
 	result := be.flushCurrentEntry()
 
@@ -284,7 +284,7 @@ func TestFlushCurrentEntry_validContent_clearsErrMsg(t *testing.T) {
 	be := newBlockEdit(Config{}, spec, 100, 40)
 	be.editorErr = editorError{kind: errParse, message: "stale error from before"}
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
+	be.yamlEditor = be.yamlEditor.SetValue("categories:\n  - name: alpha_edited\n")
 
 	result := be.flushCurrentEntry()
 
@@ -383,7 +383,7 @@ func TestFlushEmptyCollectionRejectsUnparsedText(t *testing.T) {
 	if be.coll.current != -1 {
 		t.Fatalf("empty collection should open with current=-1, got %d", be.coll.current)
 	}
-	be.yamlEditor.SetValue("portsAttributes:\n  \"3000\"\n  broken indent\n")
+	be.yamlEditor = be.yamlEditor.SetValue("portsAttributes:\n  \"3000\"\n  broken indent\n")
 	committed, _, ok := be.commit()
 	if ok {
 		t.Fatal("commit must be blocked when unparsed buffer text would be dropped")
@@ -407,7 +407,7 @@ func TestFlushEmptyCollectionPlaceholderIsClean(t *testing.T) {
 // resurrecting the old content.
 func TestFlushEmptiedBufferBlocks(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
-	be.yamlEditor.SetValue("")
+	be.yamlEditor = be.yamlEditor.SetValue("")
 	be = be.flushCurrentEntry()
 	if be.editorErr.kind != errParse {
 		t.Fatalf("expected errParse for emptied buffer, got kind=%d", be.editorErr.kind)
@@ -418,7 +418,7 @@ func TestFlushEmptiedBufferBlocks(t *testing.T) {
 // must refuse rather than revert them. Deleting the current entry proceeds.
 func TestDeleteOtherEntryBlockedByInvalidCurrent(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
-	be.yamlEditor.SetValue("portsAttributes:\n  \"3000\": [broken\n")
+	be.yamlEditor = be.yamlEditor.SetValue("portsAttributes:\n  \"3000\": [broken\n")
 	before := seqItemLabels(be)
 
 	blocked := be.performEntryDelete(1) // delete "8080" while "3000" is invalid
@@ -439,7 +439,7 @@ func TestDeleteOtherEntryBlockedByInvalidCurrent(t *testing.T) {
 // the visible placeholder, not keep the stale label.
 func TestEmptyMapKeyRefreshesTreeRow(t *testing.T) {
 	be := newBlockEdit(Config{}, mapSpec(), 100, 40)
-	be.yamlEditor.SetValue("portsAttributes:\n  \"\":\n    label: web\n")
+	be.yamlEditor = be.yamlEditor.SetValue("portsAttributes:\n  \"\":\n    label: web\n")
 	if kn, vn, ok := yamledit.ParseEntryFromView(be.yamlEditor.Value(), be.coll.isMap); ok {
 		yamledit.SetEntry(&be.node, be.coll.isMap, be.coll.current, kn, vn)
 	} else {
@@ -476,7 +476,7 @@ func TestSOT_CollectionToggleWhileBufferInvalid(t *testing.T) {
 	be = expandAll(be)
 
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue("categories:\n  - name: [bad\n")
+	be.yamlEditor = be.yamlEditor.SetValue("categories:\n  - name: [bad\n")
 	if validateSnippetText(be.yamlEditor.Value()) == nil {
 		t.Fatal("test setup: expected invalid YAML")
 	}

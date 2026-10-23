@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
 	"go.yaml.in/yaml/v3"
@@ -13,6 +11,7 @@ import (
 	"github.com/lucasassuncao/bezel/animation"
 	"github.com/lucasassuncao/bezel/browser"
 	"github.com/lucasassuncao/bezel/draw"
+	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/layout"
 	"github.com/lucasassuncao/bezel/overlay"
 	"github.com/lucasassuncao/bezel/shell"
@@ -92,7 +91,7 @@ type blockEditState struct {
 	// entry list in coll for now.
 	node yaml.Node
 
-	yamlEditor      textarea.Model
+	yamlEditor      textbox.Model
 	previewRenderer *glamour.TermRenderer
 	active          blockEditPanel
 	prevActive      blockEditPanel  // panel to return to when leaving hint focus
@@ -214,7 +213,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 	// child defs uses the navigator; a free-form map (no defs) stays raw YAML.
 	if !structured && (len(spec.defs) == 0 || spec.kind == schema.KindPrimitive || spec.kind == schema.KindDictionary) {
 		be.active = blockEditPanelYAML
-		be.yamlEditor.Focus()
+		be.yamlEditor, _ = be.yamlEditor.Focus()
 	}
 
 	// Baseline for dirty-tracking: the normalized open state. Non-collection
@@ -247,20 +246,13 @@ func (be blockEditState) computeDirty() bool {
 func (be blockEditState) withTheme(rt theme.Resolved) blockEditState {
 	be.theme = rt
 	be.sh = be.sh.SetTheme(rt)
-	be.yamlEditor = textbox.Restyle(be.yamlEditor, rt)
+	be.yamlEditor = be.yamlEditor.SetTheme(rt)
 	return be
 }
 
-func (be blockEditState) newYAMLEditor(content string) textarea.Model {
+func (be blockEditState) newYAMLEditor(content string) textbox.Model {
 	// The gutter matches the Preview panel's, and the height is the layout's.
-	ta := textbox.New(be.theme)
-	ta.SetWidth(be.rightW())
-	ta.SetHeight(be.editorH() - 1)
-	ta.Blur()
-	if content != "" {
-		textbox.SetText(&ta, content)
-	}
-	return ta
+	return textbox.New(be.theme).WithHighlight(render.YAMLHighlight).SetWidth(be.rightW()).SetHeight(be.editorH() - 1).SetValue(content)
 }
 
 // blockLayout is the editor screen: the field tree on the left, the YAML
@@ -367,7 +359,7 @@ func (be blockEditState) startHintAnim(from int) (blockEditState, bool) {
 	return be, be.hintAnim.Active() && !running
 }
 
-func (be blockEditState) Init() tea.Cmd { return textarea.Blink }
+func (be blockEditState) Init() tea.Cmd { return be.yamlEditor.Blink() }
 
 // enterConfirmAlert is the single entry point for the confirm modal, so every
 // dialog opens the same way.
@@ -427,8 +419,8 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.height = m.Height
 		be.sh, _, _ = be.sh.Update(m)
 		be = be.relayout()
-		be.yamlEditor.SetWidth(be.rightW())
-		be.yamlEditor.SetHeight(be.editorH() - 1)
+		be.yamlEditor = be.yamlEditor.SetWidth(be.rightW())
+		be.yamlEditor = be.yamlEditor.SetHeight(be.editorH() - 1)
 		be.tree.Height = be.innerH()
 		return be, nil
 	}
@@ -528,7 +520,7 @@ func (be blockEditState) updateEditing(msg tea.Msg) (blockEditState, tea.Cmd) {
 func (be blockEditState) updateNonKeyBuffer(msg tea.Msg) (blockEditState, tea.Cmd) {
 	prev := be.yamlEditor.Value()
 	var cmd tea.Cmd
-	be.yamlEditor, cmd = textbox.Update(be.yamlEditor, msg)
+	be.yamlEditor, cmd = be.yamlEditor.Update(msg)
 	if be.yamlEditor.Value() == prev {
 		return be, cmd
 	}
@@ -615,7 +607,7 @@ func (be blockEditState) toggleHint() (blockEditState, tea.Cmd) {
 	be, tick := be.startHintAnim(from)
 	// editorH() changed with showHint, and the textarea's own height is only
 	// set at creation/resize.
-	be.yamlEditor.SetHeight(be.editorH() - 1)
+	be.yamlEditor = be.yamlEditor.SetHeight(be.editorH() - 1)
 	if tick {
 		return be, hintAnimTick(true)
 	}
@@ -676,8 +668,7 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	// Tree-less blocks open with the YAML panel focused, so the switchPanel
 	// checkpoint never fires. Capture the pre-edit state whenever there is nothing
 	// to fall back to, so ctrl+u can always return to the content before this
-	// keystroke. It must be taken before Update: the textarea shares its buffer
-	// internals, so a struct copy would alias the post-keystroke content.
+	// keystroke. It is taken before Update, which replaces the editor.
 	var preSnap *blockEditUndoSnap
 	if len(be.undoStack) == 0 {
 		snap := be.captureSnap()
@@ -791,7 +782,7 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 	if !changed {
 		return be
 	}
-	be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
+	be.yamlEditor = be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
 	be.tree = fieldtree.SyncCheckedFromNode(be.tree, &be.node)
 	return be
 }
@@ -809,7 +800,7 @@ func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 		} else {
 			be.node = yaml.Node{Kind: yaml.MappingNode}
 		}
-		be.yamlEditor.SetValue(fresh)
+		be.yamlEditor = be.yamlEditor.SetValue(fresh)
 		be.committedYAML = yamledit.NodeToContent(be.key, &be.node)
 		be.dirty = be.computeDirty()
 		return be
@@ -826,7 +817,7 @@ func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 		}
 	}
 	be.tree = be.collectionDeriveTree()
-	be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
+	be.yamlEditor = be.yamlEditor.SetValue(be.entryYAML(be.coll.current))
 	be.committedYAML = yamledit.NodeToContent(be.key, &be.node)
 	be.dirty = be.computeDirty()
 	return be
@@ -847,7 +838,7 @@ func (be blockEditState) activePane() string {
 // holds the cursor while focused and checkpoints undo on the way in.
 func (be blockEditState) focusPanel(msg shell.FocusMsg) blockEditState {
 	if msg.From == "editor" {
-		be.yamlEditor.Blur()
+		be.yamlEditor = be.yamlEditor.Blur()
 	}
 	switch msg.To {
 	case "editor":
@@ -855,7 +846,7 @@ func (be blockEditState) focusPanel(msg shell.FocusMsg) blockEditState {
 			be = be.saveUndo()
 		}
 		be.active = blockEditPanelYAML
-		be.yamlEditor.Focus()
+		be.yamlEditor, _ = be.yamlEditor.Focus()
 	case "fields":
 		be.active = blockEditPanelTree
 	}

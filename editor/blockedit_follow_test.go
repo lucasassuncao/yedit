@@ -80,7 +80,7 @@ func TestFollowTargetLine_AbsentFieldAndInvalidBuffer(t *testing.T) {
 
 	// Invalid buffer: lookup must fail without panicking.
 	be = cursorToVisibleNode(t, be, "retries")
-	be.yamlEditor.SetValue("settings:\n  retries: [broken\n")
+	be.yamlEditor = be.yamlEditor.SetValue("settings:\n  retries: [broken\n")
 	is.Equal(-1, be.followTargetLine(), "invalid buffer has no line")
 }
 

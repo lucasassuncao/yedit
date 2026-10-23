@@ -159,12 +159,12 @@ func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 		be = be.loadEntry(be.coll.current)
 		// The node is authoritative; snap.yamlValue restores whatever in-progress,
 		// possibly unparseable, text the entry held at snapshot time.
-		be.yamlEditor.SetValue(snap.yamlValue)
+		be.yamlEditor = be.yamlEditor.SetValue(snap.yamlValue)
 		be.tree = be.resyncTreeFromYAML()
 		be.tree = be.tree.ClampCursor()
 		return be
 	}
-	be.yamlEditor.SetValue(snap.yamlValue)
+	be.yamlEditor = be.yamlEditor.SetValue(snap.yamlValue)
 	be.tree = fieldtree.SyncCheckedFromNode(be.tree, &be.node)
 	// The cursor may now be out of bounds (it sat on a separator row that the
 	// restored tree no longer has), so advance to the first selectable field

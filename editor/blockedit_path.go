@@ -164,7 +164,7 @@ func (be blockEditState) applyPick(value string, replace int) blockEditState {
 		}
 		be.node.Content = content
 	}
-	be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
+	be.yamlEditor = be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
 	return be
 }
 

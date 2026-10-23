@@ -86,39 +86,9 @@ func (be blockEditState) followTreeSelection() blockEditState {
 	return be
 }
 
-// withEditorCursorAt moves the textarea cursor to the 1-based buffer line,
-// column 0. bubbles v1 exposes no row setter, so the cursor walks with
-// CursorUp/CursorDown; progress is tracked as (row, wrap offset) pairs so a
-// soft-wrapped line cannot stall the loop, and a clamped end breaks out.
+// withEditorCursorAt moves the editor's caret to the 1-based buffer line,
+// column 0, and scrolls the editor to it, focused or not.
 func (be blockEditState) withEditorCursorAt(line int) blockEditState {
-	target := line - 1
-	for be.yamlEditor.Line() < target {
-		prevRow, prevOff := be.yamlEditor.Line(), be.yamlEditor.LineInfo().RowOffset
-		be.yamlEditor.CursorDown()
-		if be.yamlEditor.Line() == prevRow && be.yamlEditor.LineInfo().RowOffset == prevOff {
-			break
-		}
-	}
-	for be.yamlEditor.Line() > target {
-		prevRow, prevOff := be.yamlEditor.Line(), be.yamlEditor.LineInfo().RowOffset
-		be.yamlEditor.CursorUp()
-		if be.yamlEditor.Line() == prevRow && be.yamlEditor.LineInfo().RowOffset == prevOff {
-			break
-		}
-	}
-	be.yamlEditor.SetCursorColumn(0)
-	if !be.yamlEditor.Focused() {
-		// The textarea repositions its viewport only inside a focused Update, so
-		// cursor moves on a blurred editor leave the window stale. Render once to
-		// fill the viewport, then run a no-op Update under temporary focus.
-		_ = be.yamlEditor.View()
-		be.yamlEditor.Focus()
-		be.yamlEditor, _ = be.yamlEditor.Update(viewportSyncMsg{})
-		be.yamlEditor.Blur()
-	}
+	be.yamlEditor = be.yamlEditor.MoveTo(line-1, 0)
 	return be
 }
-
-// viewportSyncMsg is a no-op message: the textarea's Update mutates nothing
-// for unknown message types but always ends by repositioning its viewport.
-type viewportSyncMsg struct{}

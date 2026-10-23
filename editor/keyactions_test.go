@@ -147,7 +147,7 @@ func newServerBlock(t *testing.T) blockEditState {
 func TestBlockEditorHelpIsShownAndOpens(t *testing.T) {
 	be := newServerBlock(t)
 	be.active = blockEditPanelTree
-	be.yamlEditor.Blur()
+	be.yamlEditor = be.yamlEditor.Blur()
 	require.Contains(t, legendRow(be.View(nil)), "[?] help")
 
 	be, _ = be.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
@@ -164,7 +164,7 @@ func TestTheBlockEditorLegendReadsInItsTwoRows(t *testing.T) {
 	require.NoError(t, err)
 	be := newBlockEdit(m.cfg, blockSpec{key: "server"}, 140, 30)
 	be.active = blockEditPanelTree
-	be.yamlEditor.Blur()
+	be.yamlEditor = be.yamlEditor.Blur()
 
 	rows := strings.Split(legendRow(be.View(nil)), "\n")
 	require.Equal(t, "[tab] change pane  [↑/↓] move  [→/←] expand  [ctrl+h] focus hint  [h] hide hint  [esc] back  [?] help",
@@ -183,7 +183,7 @@ func TestTheHintPanelLegendIsOneRow(t *testing.T) {
 	be := newBlockEdit(m.cfg, blockSpec{key: "server"}, 140, 30)
 	be.showHint = true
 	be.prevActive, be.active = blockEditPanelTree, blockEditPanelHint
-	be.yamlEditor.Blur()
+	be.yamlEditor = be.yamlEditor.Blur()
 
 	rows := strings.Split(legendRow(be.View(nil)), "\n")
 	require.Equal(t, "[tab] change pane  [↑/↓] scroll  [h] hide hint  [esc] back  [?] help", strings.TrimSpace(rows[0]))
@@ -206,7 +206,7 @@ func TestTheMainScreenHintLegendIsOneRow(t *testing.T) {
 func TestYAMLPanelKeepsQuestionMarkAsText(t *testing.T) {
 	be := newServerBlock(t)
 	be.active = blockEditPanelYAML
-	be.yamlEditor.Focus()
+	be.yamlEditor, _ = be.yamlEditor.Focus()
 	require.NotContains(t, legendRow(be.View(nil)), "[?] help")
 
 	be, _ = be.Update(tea.KeyPressMsg{Code: '?', Text: "?"})

@@ -124,10 +124,8 @@ func TestPathFieldReplacesTheEntryUnderTheCursor(t *testing.T) {
 	docPath := pathConfFolder(t)
 	be := newBlockEdit(pathConfig(docPath), importSpec("import:\n  - ./parts/a.yaml\n  - ./old.yaml\n"), 100, 30)
 	be.active = blockEditPanelYAML
-	be.yamlEditor.SetValue(be.yamlEditor.Value())
-	for be.yamlEditor.Line() > 2 {
-		be.yamlEditor.CursorUp()
-	}
+	be.yamlEditor = be.yamlEditor.SetValue(be.yamlEditor.Value())
+	be.yamlEditor = be.yamlEditor.MoveTo(2, be.yamlEditor.Column())
 	require.Equal(t, 2, be.yamlEditor.Line())
 
 	be, _ = be.Update(pathPickedMsg{abs: filepath.Join(filepath.Dir(docPath), "parts", "b.yaml")})

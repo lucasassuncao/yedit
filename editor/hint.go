@@ -3,11 +3,12 @@ package editor
 import (
 	"strings"
 
-	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/lucasassuncao/yedit/hint"
 	"github.com/lucasassuncao/yedit/keys"
+
+	"github.com/lucasassuncao/bezel/key"
 )
 
 // toggleHintFocus gives the keys to the Hint/Example panel to scroll it, or

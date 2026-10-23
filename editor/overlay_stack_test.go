@@ -207,7 +207,7 @@ func TestDrillOutKeepsEdits(t *testing.T) {
 
 	// Edit the child: change the route host.
 	child := *m.topBE()
-	child.yamlEditor.SetValue(`httproutes:
+	child.yamlEditor = child.yamlEditor.SetValue(`httproutes:
   web:
     host: new.com
 `)
