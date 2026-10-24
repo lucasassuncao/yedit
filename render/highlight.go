@@ -9,7 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/lucasassuncao/bezel/textbox"
+	"github.com/lucasassuncao/bezel/component/textbox"
 )
 
 // palette is the preview's code-block colours by token type, so the YAML

@@ -5,8 +5,8 @@ package blocklist
 import (
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucasassuncao/bezel/component/list"
 	"github.com/lucasassuncao/bezel/key"
-	"github.com/lucasassuncao/bezel/list"
 	"github.com/lucasassuncao/bezel/theme"
 	"github.com/lucasassuncao/yedit/document"
 	"github.com/lucasassuncao/yedit/keys"

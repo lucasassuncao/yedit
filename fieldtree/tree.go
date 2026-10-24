@@ -9,9 +9,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucasassuncao/bezel/component/tree"
 	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/theme"
-	"github.com/lucasassuncao/bezel/tree"
 	"github.com/lucasassuncao/yedit/keys"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/yamledit"

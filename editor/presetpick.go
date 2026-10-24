@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lucasassuncao/bezel/browser"
+	"github.com/lucasassuncao/bezel/component/browser"
 	"github.com/lucasassuncao/yedit/presets"
 )
 

@@ -5,7 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/lucasassuncao/bezel/browser"
+	"github.com/lucasassuncao/bezel/component/browser"
 	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/yedit/keys"
 )

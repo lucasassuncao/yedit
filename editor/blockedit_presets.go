@@ -6,7 +6,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/lucasassuncao/bezel/browser"
+	"github.com/lucasassuncao/bezel/component/browser"
 	"github.com/lucasassuncao/yedit/yamledit"
 )
 

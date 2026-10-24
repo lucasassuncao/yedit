@@ -12,7 +12,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/jedib0t/go-pretty/v6 v6.8.3
-	github.com/lucasassuncao/bezel v0.12.0
+	github.com/lucasassuncao/bezel v0.13.0
 	github.com/stretchr/testify v1.12.1
 	go.yaml.in/yaml/v3 v3.0.5
 )

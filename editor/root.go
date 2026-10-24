@@ -13,7 +13,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/lucasassuncao/bezel/animation"
-	"github.com/lucasassuncao/bezel/browser"
+	"github.com/lucasassuncao/bezel/component/browser"
 	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/layout"
 	"github.com/lucasassuncao/bezel/overlay"
