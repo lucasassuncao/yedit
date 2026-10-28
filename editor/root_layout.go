@@ -42,8 +42,7 @@ func (m model) relayout() model {
 
 	m.list = m.list.SetHeight(m.innerH())
 	preview := draw.InnerRect(m.sh.Rect("preview"))
-	m.preview.SetWidth(preview.W)
-	m.preview.SetHeight(preview.H)
+	m.preview = m.preview.SetWidth(preview.W).SetHeight(preview.H)
 	wrap := max(1, preview.W-draw.GutterWidth)
 	m.previewRenderer = render.NewPreviewRenderer(wrap)
 	m = m.refreshPreview()
@@ -54,7 +53,7 @@ func (m model) relayout() model {
 // split without rebuilding the glamour renderer, which the width alone decides.
 func (m model) relayoutHeights() model {
 	m.sh = m.sh.SetLayout(m.currentLayout())
-	m.preview.SetHeight(draw.InnerRect(m.sh.Rect("preview")).H)
+	m.preview = m.preview.SetHeight(draw.InnerRect(m.sh.Rect("preview")).H)
 	return m.clampPreviewScroll()
 }
 
@@ -68,7 +67,7 @@ func (m model) innerH() int {
 // clampPreviewScroll pulls the preview's scroll offset back inside the viewport
 // after its height shrank (a resize, or the hint panel easing open).
 func (m model) clampPreviewScroll() model {
-	m.preview.SetYOffset(m.preview.YOffset()) // SetYOffset clamps to the content
+	m.preview = m.preview.SetYOffset(m.preview.YOffset()) // SetYOffset clamps to the content
 	return m
 }
 

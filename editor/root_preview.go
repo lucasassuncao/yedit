@@ -60,7 +60,7 @@ func (m model) scrollPreviewToSelected() model {
 	}
 	for _, b := range m.doc.Blocks() {
 		if b.Key == it.Key {
-			m.preview.SetYOffset(b.Line - 1)
+			m.preview = m.preview.SetYOffset(b.Line - 1)
 			return m
 		}
 	}
@@ -72,6 +72,6 @@ func (m model) scrollPreviewToSelected() model {
 // refreshPreview re-renders the document into the read-only preview viewport,
 // syntax-highlighted and wrapped to the current panel width.
 func (m model) refreshPreview() model {
-	m.preview.SetContent(render.PreviewYAML(string(m.doc.Raw()), m.previewRenderer))
+	m.preview = m.preview.SetContent(render.PreviewYAML(string(m.doc.Raw()), m.previewRenderer))
 	return m
 }

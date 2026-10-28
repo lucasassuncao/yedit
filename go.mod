@@ -5,22 +5,20 @@ go 1.26.4
 toolchain go1.26.10
 
 require (
-	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.1.0
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/jedib0t/go-pretty/v6 v6.8.3
-	github.com/lucasassuncao/bezel v0.13.0
+	github.com/lucasassuncao/bezel v0.18.0
 	github.com/stretchr/testify v1.12.1
 	go.yaml.in/yaml/v3 v3.0.5
 )
 
-require github.com/atotto/clipboard v0.1.4 // indirect
-
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
+	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4 // indirect

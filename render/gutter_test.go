@@ -3,11 +3,11 @@ package render
 import (
 	"testing"
 
-	"charm.land/bubbles/v2/viewport"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/require"
 
+	"github.com/lucasassuncao/bezel/component/viewport"
 	"github.com/lucasassuncao/bezel/draw"
 )
 
@@ -16,8 +16,8 @@ import (
 func TestViewportGutterMatchesGutterAndBlanksPastTheEnd(t *testing.T) {
 	st := lipgloss.NewStyle()
 	g := ViewportGutter(st)
-	require.Equal(t, draw.Gutter(3, st), g(viewport.GutterContext{Index: 2, TotalLines: 5}))
-	past := ansi.Strip(g(viewport.GutterContext{Index: 5, TotalLines: 5}))
+	require.Equal(t, draw.Gutter(3, st), g(viewport.GutterRow{Line: 2, Lines: 5}))
+	past := ansi.Strip(g(viewport.GutterRow{Line: 5, Lines: 5}))
 	require.Equal(t, "     │ ", past)
 	require.Equal(t, draw.GutterWidth, ansi.StringWidth(past))
 }

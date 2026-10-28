@@ -23,16 +23,16 @@ Package trace records a bubbletea session to a JSONL file: every keystroke, mess
 
 
 <a name="IsNoise"></a>
-## func [IsNoise](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L80>)
+## func [IsNoise](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L81>)
 
 ```go
 func IsNoise(msg tea.Msg) bool
 ```
 
-IsNoise reports a high\-frequency message that says nothing about what the user did and would flood the trace: cursor blinks and the status decay timer. The unexported ones cannot be named in a type switch, so %T matches them.
+IsNoise reports a high\-frequency message that says nothing about what the user did and would flood the trace: cursor blinks and the status decay timer. The shell's timer is unexported, so %T matches it.
 
 <a name="Writer"></a>
-## type [Writer](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L18-L22>)
+## type [Writer](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L19-L23>)
 
 Writer appends events to one trace file.
 
@@ -43,7 +43,7 @@ type Writer struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L26>)
+### func [New](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L27>)
 
 ```go
 func New(path string) (*Writer, error)
@@ -52,7 +52,7 @@ func New(path string) (*Writer, error)
 New creates the trace file at path, or a timestamped file in the OS temp dir when path is empty.
 
 <a name="Writer.Action"></a>
-### func \(\*Writer\) [Action](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L57>)
+### func \(\*Writer\) [Action](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L58>)
 
 ```go
 func (w *Writer) Action(scope, where string, action any)
@@ -61,7 +61,7 @@ func (w *Writer) Action(scope, where string, action any)
 Action appends one app action under scope \(e.g. "model", "block"\); where says which part of the app it applied to.
 
 <a name="Writer.Close"></a>
-### func \(\*Writer\) [Close](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L96>)
+### func \(\*Writer\) [Close](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L92>)
 
 ```go
 func (w *Writer) Close() error
@@ -70,7 +70,7 @@ func (w *Writer) Close() error
 Close flushes and closes the file.
 
 <a name="Writer.Key"></a>
-### func \(\*Writer\) [Key](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L62>)
+### func \(\*Writer\) [Key](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L63>)
 
 ```go
 func (w *Writer) Key(where, key string)
@@ -79,7 +79,7 @@ func (w *Writer) Key(where, key string)
 Key appends one keystroke, key being its readable name \("enter", "ctrl\+c"\).
 
 <a name="Writer.Msg"></a>
-### func \(\*Writer\) [Msg](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L69>)
+### func \(\*Writer\) [Msg](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L70>)
 
 ```go
 func (w *Writer) Msg(where string, msg tea.Msg)
@@ -88,7 +88,7 @@ func (w *Writer) Msg(where string, msg tea.Msg)
 Msg appends one raw tea.Msg. A key message goes to the "key" scope; anything else lands under "msg" with its type name, even when it has no exported fields to serialise, so the trace has no gaps.
 
 <a name="Writer.Path"></a>
-### func \(\*Writer\) [Path](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L93>)
+### func \(\*Writer\) [Path](<https://github.com/lucasassuncao/yedit/blob/main/trace/trace.go#L89>)
 
 ```go
 func (w *Writer) Path() string

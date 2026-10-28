@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"charm.land/bubbles/v2/cursor"
 	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/lucasassuncao/bezel/component/cursor"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/trace"
 
@@ -123,13 +123,7 @@ func TestWireDump_FiltersNoise(t *testing.T) {
 	cfg := Config{}
 	wireDump(&cfg, d)
 
-	cm := cursor.New()
-	blinkCanceledCmd := cm.Blink()
-	_ = cm.Blink() // cancels the context blinkCanceledCmd is waiting on
-
 	cfg.Trace.OnMsg("block:server:tree:editing", cursor.BlinkMsg{})
-	cfg.Trace.OnMsg("block:server:tree:editing", cursor.Blink())     // unexported cursor.initialBlinkMsg
-	cfg.Trace.OnMsg("block:server:tree:editing", blinkCanceledCmd()) // unexported cursor.blinkCanceled
 	// The status decay tick is the shell's own unexported message; a 1ms TTL
 	// hands one back from the command it schedules.
 	_, tick := shell.New(shell.Config{}).SetStatus("x", shell.Info, time.Millisecond)

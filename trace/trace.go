@@ -10,8 +10,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"charm.land/bubbles/v2/cursor"
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/lucasassuncao/bezel/component/cursor"
 )
 
 // Writer appends events to one trace file.
@@ -76,17 +77,12 @@ func (w *Writer) Msg(where string, msg tea.Msg) {
 
 // IsNoise reports a high-frequency message that says nothing about what the
 // user did and would flood the trace: cursor blinks and the status decay timer.
-// The unexported ones cannot be named in a type switch, so %T matches them.
+// The shell's timer is unexported, so %T matches it.
 func IsNoise(msg tea.Msg) bool {
 	if _, ok := msg.(cursor.BlinkMsg); ok {
 		return true
 	}
-	switch fmt.Sprintf("%T", msg) {
-	case "cursor.initialBlinkMsg", "cursor.blinkCanceled", "shell.statusExpiredMsg":
-		return true
-	default:
-		return false
-	}
+	return fmt.Sprintf("%T", msg) == "shell.statusExpiredMsg"
 }
 
 // Path is where the trace is written.

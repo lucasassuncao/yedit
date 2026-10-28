@@ -6,14 +6,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"charm.land/bubbles/v2/spinner"
-	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
 	"go.yaml.in/yaml/v3"
 
 	"github.com/lucasassuncao/bezel/animation"
 	"github.com/lucasassuncao/bezel/component/browser"
+	"github.com/lucasassuncao/bezel/component/spinner"
+	"github.com/lucasassuncao/bezel/component/viewport"
 	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/layout"
 	"github.com/lucasassuncao/bezel/overlay"
@@ -111,9 +111,10 @@ func newModel(cfg Config) (model, error) {
 	rt := theme.Resolve(cfg.Theme, true) // re-resolved when the terminal answers Init
 	list := blocklist.New(knownOrder, doc.Blocks(), passthrough, 0, rt)
 
-	preview := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
-	preview.SetContent(render.PreviewYAML(string(doc.Raw()), nil))
-	preview.LeftGutterFunc = render.ViewportGutter(rt.Muted)
+	preview := viewport.New().
+		WithGutter(render.ViewportGutter(rt.Muted)).
+		WithFill(true).
+		SetContent(render.PreviewYAML(string(doc.Raw()), nil))
 	return model{
 		cfg:             cfg,
 		doc:             doc,
@@ -362,7 +363,7 @@ func (m model) withTheme(rt theme.Resolved) model {
 	m.theme = rt
 	m.sh = m.sh.SetTheme(rt)
 	m.list = m.list.Rebuild(m.doc.Blocks(), rt)
-	m.preview.LeftGutterFunc = render.ViewportGutter(rt.Muted)
+	m.preview = m.preview.WithGutter(render.ViewportGutter(rt.Muted))
 	for i := range m.blockEdits {
 		m.blockEdits[i] = m.blockEdits[i].withTheme(rt)
 	}
@@ -727,7 +728,7 @@ func (m model) viewContent() string {
 			Title: fmt.Sprintf("Blocks (%d/%d)", m.list.AddedCount(), m.list.KnownCount()),
 			Body:  func(layout.Rect) string { return m.list.View(m.theme) },
 		},
-		"preview": {Title: "Preview", Body: func(layout.Rect) string { return m.preview.View() }},
+		"preview": {Title: "Preview", Body: func(layout.Rect) string { return m.preview.View(m.theme) }},
 	}
 	if m.hintVisible() {
 		panes["hint"] = shell.Pane{Title: "Hint/Example", Body: func(layout.Rect) string { return m.hintView() }}
