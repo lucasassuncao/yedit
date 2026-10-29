@@ -11,11 +11,11 @@ func TestBreadcrumbSegments_nestedField(t *testing.T) {
 	// Depth-1 field under an expanded depth-0 parent; yamlPath carries the full
 	// path so BreadcrumbSegments returns both segments.
 	var tm Model
-	tm.Nodes = []Node{
+	tm = tm.SetNodes([]Node{
 		{Kind: KindField, Label: "deploy", YAMLPath: []string{"deploy"}, Depth: 0, Expanded: true},
 		{Kind: KindField, Label: "strategy", YAMLPath: []string{"deploy", "strategy"}, Depth: 1, IsLeaf: true},
-	}
-	tm.Cursor = 1
+	})
+	tm = tm.MoveTo(1)
 	got := tm.BreadcrumbSegments()
 	want := []string{"deploy", "strategy"}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
@@ -25,7 +25,7 @@ func TestBreadcrumbSegments_nestedField(t *testing.T) {
 
 func TestBreadcrumbSegments_seqItem(t *testing.T) {
 	var tm Model
-	tm.Nodes = []Node{{Kind: KindSeqItem, Label: "[2]", YAMLPath: []string{"[2]"}, Depth: 0}}
+	tm = tm.SetNodes([]Node{{Kind: KindSeqItem, Label: "[2]", YAMLPath: []string{"[2]"}, Depth: 0}})
 	got := tm.BreadcrumbSegments()
 	if len(got) != 1 || got[0] != "[2]" {
 		t.Errorf("got %v, want [[2]]", got)
@@ -34,7 +34,7 @@ func TestBreadcrumbSegments_seqItem(t *testing.T) {
 
 func TestBreadcrumbSegments_addNew(t *testing.T) {
 	var tm Model
-	tm.Nodes = []Node{{Kind: KindAddNew, Label: "+ add new", Depth: 0, IsLeaf: true}}
+	tm = tm.SetNodes([]Node{{Kind: KindAddNew, Label: "+ add new", Depth: 0, IsLeaf: true}})
 	got := tm.BreadcrumbSegments()
 	if len(got) != 1 || got[0] != "+ add new" {
 		t.Errorf("got %v, want [+ add new]", got)

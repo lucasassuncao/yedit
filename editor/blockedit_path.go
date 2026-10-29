@@ -34,10 +34,10 @@ func (be blockEditState) openableEntry() string {
 		return ""
 	}
 	idx := be.tree.CurrentNodeIdx()
-	if idx < 0 || be.tree.Nodes[idx].Kind != fieldtree.KindSeqItem {
+	if idx < 0 || be.tree.Node(idx).Kind != fieldtree.KindSeqItem {
 		return ""
 	}
-	if item := yamledit.EntryValueNode(&be.node, false, be.tree.Nodes[idx].SeqIdx); item != nil {
+	if item := yamledit.EntryValueNode(&be.node, false, be.tree.Node(idx).SeqIdx); item != nil {
 		return item.Value
 	}
 	return ""
@@ -82,7 +82,7 @@ func (be blockEditState) openPathPicker() (blockEditState, tea.Cmd) {
 	fp := overlay.NewFilePicker("Pick a path for "+be.key, filepath.Dir(be.docPath()), onPick, be.theme).
 		WithAllowedTypes(pf.Types...)
 	if pf.Dirs {
-		fp = fp.WithDirs()
+		fp = fp.WithDirs(true)
 	}
 	be.sh = be.sh.Push(fp)
 	be.mode = modePicking

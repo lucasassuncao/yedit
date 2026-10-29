@@ -43,7 +43,7 @@ func ceStructSpec() blockSpec {
 }
 
 func nodeByLabel(be blockEditState, label string) (fieldtree.Node, bool) {
-	for _, n := range be.tree.Nodes {
+	for _, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField && n.Label == label {
 			return n, true
 		}
@@ -53,8 +53,8 @@ func nodeByLabel(be blockEditState, label string) (fieldtree.Node, bool) {
 
 func cursorToLabel(be blockEditState, label string) blockEditState {
 	for vi, ni := range be.tree.VisibleNodes() {
-		if be.tree.Nodes[ni].Label == label {
-			be.tree.Cursor = vi
+		if be.tree.Node(ni).Label == label {
+			be.tree = be.tree.MoveTo(vi)
 			break
 		}
 	}
@@ -858,7 +858,7 @@ func TestPresentationReachesDrilledLevels(t *testing.T) {
 	must.Len(m.blockEdits, 1)
 
 	node := func(be blockEditState, label string) fieldtree.Node {
-		for _, n := range be.tree.Nodes {
+		for _, n := range be.tree.Nodes() {
 			if n.Label == label {
 				return n
 			}

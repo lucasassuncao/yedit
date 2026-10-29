@@ -15,7 +15,7 @@ func dispatchTestBE(t *testing.T) (blockEditState, int) {
 	t.Helper()
 	be := newBlockEdit(Config{NoDeleteConfirm: true}, structSpec(), 120, 40)
 	idx := -1
-	for i, n := range be.tree.Nodes {
+	for i, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField && n.IsLeaf {
 			idx = i
 			break
@@ -29,7 +29,7 @@ func dispatchTestBE(t *testing.T) (blockEditState, int) {
 
 // checkedFor returns the checked state of the tree node with the given label.
 func checkedFor(be blockEditState, label string) (bool, bool) {
-	for _, n := range be.tree.Nodes {
+	for _, n := range be.tree.Nodes() {
 		if n.Label == label {
 			return n.Checked, true
 		}
@@ -53,7 +53,7 @@ func TestDispatchUndoRedo(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
 	be, idx := dispatchTestBE(t)
-	fieldLabel := be.tree.Nodes[idx].Label
+	fieldLabel := be.tree.Node(idx).Label
 	checkedBefore, _ := checkedFor(be, fieldLabel)
 
 	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: !checkedBefore})
@@ -92,12 +92,12 @@ func TestReplayBlock(t *testing.T) {
 	must := require.New(t)
 	be, idx := dispatchTestBE(t)
 	initial := be
-	fieldLabel := be.tree.Nodes[idx].Label
+	fieldLabel := be.tree.Node(idx).Label
 	checkedBefore, _ := checkedFor(be, fieldLabel)
 
 	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: !checkedBefore})
 	// find the node again (position may shift after toggle)
-	for i, n := range be.tree.Nodes {
+	for i, n := range be.tree.Nodes() {
 		if n.Label == fieldLabel {
 			idx = i
 			break

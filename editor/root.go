@@ -12,7 +12,6 @@ import (
 
 	"github.com/lucasassuncao/bezel/animation"
 	"github.com/lucasassuncao/bezel/component/browser"
-	"github.com/lucasassuncao/bezel/component/spinner"
 	"github.com/lucasassuncao/bezel/component/viewport"
 	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/layout"
@@ -220,8 +219,8 @@ func (m model) enterDocPreset(pb browser.Model) model {
 // chosen one on the right.
 func (m model) docPresetPanes() map[string]shell.Pane {
 	return map[string]shell.Pane{
-		"presets": {Title: "Presets", Body: func(r layout.Rect) string { return m.docPreset.ListView(m.theme, r.H) }},
-		"preview": {Title: "Preview", Body: func(r layout.Rect) string { return m.docPreset.PreviewView(r.H) }},
+		"presets": {Title: "Presets", Body: func(r layout.Rect) string { return m.docPreset.SetListHeight(r.H).ListView(m.theme) }},
+		"preview": {Title: "Preview", Body: func(r layout.Rect) string { return m.docPreset.SetPreviewHeight(r.H).PreviewView() }},
 	}
 }
 
@@ -555,8 +554,8 @@ func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleDocPresetKey(key)
 		}
 	}
-	// The spinner an Action's Run shows on the status row advances on its ticks.
-	if _, ok := msg.(spinner.TickMsg); ok {
+	// The spinner an Action's Run shows on the status row advances on its frames.
+	if _, ok := msg.(animation.FrameMsg); ok {
 		var cmd tea.Cmd
 		m.sh, _, cmd = m.sh.Update(msg)
 		return m, cmd
@@ -716,7 +715,7 @@ func (m model) viewContent() string {
 
 	if m.mode == paneDocPreset {
 		focus := "presets"
-		if m.docPreset.PreviewFocus {
+		if m.docPreset.PreviewFocused() {
 			focus = "preview"
 		}
 		return sh.SetFocus(focus).View(m.docPresetPanes())

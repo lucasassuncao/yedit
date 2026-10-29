@@ -28,16 +28,16 @@ const maxUndoDepth = 50
 
 // captureSnap records the current editor state for the undo/redo stacks.
 func (be blockEditState) captureSnap() blockEditUndoSnap {
-	treeNodes := make([]fieldtree.Node, len(be.tree.Nodes))
-	copy(treeNodes, be.tree.Nodes)
+	treeNodes := make([]fieldtree.Node, be.tree.Len())
+	copy(treeNodes, be.tree.Nodes())
 	return blockEditUndoSnap{
 		node:            *yamlnode.CloneNode(&be.node),
 		currentEntryIdx: be.coll.current,
 		yamlValue:       be.yamlEditor.Value(),
 		preset:          be.currentPreset,
 		treeNodes:       treeNodes,
-		treeCursor:      be.tree.Cursor,
-		treeOffset:      be.tree.Offset,
+		treeCursor:      be.tree.Cursor(),
+		treeOffset:      be.tree.Scroll().Offset,
 	}
 }
 
@@ -148,13 +148,13 @@ func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 		if len(snap.treeNodes) > 0 {
 			treeNodes := make([]fieldtree.Node, len(snap.treeNodes))
 			copy(treeNodes, snap.treeNodes)
-			be.tree.Nodes = treeNodes
-			be.tree.Cursor = snap.treeCursor
-			be.tree.Offset = snap.treeOffset
+			be.tree = be.tree.SetNodes(treeNodes)
+			be.tree = be.tree.MoveTo(snap.treeCursor)
+			be.tree = be.tree.SetOffset(snap.treeOffset)
 		} else {
-			be.tree.Nodes = be.collectionTreeNodes()
-			be.tree.Cursor = 0
-			be.tree.Offset = 0
+			be.tree = be.tree.SetNodes(be.collectionTreeNodes())
+			be.tree = be.tree.MoveTo(0)
+			be.tree = be.tree.SetOffset(0)
 		}
 		be = be.loadEntry(be.coll.current)
 		// The node is authoritative; snap.yamlValue restores whatever in-progress,
@@ -169,12 +169,8 @@ func (be blockEditState) applySnap(snap blockEditUndoSnap) blockEditState {
 	// The cursor may now be out of bounds (it sat on a separator row that the
 	// restored tree no longer has), so advance to the first selectable field
 	// rather than stranding the user with no operable row.
-	vis := be.tree.VisibleNodes()
-	if be.tree.Cursor < 0 || be.tree.Cursor >= len(vis) {
-		be.tree.Cursor = 0
-		for be.tree.Cursor < len(vis) && be.tree.Nodes[vis[be.tree.Cursor]].Kind == fieldtree.KindSeparator {
-			be.tree.Cursor++
-		}
+	if vis := be.tree.VisibleNodes(); be.tree.Cursor() < 0 || be.tree.Cursor() >= len(vis) {
+		be.tree = be.tree.MoveTo(0) // MoveTo steps forward over separator rows
 	}
 	return be
 }

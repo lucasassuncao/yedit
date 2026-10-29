@@ -40,7 +40,7 @@ func (be blockEditState) valueChoice() (valueChoice, bool) {
 	if be.active != blockEditPanelTree || idx < 0 {
 		return valueChoice{}, false
 	}
-	node := be.tree.Nodes[idx]
+	node := be.tree.Node(idx)
 	if node.Kind != fieldtree.KindField || node.Def.Kind != schema.KindPrimitive {
 		return valueChoice{}, false
 	}
@@ -97,10 +97,10 @@ func (be blockEditState) applyValue(nodeIdx int, value string) blockEditState {
 		be.yamlEditor = be.yamlEditor.SetValue(yamledit.NodeToContent(be.key, &be.node))
 		return be
 	}
-	if nodeIdx >= len(be.tree.Nodes) {
+	if nodeIdx >= be.tree.Len() {
 		return be
 	}
-	node := be.tree.Nodes[nodeIdx]
+	node := be.tree.Node(nodeIdx)
 	be = be.applyToggle(yamledit.ToggleCtx{Snippets: be.snippetsFn(), ChildDefs: be.childDefs}, node, true)
 
 	// Copies of the state share nodes: write into a clone, never through them.

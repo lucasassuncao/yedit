@@ -33,7 +33,7 @@ func TestFreeFormMapStaysEmptyAfterResync(t *testing.T) {
 			got := SyncCheckedFromNode(tm, valueNode)
 
 			var unknown []string
-			for _, n := range got.Nodes {
+			for _, n := range got.Nodes() {
 				if n.Kind == KindUnknown {
 					unknown = append(unknown, n.Label)
 				}
@@ -57,7 +57,7 @@ func TestObjectBlockStillFlagsUnknownKeys(t *testing.T) {
 	got := SyncCheckedFromNode(tm, yamledit.BlockValueNode(content))
 
 	var unknown []string
-	for _, n := range got.Nodes {
+	for _, n := range got.Nodes() {
 		if n.Kind == KindUnknown {
 			unknown = append(unknown, n.Label)
 		}
@@ -79,7 +79,7 @@ func nestedUnknownDefs() []schema.FieldDef {
 
 // unknownRows collects the (yamlPath, depth) of every KindUnknown row.
 func unknownRows(tm Model) (paths [][]string, depths []int) {
-	for _, n := range tm.Nodes {
+	for _, n := range tm.Nodes() {
 		if n.Kind == KindUnknown {
 			paths = append(paths, n.YAMLPath)
 			depths = append(depths, n.Depth)

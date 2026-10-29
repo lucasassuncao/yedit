@@ -58,7 +58,7 @@ func TestUndo_structFieldRemoveWithContent(t *testing.T) {
 
 	// Locate the output node and simulate the user confirming via dispatch.
 	outputIdx := -1
-	for i, n := range be.tree.Nodes {
+	for i, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField && n.Label == "output" {
 			outputIdx = i
 			break
@@ -286,7 +286,7 @@ func TestUndoAfterSpeculativeCheckpointRestoresInOnePress(t *testing.T) {
 	want := be.yamlEditor.Value()
 
 	outputIdx := -1
-	for i, n := range be.tree.Nodes {
+	for i, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField && n.Label == "output" {
 			outputIdx = i
 			break

@@ -99,13 +99,13 @@ func TestAppendPreset_addsEntriesToExisting(t *testing.T) {
 	is.Contains(base, "name: appended", "entries missing appended entry")
 
 	seqCount := 0
-	for _, n := range be.tree.Nodes {
+	for _, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindSeqItem {
 			seqCount++
 		}
 	}
 	is.Equal(2, seqCount, "tree should have 2 seq items")
-	is.Equal(1, be.tree.Cursor, "cursor should be on last entry")
+	is.Equal(1, be.tree.Cursor(), "cursor should be on last entry")
 	is.Contains(be.yamlEditor.Value(), "appended", "yamlEditor not showing appended entry")
 	is.True(be.dirty, "dirty should be true after appendPreset")
 }
@@ -151,13 +151,13 @@ func TestAppendPreset_multiEntryPreset(t *testing.T) {
 	be = be.dispatch(AppendPreset{Name: "multi", Content: y})
 
 	seqCount := 0
-	for _, n := range be.tree.Nodes {
+	for _, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindSeqItem {
 			seqCount++
 		}
 	}
 	is.Equal(3, seqCount, "tree should have 3 seq items (1 existing + 2 from preset)")
-	is.Equal(2, be.tree.Cursor, "cursor should be on last entry")
+	is.Equal(2, be.tree.Cursor(), "cursor should be on last entry")
 }
 
 // Appending a preset whose entry key already exists must be rejected, not

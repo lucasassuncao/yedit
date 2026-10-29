@@ -125,7 +125,7 @@ func (m model) screenActions() (lead, keys []shell.Action) {
 	hints := hintKeys(m.cfg.EnableHints, m.showHint, true, focusHintMsg{}, toggleHintsMsg{})
 	switch base := m.basePane(); {
 	case base == paneDocPreset:
-		return nil, append(browserActions(m.docPreset.PreviewFocus, "apply"), save, validate)
+		return nil, append(browserActions(m.docPreset.PreviewFocused(), "apply"), save, validate)
 	case base == panePreview:
 		out := []shell.Action{shell.ChangePane(), shell.Scroll(), send("esc", "back", previewBackMsg{})}
 		return nil, append(append(out, m.quitKeys()...), shell.Help(), save, validate)
@@ -137,7 +137,7 @@ func (m model) screenActions() (lead, keys []shell.Action) {
 			send("h", "hide hint", toggleHintsMsg{}), send("esc", "back", focusHintMsg{}),
 		}
 		return nil, append(append(out, m.quitKeys()...), shell.Help())
-	case m.list.IsFiltering():
+	case m.list.Filtering():
 		// "?" and "q" are typed into the filter here.
 		return nil, []shell.Action{shell.Move(), shown("enter", "select"), shown("esc", "clear"), save, validate}
 	}
@@ -188,9 +188,9 @@ func (be blockEditState) actions() []shell.Action {
 func (be blockEditState) panelActions() []shell.Action {
 	if be.mode == modePresetBrowser {
 		if be.isCollectionNav() {
-			return browserActions(be.preset.PreviewFocus, "replace", shown("a", "append"))
+			return browserActions(be.preset.PreviewFocused(), "replace", shown("a", "append"))
 		}
-		return browserActions(be.preset.PreviewFocus, "apply")
+		return browserActions(be.preset.PreviewFocused(), "apply")
 	}
 
 	if be.active == blockEditPanelHint {

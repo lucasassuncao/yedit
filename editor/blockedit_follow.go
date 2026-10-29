@@ -41,7 +41,7 @@ func (be blockEditState) followTargetLine() int {
 	if idx < 0 {
 		return -1
 	}
-	node := be.tree.Nodes[idx]
+	node := be.tree.Node(idx)
 	if len(node.YAMLPath) == 0 {
 		return -1
 	}

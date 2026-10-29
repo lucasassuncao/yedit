@@ -57,8 +57,8 @@ const (
 	ActionOpenEntry        // Enter on a value of a list of scalars - open what it names
 )
 
-// Model is the tree panel: the bezel tree over yedit's nodes (Nodes, Cursor,
-// Offset and Height are its fields), plus what the schema projection needs.
+// Model is the tree panel: the bezel tree over yedit's nodes, plus what the
+// schema projection needs.
 type Model struct {
 	tree.Model[Node]
 
@@ -80,9 +80,34 @@ func (n Node) Expand(open bool) Node {
 
 // newModel wraps nodes in the bezel tree with yedit's keys and message.
 func newModel(nodes []Node, h int) Model {
-	t := tree.New(nodes, h).WithKeys(tree.Keys{Up: keys.Up, Down: keys.Down, Left: keys.Left, Right: keys.Right})
-	t.EmptyMessage = "  (no fields)"
+	t := tree.New(nodes).SetHeight(h).WithEmptyMessage("  (no fields)").
+		WithKeys(tree.Keys{Up: keys.Up, Down: keys.Down, Left: keys.Left, Right: keys.Right})
 	return Model{Model: t}
+}
+
+// SetNodes replaces the nodes and returns yedit's Model rather than the
+// embedded one; the bezel tree keeps the cursor on a row.
+func (tm Model) SetNodes(nodes []Node) Model {
+	tm.Model = tm.Model.SetNodes(nodes)
+	return tm
+}
+
+// SetHeight returns yedit's Model rather than the embedded one.
+func (tm Model) SetHeight(h int) Model {
+	tm.Model = tm.Model.SetHeight(h)
+	return tm
+}
+
+// MoveTo returns yedit's Model rather than the embedded one.
+func (tm Model) MoveTo(i int) Model {
+	tm.Model = tm.Model.MoveTo(i)
+	return tm
+}
+
+// SetOffset returns yedit's Model rather than the embedded one.
+func (tm Model) SetOffset(n int) Model {
+	tm.Model = tm.Model.SetOffset(n)
+	return tm
 }
 
 // NewScalarList builds the navigator for a list of scalars: one entry per value,
@@ -90,7 +115,7 @@ func newModel(nodes []Node, h int) Model {
 func NewScalarList(content string, h int) Model {
 	tm := newModel(nil, h)
 	tm.isSeq = true
-	tm.Nodes = CollectionNodes(nil, yamledit.CollValueNode(content, false), false)
+	tm = tm.SetNodes(CollectionNodes(nil, yamledit.CollValueNode(content, false), false))
 	return tm
 }
 
@@ -108,27 +133,24 @@ func New(kind schema.Kind, defs []schema.FieldDef, content string, h int) Model 
 			break
 		}
 		tm.isSeq = true
-		tm.Nodes = CollectionNodes(defs, yamledit.CollValueNode(content, false), false)
+		tm = tm.SetNodes(CollectionNodes(defs, yamledit.CollValueNode(content, false), false))
 
 	case schema.KindDictionary:
 		if len(defs) == 0 {
 			break // free-form map (e.g. map[string]string) - no tree; raw YAML
 		}
 		tm.isSeq = true // collection navigator, keyed by the map key
-		tm.Nodes = CollectionNodes(defs, yamledit.CollValueNode(content, true), true)
+		tm = tm.SetNodes(CollectionNodes(defs, yamledit.CollValueNode(content, true), true))
 
 	case schema.KindObject:
 		tm.defs = defs
-		tm.Nodes = flattenDefsAsTree(defs, nil, 0)
+		tm = tm.SetNodes(flattenDefsAsTree(defs, nil, 0))
 		valueNode := yamledit.BlockValueNode(content)
-		tm.Nodes = DeriveChecked(valueNode, tm.Nodes, false)
-		tm.Nodes = applySections(tm.Nodes, collectUnknownNodes(valueNode, defs))
-		tm.Nodes = injectNestedUnknowns(tm.Nodes, valueNode, defs)
+		tm = tm.SetNodes(DeriveChecked(valueNode, tm.Nodes(), false))
+		tm = tm.SetNodes(applySections(tm.Nodes(), collectUnknownNodes(valueNode, defs)))
+		tm = tm.SetNodes(injectNestedUnknowns(tm.Nodes(), valueNode, defs))
 		// Start cursor on the first selectable node (skip opening separator).
-		vis := tm.VisibleNodes()
-		for tm.Cursor < len(vis) && tm.Nodes[vis[tm.Cursor]].Kind == KindSeparator {
-			tm.Cursor++
-		}
+		tm = tm.MoveTo(0)
 
 	default:
 		// KindPrimitive, KindDictionary, KindVariant - no tree nodes; YAML editor gets focus.
@@ -139,7 +161,7 @@ func New(kind schema.Kind, defs []schema.FieldDef, content string, h int) Model 
 // IsEmpty reports whether the tree has no nodes - true for primitive and
 // free-form collection blocks, which have no sub-fields to navigate.
 func (tm Model) IsEmpty() bool {
-	return len(tm.Nodes) == 0
+	return tm.Len() == 0
 }
 
 // flattenDefsAsTree converts a []schema.FieldDef into a flat DFS list of
@@ -180,7 +202,7 @@ func flattenDefsAsTree(defs []schema.FieldDef, prefix []string, depth int) []Nod
 // VisibleNodes is the bezel tree's Visible under yedit's older name.
 func (tm Model) VisibleNodes() []int { return tm.Visible() }
 
-// CurrentNodeIdx returns the tm.Nodes index under the cursor, or -1.
+// CurrentNodeIdx returns the tm.Nodes() index under the cursor, or -1.
 func (tm Model) CurrentNodeIdx() int { return tm.CurrentIdx() }
 
 // WithNodeMutated keeps the copy-on-write discipline of the bezel tree and
@@ -190,11 +212,8 @@ func (tm Model) WithNodeMutated(idx int, mut func(*Node)) Model {
 	return tm
 }
 
-// ClampCursor returns yedit's Model rather than the embedded one.
-func (tm Model) ClampCursor() Model {
-	tm.Model = tm.Model.ClampCursor()
-	return tm
-}
+// ClampCursor puts the cursor back on a visible row, as after a restore.
+func (tm Model) ClampCursor() Model { return tm.MoveTo(tm.Cursor()) }
 
 // CursorToSeqItem moves the cursor to the KindSeqItem row with the given
 // sequence index, or leaves it unchanged when no such row is visible. Used to
@@ -216,8 +235,8 @@ func (tm Model) NearestSeqItem() int {
 	}
 	// Walk backwards to find the closest KindSeqItem at depth 0.
 	for i := idx; i >= 0; i-- {
-		if tm.Nodes[i].Kind == KindSeqItem {
-			return tm.Nodes[i].SeqIdx
+		if tm.Node(i).Kind == KindSeqItem {
+			return tm.Node(i).SeqIdx
 		}
 	}
 	return -1
@@ -227,8 +246,8 @@ func (tm Model) NearestSeqItem() int {
 func (tm Model) WithDeletedSeqItem(seqIdx int) Model {
 	// Find the range of nodes belonging to this seqItem.
 	start := -1
-	end := len(tm.Nodes)
-	for i, n := range tm.Nodes {
+	end := tm.Len()
+	for i, n := range tm.Nodes() {
 		if n.Kind == KindSeqItem && n.SeqIdx == seqIdx {
 			start = i
 		} else if start >= 0 && i > start && n.Depth == 0 {
@@ -239,9 +258,9 @@ func (tm Model) WithDeletedSeqItem(seqIdx int) Model {
 	if start < 0 {
 		return tm
 	}
-	nodes := make([]Node, 0, len(tm.Nodes)-(end-start))
-	nodes = append(nodes, tm.Nodes[:start]...)
-	nodes = append(nodes, tm.Nodes[end:]...)
+	nodes := make([]Node, 0, tm.Len()-(end-start))
+	nodes = append(nodes, tm.Nodes()[:start]...)
+	nodes = append(nodes, tm.Nodes()[end:]...)
 
 	// Renumber seqIdx for remaining seqItem nodes.
 	counter := 0
@@ -252,7 +271,7 @@ func (tm Model) WithDeletedSeqItem(seqIdx int) Model {
 		}
 	}
 
-	tm.Nodes = nodes
+	tm = tm.SetNodes(nodes)
 	return tm.ClampCursor()
 }
 
@@ -261,7 +280,7 @@ func (tm Model) WithDeletedSeqItem(seqIdx int) Model {
 func (tm Model) WithNewSeqItem(defs []schema.FieldDef, label string) Model {
 	// Insert before KindAddNew (last node).
 	newSeqIdx := 0
-	for _, n := range tm.Nodes {
+	for _, n := range tm.Nodes() {
 		if n.Kind == KindSeqItem {
 			newSeqIdx++
 		}
@@ -282,20 +301,20 @@ func (tm Model) WithNewSeqItem(defs []schema.FieldDef, label string) Model {
 	}
 	children := flattenDefsAsTree(defs, []string{displayLabel}, 1)
 
-	insertAt := len(tm.Nodes) - 1 // before KindAddNew
+	insertAt := tm.Len() - 1 // before KindAddNew
 	if insertAt < 0 {
 		insertAt = 0
 	}
-	nodes := make([]Node, 0, len(tm.Nodes)+1+len(children))
-	for _, n := range tm.Nodes[:insertAt] {
+	nodes := make([]Node, 0, tm.Len()+1+len(children))
+	for _, n := range tm.Nodes()[:insertAt] {
 		if n.Kind != KindSeparator {
 			nodes = append(nodes, n)
 		}
 	}
 	nodes = append(nodes, seqNode)
 	nodes = append(nodes, children...)
-	nodes = append(nodes, tm.Nodes[insertAt:]...)
-	tm.Nodes = nodes
+	nodes = append(nodes, tm.Nodes()[insertAt:]...)
+	tm = tm.SetNodes(nodes)
 	return tm.CursorToSeqItem(newSeqIdx)
 }
 
@@ -311,7 +330,7 @@ func (tm Model) Update(msg tea.KeyPressMsg) (Model, Action) {
 	switch {
 	case key.Matches(msg, keys.Right):
 		// → on an openable field drills in; the bezel tree only knows expand.
-		if idx := tree.At(tm.Cursor, vis); idx >= 0 && tm.Nodes[idx].Openable {
+		if idx := tree.At(tm.Cursor(), vis); idx >= 0 && tm.Node(idx).Openable {
 			return tm, ActionOpenChild
 		}
 	case key.Matches(msg, keys.Enter):
@@ -335,11 +354,11 @@ func (tm Model) Update(msg tea.KeyPressMsg) (Model, Action) {
 // For KindAddNew it fires ActionAddNew; for unchecked leaf fields it checks
 // them; for everything else it does nothing (expand/collapse is arrows-only).
 func (tm Model) handleEnter(vis []int) (Model, Action) {
-	idx := tree.At(tm.Cursor, vis)
+	idx := tree.At(tm.Cursor(), vis)
 	if idx < 0 {
 		return tm, ActionNone
 	}
-	nd := tm.Nodes[idx]
+	nd := tm.Node(idx)
 	switch nd.Kind {
 	case KindAddNew:
 		return tm, ActionAddNew
@@ -373,11 +392,11 @@ func (tm Model) handleEnter(vis []int) (Model, Action) {
 // handleRemove removes the item under the cursor (ctrl+d = universal remove).
 // For seq items it fires ActionDeleted; for checked fields it unchecks them.
 func (tm Model) handleRemove(vis []int) (Model, Action) {
-	idx := tree.At(tm.Cursor, vis)
+	idx := tree.At(tm.Cursor(), vis)
 	if idx < 0 {
 		return tm, ActionNone
 	}
-	nd := tm.Nodes[idx]
+	nd := tm.Node(idx)
 	switch nd.Kind {
 	case KindSeqItem:
 		// Deletion is deferred to the block editor so it can confirm first; the
@@ -392,7 +411,7 @@ func (tm Model) handleRemove(vis []int) (Model, Action) {
 		// own, but ctrl+d should still remove the whole subtree when it holds
 		// content. Route through ActionToggled; the block editor confirms removal
 		// and deletes the parent mapping by its path.
-		if !nd.IsLeaf && hasCheckedDescendant(tm.Nodes, idx) {
+		if !nd.IsLeaf && hasCheckedDescendant(tm.Nodes(), idx) {
 			return tm, ActionToggled
 		}
 	case KindUnknown:
@@ -469,13 +488,13 @@ func checkedDescendants(nodes []Node) []bool {
 
 // View renders the tree panel content through the bezel tree.
 func (tm Model) View(th theme.Resolved) string {
-	checkedDesc := checkedDescendants(tm.Nodes)
+	checkedDesc := checkedDescendants(tm.Nodes())
 	return tm.Model.View(th, func(nd Node, ni int, selected bool) string {
 		return nodeLine(nd, ni, selected, th, checkedDesc)
 	})
 }
 
-// nodeLine renders a single tree row; ni indexes tm.Nodes for descendant
+// nodeLine renders a single tree row; ni indexes tm.Nodes() for descendant
 // lookups.
 func nodeLine(nd Node, ni int, selected bool, th theme.Resolved, checkedDesc []bool) string {
 	switch nd.Kind {

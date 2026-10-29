@@ -35,7 +35,7 @@ func mapSpec() blockSpec {
 
 func seqItemLabels(be blockEditState) []string {
 	var out []string
-	for _, n := range be.tree.Nodes {
+	for _, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindSeqItem {
 			out = append(out, n.Label)
 		}
@@ -80,7 +80,7 @@ func TestMapBlockAddEntry(t *testing.T) {
 }
 
 func fieldNodeChecked(be blockEditState, entryLabel, field string) (checked, found bool) {
-	for _, n := range be.tree.Nodes {
+	for _, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField && len(n.YAMLPath) == 2 && n.YAMLPath[0] == entryLabel && n.YAMLPath[1] == field {
 			return n.Checked, true
 		}
@@ -313,7 +313,7 @@ func TestCollectionDerive_perEntryLabels(t *testing.T) {
 	tm := be.collectionDeriveTree()
 
 	labels := map[int]string{}
-	for _, n := range tm.Nodes {
+	for _, n := range tm.Nodes() {
 		if n.Kind == fieldtree.KindSeqItem {
 			labels[n.SeqIdx] = n.Label
 		}
@@ -455,8 +455,8 @@ func TestEmptyMapKeyRefreshesTreeRow(t *testing.T) {
 // cursorToAddNew moves the tree cursor onto the "+ add new" row.
 func cursorToAddNew(be blockEditState) blockEditState {
 	for vi, ni := range be.tree.VisibleNodes() {
-		if be.tree.Nodes[ni].Kind == fieldtree.KindAddNew {
-			be.tree.Cursor = vi
+		if be.tree.Node(ni).Kind == fieldtree.KindAddNew {
+			be.tree = be.tree.MoveTo(vi)
 			break
 		}
 	}

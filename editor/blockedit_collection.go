@@ -24,8 +24,8 @@ type collectionBuffer struct {
 func (be blockEditState) collectionDeriveTree() fieldtree.Model {
 	tm := be.tree
 	isMap := be.coll.isMap
-	nodes := make([]fieldtree.Node, len(tm.Nodes))
-	copy(nodes, tm.Nodes)
+	nodes := make([]fieldtree.Node, tm.Len())
+	copy(nodes, tm.Nodes())
 	for i := 0; i < len(nodes); i++ {
 		if nodes[i].Kind != fieldtree.KindSeqItem {
 			continue
@@ -61,7 +61,7 @@ func (be blockEditState) collectionDeriveTree() fieldtree.Model {
 			nodes[ci] = sub[k]
 		}
 	}
-	tm.Nodes = nodes
+	tm = tm.SetNodes(nodes)
 	return tm
 }
 

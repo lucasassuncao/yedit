@@ -47,7 +47,7 @@ func filterSpec(content string) blockSpec {
 
 // findFieldNode returns the first fieldtree.KindField with the given label.
 func findFieldNode(tm fieldtree.Model, label string) (fieldtree.Node, bool) {
-	for _, n := range tm.Nodes {
+	for _, n := range tm.Nodes() {
 		if n.Kind == fieldtree.KindField && n.Label == label {
 			return n, true
 		}
@@ -58,14 +58,14 @@ func findFieldNode(tm fieldtree.Model, label string) (fieldtree.Node, bool) {
 // cursorToFieldExpanded expands all seq items so field rows are visible, then
 // positions the cursor on the named field.
 func cursorToFieldExpanded(be blockEditState, label string) blockEditState {
-	for i := range be.tree.Nodes {
-		if be.tree.Nodes[i].Kind == fieldtree.KindSeqItem {
-			be.tree.Nodes[i].Expanded = true
+	for i := range be.tree.Nodes() {
+		if be.tree.Node(i).Kind == fieldtree.KindSeqItem {
+			be.tree = be.tree.WithNodeMutated(i, func(n *fieldtree.Node) { n.Expanded = true })
 		}
 	}
 	for vi, ni := range be.tree.VisibleNodes() {
-		if be.tree.Nodes[ni].Kind == fieldtree.KindField && be.tree.Nodes[ni].Label == label {
-			be.tree.Cursor = vi
+		if be.tree.Node(ni).Kind == fieldtree.KindField && be.tree.Node(ni).Label == label {
+			be.tree = be.tree.MoveTo(vi)
 			break
 		}
 	}
@@ -144,7 +144,7 @@ func structSpec() blockSpec {
 
 func seqItemCount(be blockEditState) int {
 	n := 0
-	for _, nd := range be.tree.Nodes {
+	for _, nd := range be.tree.Nodes() {
 		if nd.Kind == fieldtree.KindSeqItem {
 			n++
 		}
@@ -262,7 +262,7 @@ func TestResyncToleratesInvalidYAML_struct(t *testing.T) {
 	be := newBlockEdit(Config{}, structSpec(), 100, 40)
 
 	before := map[string]bool{}
-	for _, n := range be.tree.Nodes {
+	for _, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField {
 			before[n.Label] = n.Checked
 		}
@@ -275,7 +275,7 @@ func TestResyncToleratesInvalidYAML_struct(t *testing.T) {
 	tm := be.resyncTreeFromYAML() // must not panic
 
 	after := map[string]bool{}
-	for _, n := range tm.Nodes {
+	for _, n := range tm.Nodes() {
 		if n.Kind == fieldtree.KindField {
 			after[n.Label] = n.Checked
 		}
@@ -305,7 +305,7 @@ func TestResyncToleratesInvalidYAML_collection(t *testing.T) {
 
 	// The existing item label must survive an unparseable buffer.
 	foundAlpha := false
-	for _, n := range tm.Nodes {
+	for _, n := range tm.Nodes() {
 		if n.Kind == fieldtree.KindSeqItem && n.Label == "alpha" {
 			foundAlpha = true
 		}
@@ -361,8 +361,8 @@ func TestCtrlDRemovesNestedParentBlock(t *testing.T) {
 	be := newBlockEdit(Config{}, blockSpec{key: "categories", defs: defs, kind: schema.KindList, content: content}, 120, 40)
 
 	// Expand every node so "before" is visible, then place the cursor on it.
-	for i := range be.tree.Nodes {
-		be.tree.Nodes[i].Expanded = true
+	for i := range be.tree.Nodes() {
+		be.tree = be.tree.WithNodeMutated(i, func(n *fieldtree.Node) { n.Expanded = true })
 	}
 	be = cursorToLabel(be, "before")
 
@@ -371,7 +371,7 @@ func TestCtrlDRemovesNestedParentBlock(t *testing.T) {
 
 	// Locate the captured "before" node index and confirm the removal.
 	beforeIdx := -1
-	for i, n := range be.tree.Nodes {
+	for i, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField && n.Label == "before" {
 			beforeIdx = i
 			break
@@ -484,7 +484,7 @@ func TestSOT_CommitPreservesLeadingComments(t *testing.T) {
 	be = expandAll(be)
 	be = cursorToLabel(be, "output")
 	idx := -1
-	for i, n := range be.tree.Nodes {
+	for i, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField && n.Label == "output" {
 			idx = i
 			break
@@ -627,7 +627,7 @@ func assertTreeMatchesNode(t *testing.T, be blockEditState) {
 	if err := validateSnippetText(be.yamlEditor.Value()); err != nil {
 		t.Errorf("buffer is not valid YAML after a tree action: %v\n%s", err, be.yamlEditor.Value())
 	}
-	for _, n := range be.tree.Nodes {
+	for _, n := range be.tree.Nodes() {
 		if n.Kind != fieldtree.KindField || !n.IsLeaf {
 			continue
 		}
@@ -644,7 +644,7 @@ func assertTreeMatchesNode(t *testing.T, be blockEditState) {
 func assertCollTreeMatchesNode(t *testing.T, be blockEditState) {
 	t.Helper()
 	isMap := be.coll.isMap
-	nodes := be.tree.Nodes
+	nodes := be.tree.Nodes()
 	for i := 0; i < len(nodes); i++ {
 		if nodes[i].Kind != fieldtree.KindSeqItem {
 			continue
@@ -722,10 +722,10 @@ func applyFuzzAction(be blockEditState, a byte) blockEditState {
 		be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 		be = expandAll(be)
 	case 3:
-		if be.tree.Cursor >= 0 && be.tree.Cursor < len(vis) {
-			ni := vis[be.tree.Cursor]
-			if ni < len(be.tree.Nodes) {
-				n := be.tree.Nodes[ni]
+		if be.tree.Cursor() >= 0 && be.tree.Cursor() < len(vis) {
+			ni := vis[be.tree.Cursor()]
+			if ni < be.tree.Len() {
+				n := be.tree.Node(ni)
 				switch {
 				case n.Kind == fieldtree.KindField && n.Checked:
 					be = be.dispatch(ToggleField{NodeIdx: ni, Checked: false})
@@ -751,21 +751,21 @@ func TestComputedDirty_ToggleOnOffReadsClean(t *testing.T) {
 	must.False(be.dirty, "freshly opened editor must be clean")
 
 	idx := -1
-	for i, n := range be.tree.Nodes {
+	for i, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField && n.IsLeaf && !n.Checked {
 			idx = i
 			break
 		}
 	}
 	must.GreaterOrEqual(idx, 0, "need an unchecked leaf field")
-	label := be.tree.Nodes[idx].Label
+	label := be.tree.Node(idx).Label
 
 	be = be.dispatch(ToggleField{NodeIdx: idx, Checked: true})
 	must.True(be.dirty, "adding a field must read dirty")
 
 	// The tree was resectioned by the toggle; find the field again by label.
 	idx = -1
-	for i, n := range be.tree.Nodes {
+	for i, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField && n.Label == label && n.Checked {
 			idx = i
 			break

@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/require"
 
+	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
 	"github.com/lucasassuncao/yedit/yamledit"
 )
@@ -88,8 +89,8 @@ func TestValuePickerWritesIntoTheCurrentEntry(t *testing.T) {
 	be := newBlockEdit(valueMeta(), blockSpec{key: "categories", defs: defs, kind: schema.KindList, content: content}, 100, 30)
 	be.active = blockEditPanelTree
 	be = be.dispatch(NavigateEntry{Idx: 1})
-	for i := range be.tree.Nodes {
-		be.tree.Nodes[i].Expanded = true
+	for i := range be.tree.Nodes() {
+		be.tree = be.tree.WithNodeMutated(i, func(n *fieldtree.Node) { n.Expanded = true })
 	}
 	be.tree = be.tree.CursorToSeqItem(1)
 	be = cursorToLabel(be, "level")

@@ -17,7 +17,7 @@ func (be blockEditState) openPresetPicker() blockEditState {
 	if len(items) == 0 {
 		return be
 	}
-	be.preset = browser.New(items, be.currentPreset)
+	be.preset = browser.New(items).WithCurrent(be.currentPreset)
 	be.mode = modePresetBrowser
 	return be.relayout()
 }
@@ -34,9 +34,9 @@ func (be blockEditState) applyPreset(name, y string) blockEditState {
 			be.editorErr = editorError{kind: errPreset, message: "Preset YAML is invalid; block reset to empty."}
 		}
 		be.node = *yamledit.CollValueNode(y, be.isMapNav())
-		be.tree.Nodes = be.collectionTreeNodes()
-		be.tree.Cursor = 0
-		be.tree.Offset = 0
+		be.tree = be.tree.SetNodes(be.collectionTreeNodes())
+		be.tree = be.tree.MoveTo(0)
+		be.tree = be.tree.SetOffset(0)
 		return be.loadEntry(0)
 	}
 
@@ -84,12 +84,18 @@ func (be blockEditState) appendPreset(name, y string) blockEditState {
 	// Indentation is irrelevant: entries are spliced as nodes and re-encoded.
 	be.node.Content = append(be.node.Content, presetNode.Content...)
 
-	be.tree.Nodes = be.collectionTreeNodes()
-	be.tree.Offset = 0
-	be.tree.Cursor = yamledit.EntryCount(&be.node, be.isMapNav()) - 1
+	be.tree = be.tree.SetNodes(be.collectionTreeNodes())
+	be.tree = be.tree.SetOffset(0)
+	be.tree = be.tree.MoveTo(yamledit.EntryCount(&be.node, be.isMapNav()) - 1)
 
 	be = be.loadEntry(yamledit.EntryCount(&be.node, be.isMapNav()) - 1)
 	be.currentPreset = name
 	be.editorErr = editorError{}
 	return be
+}
+
+// chosenLabel is the label under a preset browser's cursor, "" when it is empty.
+func chosenLabel(b browser.Model) string {
+	it, _ := b.Selected()
+	return it.Label
 }

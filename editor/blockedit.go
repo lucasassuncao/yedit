@@ -175,7 +175,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 		}
 		be.coll = collectionBuffer{key: spec.key, isMap: be.isMapNav(), current: -1}
 		be.node = *yamledit.CollValueNode(raw, be.isMapNav())
-		be.tree.Nodes = be.collectionTreeNodes()
+		be.tree = be.tree.SetNodes(be.collectionTreeNodes())
 	}
 
 	content := spec.content
@@ -353,7 +353,7 @@ func (be blockEditState) startHintAnim(from int) (blockEditState, bool) {
 	if be.showHint {
 		target = be.hintTargetH()
 	}
-	be.hintAnim = animation.New(from, target, be.cfg.AnimationDuration)
+	be.hintAnim = animation.NewTween(from, target, be.cfg.AnimationDuration)
 	// A rapid double toggle retargets the existing tween instead of stacking a
 	// second ticker.
 	return be, be.hintAnim.Active() && !running
@@ -421,7 +421,7 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be = be.relayout()
 		be.yamlEditor = be.yamlEditor.SetWidth(be.rightW())
 		be.yamlEditor = be.yamlEditor.SetHeight(be.editorH() - 1)
-		be.tree.Height = be.innerH()
+		be.tree = be.tree.SetHeight(be.innerH())
 		return be, nil
 	}
 
@@ -461,14 +461,14 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 	}
 	// Append is yedit's own key, for collection blocks only; the browser
 	// answers for the rest.
-	if key.Matches(km, keys.AAppend) && !be.preset.PreviewFocus && be.isCollectionNav() {
-		return be.presetChosen(AppendPreset{Name: be.preset.Selected().Label}), nil
+	if key.Matches(km, keys.AAppend) && !be.preset.PreviewFocused() && be.isCollectionNav() {
+		return be.presetChosen(AppendPreset{Name: chosenLabel(be.preset)}), nil
 	}
 	var action browser.Action
 	be.preset, action = be.preset.Update(km)
 	switch action {
 	case browser.Chosen:
-		return be.presetChosen(ApplyPreset{Name: be.preset.Selected().Label}), nil
+		return be.presetChosen(ApplyPreset{Name: chosenLabel(be.preset)}), nil
 	case browser.Dismissed:
 		be.mode = modeEditing
 		return be.relayout(), nil
@@ -481,7 +481,7 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 func (be blockEditState) presetChosen(act BlockAction) blockEditState {
 	be.mode = modeEditing
 	be = be.relayout()
-	name := be.preset.Selected().Label
+	name := chosenLabel(be.preset)
 	y, err := be.cfg.BlockPresets.PresetYAML(be.key, name)
 	if err != nil {
 		be.editorErr = editorError{kind: errPreset, message: fmt.Sprintf("preset error: %v", err)}
@@ -729,7 +729,7 @@ func (be blockEditState) applyParsedEntry(kn, vn *yaml.Node) blockEditState {
 			be.node.Content = append(be.node.Content, vn)
 		}
 		be.coll.current = 0
-		be.tree.Nodes = be.collectionTreeNodes()
+		be.tree = be.tree.SetNodes(be.collectionTreeNodes())
 	default:
 		return be
 	}
@@ -769,7 +769,7 @@ func (be blockEditState) withPreCheckedFields() blockEditState {
 	}
 	ctx := yamledit.ToggleCtx{Snippets: be.snippetsFn(), ChildDefs: be.childDefs}
 	changed := false
-	for _, n := range be.tree.Nodes {
+	for _, n := range be.tree.Nodes() {
 		if n.Kind != fieldtree.KindField || n.Depth != 0 || n.Checked {
 			continue
 		}
@@ -811,7 +811,7 @@ func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 	if yamledit.EntryCount(&be.node, isMap) != oldCount {
 		// Entry count changed: rebuild the tree, losing expansion state, since the
 		// structure must match the new node.
-		be.tree.Nodes = be.collectionTreeNodes()
+		be.tree = be.tree.SetNodes(be.collectionTreeNodes())
 		if be.coll.current >= yamledit.EntryCount(&be.node, isMap) {
 			be.coll.current = yamledit.EntryCount(&be.node, isMap) - 1
 		}
@@ -958,12 +958,12 @@ func (be blockEditState) View(parentSegs []string) string {
 
 func (be blockEditState) presetView(sh shell.Shell) string {
 	focus := "presets"
-	if be.preset.PreviewFocus {
+	if be.preset.PreviewFocused() {
 		focus = "preview"
 	}
 	panes := map[string]shell.Pane{
-		"presets": {Title: "Available Presets", Body: func(r layout.Rect) string { return be.preset.ListView(be.theme, r.H) }},
-		"preview": {Title: "Preset Preview", Body: func(r layout.Rect) string { return be.preset.PreviewView(r.H) }},
+		"presets": {Title: "Available Presets", Body: func(r layout.Rect) string { return be.preset.SetListHeight(r.H).ListView(be.theme) }},
+		"preview": {Title: "Preset Preview", Body: func(r layout.Rect) string { return be.preset.SetPreviewHeight(r.H).PreviewView() }},
 	}
 	return sh.SetFocus(focus).View(panes)
 }

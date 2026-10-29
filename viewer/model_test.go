@@ -56,36 +56,36 @@ func newModel(t *testing.T, src interface {
 
 func TestDrillIntoAFieldAndBack(t *testing.T) {
 	m := newModel(t, stubSource{})
-	require.Equal(t, "image", m.b.Selected().Label)
+	require.Equal(t, "image", chosenLabel(m.b))
 	require.Contains(t, ansi.Strip(m.View().Content), "Fields")
 
 	m.Update(bezeltest.Key("enter"))
 	require.Equal(t, "image", m.field)
-	require.Equal(t, "alpine", m.b.Selected().Label)
+	require.Equal(t, "alpine", chosenLabel(m.b))
 	require.Contains(t, ansi.Strip(m.View().Content), "Presets · image")
 
 	m.Update(bezeltest.Key("down"))
-	require.Equal(t, "debian", m.b.Selected().Label)
+	require.Equal(t, "debian", chosenLabel(m.b))
 
 	m.Update(bezeltest.Key("left"))
 	require.Equal(t, "", m.field)
-	require.Equal(t, "image", m.b.Selected().Label, "back lands on the field just left")
+	require.Equal(t, "image", chosenLabel(m.b), "back lands on the field just left")
 }
 
 func TestPreviewPaneScrollsOnlyWhenFocused(t *testing.T) {
 	m := newModel(t, tallSource{})
-	top := m.b.PreviewView(5)
+	top := m.b.SetPreviewHeight(5).PreviewView()
 	m.Update(bezeltest.Key("down")) // list has focus: moves the cursor, not the preview
-	require.Equal(t, top, m.b.PreviewView(5))
+	require.Equal(t, top, m.b.SetPreviewHeight(5).PreviewView())
 
 	m.Update(bezeltest.Key("tab"))
-	require.True(t, m.b.PreviewFocus)
+	require.True(t, m.b.PreviewFocused())
 	m.Update(bezeltest.Key("down"))
-	require.NotEqual(t, top, m.b.PreviewView(5))
+	require.NotEqual(t, top, m.b.SetPreviewHeight(5).PreviewView())
 	m.Update(bezeltest.Key("pgdown"))
 	m.Update(bezeltest.Key("tab"))
 	m.Update(bezeltest.Key("up")) // selection change resets the scroll
-	require.Equal(t, top, m.b.PreviewView(5))
+	require.Equal(t, top, m.b.SetPreviewHeight(5).PreviewView())
 }
 
 func TestEmptySourceRendersAMessage(t *testing.T) {

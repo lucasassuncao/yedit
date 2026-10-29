@@ -131,7 +131,7 @@ func TestFilteringLegendHidesHelp(t *testing.T) {
 	m := newHintModel(t, 0)
 	updated, _ := m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	m = updated.(model)
-	require.True(t, m.list.IsFiltering())
+	require.True(t, m.list.Filtering())
 	require.NotContains(t, legendRow(m.viewContent()), "[?] help")
 }
 

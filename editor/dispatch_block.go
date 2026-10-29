@@ -34,10 +34,10 @@ func (be blockEditState) dispatch(a BlockAction) blockEditState {
 func (be blockEditState) applyAction(a BlockAction) blockEditState {
 	switch act := a.(type) {
 	case ToggleField:
-		if act.NodeIdx < 0 || act.NodeIdx >= len(be.tree.Nodes) {
+		if act.NodeIdx < 0 || act.NodeIdx >= be.tree.Len() {
 			return be
 		}
-		node := be.tree.Nodes[act.NodeIdx]
+		node := be.tree.Node(act.NodeIdx)
 		be = be.saveUndo()
 		ctx := yamledit.ToggleCtx{Snippets: be.snippetsFn(), ChildDefs: be.childDefs}
 		be = be.applyToggle(ctx, node, act.Checked)

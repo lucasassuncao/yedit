@@ -45,9 +45,9 @@ func NewModel(src presets.Source) Model {
 	})
 	// ← and → walk the two levels the way esc and enter do.
 	m.keys = browser.DefaultKeys()
-	m.keys.Enter = key.NewBinding(key.WithKeys("enter", "right"))
-	m.keys.Esc = key.NewBinding(key.WithKeys("esc", "left"))
-	m.b = browser.New(m.fieldItems(), "").WithKeys(m.keys)
+	m.keys.Enter = key.New("enter", "right")
+	m.keys.Esc = key.New("esc", "left")
+	m.b = browser.New(m.fieldItems()).WithKeys(m.keys)
 	return m
 }
 
@@ -81,13 +81,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.b, action = m.b.Update(msg)
 		switch {
 		case action == browser.Chosen && m.field == "":
-			m.field = m.b.Selected().Label
+			m.field = chosenLabel(m.b)
 			m.b = m.b.SetItems(m.presetItems(m.field))
 		case action == browser.Dismissed && m.field != "":
 			// Back to the fields, cursor on the one just left.
 			current := m.field
 			m.field = ""
-			m.b = browser.New(m.fieldItems(), current).WithKeys(m.keys)
+			m.b = browser.New(m.fieldItems()).WithCurrent(current).WithKeys(m.keys)
 			m.relayout()
 		}
 		m.sh = m.sh.SetActions(m.actions()...)
@@ -145,7 +145,7 @@ func (m *Model) actions() []shell.Action {
 		return shell.Custom(label, desc, nil, shell.WithKey(keys...), shell.DisplayOnly())
 	}
 	switch {
-	case m.b.PreviewFocus:
+	case m.b.PreviewFocused():
 		return append(out, shell.Scroll(), shell.Quit(), shown("pgup/pgdn", "half-page", "pgup", "pgdown"), shown("esc", "back to list", "esc"))
 	case m.field != "":
 		return append(out, shell.Move(), shell.Quit(), shown("esc/←", "back to fields", "esc", "left"))
@@ -169,15 +169,15 @@ func (m *Model) View() tea.View {
 	listTitle, bodyTitle := "Fields", "Preset"
 	if m.field != "" {
 		listTitle = "Presets · " + m.field
-		bodyTitle = fmt.Sprintf("%s · %s", m.field, m.b.Selected().Label)
+		bodyTitle = fmt.Sprintf("%s · %s", m.field, chosenLabel(m.b))
 	}
 	focus := "fields"
-	if m.b.PreviewFocus {
+	if m.b.PreviewFocused() {
 		focus = "body"
 	}
 	content := m.sh.SetActions(m.actions()...).SetFocus(focus).View(map[string]shell.Pane{
-		"fields": {Title: listTitle, Body: func(r layout.Rect) string { return m.b.ListView(m.th, r.H) }},
-		"body":   {Title: bodyTitle, Body: func(r layout.Rect) string { return m.b.PreviewView(r.H) }},
+		"fields": {Title: listTitle, Body: func(r layout.Rect) string { return m.b.SetListHeight(r.H).ListView(m.th) }},
+		"body":   {Title: bodyTitle, Body: func(r layout.Rect) string { return m.b.SetPreviewHeight(r.H).PreviewView() }},
 	})
 	v := tea.NewView(content)
 	v.AltScreen = true
@@ -190,4 +190,10 @@ func Run(src presets.Source) error {
 	p := tea.NewProgram(&m)
 	_, err := p.Run()
 	return err
+}
+
+// chosenLabel is the label under the browser's cursor, "" when it is empty.
+func chosenLabel(b browser.Model) string {
+	it, _ := b.Selected()
+	return it.Label
 }

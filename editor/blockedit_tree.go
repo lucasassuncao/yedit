@@ -99,7 +99,7 @@ func (be blockEditState) handleTreeToggleDispatch() blockEditState {
 	if idx < 0 {
 		return be
 	}
-	node := be.tree.Nodes[idx]
+	node := be.tree.Node(idx)
 	if !node.Checked && be.fieldHasContent(node) && !be.cfg.NoDeleteConfirm {
 		// Revert the visual toggle while waiting for the user to confirm.
 		be.tree = be.tree.WithNodeMutated(idx, func(n *fieldtree.Node) { n.Checked = true })
@@ -118,14 +118,14 @@ func (be blockEditState) handleTreeToggleDispatch() blockEditState {
 // when NoDeleteConfirm is set.
 func (be blockEditState) handleTreeDeleteDispatch() blockEditState {
 	idx := be.tree.CurrentNodeIdx()
-	if idx < 0 || be.tree.Nodes[idx].Kind != fieldtree.KindSeqItem {
+	if idx < 0 || be.tree.Node(idx).Kind != fieldtree.KindSeqItem {
 		return be
 	}
-	seqIdx := be.tree.Nodes[idx].SeqIdx
+	seqIdx := be.tree.Node(idx).SeqIdx
 	if be.cfg.NoDeleteConfirm {
 		return be.dispatch(DeleteEntry{SeqIdx: seqIdx})
 	}
-	label := be.tree.Nodes[idx].Label
+	label := be.tree.Node(idx).Label
 	al := be.confirm(
 		"Remove entry?",
 		fmt.Sprintf("Remove %q? Its content will be lost.", label),
@@ -142,7 +142,7 @@ func (be blockEditState) handleTreeOpenChild() (blockEditState, tea.Cmd) {
 	if idx < 0 {
 		return be, nil
 	}
-	node := be.tree.Nodes[idx]
+	node := be.tree.Node(idx)
 
 	// relSegs addresses the field relative to this editor's focus.
 	var relSegs []yamledit.PathSeg

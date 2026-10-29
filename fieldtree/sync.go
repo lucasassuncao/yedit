@@ -65,15 +65,15 @@ func DeriveChecked(valueNode *yaml.Node, nodes []Node, skipFirstSeg bool) []Node
 // and restores the cursor.
 func SyncCheckedFromNode(tm Model, valueNode *yaml.Node) Model {
 	var selectedPath []string
-	if ni := tm.CurrentNodeIdx(); ni >= 0 && tm.Nodes[ni].Kind == KindField {
-		selectedPath = tm.Nodes[ni].YAMLPath
+	if ni := tm.CurrentNodeIdx(); ni >= 0 && tm.Node(ni).Kind == KindField {
+		selectedPath = tm.Node(ni).YAMLPath
 	}
 
-	tm.Nodes = DeriveChecked(valueNode, tm.Nodes, false)
+	tm = tm.SetNodes(DeriveChecked(valueNode, tm.Nodes(), false))
 
 	if !tm.isSeq {
-		tm.Nodes = applySections(tm.Nodes, collectUnknownNodes(valueNode, tm.defs))
-		tm.Nodes = injectNestedUnknowns(tm.Nodes, valueNode, tm.defs)
+		tm = tm.SetNodes(applySections(tm.Nodes(), collectUnknownNodes(valueNode, tm.defs)))
+		tm = tm.SetNodes(injectNestedUnknowns(tm.Nodes(), valueNode, tm.defs))
 		tm = tm.restoreCursorToPath(selectedPath)
 	}
 	return tm

@@ -62,7 +62,7 @@ func TestAudit_ToggleOffPrunesEmptyAncestors(t *testing.T) {
 	}, 120, 40)
 	be = expandAll(be)
 	idx := -1
-	for i, n := range be.tree.Nodes {
+	for i, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField && n.Label == "path" {
 			idx = i
 			break
@@ -87,7 +87,7 @@ func TestAudit_ToggleRoundTrip(t *testing.T) {
 	be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: tea.KeyEnter})
 	be = expandAll(be)
 	idx := -1
-	for i, n := range be.tree.Nodes {
+	for i, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField && n.Label == "regex" {
 			idx = i
 			break
@@ -152,17 +152,17 @@ func TestAudit_ToggleParentStructOnThenChild(t *testing.T) {
 // --- interaction-layer probes (tree <-> blockEditState) ---
 
 func expandSeqItems(be blockEditState) blockEditState {
-	for i := range be.tree.Nodes {
-		if be.tree.Nodes[i].Kind == fieldtree.KindSeqItem {
-			be.tree.Nodes[i].Expanded = true
+	for i := range be.tree.Nodes() {
+		if be.tree.Node(i).Kind == fieldtree.KindSeqItem {
+			be.tree = be.tree.WithNodeMutated(i, func(n *fieldtree.Node) { n.Expanded = true })
 		}
 	}
 	return be
 }
 
 func expandAll(be blockEditState) blockEditState {
-	for i := range be.tree.Nodes {
-		be.tree.Nodes[i].Expanded = true
+	for i := range be.tree.Nodes() {
+		be.tree = be.tree.WithNodeMutated(i, func(n *fieldtree.Node) { n.Expanded = true })
 	}
 	return be
 }
@@ -248,7 +248,7 @@ func TestAudit_EntryDeleteConfirms(t *testing.T) {
 
 // nodeByPathSuffix finds a field node whose yamlPath ends with the given segments.
 func nodeByPathSuffix(be blockEditState, suffix ...string) (fieldtree.Node, bool) {
-	for _, n := range be.tree.Nodes {
+	for _, n := range be.tree.Nodes() {
 		if n.Kind != fieldtree.KindField || len(n.YAMLPath) < len(suffix) {
 			continue
 		}
@@ -327,7 +327,7 @@ func TestAudit_RemoveParentResetsDescendantChecks(t *testing.T) {
 		be = cursorToLabel(be, parent)
 		be, _ = be.updateTreePanel(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 		idx := -1
-		for i, n := range be.tree.Nodes {
+		for i, n := range be.tree.Nodes() {
 			if n.Kind == fieldtree.KindField && n.Label == parent {
 				idx = i
 				break
@@ -484,7 +484,7 @@ func TestSOT_ToggleSequenceConsistency(t *testing.T) {
 		be = cursorToLabel(be, label)
 		// ctrl+d on a filled leaf confirms; drive the pending removal directly.
 		idx := -1
-		for i, n := range be.tree.Nodes {
+		for i, n := range be.tree.Nodes() {
 			if n.Kind == fieldtree.KindField && n.Label == label {
 				idx = i
 				break
@@ -510,7 +510,7 @@ func TestSOT_ToggleRoundTripNode(t *testing.T) {
 	}
 
 	idx := -1
-	for i, n := range be.tree.Nodes {
+	for i, n := range be.tree.Nodes() {
 		if n.Kind == fieldtree.KindField && n.Label == "regex" {
 			idx = i
 			break

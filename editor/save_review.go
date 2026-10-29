@@ -21,8 +21,8 @@ import (
 const reviewChrome = 2 + 2 + 2 + 2 + 3
 
 var (
-	reviewPageUp   = key.NewBinding(key.WithKeys("pgup"))
-	reviewPageDown = key.NewBinding(key.WithKeys("pgdown"))
+	reviewPageUp   = key.New("pgup")
+	reviewPageDown = key.New("pgdown")
 )
 
 // saveReview is the "Save changes?" dialog: the diff of what the save writes,

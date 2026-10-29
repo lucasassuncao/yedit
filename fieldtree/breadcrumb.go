@@ -7,7 +7,7 @@ func (tm Model) BreadcrumbSegments() []string {
 	if idx < 0 {
 		return nil
 	}
-	n := tm.Nodes[idx]
+	n := tm.Node(idx)
 	switch n.Kind {
 	case KindAddNew:
 		return []string{"+ add new"}

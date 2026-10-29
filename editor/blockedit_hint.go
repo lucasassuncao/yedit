@@ -50,7 +50,7 @@ func (be blockEditState) hintContent() string {
 	if idx < 0 {
 		return be.theme.Muted.Render("  select a field to see hints")
 	}
-	node := be.tree.Nodes[idx]
+	node := be.tree.Node(idx)
 
 	switch node.Kind {
 	case fieldtree.KindUnknown:

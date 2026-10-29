@@ -61,9 +61,9 @@ func TestListFilterByTyping(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
 	lm := New([]string{"alpha", "beta", "gamma"}, nil, nil, 10, th)
-	must.False(lm.IsFiltering(), "should not start in filtering mode")
+	must.False(lm.Filtering(), "should not start in filtering mode")
 	lm, _ = lm.Update(bezeltest.Key("/"))
-	must.True(lm.IsFiltering(), `"/" should enter filtering mode`)
+	must.True(lm.Filtering(), `"/" should enter filtering mode`)
 	for _, r := range "be" {
 		lm, _ = lm.Update(bezeltest.Key(string(r)))
 	}
@@ -72,7 +72,7 @@ func TestListFilterByTyping(t *testing.T) {
 	is.Equal("beta", lm.SelectedItem().Key, `filter "be" should match beta`)
 
 	lm, cmd := lm.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	is.False(lm.IsFiltering())
+	is.False(lm.Filtering())
 	must.NotNil(cmd)
 	is.Equal("beta", cmd().(OpenItemMsg).Item.Key)
 }

@@ -66,7 +66,7 @@ func (m model) handleDocPresetKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case browser.Dismissed:
 		return m.enterList().relayout(), nil
 	case browser.Chosen:
-		name := m.docPreset.Selected().Label
+		name := chosenLabel(m.docPreset)
 		y, err := m.cfg.DocPresets.PresetYAML("", name)
 		if err != nil {
 			return m.withStatus(fmt.Sprintf("preset error: %v", err))
@@ -90,7 +90,7 @@ func (m model) handlePreviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // openDocPresets switches to the document preset picker, when there are any.
 func (m model) openDocPresets() (tea.Model, tea.Cmd) {
 	if items := presetItems(m.cfg.DocPresets, ""); len(items) > 0 {
-		return m.enterDocPreset(browser.New(items, "")), nil
+		return m.enterDocPreset(browser.New(items)), nil
 	}
 	return m, nil
 }

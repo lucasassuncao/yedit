@@ -32,8 +32,8 @@ func nestedStructSpec(content string) blockSpec {
 func cursorToVisibleNode(t *testing.T, be blockEditState, label string) blockEditState {
 	t.Helper()
 	for vi, ni := range be.tree.VisibleNodes() {
-		if be.tree.Nodes[ni].Label == label {
-			be.tree.Cursor = vi
+		if be.tree.Node(ni).Label == label {
+			be.tree = be.tree.MoveTo(vi)
 			return be
 		}
 	}

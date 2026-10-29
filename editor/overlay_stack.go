@@ -138,7 +138,7 @@ func (be blockEditState) refreshCollectionFromNode(node *yaml.Node) blockEditSta
 	be.node = *yamlnode.CloneNode(node)
 	newCount := yamledit.EntryCount(&be.node, isMap)
 	if newCount != oldCount {
-		be.tree.Nodes = be.collectionTreeNodes()
+		be.tree = be.tree.SetNodes(be.collectionTreeNodes())
 		// The rebuilt tree may be shorter than the cursor position, so clamp it
 		// back onto a real row.
 		be.tree = be.tree.ClampCursor()

@@ -110,7 +110,7 @@ func (m model) startHintAnim(from int) (model, bool) {
 	if m.showHint {
 		target = m.hintTargetH()
 	}
-	m.hintAnim = animation.New(from, target, m.cfg.AnimationDuration)
+	m.hintAnim = animation.NewTween(from, target, m.cfg.AnimationDuration)
 	// A rapid double toggle retargets the existing tween instead of stacking a
 	// second ticker.
 	return m, m.hintAnim.Active() && !running

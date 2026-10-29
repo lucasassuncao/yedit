@@ -18,12 +18,12 @@ import (
 func TestNewScalarListListsEachValue(t *testing.T) {
 	tm := NewScalarList("import:\n  - ./a.yaml\n  - ./b.yaml\n", 10)
 
-	require.Len(t, tm.Nodes, 3)
-	for _, n := range tm.Nodes[:2] {
+	require.Len(t, tm.Nodes(), 3)
+	for _, n := range tm.Nodes()[:2] {
 		assert.Equal(t, KindSeqItem, n.Kind)
 		assert.True(t, n.IsLeaf, "%s has no fields to expand", n.Label)
 	}
-	assert.Equal(t, KindAddNew, tm.Nodes[2].Kind)
+	assert.Equal(t, KindAddNew, tm.Node(2).Kind)
 
 	tm, _ = tm.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	assert.Equal(t, 1, tm.NearestSeqItem())
@@ -58,10 +58,10 @@ func TestEnterOnAScalarEntryAsksToOpenIt(t *testing.T) {
 
 func mkTree(nodes []Node, cursorLabel string) Model {
 	var tm Model
-	tm.Nodes, tm.Height = nodes, 40
+	tm = tm.SetNodes(nodes).SetHeight(40)
 	for vi, ni := range tm.VisibleNodes() {
-		if tm.Nodes[ni].Label == cursorLabel {
-			tm.Cursor = vi
+		if tm.Node(ni).Label == cursorLabel {
+			tm = tm.MoveTo(vi)
 			break
 		}
 	}
@@ -171,16 +171,16 @@ func TestMatrix_StateMutations(t *testing.T) {
 	// right on a collapsed inline parent expands it.
 	tm := mkTree([]Node{{Kind: KindField, Label: "par", IsLeaf: false, Expanded: false}, {Kind: KindField, Label: "c", Depth: 1, IsLeaf: true}}, "par")
 	tm, _ = tm.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	is.True(tm.Nodes[0].Expanded, "right did not expand the collapsed inline parent")
+	is.True(tm.Node(0).Expanded, "right did not expand the collapsed inline parent")
 	// left on an expanded inline parent collapses it.
 	tm, _ = tm.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
-	is.False(tm.Nodes[0].Expanded, "left did not collapse the expanded inline parent")
+	is.False(tm.Node(0).Expanded, "left did not collapse the expanded inline parent")
 	// enter on an unchecked leaf checks it; ctrl+d on a checked leaf unchecks it.
 	tm = mkTree([]Node{{Kind: KindField, Label: "p", IsLeaf: true}}, "p")
 	tm, _ = tm.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	is.True(tm.Nodes[0].Checked, "enter did not check the leaf")
+	is.True(tm.Node(0).Checked, "enter did not check the leaf")
 	tm, _ = tm.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
-	is.False(tm.Nodes[0].Checked, "ctrl+d did not uncheck the leaf")
+	is.False(tm.Node(0).Checked, "ctrl+d did not uncheck the leaf")
 }
 
 // TestMatrix_LeftMovesToParent verifies the non-action side effect of left on a
@@ -194,7 +194,7 @@ func TestMatrix_LeftMovesToParent(t *testing.T) {
 	vis := tm.VisibleNodes()
 	tm, act := tm.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 	is.Equal(ActionNone, act, "left on nested leaf action should be noAction")
-	is.Equal("par", tm.Nodes[vis[tm.Cursor]].Label, "left on nested leaf should move cursor to parent 'par'")
+	is.Equal("par", tm.Node(vis[tm.Cursor()]).Label, "left on nested leaf should move cursor to parent 'par'")
 }
 
 // TestRestoreCursorToPathDoesNotMutateSharedNodes guards the tree's
@@ -208,16 +208,16 @@ func TestRestoreCursorToPathDoesNotMutateSharedNodes(t *testing.T) {
 		{Kind: KindField, YAMLPath: []string{"parent", "child"}, Label: "child", Depth: 1, IsLeaf: true},
 	}
 	var tm Model
-	tm.Nodes, tm.Height = shared, 10
+	tm = tm.SetNodes(shared).SetHeight(10)
 
 	got := tm.restoreCursorToPath([]string{"parent", "child"})
 
-	if !got.Nodes[0].Expanded {
+	if !got.Node(0).Expanded {
 		t.Error("restoreCursorToPath should expand the collapsed ancestor in its own copy")
 	}
 	vis := got.VisibleNodes()
-	if got.Cursor >= len(vis) || got.Nodes[vis[got.Cursor]].Label != "child" {
-		t.Errorf("cursor should land on the revealed child, got cursor=%d", got.Cursor)
+	if got.Cursor() >= len(vis) || got.Node(vis[got.Cursor()]).Label != "child" {
+		t.Errorf("cursor should land on the revealed child, got cursor=%d", got.Cursor())
 	}
 	if shared[0].Expanded {
 		t.Error("restoreCursorToPath mutated the shared input slice in place (copy-on-write violated)")

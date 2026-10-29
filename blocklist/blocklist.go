@@ -38,8 +38,8 @@ type Model struct {
 	list        list.Model[Item]
 }
 
-// IsFiltering reports whether the list is in text-filter mode (/ was pressed).
-func (lm Model) IsFiltering() bool { return lm.list.IsFiltering() }
+// Filtering reports whether the list is in text-filter mode (/ was pressed).
+func (lm Model) Filtering() bool { return lm.list.Filtering() }
 
 // BuildItems merges the canonical key order with the document's blocks,
 // keeping existing keys in file order above the available ones. The caller
@@ -148,14 +148,14 @@ func New(knownKeys []string, existing []document.Block, passthrough map[string]b
 		knownKeys:   knownKeys,
 		passthrough: passthrough,
 		items:       items,
-		list:        list.New(rows(items, &th), height).WithKeys(listKeys()),
+		list:        list.New(rows(items, &th)).SetHeight(height).WithKeys(listKeys()),
 	}
 }
 
 // listKeys are yedit's bindings for what the list does itself. → opens a
 // block too, as it opens a node in the block editor's tree.
 func listKeys() list.Keys {
-	open := key.NewBinding(key.WithKeys(append(keys.Enter.Keys(), "right")...))
+	open := key.New(append(keys.Enter.Keys(), "right")...)
 	return list.Keys{Up: keys.Up, Down: keys.Down, Enter: open, Filter: keys.Filter, Esc: keys.Esc}
 }
 
@@ -186,8 +186,8 @@ func (lm Model) AddedCount() int {
 // SelectedItem returns the item under the cursor, or nil on a separator or an
 // empty list. In filter mode it follows the filter cursor instead.
 func (lm Model) SelectedItem() *Item {
-	r := lm.list.Selected()
-	if r == nil {
+	r, ok := lm.list.Selected()
+	if !ok {
 		return nil
 	}
 	it := r.Value
@@ -213,7 +213,7 @@ func (lm Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if !ok {
 		return lm, nil
 	}
-	if !lm.IsFiltering() && key.Matches(km, keys.CtrlDDelete) {
+	if !lm.Filtering() && key.Matches(km, keys.CtrlDDelete) {
 		if it := lm.SelectedItem(); it != nil && it.Existing {
 			k := it.Key
 			return lm, func() tea.Msg { return DeleteItemMsg{Key: k} }

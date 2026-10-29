@@ -50,11 +50,11 @@ func TestBlockBreadcrumbPrefix_structChild(t *testing.T) {
 func TestBlockBreadcrumbPrefix_collectionChild(t *testing.T) {
 	// Simulate a collection editor whose cursor sits on a depth-1 openable field.
 	parent := blockEditState{key: "workers"}
-	parent.tree.Nodes = []fieldtree.Node{
+	parent.tree = parent.tree.SetNodes([]fieldtree.Node{
 		{Kind: fieldtree.KindSeqItem, Label: "[0]", YAMLPath: []string{"[0]"}, Depth: 0, Expanded: true},
 		{Kind: fieldtree.KindField, Label: "extensions", YAMLPath: []string{"[0]", "extensions"}, Depth: 1, IsLeaf: true, Openable: true},
-	}
-	parent.tree.Cursor = 1 // visible index of "extensions"
+	})
+	parent.tree = parent.tree.MoveTo(1) // visible index of "extensions"
 	child := blockEditState{key: "extensions"}
 
 	m := model{blockEdits: []blockEditState{parent, child}}
