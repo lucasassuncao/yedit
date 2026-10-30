@@ -204,12 +204,12 @@ func flattenDefsAsTree(defs []schema.FieldDef, prefix []string, depth int) []Nod
 func (tm Model) VisibleNodes() []int { return tm.Visible() }
 
 // CurrentNodeIdx returns the tm.Nodes() index under the cursor, or -1.
-func (tm Model) CurrentNodeIdx() int { return tm.CurrentIdx() }
+func (tm Model) CurrentNodeIdx() int { return tm.Index() }
 
 // WithNodeMutated keeps the copy-on-write discipline of the bezel tree and
 // returns yedit's Model rather than the embedded one.
 func (tm Model) WithNodeMutated(idx int, mut func(*Node)) Model {
-	tm.Model = tm.Model.WithNodeMutated(idx, mut)
+	tm.Model = tm.Model.SetNode(idx, mut)
 	return tm
 }
 

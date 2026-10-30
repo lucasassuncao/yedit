@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/lucasassuncao/bezel/draw"
-	"github.com/lucasassuncao/bezel/overlay"
 	"github.com/lucasassuncao/bezel/theme"
 )
 
@@ -205,7 +204,7 @@ func (t tabbedModel) save() (tea.Model, tea.Cmd) {
 	t.saver, t.active = t.active, 0
 	if len(t.editor.blockEdits) > 0 {
 		u, cmd := t.editor.showAlert("Close the block editor first",
-			"It holds edits the file does not have yet: leave it (esc), then save from the tab again.", overlay.Info)
+			"It holds edits the file does not have yet: leave it (esc), then save from the tab again.", draw.Info)
 		t.editor = u.(model)
 		return t, cmd
 	}

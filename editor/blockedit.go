@@ -328,7 +328,7 @@ func (be blockEditState) hintH() int {
 		return 0
 	}
 	if be.hintAnim.Active() {
-		return be.hintAnim.Cur
+		return be.hintAnim.Value()
 	}
 	if !be.showHint {
 		return 0
@@ -950,13 +950,13 @@ func (be blockEditState) View(parentSegs []string) string {
 			// The preview follows the tree selection; rendered preview lines
 			// map ~1:1 to YAML lines.
 			preview := draw.NumberLines(render.PreviewYAML(be.yamlEditor.Value(), be.previewRenderer), be.theme.Muted)
-			return draw.ScrollTo(preview, r.H, be.previewScroll)
+			return scrollTo(preview, r.H, be.previewScroll)
 		}},
 	}
 	if be.hintVisible() {
 		panes["hint"] = shell.Pane{Title: "Hint/Example", Body: func(layout.Rect) string { return be.scrolledHintContent() }}
 	}
-	return sh.SetFocus(focus).View(panes)
+	return sh.SetFocus(focus).View(panes).Content
 }
 
 func (be blockEditState) presetView(sh shell.Shell) string {
@@ -968,11 +968,25 @@ func (be blockEditState) presetView(sh shell.Shell) string {
 		"presets": {Title: "Available Presets", Body: func(r layout.Rect) string { return be.preset.SetListHeight(r.H).ListView(be.theme) }},
 		"preview": {Title: "Preset Preview", Body: func(r layout.Rect) string { return be.preset.SetPreviewHeight(r.H).PreviewView() }},
 	}
-	return sh.SetFocus(focus).View(panes)
+	return sh.SetFocus(focus).View(panes).Content
 }
 
 // validateSnippetText checks that text is valid YAML.
 func validateSnippetText(text string) error {
 	var check any
 	return yaml.Unmarshal([]byte(text), &check)
+}
+
+// scrollTo returns a window of at most height lines from s that keeps line
+// target (1-based) visible, roughly centred. target < 1 yields the top.
+func scrollTo(s string, height, target int) string {
+	if height <= 0 {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) <= height {
+		return s
+	}
+	offset := min(max(target-1-height/2, 0), len(lines)-height)
+	return strings.Join(lines[offset:offset+height], "\n")
 }

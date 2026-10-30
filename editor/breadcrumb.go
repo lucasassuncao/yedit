@@ -1,6 +1,6 @@
 package editor
 
-import "github.com/lucasassuncao/bezel/draw"
+import "strings"
 
 // blockBreadcrumbPrefix returns the breadcrumb segments for all editors in the
 // stack except the top one. The top editor appends its own key and tree segments.
@@ -27,5 +27,5 @@ func (m model) blockBreadcrumbPrefix() []string {
 func (be blockEditState) breadcrumb(parentSegs []string) string {
 	segs := append(append([]string(nil), parentSegs...), be.key)
 	segs = append(segs, be.tree.BreadcrumbSegments()...)
-	return draw.Breadcrumb(segs)
+	return strings.Join(segs, " › ")
 }

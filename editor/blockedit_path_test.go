@@ -48,7 +48,7 @@ func pathConfig(docPath string) Config {
 func legendKeys(be blockEditState) []string {
 	var out []string
 	for _, a := range be.actions() {
-		out = append(out, a.Entry().Help().Key)
+		out = append(out, a.Entry().Help.Key)
 	}
 	return out
 }
@@ -198,8 +198,8 @@ func TestPathFieldEnterOpensTheEntry(t *testing.T) {
 	be = pathKey(t, be, tea.KeyPressMsg{Code: tea.KeyDown})
 	var enter string
 	for _, a := range be.actions() {
-		if a.Entry().Help().Key == "enter" {
-			enter = a.Entry().Help().Desc
+		if a.Entry().Help.Key == "enter" {
+			enter = a.Entry().Help.Desc
 		}
 	}
 	require.Equal(t, "open file", enter)

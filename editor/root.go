@@ -14,6 +14,7 @@ import (
 	"github.com/lucasassuncao/bezel/animation"
 	"github.com/lucasassuncao/bezel/component/browser"
 	"github.com/lucasassuncao/bezel/component/viewport"
+	"github.com/lucasassuncao/bezel/draw"
 	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/layout"
 	"github.com/lucasassuncao/bezel/overlay"
@@ -459,7 +460,7 @@ func (m model) handleSaveFlow(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) handleSaveResult(msg saveResultMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		return m.showAlert("Save failed", msg.err.Error(), overlay.Danger)
+		return m.showAlert("Save failed", msg.err.Error(), draw.Danger)
 	}
 	// The save ran on a snapshot; apply only its persistence outcome so any
 	// edit made while the save was in flight is not clobbered.
@@ -474,12 +475,12 @@ func (m model) handleSaveResult(msg saveResultMsg) (tea.Model, tea.Cmd) {
 	if msg.then == tabSave {
 		return m, nil // the tab that asked reports what follows
 	}
-	return m.showAlert("Saved", fmt.Sprintf("Saved to %s.", m.doc.Path()), overlay.Success)
+	return m.showAlert("Saved", fmt.Sprintf("Saved to %s.", m.doc.Path()), draw.Success)
 }
 
 func (m model) handleReloadResult(msg reloadResultMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		return m.showAlert("Reload failed", msg.err.Error(), overlay.Danger)
+		return m.showAlert("Reload failed", msg.err.Error(), draw.Danger)
 	}
 	m.doc = msg.doc
 	m = m.syncView()
@@ -679,7 +680,7 @@ func (m model) handleDelete(key string) (tea.Model, tea.Cmd) {
 	return m.withStatus(fmt.Sprintf("Removed %q (not saved yet).", key))
 }
 
-func (m model) showAlert(title, message string, kind overlay.Kind) (tea.Model, tea.Cmd) {
+func (m model) showAlert(title, message string, kind draw.Kind) (tea.Model, tea.Cmd) {
 	m = m.enterAlert(overlay.NewAlert(kind, title, message, m.theme))
 	return m, nil
 }
@@ -722,7 +723,7 @@ func (m model) viewContent() string {
 		if m.docPreset.PreviewFocused() {
 			focus = "preview"
 		}
-		return sh.SetFocus(focus).View(m.docPresetPanes())
+		return sh.SetFocus(focus).View(m.docPresetPanes()).Content
 	}
 
 	focus := m.rootPane()
@@ -736,5 +737,5 @@ func (m model) viewContent() string {
 	if m.hintVisible() {
 		panes["hint"] = shell.Pane{Title: "Hint/Example", Body: func(layout.Rect) string { return m.hintView() }}
 	}
-	return sh.SetFocus(focus).View(panes)
+	return sh.SetFocus(focus).View(panes).Content
 }

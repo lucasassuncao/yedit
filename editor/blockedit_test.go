@@ -824,3 +824,12 @@ func TestTheYAMLEditorIsHighlighted(t *testing.T) {
 	require.Equal(t, 0, key.Start)
 	assert.Contains(t, ed.SetWidth(40).View(), key.Style.Render("name"))
 }
+
+func TestScrollToKeepsTheTargetLineInView(t *testing.T) {
+	ten := "1\n2\n3\n4\n5\n6\n7\n8\n9\n10"
+	assert.Equal(t, "1\n2\n3", scrollTo(ten, 3, 0))
+	assert.Equal(t, "5\n6\n7", scrollTo(ten, 3, 6))   // centred on the target
+	assert.Equal(t, "8\n9\n10", scrollTo(ten, 3, 10)) // clamped at the end
+	assert.Equal(t, ten, scrollTo(ten, 20, 5))
+	assert.Equal(t, "", scrollTo(ten, 0, 5))
+}

@@ -93,7 +93,7 @@ func (m model) hintTargetH() int {
 // otherwise. The floors are the resting size only, so the panel grows from 0.
 func (m model) hintPanelH() int {
 	if m.hintAnim.Active() {
-		return m.hintAnim.Cur
+		return m.hintAnim.Value()
 	}
 	if !m.showHint {
 		return 0

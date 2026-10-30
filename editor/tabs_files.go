@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucasassuncao/bezel/draw"
 	"github.com/lucasassuncao/bezel/overlay"
 	"github.com/lucasassuncao/bezel/theme"
 )
@@ -116,7 +117,7 @@ func (t tabbedModel) openFile(cfg Config) (tea.Model, tea.Cmd) {
 
 // alertFront shows an error on the screen in front, which asked for it.
 func (t tabbedModel) alertFront(title, message string) (tea.Model, tea.Cmd) {
-	alert := overlay.NewAlert(overlay.Danger, title, message, t.theme)
+	alert := overlay.NewAlert(draw.Danger, title, message, t.theme)
 	if i := t.active - t.fileScreen(0); i >= 0 {
 		files := slices.Clone(t.files)
 		files[i].m = files[i].m.enterAlert(alert)

@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucasassuncao/bezel/draw"
 	"github.com/lucasassuncao/bezel/overlay"
 	"github.com/lucasassuncao/bezel/shell"
 	"github.com/lucasassuncao/yedit/document"
@@ -90,7 +91,7 @@ func (m model) save(then string) (tea.Model, tea.Cmd) {
 		maxLines = 6
 	}
 	if len(errs) > 0 && !m.cfg.NoValidateOnSave {
-		return m.showAlert("Cannot save - fix errors first", render.Violations(errs, maxLines), overlay.Danger)
+		return m.showAlert("Cannot save - fix errors first", render.Violations(errs, maxLines), draw.Danger)
 	}
 	doSave := func() tea.Msg { return doSaveMsg{then: then} }
 	// An external edit since open is a substantive data-loss risk - always confirm
@@ -183,9 +184,9 @@ func (m model) startAction(a Action) (tea.Model, tea.Cmd) {
 
 func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	m.sh = m.sh.Idle()
-	title, kind, head := msg.help, overlay.Success, msg.res.Message
+	title, kind, head := msg.help, draw.Success, msg.res.Message
 	if msg.err != nil {
-		title, kind, head = msg.help+" failed", overlay.Danger, msg.err.Error()
+		title, kind, head = msg.help+" failed", draw.Danger, msg.err.Error()
 	}
 	if msg.res.Output == "" {
 		return m.showAlert(title, head, kind)
@@ -202,7 +203,7 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 // program changed on disk unless that would throw away unsaved edits.
 func (m model) handleActionExecDone(msg actionExecDoneMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		return m.showAlert(msg.help+" failed", msg.err.Error(), overlay.Danger)
+		return m.showAlert(msg.help+" failed", msg.err.Error(), draw.Danger)
 	}
 	if !m.doc.ExternallyChanged() {
 		return m, nil
@@ -255,7 +256,7 @@ func (m model) validateKeys() (tea.Model, tea.Cmd) {
 		}
 		var err error
 		if doc, err = m.docWithEditorContent(); err != nil {
-			return m.showAlert("Validation failed", fmt.Sprintf("Could not apply editor content: %v", err), overlay.Danger)
+			return m.showAlert("Validation failed", fmt.Sprintf("Could not apply editor content: %v", err), draw.Danger)
 		}
 	}
 	maxLines := m.height - 12
@@ -263,7 +264,7 @@ func (m model) validateKeys() (tea.Model, tea.Cmd) {
 		maxLines = 6
 	}
 	if errs := m.collectErrors(doc); len(errs) > 0 {
-		return m.showAlert("Validation errors", render.Violations(errs, maxLines), overlay.Danger)
+		return m.showAlert("Validation errors", render.Violations(errs, maxLines), draw.Danger)
 	}
-	return m.showAlert("Validation passed", "All keys are valid and no conflicts were found.", overlay.Success)
+	return m.showAlert("Validation passed", "All keys are valid and no conflicts were found.", draw.Success)
 }

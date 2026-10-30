@@ -13,7 +13,7 @@ import (
 	"github.com/lucasassuncao/yedit/document"
 )
 
-var th = theme.Resolve(theme.Plain, true)
+var th = theme.Resolve(theme.Plain(), true)
 
 // TestBuildItemsGroupsKeysBySection pins the four sections and their order.
 func TestBuildItemsGroupsKeysBySection(t *testing.T) {

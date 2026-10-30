@@ -32,7 +32,10 @@ func TestZeroHeightHintPanelIsNotDrawn(t *testing.T) {
 	// Park a tween at exactly zero while still marked in flight - the state the
 	// tail frames of a hide transition sit in.
 	m.showHint = false
-	m.hintAnim = animation.Tween{From: 8, To: 0, Cur: 0, Start: time.Now(), Dur: time.Second}
+	start := time.Unix(0, 0)
+	m.hintAnim = animation.NewTween(8, 0, time.Second)
+	m.hintAnim, _ = m.hintAnim.Update(m.hintAnim.FrameAt(start))
+	m.hintAnim, _ = m.hintAnim.Update(m.hintAnim.FrameAt(start.Add(990 * time.Millisecond)))
 
 	is.True(m.hintAnim.Active(), "the tween is still in flight")
 	is.Equal(0, m.hintPanelH(), "the eased height has reached zero")
