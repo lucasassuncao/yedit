@@ -5,6 +5,7 @@ package blocklist
 import (
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucasassuncao/bezel"
 	"github.com/lucasassuncao/bezel/component/list"
 	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/theme"
@@ -220,9 +221,9 @@ func (lm Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		return lm, nil
 	}
-	var action list.Action
-	lm.list, action = lm.list.Update(km)
-	if action == list.Chosen {
+	var r bezel.Result
+	lm.list, r = lm.list.Update(km)
+	if _, ok := r.Event.(list.Chosen[Item]); ok {
 		if it := lm.SelectedItem(); it != nil && !it.Unknown {
 			item := *it
 			return lm, func() tea.Msg { return OpenItemMsg{Item: item} }

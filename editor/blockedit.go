@@ -8,6 +8,7 @@ import (
 	"charm.land/glamour/v2"
 	"go.yaml.in/yaml/v3"
 
+	"github.com/lucasassuncao/bezel"
 	"github.com/lucasassuncao/bezel/animation"
 	"github.com/lucasassuncao/bezel/component/browser"
 	"github.com/lucasassuncao/bezel/component/textbox"
@@ -156,7 +157,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 		showHint:      cfg.EnableHints,
 	}
 	be.sh = shell.New(shell.Config{Layout: blockLayout(0), Theme: be.theme, Title: cfg.Title, LegendLines: cfg.LegendLines})
-	be.sh, _, _ = be.sh.Update(tea.WindowSizeMsg{Width: w, Height: h})
+	be.sh, _ = be.sh.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	be = be.relayout()
 
 	be.tree = fieldtree.New(spec.kind, spec.defs, spec.content, be.innerH())
@@ -400,7 +401,7 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	// The confirm's own close arrives beside the pending message above, in
 	// either order, so the overlay is popped regardless of mode.
 	if _, ok := msg.(overlay.CloseMsg); ok {
-		be.sh, _, _ = be.sh.Update(msg)
+		be.sh, _ = be.sh.Update(msg)
 		if be.mode == modeConfirming || be.mode == modePicking {
 			be.mode = modeEditing
 		}
@@ -417,7 +418,7 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 	if m, ok := msg.(tea.WindowSizeMsg); ok {
 		be.width = m.Width
 		be.height = m.Height
-		be.sh, _, _ = be.sh.Update(m)
+		be.sh, _ = be.sh.Update(m)
 		be = be.relayout()
 		be.yamlEditor = be.yamlEditor.SetWidth(be.rightW())
 		be.yamlEditor = be.yamlEditor.SetHeight(be.editorH() - 1)
@@ -447,9 +448,9 @@ func (be blockEditState) updateConfirming(msg tea.Msg) (blockEditState, tea.Cmd)
 		case key.Matches(km, keys.CtrlLValid):
 			return be, func() tea.Msg { return validateRequestedMsg{} }
 		}
-		var cmd tea.Cmd
-		be.sh, _, cmd = be.sh.Update(km)
-		return be, cmd
+		var r bezel.Result
+		be.sh, r = be.sh.Update(km)
+		return be, r.Cmd
 	}
 	return be, nil
 }
@@ -464,9 +465,9 @@ func (be blockEditState) updatePresetBrowser(msg tea.Msg) (blockEditState, tea.C
 	if key.Matches(km, keys.AAppend) && !be.preset.PreviewFocused() && be.isCollectionNav() {
 		return be.presetChosen(AppendPreset{Name: chosenLabel(be.preset)}), nil
 	}
-	var action browser.Action
-	be.preset, action = be.preset.Update(km)
-	switch action {
+	var r bezel.Result
+	be.preset, r = be.preset.Update(km)
+	switch r.Event.(type) {
 	case browser.Chosen:
 		return be.presetChosen(ApplyPreset{Name: chosenLabel(be.preset)}), nil
 	case browser.Dismissed:
@@ -519,8 +520,9 @@ func (be blockEditState) updateEditing(msg tea.Msg) (blockEditState, tea.Cmd) {
 // rewind only the buffer before pushing.
 func (be blockEditState) updateNonKeyBuffer(msg tea.Msg) (blockEditState, tea.Cmd) {
 	prev := be.yamlEditor.Value()
-	var cmd tea.Cmd
-	be.yamlEditor, cmd = be.yamlEditor.Update(msg)
+	var r bezel.Result
+	be.yamlEditor, r = be.yamlEditor.Update(msg)
+	cmd := r.Cmd
 	if be.yamlEditor.Value() == prev {
 		return be, cmd
 	}
@@ -640,12 +642,12 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 	// The shell runs this screen's actions; a Help that opened its overlay
 	// puts the editor in the mode that closes it.
 	if km, ok := msg.(tea.KeyPressMsg); ok {
-		if sh, handled, cmd := be.sh.SetFocus(be.activePane()).SetActions(be.actions()...).Update(km); handled {
+		if sh, r := be.sh.SetFocus(be.activePane()).SetActions(be.actions()...).Update(km); r.Handled {
 			be.sh = sh
 			if sh.HasOverlay() {
 				be.mode = modeConfirming
 			}
-			return be, cmd
+			return be, r.Cmd
 		}
 	}
 
@@ -674,8 +676,9 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 		snap := be.captureSnap()
 		preSnap = &snap
 	}
-	var cmd tea.Cmd
-	be.yamlEditor, cmd = be.yamlEditor.Update(msg)
+	var r bezel.Result
+	be.yamlEditor, r = be.yamlEditor.Update(msg)
+	cmd := r.Cmd
 	// Only re-project on a real content change: cursor moves and selection leave
 	// the tree unchanged, so there is no reason to re-parse the buffer.
 	if be.yamlEditor.Value() != prevValue {

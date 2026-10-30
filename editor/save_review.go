@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/lucasassuncao/bezel"
 	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/layout"
 	"github.com/lucasassuncao/bezel/legend"
@@ -64,14 +65,14 @@ func (r saveReview) Resize(body layout.Rect) overlay.Overlay {
 	return r
 }
 
-func (r saveReview) Update(msg tea.Msg) (overlay.Overlay, tea.Cmd) {
+func (r saveReview) Update(msg tea.Msg) (overlay.Overlay, bezel.Result) {
 	k, ok := msg.(tea.KeyPressMsg)
 	if !ok {
-		return r, nil
+		return r, bezel.Result{}
 	}
 	switch {
 	case key.Matches(k, keys.Enter):
-		return r, tea.Batch(r.onSave, overlay.Close())
+		return r, bezel.Result{Cmd: tea.Batch(r.onSave, overlay.Close())}
 	case key.Matches(k, keys.Up):
 		r = r.scroll(-1)
 	case key.Matches(k, keys.Down):
@@ -81,7 +82,7 @@ func (r saveReview) Update(msg tea.Msg) (overlay.Overlay, tea.Cmd) {
 	case key.Matches(k, reviewPageDown):
 		r = r.scroll(r.fit)
 	}
-	return r, nil
+	return r, bezel.Result{}
 }
 
 func (r saveReview) scroll(by int) saveReview {

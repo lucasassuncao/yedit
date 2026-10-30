@@ -43,7 +43,8 @@ func TestSaveReviewSaysWhenNothingChanged(t *testing.T) {
 }
 
 func TestSaveReviewSavesOnEnter(t *testing.T) {
-	_, cmd := review("a: 1\n", "a: 2\n", 30).Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	_, r := review("a: 1\n", "a: 2\n", 30).Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	cmd := r.Cmd
 
 	require.NotNil(t, cmd)
 	var got []tea.Msg

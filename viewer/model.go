@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
 
+	"github.com/lucasassuncao/bezel"
 	"github.com/lucasassuncao/bezel/component/browser"
 	"github.com/lucasassuncao/bezel/draw"
 	"github.com/lucasassuncao/bezel/key"
@@ -57,7 +58,7 @@ func (m *Model) Init() tea.Cmd { return tea.RequestBackgroundColor }
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.sh, _, _ = m.sh.Update(msg)
+		m.sh, _ = m.sh.Update(msg)
 		m.relayout()
 		return m, nil
 	case tea.BackgroundColorMsg:
@@ -65,30 +66,34 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sh = m.sh.SetTheme(m.th)
 		return m, nil
 	case overlay.CloseMsg, overlay.PushMsg:
-		var cmd tea.Cmd
-		m.sh, _, cmd = m.sh.Update(msg)
-		return m, cmd
+		var r bezel.Result
+		m.sh, r = m.sh.Update(msg)
+		return m, r.Cmd
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
 		// The shell runs help and quit and, while the help is open, takes every key.
-		if sh, handled, cmd := m.sh.SetActions(m.actions()...).Update(msg); handled {
+		if sh, r := m.sh.SetActions(m.actions()...).Update(msg); r.Handled {
 			m.sh = sh
-			return m, cmd
+			return m, r.Cmd
 		}
-		var action browser.Action
-		m.b, action = m.b.Update(msg)
-		switch {
-		case action == browser.Chosen && m.field == "":
-			m.field = chosenLabel(m.b)
-			m.b = m.b.SetItems(m.presetItems(m.field))
-		case action == browser.Dismissed && m.field != "":
-			// Back to the fields, cursor on the one just left.
-			current := m.field
-			m.field = ""
-			m.b = browser.New(m.fieldItems()).WithCurrent(current).WithKeys(m.keys)
-			m.relayout()
+		var br bezel.Result
+		m.b, br = m.b.Update(msg)
+		switch br.Event.(type) {
+		case browser.Chosen:
+			if m.field == "" {
+				m.field = chosenLabel(m.b)
+				m.b = m.b.SetItems(m.presetItems(m.field))
+			}
+		case browser.Dismissed:
+			if m.field != "" {
+				// Back to the fields, cursor on the one just left.
+				current := m.field
+				m.field = ""
+				m.b = browser.New(m.fieldItems()).WithCurrent(current).WithKeys(m.keys)
+				m.relayout()
+			}
 		}
 		m.sh = m.sh.SetActions(m.actions()...)
 		return m, nil

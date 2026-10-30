@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucasassuncao/bezel"
 	"github.com/lucasassuncao/bezel/component/tree"
 	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/theme"
@@ -339,12 +340,12 @@ func (tm Model) Update(msg tea.KeyPressMsg) (Model, Action) {
 		return tm.handleRemove(vis)
 	}
 
-	var act tree.Action
-	tm.Model, act = tm.Model.Update(msg)
-	switch act {
-	case tree.Expanded:
+	var r bezel.Result
+	tm.Model, r = tm.Model.Update(msg)
+	switch r.Event.(type) {
+	case tree.Expanded[Node]:
 		return tm, ActionExpanded
-	case tree.Collapsed:
+	case tree.Collapsed[Node]:
 		return tm, ActionCollapsed
 	}
 	return tm, ActionNone

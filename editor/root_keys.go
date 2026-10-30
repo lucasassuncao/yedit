@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucasassuncao/bezel"
 	"github.com/lucasassuncao/bezel/component/browser"
 	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/yedit/keys"
@@ -31,15 +32,15 @@ func (m model) runAction(msg tea.KeyMsg) (model, tea.Cmd, bool) {
 	if !ok {
 		return m, nil, false
 	}
-	sh, handled, cmd := m.sh.SetFocus(m.rootPane()).SetActions(m.actions()...).Update(km)
-	if !handled {
+	sh, r := m.sh.SetFocus(m.rootPane()).SetActions(m.actions()...).Update(km)
+	if !r.Handled {
 		return m, nil, false
 	}
 	m.sh = sh
 	if sh.HasOverlay() {
 		m = m.alertOver()
 	}
-	return m, cmd, true
+	return m, r.Cmd, true
 }
 
 func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -60,9 +61,9 @@ func (m model) handleDocPresetKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	var action browser.Action
-	m.docPreset, action = m.docPreset.Update(km)
-	switch action {
+	var r bezel.Result
+	m.docPreset, r = m.docPreset.Update(km)
+	switch r.Event.(type) {
 	case browser.Dismissed:
 		return m.enterList().relayout(), nil
 	case browser.Chosen:
@@ -82,8 +83,9 @@ func (m model) handlePreviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return mo, cmd
 	}
 	// The preview is read-only; remaining keys only scroll the viewport.
-	var cmd tea.Cmd
-	m.preview, cmd = m.preview.Update(msg)
+	var r bezel.Result
+	m.preview, r = m.preview.Update(msg)
+	cmd := r.Cmd
 	return m, cmd
 }
 

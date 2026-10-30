@@ -10,6 +10,7 @@ import (
 	"charm.land/glamour/v2"
 	"go.yaml.in/yaml/v3"
 
+	"github.com/lucasassuncao/bezel"
 	"github.com/lucasassuncao/bezel/animation"
 	"github.com/lucasassuncao/bezel/component/browser"
 	"github.com/lucasassuncao/bezel/component/viewport"
@@ -508,7 +509,7 @@ func (m model) handleDismissedAlert(msg overlay.CloseMsg) (tea.Model, tea.Cmd) {
 			return m.withTopBE(be), cmd
 		}
 	}
-	m.sh, _, _ = m.sh.Update(msg)
+	m.sh, _ = m.sh.Update(msg)
 	if len(m.blockEdits) > 0 {
 		m = m.enterBlockEdit()
 	} else {
@@ -533,8 +534,9 @@ func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if mo, cmd, handled := m.handleGlobalKey(key); handled {
 				return mo, cmd
 			}
-			var cmd tea.Cmd
-			m.sh, _, cmd = m.sh.Update(key)
+			var r bezel.Result
+			m.sh, r = m.sh.Update(key)
+			cmd := r.Cmd
 			return m, cmd
 		}
 	case paneBlockEdit:
@@ -556,8 +558,9 @@ func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	// The spinner an Action's Run shows on the status row advances on its frames.
 	if _, ok := msg.(animation.FrameMsg); ok {
-		var cmd tea.Cmd
-		m.sh, _, cmd = m.sh.Update(msg)
+		var r bezel.Result
+		m.sh, r = m.sh.Update(msg)
+		cmd := r.Cmd
 		return m, cmd
 	}
 	return m, nil
@@ -620,15 +623,16 @@ func (m model) handlePreviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		return m.handlePreviewKey(key)
 	}
-	var cmd tea.Cmd
-	m.preview, cmd = m.preview.Update(msg)
+	var r bezel.Result
+	m.preview, r = m.preview.Update(msg)
+	cmd := r.Cmd
 	return m, cmd
 }
 
 func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.width = msg.Width
 	m.height = msg.Height
-	m.sh, _, _ = m.sh.Update(msg)
+	m.sh, _ = m.sh.Update(msg)
 	m = m.relayout()
 	// relayout only sizes the root list/preview; forward the resize to every
 	// stacked sub-model so each editor's panels resize too.

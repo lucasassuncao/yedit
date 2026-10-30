@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"go.yaml.in/yaml/v3"
 
+	"github.com/lucasassuncao/bezel"
 	"github.com/lucasassuncao/bezel/overlay"
 	"github.com/lucasassuncao/yedit/fieldtree"
 	"github.com/lucasassuncao/yedit/schema"
@@ -92,8 +93,9 @@ func (be blockEditState) openPathPicker() (blockEditState, tea.Cmd) {
 // updatePicking hands every message to the picker: its keys, and the
 // directory listings it reads, which come back as overlay.TopMsg.
 func (be blockEditState) updatePicking(msg tea.Msg) (blockEditState, tea.Cmd) {
-	var cmd tea.Cmd
-	be.sh, _, cmd = be.sh.Update(msg)
+	var r bezel.Result
+	be.sh, r = be.sh.Update(msg)
+	cmd := r.Cmd
 	return be, cmd
 }
 
