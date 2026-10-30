@@ -209,7 +209,7 @@ func (tm Model) CurrentNodeIdx() int { return tm.Index() }
 // WithNodeMutated keeps the copy-on-write discipline of the bezel tree and
 // returns yedit's Model rather than the embedded one.
 func (tm Model) WithNodeMutated(idx int, mut func(*Node)) Model {
-	tm.Model = tm.Model.SetNode(idx, mut)
+	tm.Model = tm.SetNode(idx, mut)
 	return tm
 }
 

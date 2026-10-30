@@ -282,7 +282,7 @@ type Config struct {
     Validators           []Validator          // rules evaluated before every save and on the validate shortcut
     Hidden               []string             // top-level keys to omit from the UI entirely
     PassthroughKeys      []string             // top-level keys preserved as-is: hidden from all sections and exempt from unknown-key validation
-    Theme                theme.Theme          // zero-value resolves to theme.Default, adaptive to the terminal background
+    Theme                theme.Theme          // zero-value resolves to theme.Default(), adaptive to the terminal background
     NoDeleteConfirm      bool                 // skip the "Remove block?" dialog; deletion is still undoable via ctrl+u
     NoValidateOnSave     bool                 // allow saving despite validator errors; a warning alert is shown but does not block
     NoSaveConfirm        bool                 // skip the "Save changes?" dialog; warning confirms are still shown
@@ -386,7 +386,7 @@ func FormatCustom(name string, validate func(string) bool) Format
 FormatCustom builds an app\-specific format. See spec.FormatCustom.
 
 <a name="FrontMsg"></a>
-## type [FrontMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L42>)
+## type [FrontMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L41>)
 
 FrontMsg tells every screen which one is in front, "editor" or a tab's Name: at the start, and each time another comes in front.
 
@@ -482,7 +482,7 @@ type PickValue struct {
 ```
 
 <a name="QuitMsg"></a>
-## type [QuitMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L38>)
+## type [QuitMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L37>)
 
 QuitMsg asks the editor to quit, as q does there: asking first when the document has unsaved changes or a tab is Busy.
 
@@ -567,7 +567,7 @@ type Save struct {
 ```
 
 <a name="SaveMsg"></a>
-## type [SaveMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L31>)
+## type [SaveMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L30>)
 
 SaveMsg asks the editor to save the document as ctrl\+s does, in front, through the same checks and question. SavedMsg answers every tab once the file is written; a refused or failed save answers nothing.
 
@@ -576,7 +576,7 @@ type SaveMsg struct{}
 ```
 
 <a name="SavedMsg"></a>
-## type [SavedMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L34>)
+## type [SavedMsg](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L33>)
 
 SavedMsg tells the tabs the document is on disk at Path, as a SaveMsg asked.
 
@@ -597,7 +597,7 @@ type SyncYAML struct {
 ```
 
 <a name="Tab"></a>
-## type [Tab](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L20-L26>)
+## type [Tab](<https://github.com/lucasassuncao/yedit/blob/main/editor/tabs.go#L19-L25>)
 
 Tab is an application screen beside the editor's. Every message reaches it, on screen or not, so work it starts goes on while the document is edited; keys, mouse and pastes reach only the screen in front.
 
