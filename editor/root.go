@@ -38,7 +38,6 @@ const (
 	paneBlockEdit
 	paneAlert
 	paneDocPreset
-	paneHint // the Hint/Example panel has the keys, to scroll it
 )
 
 // model is the root bubbletea model. The mode field names the active pane, and
@@ -74,8 +73,6 @@ type model struct {
 	mode          pane
 	showHint      bool            // split the right column to show the Hint/Example panel
 	hintAnim      animation.Tween // in-flight hint transition; inactive unless Config.AnimationDuration is set
-	hintScroll    int             // first hint line shown while mode == paneHint
-	hintFrom      pane            // the pane paneHint gives the keys back to
 	alertFrom     pane            // the pane paneAlert gives the keys back to
 	saved         bool            // at least one save succeeded this session; reported via Result
 	busy          string          // what Config.Tabs say quitting would cut short; set before each message
@@ -128,7 +125,7 @@ func newModel(cfg Config) (model, error) {
 		preview:  preview,
 		showHint: cfg.EnableHints,
 		theme:    rt,
-		sh:       shell.New(shell.Config{Layout: rootLayout(0), Theme: rt, Title: cfg.Title, LegendLines: cfg.LegendLines}),
+		sh:       shell.New(shell.Config{Layout: rootLayout(0), Theme: rt, Title: cfg.Title, LegendLines: cfg.LegendLines, Mouse: true}),
 	}.withActions(), nil
 }
 
@@ -179,7 +176,7 @@ func (m model) enterAlert(o overlay.Overlay) model {
 func (m model) alertOver() model {
 	switch m.mode {
 	case paneAlert:
-	case panePreview, paneHint:
+	case panePreview:
 		m.alertFrom = m.mode
 	default:
 		m.alertFrom = paneList
@@ -190,13 +187,8 @@ func (m model) alertOver() model {
 
 // leaveAlert gives the keys back to the root pane the alert opened over.
 func (m model) leaveAlert() model {
-	switch m.alertFrom {
-	case panePreview:
+	if m.alertFrom == panePreview {
 		return m.enterPreview()
-	case paneHint:
-		m.mode = paneHint
-		m.sh = m.sh.Pop()
-		return m
 	}
 	return m.enterList()
 }
@@ -325,8 +317,6 @@ func (m model) traceLocation() string {
 		return "list"
 	case panePreview:
 		return "preview"
-	case paneHint:
-		return "hint"
 	case paneAlert:
 		return "alert"
 	case paneDocPreset:
@@ -337,11 +327,8 @@ func (m model) traceLocation() string {
 		}
 		be := m.blockEdits[len(m.blockEdits)-1]
 		panelName := "tree"
-		switch be.active {
-		case blockEditPanelYAML:
+		if be.active == blockEditPanelYAML {
 			panelName = "yaml"
-		case blockEditPanelHint:
-			panelName = "hint"
 		}
 		modeName := "editing"
 		switch be.mode {
@@ -378,6 +365,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.handleWindowSizeMsg(msg)
+	case shell.ResizedMsg:
+		return m.resized(), nil
 	case tea.BackgroundColorMsg:
 		return m.withTheme(theme.Resolve(m.cfg.Theme, msg.IsDark())), nil
 	case blocklist.OpenItemMsg:
@@ -425,8 +414,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.openDocPresets()
 	case toggleHintsMsg:
 		return m.toggleHints()
-	case focusHintMsg:
-		return m.toggleHintFocus(), nil
 	case saveRequestedMsg:
 		return m.dispatch(CommitBlock{})
 	case docUndoMsg:
@@ -528,6 +515,9 @@ func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if km, ok := msg.(tea.KeyMsg); ok && key.Matches(km, keys.CtrlCQuit) {
 		return m.quitRequested()
 	}
+	if mm, ok := msg.(tea.MouseMsg); ok {
+		return m.mouse(mm), nil
+	}
 	switch m.mode {
 	case paneAlert:
 		if key, ok := msg.(tea.KeyMsg); ok {
@@ -544,10 +534,6 @@ func (m model) handleModeUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handlePaneBlockEdit(msg)
 	case panePreview:
 		return m.handlePreviewUpdate(msg)
-	case paneHint:
-		if key, ok := msg.(tea.KeyMsg); ok {
-			return m.handleHintKey(key)
-		}
 	case paneList:
 		if key, ok := msg.(tea.KeyMsg); ok {
 			return m.handleListKey(key)
@@ -630,6 +616,35 @@ func (m model) handlePreviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// mouse hands the pointer to the shell on screen, which drags the edge between
+// two panes. A click on a pane is left alone: the keys decide the focus.
+func (m model) mouse(msg tea.MouseMsg) model {
+	sh := m.sh
+	top := m.topBE()
+	if top != nil {
+		sh = top.sh
+	}
+	next, r := sh.Update(msg)
+	if _, click := msg.(tea.MouseClickMsg); !r.Handled || (click && r.Cmd != nil) {
+		return m
+	}
+	if top != nil {
+		be := *top
+		be.sh = next
+		return m.withTopBE(be).resized()
+	}
+	m.sh = next
+	return m.resized()
+}
+
+// resized fits the screen on top to the edges the user moved.
+func (m model) resized() model {
+	if top := m.topBE(); top != nil {
+		return m.withTopBE(top.sized())
+	}
+	return m.relayout()
+}
+
 func (m model) handleWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.width = msg.Width
 	m.height = msg.Height
@@ -693,6 +708,7 @@ func (m model) showConfirmAlert(title, message string, confirmCmd tea.Cmd) (tea.
 func (m model) View() tea.View {
 	v := tea.NewView(m.viewContent())
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion // the shell drags the edge between the panes
 	return v
 }
 
@@ -735,7 +751,7 @@ func (m model) viewContent() string {
 		"preview": {Title: "Preview", Body: func(layout.Rect) string { return m.preview.View(m.theme) }},
 	}
 	if m.hintVisible() {
-		panes["hint"] = shell.Pane{Title: "Hint/Example", Body: func(layout.Rect) string { return m.hintView() }}
+		panes["hint"] = shell.Pane{Title: "Hint/Example", Body: func(layout.Rect) string { return m.selectedHint() }}
 	}
 	return sh.SetFocus(focus).View(panes).Content
 }

@@ -170,7 +170,12 @@ func (t tabbedModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return t, nil
 		}
 		return t.toFront(msg)
-	case tea.KeyMsg, tea.MouseMsg, tea.PasteMsg, tea.PasteStartMsg, tea.PasteEndMsg:
+	case tea.MouseMsg:
+		if under, ok := t.underStrip(msg); ok {
+			return t.toFront(under)
+		}
+		return t, nil
+	case tea.KeyMsg, tea.PasteMsg, tea.PasteStartMsg, tea.PasteEndMsg:
 		return t.toFront(msg)
 	case SaveMsg:
 		return t.save()
@@ -231,6 +236,30 @@ func (t tabbedModel) saved(msg saveResultMsg) (tea.Model, tea.Cmd) {
 }
 
 // toFront hands msg to the screen in front alone.
+// underStrip is msg in the rows of the screen in front, which View draws a
+// row lower while the strip shows; false on the strip itself.
+func (t tabbedModel) underStrip(msg tea.MouseMsg) (tea.MouseMsg, bool) {
+	m := msg.Mouse()
+	if !t.strip || m.Y == 0 {
+		return msg, true
+	}
+	if m.Y == 1 {
+		return msg, false
+	}
+	m.Y--
+	switch msg.(type) {
+	case tea.MouseClickMsg:
+		return tea.MouseClickMsg(m), true
+	case tea.MouseReleaseMsg:
+		return tea.MouseReleaseMsg(m), true
+	case tea.MouseMotionMsg:
+		return tea.MouseMotionMsg(m), true
+	case tea.MouseWheelMsg:
+		return tea.MouseWheelMsg(m), true
+	}
+	return msg, true
+}
+
 func (t tabbedModel) toFront(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if t.active == 0 {
 		return t.toEditor(msg)
@@ -288,6 +317,7 @@ func (t tabbedModel) View() tea.View {
 	}
 	v := tea.NewView(body)
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion // the shell drags the edge between the panes
 	return v
 }
 

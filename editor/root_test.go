@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucasassuncao/bezel/draw"
 	"github.com/lucasassuncao/bezel/overlay"
 
 	"github.com/lucasassuncao/yedit/blocklist"
@@ -412,4 +413,25 @@ func TestEscDoesNotQuitList(t *testing.T) {
 		must.NotEqual(tea.QuitMsg{}, cmd(), "esc quit the editor")
 	}
 	must.Equal(paneList, m.mode)
+}
+
+// Dragging the border between the list and the preview moves it, and the
+// preview is sized again; a click inside a pane leaves the focus alone.
+func TestDraggingTheEdgeResizesTheListAndThePreview(t *testing.T) {
+	m := newHintModel(t, 0)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(model)
+	list := m.sh.Rect("list")
+	edge, y := list.X+list.W-1, list.Y+3
+
+	updated, _ = m.Update(tea.MouseClickMsg{X: edge, Y: y, Button: tea.MouseLeft})
+	updated, _ = updated.Update(tea.MouseMotionMsg{X: edge + 10, Y: y, Button: tea.MouseLeft})
+	updated, _ = updated.Update(tea.MouseReleaseMsg{X: edge + 10, Y: y})
+	m = updated.(model)
+	require.Equal(t, list.W+10, m.sh.Rect("list").W)
+	require.Equal(t, draw.InnerRect(m.sh.Rect("preview")).W, m.preview.Width(), "the preview follows")
+
+	before := m.mode
+	updated, _ = m.Update(tea.MouseClickMsg{X: list.X + 60, Y: y, Button: tea.MouseLeft})
+	require.Equal(t, before, updated.(model).mode)
 }

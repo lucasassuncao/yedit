@@ -497,35 +497,8 @@ func TestSOT_CommitPreservesLeadingComments(t *testing.T) {
 	is.Contains(be.yamlEditor.Value(), "# log destination", "leading comment lost after editing sibling")
 }
 
-// The hint panel's scroll bound comes from the content height, so the last
-// panel-full of a long hint is reachable.
-func TestHintScroll_ReachesEndOfLongContent(t *testing.T) {
-	is := assert.New(t)
-	must := require.New(t)
-	longExample := strings.Repeat("line\n", 40)
-	cfg := Config{
-		EnableHints: true,
-		Metadata: MetadataFunc(func(block, fieldPath string) FieldMeta {
-			return FieldMeta{Description: "toggle", Example: longExample}
-		}),
-	}
-	be := newBlockEdit(cfg, blockSpec{key: "debug", kind: schema.KindPrimitive, content: "debug: false\n"}, 100, 40)
-	be.prevActive = be.active
-	be.active = blockEditPanelHint
-
-	lines := strings.Count(strings.TrimSuffix(be.hintContent(), "\n"), "\n") + 1
-	wantMax := lines - be.hintH()
-	must.Greater(wantMax, be.hintH()-1, "test setup: content must exceed twice the panel height")
-
-	down := tea.KeyPressMsg{Code: tea.KeyDown}
-	for range lines * 2 {
-		be = be.scrollHint(down)
-	}
-	is.Equal(wantMax, be.hintScroll, "scroll must reach the last panel-full of the hint content")
-}
-
-// The "h" hint toggle mirrors the root list view, restoring focus off a hidden
-// panel, and must not fire while the YAML panel has focus.
+// The "h" hint toggle mirrors the root list view, and must not fire while
+// the YAML panel has focus.
 func TestHintToggle_HKeyShowsAndHides(t *testing.T) {
 	is := assert.New(t)
 	must := require.New(t)
@@ -548,48 +521,12 @@ func TestHintToggle_HKeyShowsAndHides(t *testing.T) {
 	must.True(be.showHint, "pressing h again should re-enable the hint panel")
 	is.Contains(be.View(nil), "Hint/Example", "hint panel should be visible after toggling back on")
 
-	// Hiding while the hint panel has focus must restore focus to the panel
-	// that had it before.
-	be.prevActive = blockEditPanelTree
-	be.active = blockEditPanelHint
-	be, _ = pressBEAction(t, be, h)
-	is.Equal(blockEditPanelTree, be.active, "hiding the focused hint panel should restore the previous focus")
-
 	// "h" typed into the YAML editor must insert the character, not toggle.
 	be.showHint = true
 	be.active = blockEditPanelYAML
 	before := be.showHint
 	be, _ = be.updateKey(h)
 	is.Equal(before, be.showHint, "h while the YAML panel is focused must not toggle the hint panel")
-}
-
-// esc on the hint returns to the pane it came from: it must not leave the
-// block, nor ask to discard its changes.
-func TestEscOnTheHintReturnsToThePreviousPane(t *testing.T) {
-	be := newBlockEdit(Config{EnableHints: true}, ceStructSpec(), 100, 40)
-	be.showHint = true
-	be.dirty = true
-	be.prevActive, be.active = blockEditPanelYAML, blockEditPanelHint
-
-	be, cmd := pressBEAction(t, be, tea.KeyPressMsg{Code: tea.KeyEscape})
-	require.Equal(t, blockEditPanelYAML, be.active)
-	require.Equal(t, modeEditing, be.mode, "no discard prompt")
-	require.False(t, be.sh.HasOverlay())
-	if cmd != nil {
-		_, left := cmd().(blockEditDiscardedMsg)
-		require.False(t, left, "esc must not leave the block")
-	}
-}
-
-// ctrl+h is not offered on the hint, but it still gives the keys back: it is
-// how the reader got there, and the same key undoes it.
-func TestCtrlHOnTheHintStillReturns(t *testing.T) {
-	be := newBlockEdit(Config{EnableHints: true}, ceStructSpec(), 100, 40)
-	be.showHint = true
-	be.prevActive, be.active = blockEditPanelTree, blockEditPanelHint
-
-	be, _ = be.Update(tea.KeyPressMsg{Code: 'h', Mod: tea.ModCtrl})
-	require.Equal(t, blockEditPanelTree, be.active)
 }
 
 // cfgStructDefs is a struct (KindObject) block shaped like movelooper's

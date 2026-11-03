@@ -20,7 +20,7 @@ func rootLayout(hintH int) layout.Node {
 	if hintH > 0 {
 		right = layout.Rows(layout.Fill("preview"), layout.Fixed("hint", layout.Lines(hintH+2)).Info())
 	}
-	return layout.Columns(listColumn("list"), right)
+	return layout.Columns(listColumn("list"), right).Resizable()
 }
 
 func docPresetLayout() layout.Node {

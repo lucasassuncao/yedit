@@ -26,7 +26,7 @@ type valueChoice struct {
 // valueChoice is the scalar ctrl+o can pick a value for: the field under the
 // tree's cursor, or the block itself when it is a lone scalar.
 func (be blockEditState) valueChoice() (valueChoice, bool) {
-	if be.cfg.Metadata == nil || be.active == blockEditPanelHint {
+	if be.cfg.Metadata == nil {
 		return valueChoice{}, false
 	}
 	if be.tree.IsEmpty() {

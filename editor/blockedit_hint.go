@@ -15,30 +15,6 @@ func (be blockEditState) fieldItemView() string {
 	return be.theme.Success.Render(" ▸ " + be.key)
 }
 
-// scrolledHintContent clips the hint content to hintH() lines starting at
-// hintScroll, for when the hint panel has focus.
-func (be blockEditState) scrolledHintContent() string {
-	content := be.hintContent()
-	if content == "" {
-		return ""
-	}
-	lines := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
-	h := be.hintH()
-	maxScroll := len(lines) - h
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	scroll := be.hintScroll
-	if scroll > maxScroll {
-		scroll = maxScroll
-	}
-	end := scroll + h
-	if end > len(lines) {
-		end = len(lines)
-	}
-	return strings.Join(lines[scroll:end], "\n")
-}
-
 func (be blockEditState) hintContent() string {
 	// Tree-less blocks and lists of scalars have no field nodes, so show the
 	// block's own metadata. The empty fieldPath makes this a block-level lookup;

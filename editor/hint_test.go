@@ -2,7 +2,6 @@ package editor
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -53,54 +52,4 @@ func TestSelectedHintWithoutMetadata(t *testing.T) {
 	m, err := newModel(Config{Path: filepath.Join(t.TempDir(), "hint.yaml"), Schema: &sizeProbeConfig{}})
 	require.NoError(t, err)
 	require.Contains(t, ansi.Strip(m.selectedHint()), "Config.Metadata is not set")
-}
-
-// With the keys, ↓ scrolls a hint longer than the panel, and stops at its end.
-func TestTheFocusedHintPanelScrolls(t *testing.T) {
-	long := strings.Repeat("line\n", 60)
-	m, err := newModel(Config{
-		Path:        filepath.Join(t.TempDir(), "probe.yaml"),
-		Schema:      &hintProbeConfig{},
-		EnableHints: true,
-		Metadata:    MetadataFunc(func(string, string) FieldMeta { return FieldMeta{Example: long} }),
-	})
-	require.NoError(t, err)
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	m = updated.(model).toggleHintFocus()
-	require.Equal(t, paneHint, m.mode)
-
-	top := m.hintView()
-	for range 200 {
-		updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-		m = updated.(model)
-	}
-	require.NotEqual(t, top, m.hintView(), "↓ did not scroll the hint")
-	require.Equal(t, m.maxHintScroll(), m.hintScroll, "the scroll runs past the end of the hint")
-}
-
-// ctrl+h gives the keys to the Hint/Example panel and takes them back, as in
-// the block editor; esc and hiding the panel give them back too.
-func TestCtrlHFocusesTheHintPanelOnTheMainScreen(t *testing.T) {
-	press := func(m model, k tea.KeyPressMsg) model {
-		updated, cmd := m.Update(k)
-		m = updated.(model)
-		if cmd != nil {
-			if msg := cmd(); msg != nil {
-				updated, _ = m.Update(msg)
-				m = updated.(model)
-			}
-		}
-		return m
-	}
-	ctrlH := tea.KeyPressMsg{Code: 'h', Mod: tea.ModCtrl}
-
-	m := press(newHintModel(t, 0), ctrlH)
-	require.Equal(t, paneHint, m.mode)
-	require.Equal(t, "hint", m.rootPane())
-	require.Equal(t, paneList, press(m, ctrlH).mode, "ctrl+h again gives the keys back")
-	require.Equal(t, paneList, press(m, tea.KeyPressMsg{Code: tea.KeyEscape}).mode, "esc gives them back")
-
-	hidden := press(m, tea.KeyPressMsg{Code: 'h', Text: "h"})
-	require.False(t, hidden.showHint)
-	require.Equal(t, paneList, hidden.mode, "a hidden panel cannot keep the keys")
 }

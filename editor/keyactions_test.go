@@ -38,7 +38,7 @@ func TestEveryScreenHasOneActionPerKey(t *testing.T) {
 	require.NoError(t, shell.Check(m.actions()...), "preview")
 
 	be := newServerBlock(t)
-	for _, p := range []blockEditPanel{blockEditPanelTree, blockEditPanelYAML, blockEditPanelHint} {
+	for _, p := range []blockEditPanel{blockEditPanelTree, blockEditPanelYAML} {
 		be.active = p
 		require.NoError(t, shell.Check(be.actions()...), "block editor panel %d", p)
 	}
@@ -58,22 +58,17 @@ func TestBlockEditTabCyclesPanesAndSkipsHint(t *testing.T) {
 	be, _ = pressBEAction(t, be, tea.KeyPressMsg{Code: tea.KeyTab})
 	must.Equal(blockEditPanelTree, be.active)
 	must.False(be.yamlEditor.Focused())
-
-	be, _ = pressBEAction(t, be, tea.KeyPressMsg{Code: 'h', Mod: tea.ModCtrl})
-	must.Equal(blockEditPanelHint, be.active)
-	be, _ = pressBEAction(t, be, tea.KeyPressMsg{Code: tea.KeyTab})
-	must.Equal(blockEditPanelTree, be.active, "tab from the hint goes back where it came from")
 }
 
-// Two legend rows: getting around, the hint panel included, help last; then
+// Two legend rows: getting around, help last; then
 // what changes the document. Wide enough for the first row to fit whole.
 func TestTheListLegendReadsInItsTwoRows(t *testing.T) {
 	m := newHintModel(t, 0)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 40})
 	rows := strings.Split(ansi.Strip(updated.(model).viewContent()), "\n")
 	first, second := strings.TrimSpace(rows[len(rows)-2]), strings.TrimSpace(rows[len(rows)-1])
-	require.Equal(t, "[tab] change pane  [↑/↓] move  [enter/→] add  [/] filter  [ctrl+h] focus hint  [h] hide hint  [q] quit  [?] help", first)
-	require.Equal(t, "[ctrl+s] save  [ctrl+r] reload  [ctrl+u] undo  [ctrl+y] redo  [ctrl+l] validate", second)
+	require.Equal(t, "[tab] change pane  [↑/↓] move  [enter/→] add  [/] filter  [q] quit  [?] help", first)
+	require.Equal(t, "[ctrl+s] save  [ctrl+u] undo  [ctrl+y] redo  [ctrl+l] validate", second)
 }
 
 // ? opens the help panel over the screen; the legend under it stays the same.
@@ -167,39 +162,10 @@ func TestTheBlockEditorLegendReadsInItsTwoRows(t *testing.T) {
 	be.yamlEditor = be.yamlEditor.Blur()
 
 	rows := strings.Split(legendRow(be.View(nil)), "\n")
-	require.Equal(t, "[tab] change pane  [↑/↓] move  [→/←] expand  [ctrl+h] focus hint  [h] hide hint  [esc] back  [?] help",
+	require.Equal(t, "[tab] change pane  [↑/↓] move  [→/←] expand  [esc] back  [?] help",
 		strings.TrimSpace(rows[0]))
 	require.Equal(t, "[enter] add  [ctrl+s] save changes  [ctrl+d] remove  [ctrl+u] undo  [ctrl+y] redo  [ctrl+l] validate",
 		strings.TrimSpace(rows[1]))
-}
-
-// The focused hint is for reading: one row, no document keys, and no
-// ctrl+h, which is how the reader got there.
-func TestTheHintPanelLegendIsOneRow(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "help.yaml")
-	require.NoError(t, os.WriteFile(path, []byte("server:\n  host: a\n"), 0o600))
-	m, err := newModel(Config{Path: path, Schema: &sizeProbeConfig{}, EnableHints: true})
-	require.NoError(t, err)
-	be := newBlockEdit(m.cfg, blockSpec{key: "server"}, 140, 30)
-	be.showHint = true
-	be.prevActive, be.active = blockEditPanelTree, blockEditPanelHint
-	be.yamlEditor = be.yamlEditor.Blur()
-
-	rows := strings.Split(legendRow(be.View(nil)), "\n")
-	require.Equal(t, "[tab] change pane  [↑/↓] scroll  [h] hide hint  [esc] back  [?] help", strings.TrimSpace(rows[0]))
-	require.Empty(t, strings.TrimSpace(rows[1]), "no second row of document keys")
-}
-
-// The main screen's hint reads the same way: one row, no document keys.
-func TestTheMainScreenHintLegendIsOneRow(t *testing.T) {
-	m := newHintModel(t, 0)
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 40})
-	m = updated.(model).toggleHintFocus()
-	require.Equal(t, paneHint, m.mode)
-
-	rows := strings.Split(legendRow(m.viewContent()), "\n")
-	require.Equal(t, "[tab] change pane  [↑/↓] scroll  [h] hide hint  [esc] back  [q] quit  [?] help", strings.TrimSpace(rows[0]))
-	require.Empty(t, strings.TrimSpace(rows[1]), "no second row of document keys")
 }
 
 // On the YAML panel "?" is text: it must type, and the legend must not offer it.

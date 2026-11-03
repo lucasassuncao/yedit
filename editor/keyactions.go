@@ -14,7 +14,6 @@ type (
 	quitRequestedMsg   struct{}
 	openDocPresetsMsg  struct{}
 	toggleHintsMsg     struct{}
-	focusHintMsg       struct{}
 	saveRequestedMsg   struct{}
 	docUndoMsg         struct{}
 	docRedoMsg         struct{}
@@ -24,7 +23,6 @@ type (
 	beUndoMsg       struct{}
 	beRedoMsg       struct{}
 	beToggleHintMsg struct{}
-	beFocusHintMsg  struct{}
 	bePresetMsg     struct{}
 	bePickPathMsg   struct{}
 	bePickValueMsg  struct{}
@@ -36,7 +34,7 @@ type (
 func (m model) appActionKeys() []shell.Action {
 	out := make([]shell.Action, 0, len(m.cfg.Actions))
 	for _, a := range m.cfg.Actions {
-		out = append(out, send(a.Key, a.Help, actionRequestedMsg{key: a.Key}, secondRow))
+		out = append(out, send(a.Key, a.Help, actionRequestedMsg{key: a.Key}, secondRow, editing))
 	}
 	return out
 }
@@ -44,7 +42,7 @@ func (m model) appActionKeys() []shell.Action {
 // shown is a key a component handles itself: the legend prints it, the shell
 // leaves it to the list, tree or browser in focus.
 func shown(keys, desc string, more ...string) shell.Action {
-	opts := []shell.Option{shell.DisplayOnly()}
+	opts := []shell.Option{shell.DisplayOnly(), nav}
 	if len(more) > 0 {
 		opts = append(opts, shell.WithKey(more...))
 	}
@@ -59,13 +57,21 @@ func send(keys, desc string, msg tea.Msg, opts ...shell.Option) shell.Action {
 // around, the hint panel included, help last; the second changes the document.
 var secondRow = shell.Group(1)
 
+// nav, editing and view head the help's sections: getting around, what
+// changes the document, and what changes the screen.
+var (
+	nav     = shell.Section("navigation")
+	editing = shell.Section("editing")
+	view    = shell.Section("view")
+)
+
 // shownLater is shown on the second row.
 func shownLater(keys, desc string) shell.Action {
-	return shell.Custom(keys, desc, nil, shell.DisplayOnly(), secondRow)
+	return shell.Custom(keys, desc, nil, shell.DisplayOnly(), secondRow, editing)
 }
 
 // quit asks first when there are unsaved changes.
-func quit() shell.Action { return shell.Quit(shell.RunWith(shell.Send(quitRequestedMsg{}))) }
+func quit() shell.Action { return shell.Quit(shell.RunWith(shell.Send(quitRequestedMsg{})), nav) }
 
 // quitKeys is q, on the main screen only: a file tab closes with esc and
 // leaves quitting to the main screen.
@@ -76,29 +82,25 @@ func (m model) quitKeys() []shell.Action {
 	return []shell.Action{quit()}
 }
 
-// hintKeys are the Hint/Example panel's two keys: focus it while it is shown,
-// and show or hide it, worded for its current state.
-func hintKeys(enabled, showing, toggle bool, focus, flip tea.Msg) []shell.Action {
-	var out []shell.Action
-	if enabled && showing {
-		out = append(out, send("ctrl+h", "focus hint", focus))
+// hintKeys is h, which shows or hides the Hint/Example panel, worded for its
+// state. The help lists it; the legend leaves it out.
+func hintKeys(enabled, showing bool, flip tea.Msg) []shell.Action {
+	if !enabled {
+		return nil
 	}
-	if enabled && toggle {
-		desc := "show hint"
-		if showing {
-			desc = "hide hint"
-		}
-		out = append(out, send("h", desc, flip))
+	desc := "show hint"
+	if showing {
+		desc = "hide hint"
 	}
-	return out
+	return []shell.Action{send("h", desc, flip, shell.HelpOnly(), view)}
 }
 
 // docKeys are the root screen's second row, less what depends on the pane. The
 // application's actions follow save, which they extend.
 func docKeys(save, validate shell.Action, appActions []shell.Action) []shell.Action {
 	out := append([]shell.Action{save}, appActions...)
-	return append(out, send("ctrl+r", "reload", reloadRequestedMsg{}, secondRow),
-		send("ctrl+u", "undo", docUndoMsg{}, secondRow), send("ctrl+y", "redo", docRedoMsg{}, secondRow), validate)
+	return append(out, send("ctrl+r", "reload", reloadRequestedMsg{}, secondRow, editing, shell.HelpOnly()),
+		send("ctrl+u", "undo", docUndoMsg{}, secondRow, editing), send("ctrl+y", "redo", docRedoMsg{}, secondRow, editing), validate)
 }
 
 // withTabKey puts ctrl+t after lead when other screens are beside this one:
@@ -120,32 +122,24 @@ func (m model) actions() []shell.Action {
 // screenActions is the keys for where the user is, and lead, the ones before
 // ctrl+t: esc, which closes a file tab from its block list.
 func (m model) screenActions() (lead, keys []shell.Action) {
-	save := send("ctrl+s", "save", saveRequestedMsg{}, secondRow)
-	validate := send("ctrl+l", "validate", validateRequestedMsg{}, secondRow)
-	hints := hintKeys(m.cfg.EnableHints, m.showHint, true, focusHintMsg{}, toggleHintsMsg{})
+	save := send("ctrl+s", "save", saveRequestedMsg{}, secondRow, editing)
+	validate := send("ctrl+l", "validate", validateRequestedMsg{}, secondRow, editing)
+	hints := hintKeys(m.cfg.EnableHints, m.showHint, toggleHintsMsg{})
 	switch base := m.basePane(); {
 	case base == paneDocPreset:
 		return nil, append(browserActions(m.docPreset.PreviewFocused(), "apply"), save, validate)
 	case base == panePreview:
-		out := []shell.Action{shell.ChangePane(), shell.Scroll(), send("esc", "back", previewBackMsg{})}
-		return nil, append(append(out, m.quitKeys()...), shell.Help(), save, validate)
-	case base == paneHint:
-		// tab and esc both give the keys back to the pane they came from. The
-		// hint is for reading, so the document keys and ctrl+h are not offered.
-		out := []shell.Action{
-			shell.ChangePane(shell.RunWith(shell.Send(focusHintMsg{}))), shell.Scroll(),
-			send("h", "hide hint", toggleHintsMsg{}), send("esc", "back", focusHintMsg{}),
-		}
-		return nil, append(append(out, m.quitKeys()...), shell.Help())
+		out := []shell.Action{shell.ChangePane(nav), shell.Scroll(nav), send("esc", "back", previewBackMsg{}, nav)}
+		return nil, append(append(out, m.quitKeys()...), shell.Help(), save, validate, shell.Resize(shell.HelpOnly(), view), shell.ResetSizes(shell.HelpOnly(), view))
 	case m.list.Filtering():
 		// "?" and "q" are typed into the filter here.
-		return nil, []shell.Action{shell.Move(), shown("enter", "select"), shown("esc", "clear"), save, validate}
+		return nil, []shell.Action{shell.Move(nav), shown("enter", "select"), shown("esc", "clear"), save, validate}
 	}
 
 	if m.inFileTab {
-		lead = []shell.Action{send("esc", "close tab", closeFileRequestedMsg{})}
+		lead = []shell.Action{send("esc", "close tab", closeFileRequestedMsg{}, nav)}
 	}
-	out := []shell.Action{shell.ChangePane(), shell.Move()}
+	out := []shell.Action{shell.ChangePane(nav), shell.Move(nav)}
 	it := m.list.SelectedItem()
 	switch {
 	case it != nil && it.Unknown:
@@ -155,10 +149,9 @@ func (m model) screenActions() (lead, keys []shell.Action) {
 		out = append(out, shown("enter/→", "add", "enter", "right"))
 	}
 	out = append(out, shown("/", "filter"))
-	out = append(out, hints...)
 	out = append(append(out, m.quitKeys()...), shell.Help())
 	if len(presetItems(m.cfg.DocPresets, "")) > 0 {
-		out = append(out, send("p", "presets", openDocPresetsMsg{}, secondRow))
+		out = append(out, send("p", "presets", openDocPresetsMsg{}, secondRow, editing))
 	}
 	appActions := m.appActionKeys()
 	doc := docKeys(save, validate, appActions)
@@ -167,15 +160,17 @@ func (m model) screenActions() (lead, keys []shell.Action) {
 	if it != nil && it.Existing {
 		out = append(out, shownLater("ctrl+d", "delete"))
 	}
-	return lead, append(out, doc[head:]...)
+	out = append(out, doc[head:]...)
+	out = append(out, hints...)
+	return lead, append(out, shell.Resize(shell.HelpOnly(), view), shell.ResetSizes(shell.HelpOnly(), view))
 }
 
 // browserActions is a preset picker's legend; the browser handles every key.
 func browserActions(previewFocus bool, enter string, extra ...shell.Action) []shell.Action {
 	if previewFocus {
-		return []shell.Action{shell.ChangePane(shell.DisplayOnly()), shell.Scroll(), shown("esc", "back")}
+		return []shell.Action{shell.ChangePane(shell.DisplayOnly(), nav), shell.Scroll(nav), shown("esc", "back")}
 	}
-	out := []shell.Action{shell.ChangePane(shell.DisplayOnly()), shell.Move(), shown("enter", enter)}
+	out := []shell.Action{shell.ChangePane(shell.DisplayOnly(), nav), shell.Move(nav), shell.Custom("enter", enter, nil, shell.DisplayOnly(), editing)}
 	return append(append(out, extra...), shown("esc", "cancel"))
 }
 
@@ -188,27 +183,17 @@ func (be blockEditState) actions() []shell.Action {
 func (be blockEditState) panelActions() []shell.Action {
 	if be.mode == modePresetBrowser {
 		if be.isCollectionNav() {
-			return browserActions(be.preset.PreviewFocused(), "replace", shown("a", "append"))
+			return browserActions(be.preset.PreviewFocused(), "replace", shell.Custom("a", "append", nil, shell.DisplayOnly(), editing))
 		}
 		return browserActions(be.preset.PreviewFocused(), "apply")
 	}
 
-	if be.active == blockEditPanelHint {
-		// The hint is for reading: ctrl+h is how the reader got here, and esc
-		// goes back to the pane it came from instead of leaving the block.
-		return []shell.Action{
-			shell.ChangePane(), shell.Scroll(), send("h", "hide hint", beToggleHintMsg{}),
-			send("esc", "back", beFocusHintMsg{}), shell.Help(),
-		}
-	}
-
 	typing := be.active == blockEditPanelYAML
-	out := []shell.Action{shell.ChangePane()}
+	out := []shell.Action{shell.ChangePane(nav)}
 	if be.active == blockEditPanelTree {
-		out = append(out, shell.Move(), shown("→/←", "expand", "right", "left"))
+		out = append(out, shell.Move(nav), shown("→/←", "expand", "right", "left"))
 	}
-	out = append(out, hintKeys(be.cfg.EnableHints, be.showHint, !typing, beFocusHintMsg{}, beToggleHintMsg{})...)
-	out = append(out, send("esc", "back", beBackMsg{}))
+	out = append(out, send("esc", "back", beBackMsg{}, nav))
 	if !typing {
 		out = append(out, shell.Help())
 	}
@@ -219,15 +204,15 @@ func (be blockEditState) panelActions() []shell.Action {
 		}
 		out = append(out, shownLater("enter", enter))
 		if be.cfg.BlockPresets != nil && len(be.cfg.BlockPresets.ListPresets(be.key)) > 0 {
-			out = append(out, send("p", "presets", bePresetMsg{}, secondRow))
+			out = append(out, send("p", "presets", bePresetMsg{}, secondRow, editing))
 		}
 	}
 	if _, ok := be.pathField(); ok {
-		out = append(out, send("ctrl+o", "pick file", bePickPathMsg{}, secondRow))
+		out = append(out, send("ctrl+o", "pick file", bePickPathMsg{}, secondRow, editing))
 	} else if _, ok := be.valueChoice(); ok {
-		out = append(out, send("ctrl+o", "pick value", bePickValueMsg{}, secondRow))
+		out = append(out, send("ctrl+o", "pick value", bePickValueMsg{}, secondRow, editing))
 	}
-	out = append(out, send("ctrl+s", "save changes", commitRequestedMsg{}, secondRow))
+	out = append(out, send("ctrl+s", "save changes", commitRequestedMsg{}, secondRow, editing))
 	if be.active == blockEditPanelTree {
 		remove := "remove"
 		if be.isCollectionNav() {
@@ -235,7 +220,13 @@ func (be blockEditState) panelActions() []shell.Action {
 		}
 		out = append(out, shownLater("ctrl+d", remove))
 	}
-	return append(out,
-		send("ctrl+u", "undo", beUndoMsg{}, secondRow), send("ctrl+y", "redo", beRedoMsg{}, secondRow),
-		send("ctrl+l", "validate", validateRequestedMsg{}, secondRow))
+	out = append(out,
+		send("ctrl+u", "undo", beUndoMsg{}, secondRow, editing), send("ctrl+y", "redo", beRedoMsg{}, secondRow, editing),
+		send("ctrl+l", "validate", validateRequestedMsg{}, secondRow, editing))
+	if !typing {
+		// The YAML panel types h and "=", and selects words with ctrl+shift+arrows.
+		out = append(out, hintKeys(be.cfg.EnableHints, be.showHint, beToggleHintMsg{})...)
+		out = append(out, shell.Resize(shell.HelpOnly(), view), shell.ResetSizes(shell.HelpOnly(), view))
+	}
+	return out
 }

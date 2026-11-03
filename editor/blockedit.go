@@ -43,7 +43,6 @@ type blockEditPanel int
 const (
 	blockEditPanelTree blockEditPanel = iota
 	blockEditPanelYAML
-	blockEditPanelHint // hint panel focused for scrolling
 )
 
 // blockEditMode is the top-level state of the block-edit screen. Exactly one
@@ -95,10 +94,8 @@ type blockEditState struct {
 	yamlEditor      textbox.Model
 	previewRenderer *glamour.TermRenderer
 	active          blockEditPanel
-	prevActive      blockEditPanel  // panel to return to when leaving hint focus
 	showHint        bool            // split the right column to show the Hint/Example panel
 	hintAnim        animation.Tween // in-flight show/hide transition for the hint panel; inactive unless Config.AnimationDuration is set
-	hintScroll      int             // scroll offset in hint panel when active == blockEditPanelHint
 	previewScroll   int             // 1-based YAML line the Preview keeps visible; 0 = top
 	tabbed          bool            // another screen is beside this one: the legend names ctrl+t
 
@@ -156,7 +153,7 @@ func newBlockEdit(cfg Config, spec blockSpec, w, h int) blockEditState {
 		theme:         theme.Resolve(cfg.Theme, true),
 		showHint:      cfg.EnableHints,
 	}
-	be.sh = shell.New(shell.Config{Layout: blockLayout(0), Theme: be.theme, Title: cfg.Title, LegendLines: cfg.LegendLines})
+	be.sh = shell.New(shell.Config{Layout: blockLayout(0), Theme: be.theme, Title: cfg.Title, LegendLines: cfg.LegendLines, Mouse: true})
 	be.sh, _ = be.sh.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	be = be.relayout()
 
@@ -263,7 +260,7 @@ func blockLayout(hintH int) layout.Node {
 	if hintH > 0 {
 		right = layout.Rows(layout.Fill("editor"), layout.Fixed("hint", layout.Lines(hintH+2)).Info())
 	}
-	return layout.Columns(listColumn("fields"), right)
+	return layout.Columns(listColumn("fields"), right).Resizable()
 }
 
 func presetLayout() layout.Node {
@@ -279,6 +276,16 @@ func (be blockEditState) currentLayout() layout.Node {
 
 // relayout re-resolves the shell for the current mode and hint height and
 // rebuilds the preview renderer for the width it placed the editor at.
+// sized fits the panels to the rects the shell placed, after a resize or an
+// edge the user moved.
+func (be blockEditState) sized() blockEditState {
+	be = be.relayout()
+	be.yamlEditor = be.yamlEditor.SetWidth(be.rightW())
+	be.yamlEditor = be.yamlEditor.SetHeight(be.editorH() - 1)
+	be.tree = be.tree.SetHeight(be.innerH())
+	return be
+}
+
 func (be blockEditState) relayout() blockEditState {
 	be.sh = be.sh.SetLayout(be.currentLayout()).SetActions(be.actions()...)
 	be.previewRenderer = render.NewPreviewRenderer(max(1, be.rightW()-draw.GutterWidth))
@@ -419,11 +426,7 @@ func (be blockEditState) Update(msg tea.Msg) (blockEditState, tea.Cmd) {
 		be.width = m.Width
 		be.height = m.Height
 		be.sh, _ = be.sh.Update(m)
-		be = be.relayout()
-		be.yamlEditor = be.yamlEditor.SetWidth(be.rightW())
-		be.yamlEditor = be.yamlEditor.SetHeight(be.editorH() - 1)
-		be.tree = be.tree.SetHeight(be.innerH())
-		return be, nil
+		return be.sized(), nil
 	}
 
 	switch be.mode {
@@ -560,14 +563,6 @@ func (be blockEditState) handleActionMsg(msg tea.Msg) (blockEditState, tea.Cmd, 
 	case beToggleHintMsg:
 		next, cmd := be.toggleHint()
 		return next, cmd, true
-	case beFocusHintMsg:
-		if be.active == blockEditPanelHint {
-			be.active = be.prevActive
-		} else {
-			be.prevActive = be.active
-			be.active = blockEditPanelHint
-		}
-		return be.relayout(), nil, true
 	case bePresetMsg:
 		return be.openPresetPicker(), nil, true
 	case bePickPathMsg:
@@ -603,9 +598,6 @@ func (be blockEditState) toggleHint() (blockEditState, tea.Cmd) {
 	// neither 0 nor the settled target.
 	from := be.hintH()
 	be.showHint = !be.showHint
-	if !be.showHint && be.active == blockEditPanelHint {
-		be.active = be.prevActive
-	}
 	be, tick := be.startHintAnim(from)
 	// editorH() changed with showHint, and the textarea's own height is only
 	// set at creation/resize.
@@ -614,28 +606,6 @@ func (be blockEditState) toggleHint() (blockEditState, tea.Cmd) {
 		return be, hintAnimTick(true)
 	}
 	return be, nil
-}
-
-// scrollHint moves the focused hint panel; every other key stops there.
-func (be blockEditState) scrollHint(msg tea.KeyMsg) blockEditState {
-	switch {
-	case key.Matches(msg, keys.Up):
-		if be.hintScroll > 0 {
-			be.hintScroll--
-		}
-	case key.Matches(msg, keys.Down):
-		// Bound by content height, not panel height: otherwise the tail of a hint
-		// longer than two panel-fulls stays unreachable.
-		lines := strings.Count(strings.TrimSuffix(be.hintContent(), "\n"), "\n") + 1
-		maxScroll := lines - be.hintH()
-		if maxScroll < 0 {
-			maxScroll = 0
-		}
-		if be.hintScroll < maxScroll {
-			be.hintScroll++
-		}
-	}
-	return be
 }
 
 func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
@@ -651,14 +621,7 @@ func (be blockEditState) updateKey(msg tea.KeyMsg) (blockEditState, tea.Cmd) {
 		}
 	}
 
-	switch be.active {
-	case blockEditPanelHint:
-		if key.Matches(msg, keys.CtrlHHint) {
-			be.active = be.prevActive
-			return be.relayout(), nil
-		}
-		return be.scrollHint(msg), nil
-	case blockEditPanelTree:
+	if be.active == blockEditPanelTree {
 		return be.updateTreePanel(msg)
 	}
 
@@ -828,11 +791,8 @@ func (be blockEditState) resyncAfterCommit(fresh string) blockEditState {
 
 // activePane names the shell leaf of the active panel.
 func (be blockEditState) activePane() string {
-	switch be.active {
-	case blockEditPanelYAML:
+	if be.active == blockEditPanelYAML {
 		return "editor"
-	case blockEditPanelHint:
-		return "hint"
 	}
 	return "fields"
 }
@@ -929,11 +889,8 @@ func (be blockEditState) View(parentSegs []string) string {
 		fieldsTitle = "Field"
 	}
 	editorTitle, focus := "Preview", "fields"
-	switch be.active {
-	case blockEditPanelYAML:
+	if be.active == blockEditPanelYAML {
 		editorTitle, focus = "Editing YAML", "editor"
-	case blockEditPanelHint:
-		focus = "hint"
 	}
 
 	panes := map[string]shell.Pane{
@@ -954,7 +911,7 @@ func (be blockEditState) View(parentSegs []string) string {
 		}},
 	}
 	if be.hintVisible() {
-		panes["hint"] = shell.Pane{Title: "Hint/Example", Body: func(layout.Rect) string { return be.scrolledHintContent() }}
+		panes["hint"] = shell.Pane{Title: "Hint/Example", Body: func(layout.Rect) string { return be.hintContent() }}
 	}
 	return sh.SetFocus(focus).View(panes).Content
 }

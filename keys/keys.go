@@ -20,7 +20,6 @@ const (
 	keyCtrlL = "ctrl+l"
 	keyCtrlD = "ctrl+d"
 	keyCtrlC = "ctrl+c"
-	keyCtrlH = "ctrl+h"
 )
 
 var (
@@ -37,8 +36,6 @@ var (
 	CtrlDDelete = key.New(keyCtrlD).WithHelp("ctrl+d", "delete")
 	CtrlDRemove = key.New(keyCtrlD).WithHelp("ctrl+d", "remove")
 	CtrlLValid  = key.New(keyCtrlL).WithHelp("ctrl+l", "validate")
-	// CtrlHHint leaves the focused hint panel; the legend does not offer it there.
-	CtrlHHint = key.New(keyCtrlH)
 
 	AAppend = key.New(keyA).WithHelp("a", "append")
 	Filter  = key.New(keySlash).WithHelp("/", "filter")

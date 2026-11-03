@@ -57,10 +57,6 @@ func (be blockEditState) updateTreePanel(msg tea.KeyMsg) (blockEditState, tea.Cm
 	}
 	tree, action := be.tree.Update(km)
 	be.tree = tree
-	if be.tree.CurrentNodeIdx() != prevNodeIdx {
-		// The hint panel now describes a different field; show it from the top.
-		be.hintScroll = 0
-	}
 
 	switch action {
 	case fieldtree.ActionOpenChild:

@@ -26,11 +26,8 @@ func (m model) focusRootPane(msg shell.FocusMsg) (tea.Model, tea.Cmd) {
 
 // rootPane names the shell leaf the list screen's mode is focused on.
 func (m model) rootPane() string {
-	switch m.basePane() {
-	case panePreview:
+	if m.basePane() == panePreview {
 		return "preview"
-	case paneHint:
-		return "hint"
 	}
 	return "list"
 }

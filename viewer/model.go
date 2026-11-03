@@ -145,17 +145,18 @@ func (m *Model) rendered(field, preset string) string {
 // actions is the keys for where the user is: the fields, a field's presets,
 // or the document pane. The browser handles every key but help and quit.
 func (m *Model) actions() []shell.Action {
-	out := []shell.Action{shell.Help(), shell.ChangePane(shell.DisplayOnly())}
+	nav := shell.Section("navigation") // the help's heading, not the app's name
+	out := []shell.Action{shell.Help(), shell.ChangePane(shell.DisplayOnly(), nav)}
 	shown := func(label, desc string, keys ...string) shell.Action {
-		return shell.Custom(label, desc, nil, shell.WithKey(keys...), shell.DisplayOnly())
+		return shell.Custom(label, desc, nil, shell.WithKey(keys...), shell.DisplayOnly(), nav)
 	}
 	switch {
 	case m.b.PreviewFocused():
-		return append(out, shell.Scroll(), shell.Quit(), shown("pgup/pgdn", "half-page", "pgup", "pgdown"), shown("esc", "back to list", "esc"))
+		return append(out, shell.Scroll(nav), shell.Quit(nav), shown("pgup/pgdn", "half-page", "pgup", "pgdown"), shown("esc", "back to list", "esc"))
 	case m.field != "":
-		return append(out, shell.Move(), shell.Quit(), shown("esc/←", "back to fields", "esc", "left"))
+		return append(out, shell.Move(nav), shell.Quit(nav), shown("esc/←", "back to fields", "esc", "left"))
 	}
-	return append(out, shell.Move(), shell.Quit(), shown("enter/→", "open", "enter", "right"))
+	return append(out, shell.Move(nav), shell.Quit(nav), shown("enter/→", "open", "enter", "right"))
 }
 
 func (m *Model) View() tea.View {

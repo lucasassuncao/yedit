@@ -334,3 +334,16 @@ func TestNoTabsLeavesTheEditorAlone(t *testing.T) {
 	require.NoError(t, err)
 	assert.IsType(t, model{}, root)
 }
+
+// The strip is a row the screen in front does not have: the pointer below it
+// reaches that screen a row higher, and on it reaches nothing.
+func TestTheMouseUnderTheStripMovesUpARow(t *testing.T) {
+	tb := tabbedModel{strip: true}
+	got, ok := tb.underStrip(tea.MouseMotionMsg{X: 4, Y: 7})
+	require.True(t, ok)
+	require.Equal(t, tea.MouseMotionMsg{X: 4, Y: 6}, got)
+	_, ok = tb.underStrip(tea.MouseClickMsg{Y: 1})
+	require.False(t, ok, "the strip itself")
+	got, _ = tabbedModel{}.underStrip(tea.MouseClickMsg{Y: 7})
+	require.Equal(t, tea.MouseClickMsg{Y: 7}, got, "no strip, no shift")
+}

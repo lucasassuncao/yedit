@@ -1,71 +1,14 @@
 package editor
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/lucasassuncao/yedit/hint"
-	"github.com/lucasassuncao/yedit/keys"
-
-	"github.com/lucasassuncao/bezel/key"
 )
 
-// toggleHintFocus gives the keys to the Hint/Example panel to scroll it, or
-// back to the pane they came from, as ctrl+h does in the block editor.
-func (m model) toggleHintFocus() model {
-	if m.mode == paneHint {
-		m.mode = m.hintFrom
-		return m
-	}
-	if !m.hintVisible() || (m.mode != paneList && m.mode != panePreview) {
-		return m
-	}
-	m.hintFrom, m.mode, m.hintScroll = m.mode, paneHint, 0
-	return m
-}
-
-// toggleHints shows or hides the panel; hiding it hands back the keys it had.
+// toggleHints shows or hides the panel.
 func (m model) toggleHints() (tea.Model, tea.Cmd) {
-	mo, cmd := m.dispatch(ToggleHints{})
-	if next, ok := mo.(model); ok && !next.showHint && next.mode == paneHint {
-		next.mode = next.hintFrom
-		return next, cmd
-	}
-	return mo, cmd
-}
-
-// handleHintKey scrolls the focused panel; the actions run first.
-func (m model) handleHintKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if mo, cmd, handled := m.runAction(msg); handled {
-		return mo, cmd
-	}
-	switch {
-	case key.Matches(msg, keys.CtrlHHint):
-		return m.toggleHintFocus(), nil
-	case key.Matches(msg, keys.Up):
-		m.hintScroll = max(m.hintScroll-1, 0)
-	case key.Matches(msg, keys.Down):
-		m.hintScroll = min(m.hintScroll+1, m.maxHintScroll())
-	}
-	return m, nil
-}
-
-// maxHintScroll is bound by the hint's length, so its tail stays reachable.
-func (m model) maxHintScroll() int {
-	lines := strings.Count(strings.TrimSuffix(m.selectedHint(), "\n"), "\n") + 1
-	return max(lines-m.hintPanelH(), 0)
-}
-
-// hintView is the panel's body, scrolled while it has the keys.
-func (m model) hintView() string {
-	content := m.selectedHint()
-	if m.mode != paneHint {
-		return content
-	}
-	lines := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
-	from := min(m.hintScroll, m.maxHintScroll())
-	return strings.Join(lines[from:min(from+m.hintPanelH(), len(lines))], "\n")
+	return m.dispatch(ToggleHints{})
 }
 
 // selectedHint renders the Hint/Example panel body for the selected list item.

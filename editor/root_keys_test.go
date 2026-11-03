@@ -99,17 +99,13 @@ func TestDismissDocPresetsRestoresListPane(t *testing.T) {
 	must.Equal(hintBefore, m.sh.Rect("hint"), "hint pane did not come back")
 }
 
-// An overlay opened from the preview or the hint leaves that pane framed while
+// An overlay opened from the preview leaves that pane framed while
 // it is up, and gives the keys back to it when it closes.
 func TestAnOverlayGivesTheKeysBackToThePaneUnderIt(t *testing.T) {
 	focus := map[string]func(*testing.T, model) model{
 		"preview": func(t *testing.T, m model) model {
 			m, _ = pressAction(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 			return m
-		},
-		"hint": func(t *testing.T, m model) model {
-			updated, _ := m.Update(focusHintMsg{})
-			return updated.(model)
 		},
 	}
 	open := map[string]func(*testing.T, model) model{
@@ -124,9 +120,6 @@ func TestAnOverlayGivesTheKeysBackToThePaneUnderIt(t *testing.T) {
 	}
 	for paneName, toPane := range focus {
 		for overlayName, toOverlay := range open {
-			if paneName == "hint" && overlayName == "validate" {
-				continue // the hint is for reading: it offers no document keys
-			}
 			t.Run(paneName+"/"+overlayName, func(t *testing.T) {
 				must := require.New(t)
 				m := toPane(t, newHintModel(t, 0))
