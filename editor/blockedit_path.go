@@ -80,7 +80,7 @@ func (be blockEditState) openPathPicker() (blockEditState, tea.Cmd) {
 		return be, nil
 	}
 	onPick := func(abs string) tea.Cmd { return func() tea.Msg { return pathPickedMsg{abs: abs} } }
-	fp := overlay.NewFilePicker("Pick a path for "+be.key, filepath.Dir(be.docPath()), onPick, be.theme).
+	fp := overlay.NewFilePicker("Pick a path for "+be.key, filepath.Dir(be.docPath()), onPick).
 		WithAllowedTypes(pf.Types...)
 	if pf.Dirs {
 		fp = fp.WithDirs(true)

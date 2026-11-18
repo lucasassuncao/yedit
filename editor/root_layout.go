@@ -41,7 +41,7 @@ func (m model) relayout() model {
 	m.sh = m.sh.SetLayout(m.currentLayout())
 
 	m.list = m.list.SetHeight(m.innerH())
-	preview := draw.InnerRect(m.sh.Rect("preview"))
+	preview := m.sh.Inner("preview")
 	m.preview = m.preview.SetWidth(preview.W).SetHeight(preview.H)
 	wrap := max(1, preview.W-draw.GutterWidth)
 	m.previewRenderer = render.NewPreviewRenderer(wrap)
@@ -53,7 +53,7 @@ func (m model) relayout() model {
 // split without rebuilding the glamour renderer, which the width alone decides.
 func (m model) relayoutHeights() model {
 	m.sh = m.sh.SetLayout(m.currentLayout())
-	m.preview = m.preview.SetHeight(draw.InnerRect(m.sh.Rect("preview")).H)
+	m.preview = m.preview.SetHeight(m.sh.Inner("preview").H)
 	return m.clampPreviewScroll()
 }
 
@@ -61,7 +61,7 @@ func (m model) relayoutHeights() model {
 // the screen shares. Measured on the list layout, since the shell may still
 // hold another screen's (the preset picker has no "list").
 func (m model) innerH() int {
-	return draw.InnerRect(m.sh.SetLayout(rootLayout(0)).Rect("list")).H
+	return m.sh.SetLayout(rootLayout(0)).Inner("list").H
 }
 
 // clampPreviewScroll pulls the preview's scroll offset back inside the viewport

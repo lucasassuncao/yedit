@@ -107,3 +107,17 @@ func TestHelpIsShownOpensAndCloses(t *testing.T) {
 	m.Update(cmd())
 	require.False(t, m.sh.HasOverlay(), "esc closes it")
 }
+
+// ctrl+c is Quit's key: the shell runs it, with the help open or not.
+func TestCtrlCQuitsFromTheListAndFromTheHelp(t *testing.T) {
+	m := newModel(t, stubSource{})
+	_, cmd := m.Update(bezeltest.Key("ctrl+c"))
+	require.NotNil(t, cmd)
+	require.IsType(t, tea.QuitMsg{}, cmd())
+
+	m.Update(bezeltest.Key("?"))
+	require.True(t, m.sh.HasOverlay())
+	_, cmd = m.Update(bezeltest.Key("ctrl+c"))
+	require.NotNil(t, cmd)
+	require.IsType(t, tea.QuitMsg{}, cmd())
+}

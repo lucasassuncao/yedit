@@ -195,7 +195,7 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	if head != "" {
 		text = head + "\n\n" + text
 	}
-	m = m.enterAlert(overlay.NewPager(title, text, m.theme).WithKind(kind))
+	m = m.enterAlert(overlay.NewPager(title, text).WithKind(kind))
 	return m, nil
 }
 

@@ -435,3 +435,16 @@ func TestDraggingTheEdgeResizesTheListAndThePreview(t *testing.T) {
 	updated, _ = m.Update(tea.MouseClickMsg{X: list.X + 60, Y: y, Button: tea.MouseLeft})
 	require.Equal(t, before, updated.(model).mode)
 }
+
+// The editor does not use the wheel. The shell answers a turn over a pane with
+// a command, so a turn must not count as the shell having moved an edge: that
+// laid the preview out again, glamour renderer included, on every notch.
+func TestAWheelTurnDoesNotLayTheScreenOutAgain(t *testing.T) {
+	m := newHintModel(t, 0)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(model)
+	list := m.sh.Rect("list")
+
+	updated, _ = m.Update(tea.MouseWheelMsg{X: list.X + 3, Y: list.Y + 3, Button: tea.MouseWheelDown})
+	require.True(t, m.previewRenderer == updated.(model).previewRenderer, "the preview renderer was built again")
+}

@@ -11,7 +11,6 @@ import (
 
 	"github.com/lucasassuncao/bezel"
 	"github.com/lucasassuncao/bezel/component/browser"
-	"github.com/lucasassuncao/bezel/draw"
 	"github.com/lucasassuncao/bezel/key"
 	"github.com/lucasassuncao/bezel/layout"
 	"github.com/lucasassuncao/bezel/overlay"
@@ -70,9 +69,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sh, r = m.sh.Update(msg)
 		return m, r.Cmd
 	case tea.KeyPressMsg:
-		if msg.String() == "ctrl+c" {
-			return m, tea.Quit
-		}
 		// The shell runs help and quit and, while the help is open, takes every key.
 		if sh, r := m.sh.SetActions(m.actions()...).Update(msg); r.Handled {
 			m.sh = sh
@@ -103,7 +99,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) relayout() {
 	m.sh = m.sh.SetActions(m.actions()...)
-	body := draw.InnerRect(m.sh.Rect("body"))
+	body := m.sh.Inner("body")
 	m.b = m.b.SetPreviewHeight(body.H)
 	if r, err := glamour.NewTermRenderer(glamour.WithStylePath("dark"), glamour.WithWordWrap(body.W)); err == nil {
 		m.renderer = r

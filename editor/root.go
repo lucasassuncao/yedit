@@ -619,6 +619,9 @@ func (m model) handlePreviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 // mouse hands the pointer to the shell on screen, which drags the edge between
 // two panes. A click on a pane is left alone: the keys decide the focus.
 func (m model) mouse(msg tea.MouseMsg) model {
+	if _, wheel := msg.(tea.MouseWheelMsg); wheel {
+		return m // not used here, and the shell answers it with a command
+	}
 	sh := m.sh
 	top := m.topBE()
 	if top != nil {
@@ -696,12 +699,12 @@ func (m model) handleDelete(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m model) showAlert(title, message string, kind draw.Kind) (tea.Model, tea.Cmd) {
-	m = m.enterAlert(overlay.NewAlert(kind, title, message, m.theme))
+	m = m.enterAlert(overlay.NewAlert(kind, title, message))
 	return m, nil
 }
 
 func (m model) showConfirmAlert(title, message string, confirmCmd tea.Cmd) (tea.Model, tea.Cmd) {
-	m = m.enterAlert(overlay.NewConfirm(title, message, confirmCmd, m.theme))
+	m = m.enterAlert(overlay.NewConfirm(title, message, confirmCmd))
 	return m, nil
 }
 

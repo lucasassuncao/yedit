@@ -294,13 +294,13 @@ func (be blockEditState) relayout() blockEditState {
 
 // innerH is the content height of the left panel, shared by every pane on
 // the screen. rightW is the content width of the editor column.
-func (be blockEditState) innerH() int { return draw.InnerRect(be.sh.Rect("fields")).H }
+func (be blockEditState) innerH() int { return be.sh.Inner("fields").H }
 
 func (be blockEditState) rightW() int {
 	if be.mode == modePresetBrowser {
-		return draw.InnerRect(be.sh.Rect("preview")).W
+		return be.sh.Inner("preview").W
 	}
-	return draw.InnerRect(be.sh.Rect("editor")).W
+	return be.sh.Inner("editor").W
 }
 
 // hintVisible reports whether the hint panel is drawn. It stays true
@@ -379,7 +379,7 @@ func (be blockEditState) enterConfirmAlert(o overlay.Overlay) blockEditState {
 
 // confirm builds the block editor's yes/no modal, running onYes when accepted.
 func (be blockEditState) confirm(title, message string, onYes tea.Cmd) overlay.Overlay {
-	return overlay.NewConfirm(title, message, onYes, be.theme)
+	return overlay.NewConfirm(title, message, onYes)
 }
 
 // Update is the blockEditState message router used by unit tests. At runtime
